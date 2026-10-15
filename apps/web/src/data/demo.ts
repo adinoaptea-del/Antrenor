@@ -190,6 +190,79 @@ export function thisWeekDates(): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+// ---------- Starea de azi (demo: în aplicația reală vin din Whoop/Garmin prin colector) ----------
+export const todayState = {
+  recovery: 72, // Whoop recovery, %
+  recoveryLabel: 'Bună',
+  sleep: '7 h 12',
+  sleepMin: 432,
+  hrv: 27,
+  hrvAvg7: 26,
+  rhr: 61,
+};
+
+export const weather = {
+  tempC: 4,
+  windKmh: 18,
+  humidity: 71,
+  sky: 'senin',
+  verdict: 'Bune',
+  verdictSub: 'alergare afară',
+  rule: 'fără furtună, fără ploaie, sub 30 °C: antrenamentul rămâne afară',
+};
+
+export const insight = {
+  title: 'Observația zilei',
+  text: `HRV ${todayState.hrv} ms, cu ${Math.round(((todayState.hrv - todayState.hrvAvg7) / todayState.hrvAvg7) * 100)}% peste media ta din ultimele 7 zile. Alergarea Z2 de azi rămâne la ${'128–147 bpm'}; cadența peste 170.`,
+};
+
+export const lastRun = { date: '2026-12-06', avgHr: 142, km: 9.6, minutes: 60, hrTrend: [138, 141, 139, 144, 140, 143, 142] }; // FC medie pe ultimele 7 alergări (demo)
+
+// Săptămânile de până acum (din activitățile executate), pentru grafice.
+const weekStarts: string[] = [];
+{
+  let s = weekStart(PLAN_START);
+  const cur = weekStart(TODAY);
+  while (diffDays(s, cur) >= 0) {
+    weekStarts.push(s);
+    s = addDays(s, 7);
+  }
+}
+const MONTH_SHORT = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'];
+function weekLabel(iso: string): string {
+  return `${Number(iso.slice(8))} ${MONTH_SHORT[Number(iso.slice(5, 7)) - 1]}`;
+}
+function inWeek(date: string, start: string): boolean {
+  const d = diffDays(start, date);
+  return d >= 0 && d < 7;
+}
+
+export const weeklyHours = weekStarts.map((s) => {
+  const mins = activities.filter((a) => inWeek(a.date, s)).reduce((acc, a) => acc + a.minutes, 0);
+  const plannedMins = allWorkouts.filter((w) => inWeek(w.date, s) && w.sport !== 'forta').reduce((acc, w) => acc + w.plannedMinutes, 0);
+  return { start: s, label: weekLabel(s), hours: Math.round((mins / 60) * 10) / 10, plannedHours: Math.round((plannedMins / 60) * 10) / 10, current: s === weekStart(TODAY) };
+});
+
+export const weeklyExecution = weekStarts.map((s) => {
+  const ws = allWorkouts.filter((w) => inWeek(w.date, s) && diffDays(w.date, TODAY) > 0);
+  if (ws.length === 0) return { label: weekLabel(s), pct: null as number | null };
+  const good = ws.filter((w) => ['verde', 'galben'].includes(colorOf(w))).length;
+  return { label: weekLabel(s), pct: Math.round((good / ws.length) * 100) };
+});
+
+export function weeklyKm(sport: Sport): number[] {
+  return weekStarts.filter((s) => s !== weekStart(TODAY)).map((s) =>
+    Math.round(activities.filter((a) => a.sport === sport && inWeek(a.date, s)).reduce((acc, a) => acc + (a.distanceKm ?? 0), 0) * 10) / 10,
+  );
+}
+
+export function sessionsInWeek(start: string): { perDay: number[]; done: number; planned: number } {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const perDay = dates.map((d) => workoutsOn(d).filter((w) => ['verde', 'galben'].includes(colorOf(w))).length);
+  const planned = dates.reduce((acc, d) => acc + workoutsOn(d).length, 0);
+  return { perDay, done: perDay.reduce((a, b) => a + b, 0), planned };
+}
+
 export const SPORT_LABEL: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță' };
 export const TYPE_LABEL: Record<PlannedWorkout['type'], string> = {
   z2: 'Z2',

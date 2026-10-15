@@ -58,4 +58,12 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ — de pus pe Vercel
 ```
 
-Ecrane: Acasă (mesaj de întâmpinare din date, bara cu formula deschisă, antrenamentul de azi, săptămâna, avertismente, date disponibile), Antrenament (Înot cu comutatorul Bazin / Ape deschise, Bicicletă, Alergare, Forță), Calendar (luna colorată + cardul zilei cu motivele), Antrenor (mesaje, live, programare), Profil (brățări, date, consimțământ). Următorul pas: Supabase (auth + Postgres cu `db/schema.sql`) în locul datelor demo.
+Navigare: bara-pastilă de jos are trei butoane, cu **Acasă la mijloc** (Antrenament · Acasă · Statistici). Calendarul se deschide din butonul rotund din stânga-sus, profilul din avatarul din dreapta-sus, antrenorul din butonul plutitor „Antrenor”.
+
+Ecrane:
+- **Acasă**: întâmpinare + mesajul din date, silueta cu lumină lime (locul pozei sportivului, vine din onboarding), cardul „Stare” (inelul barei de pregătire, somn, verdictul zilei), antrenamentul de azi cu hartă, zile până la cursă / vreme / condiții, „Trimite pe ceas”, săptămâna, avertismente, date disponibile.
+- **Antrenament**: Înot (bazin / ape deschise din pastila de pe hartă), Bicicletă, Alergare, Forță — carduri de statistică, următoarea ședință, ședințele săptămânii.
+- **Statistici**: inelul de recuperare (Whoop), ore / FC medie / ședințe cu sparkline, graficul „Ore pe săptămână”, „Execuție”, bara de pregătire cu cele 5 componente și formula, km alergare, observația zilei.
+- **Calendar**: luna colorată + cardul zilei cu motivele. **Antrenor**: mesaje, live, programare. **Profil**: brățări cu „Conectează”, date, consimțământ.
+
+Graficele sunt SVG desenat din date (`src/ui/common.tsx`: `AreaChart`, `Spark`, `Ring`), fără bibliotecă. Următorul pas: Supabase (auth + Postgres cu `db/schema.sql`) în locul datelor demo.

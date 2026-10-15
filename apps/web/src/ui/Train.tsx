@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { Sport } from '@core/types.js';
-import { Card, Dot, fmtMinutes } from './common';
-import { SPORT_LABEL, TODAY, TYPE_LABEL, activities, bar, colorOf, swimTip, thisWeekDates, workoutsOn, zones } from '../data/demo';
+import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle, MiniMap, PoolMap, Stat, fmtMinutes } from './common';
+import { ATHLETE, SPORT_LABEL, TODAY, TYPE_LABEL, activities, bar, colorOf, swimTip, thisWeekDates, weather, workoutsOn, zones } from '../data/demo';
+import { diffDays } from '@core/util/dates.js';
 
-const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
+const SPORTS: { id: Sport; icon: keyof typeof Icons }[] = [
+  { id: 'inot', icon: 'waves' },
+  { id: 'bicicleta', icon: 'bike' },
+  { id: 'alergare', icon: 'run' },
+  { id: 'forta', icon: 'dumbbell' },
+];
 const SWIM_KEY = 'antrenor.inot.mediu';
 
 function readSwimMode(): 'bazin' | 'ape' {
@@ -14,7 +20,7 @@ function readSwimMode(): 'bazin' | 'ape' {
   }
 }
 
-export function Train() {
+export function Train({ onOpen }: { onOpen: (screen: string) => void }) {
   const [sport, setSport] = useState<Sport>('inot');
   const [swimMode, setSwimMode] = useState<'bazin' | 'ape'>(readSwimMode);
 
@@ -29,17 +35,27 @@ export function Train() {
   const weekWorkouts = thisWeekDates()
     .flatMap((d) => workoutsOn(d))
     .filter((w) => w.sport === sport);
+  const next = weekWorkouts.find((w) => diffDays(TODAY, w.date) >= 0 && colorOf(w) === 'asteptare');
 
   return (
     <>
-      <h2 className="screen-title">
-        Antrenament
-        <small>Săptămâna din {Number(thisWeekDates()[0]!.slice(8))} {['', 'ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'][Number(thisWeekDates()[0]!.slice(5, 7))]}</small>
-      </h2>
+      <header className="top">
+        <div className="top-l">
+          <CircleBtn icon={Icons.calendar} label="Calendar" onClick={() => onOpen('calendar')} />
+        </div>
+        <div className="top-c">
+          <LiveTitle>{SPORT_LABEL[sport]}</LiveTitle>
+        </div>
+        <div className="top-r">
+          <Avatar name={ATHLETE.name} onClick={() => onOpen('profil')} />
+        </div>
+      </header>
+
       <div className="seg" role="tablist" aria-label="Sport" style={{ marginBottom: 12 }}>
         {SPORTS.map((s) => (
-          <button key={s} role="tab" aria-selected={sport === s} className={sport === s ? 'on' : ''} onClick={() => setSport(s)}>
-            {SPORT_LABEL[s]}
+          <button key={s.id} role="tab" aria-selected={sport === s.id} className={sport === s.id ? 'on' : ''} onClick={() => setSport(s.id)}>
+            {Icons[s.icon]}
+            <span>{SPORT_LABEL[s.id]}</span>
           </button>
         ))}
       </div>
@@ -47,95 +63,106 @@ export function Train() {
       <div className="stack">
         {sport === 'inot' && (
           <>
-            <Card>
-              <button className={`switch ${swimMode === 'ape' ? 'on' : ''}`} onClick={() => setSwimMode(swimMode === 'ape' ? 'bazin' : 'ape')} aria-pressed={swimMode === 'ape'}>
-                <span className="knob" aria-hidden="true" />
-                <span>
-                  <span className="title">{swimMode === 'ape' ? 'Ape deschise' : 'Bazin'}</span>
-                  <span className="small muted" style={{ display: 'block' }}>
-                    {swimMode === 'ape'
-                      ? 'Ședințe continue, orientare, ieșiri cu antrenorul. Vremea verifică apa și vântul.'
-                      : 'Ședințe cu seturi, pauze și tehnică. Comută când intri în ape deschise.'}
-                  </span>
-                </span>
+            <div className="map-wrap">
+              <PoolMap open={swimMode === 'ape'} />
+              <span className="pill tl">
+                {Icons.thermo}
+                <b>{weather.tempC} °C</b>
+                <small>vânt {weather.windKmh} km/h</small>
+              </span>
+              <button className={`pill tr ${swimMode === 'ape' ? 'on' : ''}`} onClick={() => setSwimMode(swimMode === 'ape' ? 'bazin' : 'ape')} aria-pressed={swimMode === 'ape'}>
+                {swimMode === 'ape' ? Icons.gps : Icons.waves}
+                {swimMode === 'ape' ? 'Ape deschise' : 'Bazin'}
               </button>
-            </Card>
+            </div>
+            <div className="tiny muted" style={{ marginTop: -4 }}>
+              {swimMode === 'ape'
+                ? 'Ședințe continue, orientare la 6 brațe, ieșiri doar cu antrenorul. Vremea verifică apa și vântul.'
+                : 'Ședințe cu seturi, pauze și tehnică. Apasă pe „Bazin” când intri în ape deschise.'}
+            </div>
 
-            <div className="grid-2">
-              <Card tight>
-                <div className="label">CSS</div>
-                <div className="num md">{zones.swim.css == null ? '–' : `${zones.swim.css}s`}</div>
-                <div className="small muted">se testează când înoți 400 m continuu</div>
-              </Card>
-              <Card tight>
-                <div className="label">Cel mai lung înot</div>
-                <div>
-                  <span className="num md">{longestKm('inot')}</span>
-                  <span className="unit">m din 1.900</span>
-                </div>
-                <div className="small muted">componenta barei: {barValue('inot')}</div>
-              </Card>
+            <div className="grid-3">
+              <Stat icon={Icons.timer} label="CSS" value={zones.swim.css == null ? '–' : `${zones.swim.css}s`}>
+                <div className="sub">se testează la 400 m continuu</div>
+              </Stat>
+              <Stat icon={Icons.route} label="Record" value={longest('inot')} unit="m">
+                <div className="sub">din 1.900</div>
+              </Stat>
+              <Stat icon={Icons.pulse} label="În bară" value={barValue('inot')}>
+                <div className="sub">componenta înot</div>
+              </Stat>
             </div>
 
             <Card tight>
-              <div className="label">Indiciul tehnic curent</div>
-              <div>{swimTip}</div>
+              <Label>Indiciul tehnic curent</Label>
+              <div className="small">{swimTip}</div>
             </Card>
           </>
         )}
 
         {sport === 'bicicleta' && (
-          <div className="grid-2">
-            <Card tight>
-              <div className="label">FTP</div>
-              <div className="num md">{zones.bike.ftp ?? '–'}</div>
-              <div className="small muted">fără senzor de putere: zone pe FC de bicicletă</div>
-            </Card>
-            <Card tight>
-              <div className="label">Cea mai lungă tură</div>
-              <div>
-                <span className="num md">{longestKm('bicicleta')}</span>
-                <span className="unit">km din 90</span>
-              </div>
-              <div className="small muted">componenta barei: {barValue('bicicleta')}</div>
-            </Card>
-          </div>
+          <>
+            <OutdoorMap />
+            <div className="grid-3">
+              <Stat icon={Icons.pulse} label="FTP" value={zones.bike.ftp ?? '–'}>
+                <div className="sub">fără senzor: zone pe FC</div>
+              </Stat>
+              <Stat icon={Icons.route} label="Record" value={longest('bicicleta')} unit="km">
+                <div className="sub">din 90</div>
+              </Stat>
+              <Stat icon={Icons.bike} label="În bară" value={barValue('bicicleta')}>
+                <div className="sub">componenta bicicletă</div>
+              </Stat>
+            </div>
+          </>
         )}
 
         {sport === 'alergare' && (
-          <div className="grid-2">
+          <>
+            <OutdoorMap />
+            <div className="grid-3">
+              <Stat icon={Icons.heart} label="Z2" value={zones.run.z2.split('–')[0]} unit={`–${zones.run.z2.split('–')[1]}`}>
+                <div className="sub">{zones.run.label}</div>
+              </Stat>
+              <Stat icon={Icons.route} label="Record" value={longest('alergare')} unit="km">
+                <div className="sub">din 18</div>
+              </Stat>
+              <Stat icon={Icons.run} label="În bară" value={barValue('alergare')}>
+                <div className="sub">componenta alergare</div>
+              </Stat>
+            </div>
             <Card tight>
-              <div className="label">Z2 · prag</div>
-              <div className="num md">{zones.run.z2}</div>
-              <div className="small muted">
-                {zones.run.threshold} · {zones.run.label}
-              </div>
+              <Label>Prag</Label>
+              <div className="small">{zones.run.threshold} · provizoriu, din cursele din 2026</div>
             </Card>
-            <Card tight>
-              <div className="label">Cea mai lungă alergare</div>
-              <div>
-                <span className="num md">{longestKm('alergare')}</span>
-                <span className="unit">km din 18</span>
-              </div>
-              <div className="small muted">componenta barei: {barValue('alergare')}</div>
-            </Card>
-          </div>
+          </>
         )}
 
         {sport === 'forta' && (
           <Card tight>
-            <div className="label">Prevenție, de la fizio</div>
-            <div>Ridicări pe vârfuri pe un picior, 3 × 15. Pod pe un picior, 3 × 12.</div>
-            <div className="small muted" style={{ marginTop: 6 }}>
+            <Label>Prevenție, de la fizio</Label>
+            <div className="small">Ridicări pe vârfuri pe un picior, 3 × 15. Pod pe un picior, 3 × 12.</div>
+            <div className="tiny muted" style={{ marginTop: 6 }}>
               Două exerciții, la fiecare ședință de forță, până le schimbă fizio-ul duminica.
             </div>
           </Card>
         )}
 
+        {next && (
+          <div className="display">
+            <div className="num">{fmtMinutes(next.plannedMinutes)}</div>
+            <div className="lb">
+              următoarea ședință · {dayName(next.date)}
+              {next.type === 'forta' ? '' : ` · ${TYPE_LABEL[next.type]}`}
+              {next.key ? ' · cheie' : ''}
+            </div>
+          </div>
+        )}
+
         <Card>
-          <div className="label">Ședințele săptămânii</div>
+          <Label>Ședințele săptămânii</Label>
           {weekWorkouts.length === 0 ? (
-            <div className="muted">Nimic planificat la {SPORT_LABEL[sport].toLowerCase()} săptămâna asta.</div>
+            <div className="muted small">Nimic planificat la {SPORT_LABEL[sport].toLowerCase()} săptămâna asta.</div>
           ) : (
             <div className="list">
               {weekWorkouts.map((w) => {
@@ -164,8 +191,29 @@ export function Train() {
             </div>
           )}
         </Card>
+
+        <button className="btn" disabled={!next}>
+          Trimite pe ceas {Icons.arrowRight}
+        </button>
       </div>
     </>
+  );
+}
+
+function OutdoorMap() {
+  return (
+    <div className="map-wrap">
+      <MiniMap height={130} />
+      <span className="pill tl">
+        {Icons.sun}
+        <b>{weather.tempC} °C</b>
+        <small>umiditate {weather.humidity}%</small>
+      </span>
+      <span className="pill tr">
+        {Icons.gps}
+        afară
+      </span>
+    </div>
   );
 }
 
@@ -176,13 +224,13 @@ function dayName(iso: string): string {
   return iso === TODAY ? `azi` : n;
 }
 
-function longestKm(sport: Sport): string {
+function longest(sport: Sport): string {
   const best = activities.filter((a) => a.sport === sport).sort((a, b) => (b.distanceKm ?? 0) - (a.distanceKm ?? 0))[0];
   if (!best || best.distanceKm == null) return '–';
-  return sport === 'inot' ? String(Math.round(best.distanceKm * 1000)) : String(best.distanceKm);
+  return sport === 'inot' ? String(Math.round(best.distanceKm * 1000)) : best.distanceKm.toLocaleString('ro-RO');
 }
 
 function barValue(name: 'inot' | 'bicicleta' | 'alergare'): string {
   const c = bar.components.find((x) => x.name === name);
-  return c?.value == null ? 'fără date' : `${Math.round(c.value)}%`;
+  return c?.value == null ? '–' : `${Math.round(c.value)}%`;
 }

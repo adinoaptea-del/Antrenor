@@ -1,4 +1,4 @@
-import { Card, Dot, fmtDate, fmtMinutes } from './common';
+import { Avatar, Card, CircleBtn, Dot, Icons, Label, MiniMap, Ring, Runner, fmtMinutes } from './common';
 import {
   ATHLETE,
   COLOR_LABEL,
@@ -13,143 +13,147 @@ import {
   greeting,
   readiness,
   thisWeekDates,
+  todayState,
   warnings,
+  weather,
   workoutsOn,
 } from '../data/demo';
 
 const DOW = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'];
-const COMPONENT_LABEL: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', consistenta: 'Consistență', forma: 'Formă' };
 
-export function Home({ onOpen }: { onOpen: (tab: string) => void }) {
+export function Home({ onOpen }: { onOpen: (screen: string) => void }) {
   const today = workoutsOn(TODAY);
   const main = today[0];
   const week = thisWeekDates();
   const have = dataAvailability.have.length;
   const total = have + dataAvailability.missing.length;
+  const verdictLabel = readiness.verdict === 'verde' ? 'Verde' : readiness.verdict === 'galben' ? 'Galben' : 'Roșu';
 
   return (
     <>
-      <header className="topbar">
-        <div>
-          <div className="hello">Bună dimineața</div>
-          <div className="name">{ATHLETE.name}</div>
-        </div>
-        <div className="row">
-          <div className="date">
-            luni
-            <br />
-            {fmtDate(TODAY)}
+      <div className="hero">
+        <Runner />
+        <header className="top" style={{ gridTemplateColumns: '1fr auto' }}>
+          <div className="greet">
+            <div className="hello">Bună dimineața</div>
+            <div className="name">
+              {ATHLETE.name} <small aria-hidden="true">👋</small>
+            </div>
+            <div className="tag">{greeting()}</div>
           </div>
-          <div className="avatar" aria-hidden="true">
-            {ATHLETE.name.slice(0, 1)}
+          <div className="top-r">
+            <CircleBtn icon={Icons.calendar} label="Calendar" onClick={() => onOpen('calendar')} />
+            <Avatar name={ATHLETE.name} onClick={() => onOpen('profil')} />
           </div>
-        </div>
-      </header>
+        </header>
 
-      <p className="greeting">{greeting()}</p>
+        <Card className="status glass" tight>
+          <Label lime icon={Icons.sparkle}>
+            Stare
+          </Label>
+          <div className="status-grid">
+            <Ring value={bar.blocked ? null : bar.total} size={78} stroke={7}>
+              <span className="num" style={{ fontSize: 22 }}>
+                {bar.blocked || bar.total == null ? '–' : `${Math.round(bar.total)}%`}
+              </span>
+              <span className="st" style={{ fontSize: 8.5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                ● 70.3
+              </span>
+            </Ring>
+            <div className="kvs">
+              <div className="kv2">
+                {Icons.moon}
+                <div>
+                  <div className="k">Somn</div>
+                  <div className="v">{todayState.sleep}</div>
+                </div>
+              </div>
+              <div className="kv2">
+                {Icons.pulse}
+                <div>
+                  <div className="k">Azi</div>
+                  <div className={`v ${readiness.verdict}`}>{verdictLabel}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <div className="stack">
-        <Card className="bar-card">
-          <div className="bar-head">
-            <div>
-              <div className="label">Pregătit pentru {RACE.name}</div>
+        <Card tight>
+          <Label>Antrenamentul de azi</Label>
+          {main ? (
+            <div className="goal">
               <div>
-                {bar.blocked ? (
-                  <span className="num lg">blocată</span>
-                ) : bar.total == null ? (
-                  <span className="num lg">fără date</span>
-                ) : (
-                  <>
-                    <span className="num xl">{Math.round(bar.total)}</span>
-                    <span className="unit">%</span>
-                  </>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="icon-circle">{Icons.trophy}</span>
+                  <div>
+                    <span className="num">{main.plannedMinutes}</span>
+                    <span className="unit">min</span>
+                  </div>
+                </div>
+                <div className="what">
+                  {SPORT_LABEL[main.sport]}
+                  {main.type === 'forta' ? '' : ` · ${TYPE_LABEL[main.type]}`}
+                  {main.key ? ' · cheie' : ''}
+                  <br />
+                  {main.targetZones.length ? `Z${main.targetZones.join('–')}` : ''}
+                  {main.sport === 'alergare' && main.targetZones.includes(2) ? ' · 128–147 bpm' : ''}
+                  {main.structure ? ` · ${main.structure}` : ''}
+                </div>
+                {today.length > 1 && (
+                  <div className="what">Apoi: {today.slice(1).map((w) => `${SPORT_LABEL[w.sport].toLowerCase()} ${fmtMinutes(w.plannedMinutes)}`).join(', ')}</div>
                 )}
               </div>
+              <MiniMap />
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className="num lg">{daysToRace}</div>
-              <div className="small muted">zile până la cursă</div>
-            </div>
-          </div>
-          <div className="bar-track" aria-hidden="true">
-            {bar.components.map((c) => (
-              <div key={c.name} className={`bar-seg ${c.value == null ? 'empty' : ''}`} style={{ flexGrow: c.weight * 100 }}>
-                {c.value != null && <i style={{ width: `${c.value}%` }} />}
-              </div>
-            ))}
-          </div>
-          <div className="bar-legend">
-            {bar.components.map((c) => (
-              <span key={c.name}>
-                <b>{c.value == null ? '–' : `${Math.round(c.value)}%`}</b>
-                {COMPONENT_LABEL[c.name]}
-              </span>
-            ))}
-          </div>
-          <div className="bar-basis">
-            {bar.blocked ? `Blocată: ${bar.blocked}` : bar.basis}. Bara scade dacă te oprești: contează doar ultimele 6 săptămâni.
-          </div>
-          <details className="formula">
-            <summary>Cum e calculată</summary>
-            <ul>
-              {bar.components.map((c) => (
-                <li key={c.name}>
-                  <b style={{ color: 'var(--fg)' }}>{COMPONENT_LABEL[c.name]}</b> ({Math.round(c.weight * 100)}%): {c.detail}
-                </li>
-              ))}
-            </ul>
-          </details>
-        </Card>
-
-        <Card>
-          <div className="row between">
-            <div className="label">Azi</div>
-            <div className="row">
-              <Dot color={readiness.verdict} />
-              <span className="small">
-                {readiness.verdict === 'verde' ? 'verde' : readiness.verdict === 'galben' ? 'galben' : 'roșu'}: {readiness.reason}
-              </span>
-            </div>
-          </div>
-          {main ? (
-            <>
-              <div className="today-main">
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row" style={{ marginBottom: 8 }}>
-                    <span className={`sport-chip ${main.key ? 'key' : ''}`}>
-                      {SPORT_LABEL[main.sport]}
-                      {main.type === 'forta' ? '' : ` · ${TYPE_LABEL[main.type]}`}
-                      {main.key ? ' · cheie' : ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="num lg">{fmtMinutes(main.plannedMinutes)}</span>
-                  </div>
-                  <div className="small muted" style={{ marginTop: 6 }}>
-                    {main.targetZones.length ? `Z${main.targetZones.join('–')}` : ''}
-                    {main.sport === 'alergare' && main.targetZones.includes(2) ? ' · 128–147 bpm (provizoriu)' : ''}
-                    {main.structure ? `${main.targetZones.length ? ' · ' : ''}${main.structure}` : ''}
-                  </div>
-                </div>
-              </div>
-              {today.length > 1 && (
-                <div className="small muted" style={{ marginTop: 10 }}>
-                  Apoi: {today.slice(1).map((w) => `${SPORT_LABEL[w.sport]} ${fmtMinutes(w.plannedMinutes)}`).join(', ')}
-                </div>
-              )}
-              <div style={{ marginTop: 16 }}>
-                <button className="btn" onClick={() => onOpen('calendar')}>
-                  Trimite pe ceas
-                </button>
-              </div>
-            </>
           ) : (
             <div className="muted">Zi de odihnă. Nimic de trimis pe ceas.</div>
           )}
         </Card>
 
+        <div className="grid-3">
+          <div className="stat up">
+            <div className="stat-h">
+              <span className="ic">{Icons.timer}</span>
+              <span className="lb">Cursă</span>
+            </div>
+            <div className="stat-v">
+              <span className="num">{daysToRace}</span>
+              <span className="u">zile</span>
+            </div>
+          </div>
+          <div className="stat up">
+            <div className="stat-h">
+              <span className="ic">{Icons.thermo}</span>
+              <span className="lb">Vreme</span>
+            </div>
+            <div className="stat-v">
+              <span className="num">{weather.tempC}</span>
+              <span className="u">°C</span>
+            </div>
+          </div>
+          <div className="stat up">
+            <div className="stat-h">
+              <span className="ic">{Icons.wind}</span>
+              <span className="lb">Condiții</span>
+            </div>
+            <div>
+              <div className="num lime" style={{ fontSize: 26 }}>
+                {weather.verdict}
+              </div>
+              <div className="sub">{weather.verdictSub}</div>
+            </div>
+          </div>
+        </div>
+
+        <button className="btn" onClick={() => onOpen('antrenament')} disabled={!main}>
+          Trimite pe ceas {Icons.arrowRight}
+        </button>
+
         <Card tight>
-          <div className="label">Săptămâna asta</div>
+          <Label>Săptămâna asta</Label>
           <div className="week">
             {week.map((d, i) => {
               const ws = workoutsOn(d);
@@ -179,13 +183,13 @@ export function Home({ onOpen }: { onOpen: (tab: string) => void }) {
         <Card tight>
           <div className="row between">
             <div>
-              <div className="label">Date disponibile</div>
+              <Label>Date disponibile</Label>
               <div>
                 <span className="num md">{have}</span>
                 <span className="unit">din {total}</span>
               </div>
             </div>
-            <button className="btn secondary" style={{ width: 'auto', padding: '10px 16px', fontSize: 13 }} onClick={() => onOpen('profil')}>
+            <button className="btn dark sm" onClick={() => onOpen('profil')}>
               Completează
             </button>
           </div>
@@ -195,7 +199,7 @@ export function Home({ onOpen }: { onOpen: (tab: string) => void }) {
         </Card>
 
         <Card tight>
-          <div className="label">Legendă</div>
+          <Label>Legendă</Label>
           <div className="legend" style={{ marginTop: 0 }}>
             {(['verde', 'galben', 'portocaliu', 'rosu', 'gri', 'albastru'] as const).map((c) => (
               <span key={c}>
@@ -203,8 +207,12 @@ export function Home({ onOpen }: { onOpen: (tab: string) => void }) {
               </span>
             ))}
           </div>
+          <div className="tiny muted" style={{ marginTop: 8 }}>
+            {RACE.name} · {RACE.date.split('-').reverse().join('.')}
+          </div>
         </Card>
       </div>
     </>
   );
 }
+
