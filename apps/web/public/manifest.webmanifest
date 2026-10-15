@@ -1,0 +1,13 @@
+{
+  "name": "Antrenor",
+  "short_name": "Antrenor",
+  "description": "Calendar viu și bara de pregătire pentru Ironman 70.3",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0C0D08",
+  "theme_color": "#0C0D08",
+  "lang": "ro",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

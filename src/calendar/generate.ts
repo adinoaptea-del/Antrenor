@@ -176,7 +176,9 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   // Forță: 2 ședințe, încărcări mari + pliometrie; în taper una scurtă.
   const fortaCount = p === 'taper' ? 1 : 2;
   const fortaMin = p === 'baza1' || p === 'evaluare' ? 45 : p === 'taper' ? 30 : 40;
-  for (let i = 0; i < fortaCount; i++) s.push({ sport: 'forta', type: 'forta', minutes: fortaMin, zones: [], key: false, priority: i === 0 ? 4 : 6.5 });
+  for (let i = 0; i < fortaCount; i++) {
+    s.push({ sport: 'forta', type: 'forta', minutes: fortaMin, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === 'taper' ? 'ușor, fără încărcări noi' : 'încărcări mari + pliometrie' });
+  }
 
   if (pw.recovery) {
     for (const x of s) {

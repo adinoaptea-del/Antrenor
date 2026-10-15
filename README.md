@@ -46,3 +46,16 @@ Culorile și pragurile sunt cele din document; dacă le schimbi acolo, le schimb
 - **Cheie API** pentru modelul care rulează agenții.
 - **Decizii**: cine e head coach-ul uman după pilot; dacă bara de finisher e suficientă pentru prieteni sau unii au obiectiv de timp.
 - **Consimțământ**: textul ecranului de consimțământ pentru date de sănătate (18+, nu e serviciu medical, ștergere la cerere), înainte de primul prieten.
+
+## Aplicația web (`apps/web`)
+
+PWA în Vite + React + TypeScript, pe tokenii de design din document (dark, accent lime, cifre în serif, carduri de 24 px, butoane-pastilă). Importă nucleul prin alias-ul `@core` și, deocamdată, rulează pe date demo generate la pornire (`src/data/demo.ts`).
+
+```bash
+cd apps/web
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # dist/ — de pus pe Vercel
+```
+
+Ecrane: Acasă (mesaj de întâmpinare din date, bara cu formula deschisă, antrenamentul de azi, săptămâna, avertismente, date disponibile), Antrenament (Înot cu comutatorul Bazin / Ape deschise, Bicicletă, Alergare, Forță), Calendar (luna colorată + cardul zilei cu motivele), Antrenor (mesaje, live, programare), Profil (brățări, date, consimțământ). Următorul pas: Supabase (auth + Postgres cu `db/schema.sql`) în locul datelor demo.
