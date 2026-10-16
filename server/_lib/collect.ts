@@ -1,3 +1,4 @@
+import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // Din baza de date în CollectorInput: tot ce intră în pachet pentru un sportiv, la o dată.
 import { select, one } from './db.js';
@@ -269,7 +270,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     today,
     event,
     nowLocal: new Intl.DateTimeFormat('en-GB', { timeZone: user.tz || 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()),
-    athlete: { goal: (user.goal as Goal | null) ?? null, obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
+    athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness,
     activities,
     plan: planRes.workouts,

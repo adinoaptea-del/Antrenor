@@ -221,6 +221,123 @@ function labsExpired(drawn, today) {
   return diffDays(drawn, today) > LABS_VALID_DAYS;
 }
 
+// src/bar/sport-readiness.ts
+var LEGS = {
+  "70.3": { inot: 1.9, bicicleta: 90, alergare: 21.1 },
+  olimpic: { inot: 1.5, bicicleta: 40, alergare: 10 },
+  sprint: { inot: 0.75, bicicleta: 20, alergare: 5 },
+  semimaraton: { alergare: 21.1 },
+  maraton: { alergare: 42.2 }
+};
+var SWIM_CUTOFF_MIN = { "70.3": 70 };
+var BRICK_TARGET_KM = { "70.3": 8, olimpic: 4, sprint: 2 };
+var LONG_TARGET_KM = { maraton: 32 };
+var VOLUME_FACTOR = 1.5;
+var W = { rezistenta: 0.6, volum: 0.25, specific: 0.15 };
+var WINDOW = 42;
+var BRICK_GAP_MIN = 30;
+var ro = (x, d = 1) => x.toLocaleString("ro-RO", { maximumFractionDigits: d });
+var pct = (x) => Math.round(Math.max(0, Math.min(1, x)) * 100);
+var hm = (s) => s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null;
+function isBrickRun(run, all) {
+  const start = hm(run.startLocal);
+  if (run.sport !== "alergare" || start == null) return false;
+  return all.some((b) => {
+    if (b.sport !== "bicicleta" || b.date !== run.date) return false;
+    const bs = hm(b.startLocal);
+    if (bs == null) return false;
+    const gap = start - (bs + b.minutes);
+    return gap >= -5 && gap <= BRICK_GAP_MIN;
+  });
+}
+function declaredSwimM(nivel, has400Time = false) {
+  if (has400Time) return 400;
+  return nivel === "peste_1500" ? 1500 : nivel === "continuu_400" ? 400 : nivel === "bazin_scurt" ? 50 : nivel === "nu_stiu" ? 0 : null;
+}
+function swimDeclared(intake) {
+  const i = intake;
+  return declaredSwimM(i?.inot?.nivel ?? null, !!i?.evaluare?.inot400);
+}
+function sportReadiness(goal, activities, today, declared = {}) {
+  const legs = LEGS[goal];
+  const recent = activities.filter((a) => {
+    const d = diffDays(a.date, today);
+    return d >= 0 && d < WINDOW;
+  });
+  const last4w = recent.filter((a) => diffDays(a.date, today) < 28);
+  const out = [];
+  const name = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare" };
+  const runOnly = !legs.inot;
+  for (const sport of ["inot", "bicicleta", "alergare"]) {
+    const leg = legs[sport];
+    if (!leg) continue;
+    const fmtD = (km2) => sport === "inot" ? `${Math.round(km2 * 1e3).toLocaleString("ro-RO")} m` : `${ro(km2)} km`;
+    const legLabel = `${fmtD(leg)} ${name[sport]}`;
+    const mine = recent.filter((a) => a.sport === sport);
+    const parts = [];
+    let best = null;
+    if (sport === "inot") {
+      const measured = mine.filter((a) => a.details?.continuousM != null);
+      const m = measured.reduce((mx, a) => Math.max(mx, a.details.continuousM), -1);
+      const dec = declared.swimContinuousM ?? null;
+      if (m >= 0) {
+        best = m;
+        parts.push({ label: "Cel mai lung \xEEnot f\u0103r\u0103 oprire", have: `${m.toLocaleString("ro-RO")} m`, target: fmtD(leg), pct: pct(m / (leg * 1e3)), weight: W.rezistenta, source: "masurat" });
+      } else if (dec != null) {
+        best = dec;
+        parts.push({ label: "\xCEnot f\u0103r\u0103 oprire (declarat, f\u0103r\u0103 ture de la ceas)", have: `${dec.toLocaleString("ro-RO")} m`, target: fmtD(leg), pct: pct(dec / (leg * 1e3)), weight: W.rezistenta, source: "declarat" });
+      } else {
+        parts.push({ label: "\xCEnot f\u0103r\u0103 oprire", have: "nem\u0103surat", target: fmtD(leg), pct: 0, weight: W.rezistenta, source: "lipsa" });
+      }
+    } else {
+      const longest = mine.reduce((mx, a) => Math.max(mx, a.distanceKm ?? 0), 0);
+      const target = LONG_TARGET_KM[goal] ?? leg;
+      best = longest || null;
+      parts.push({ label: sport === "bicicleta" ? "Cea mai lung\u0103 tur\u0103" : "Cea mai lung\u0103 alergare", have: longest ? fmtD(longest) : "niciuna", target: fmtD(target), pct: pct(longest / target), weight: W.rezistenta, source: longest ? "masurat" : "lipsa" });
+    }
+    const weekly = last4w.filter((a) => a.sport === sport).reduce((s2, a) => s2 + (a.distanceKm ?? 0), 0) / 4;
+    const volTarget = VOLUME_FACTOR * leg;
+    parts.push({ label: "Volum pe s\u0103pt\u0103m\xE2n\u0103 (media pe 4 s\u0103pt.)", have: fmtD(weekly), target: fmtD(volTarget), pct: pct(weekly / volTarget), weight: W.volum, source: weekly > 0 ? "masurat" : "lipsa" });
+    if (runOnly) {
+      parts[0].weight += W.specific;
+    } else if (sport === "inot") {
+      const cutoff = SWIM_CUTOFF_MIN[goal];
+      const withLaps = mine.filter((a) => a.details?.continuousPace100mSec != null && (a.details?.continuousM ?? 0) >= 100);
+      const longestSwim = mine.reduce((m, a) => (a.distanceKm ?? 0) > (m?.distanceKm ?? 0) ? a : m, null);
+      const pace = withLaps.length ? Math.min(...withLaps.map((a) => a.details.continuousPace100mSec)) : longestSwim?.distanceKm ? longestSwim.minutes * 60 / (longestSwim.distanceKm * 10) : null;
+      if (cutoff) {
+        const need = cutoff * 60 / (leg * 10);
+        parts.push({
+          label: withLaps.length ? "Ritm fa\u021B\u0103 de timpul-limit\u0103" : "Ritm (cu pauze) fa\u021B\u0103 de timpul-limit\u0103",
+          have: pace ? `${fmtPace(pace)}/100 m` : "nem\u0103surat",
+          target: `${fmtPace(need)}/100 m`,
+          // Ritmul contează doar pe distanța pe care o poți acoperi: se scalează cu rezistența (ritm bun pe 50 m nu înseamnă ritm bun pe 1.900 m).
+          pct: pace ? Math.round(pct(need / pace) * Math.min(1, parts[0].pct / 100)) : 0,
+          weight: W.specific,
+          source: pace ? "masurat" : "lipsa"
+        });
+      } else {
+        parts[0].weight += W.specific;
+      }
+    } else if (sport === "bicicleta") {
+      const hasBrick = recent.some((a) => isBrickRun(a, recent));
+      parts.push({ label: "Tur\u0103 urmat\u0103 de alergare (brick)", have: hasBrick ? "da" : "nu", target: "cel pu\u021Bin una", pct: hasBrick ? 100 : 0, weight: W.specific, source: "masurat" });
+    } else {
+      const brickTarget = BRICK_TARGET_KM[goal] ?? 0;
+      const brick = recent.filter((a) => isBrickRun(a, recent)).reduce((mx, a) => Math.max(mx, a.distanceKm ?? 0), 0);
+      parts.push({ label: "Alergare imediat dup\u0103 biciclet\u0103", have: brick ? `${ro(brick)} km` : "niciuna", target: `${ro(brickTarget)} km`, pct: brickTarget ? pct(brick / brickTarget) : 0, weight: W.specific, source: "masurat" });
+    }
+    const anyData = mine.length > 0 || sport === "inot" && declared.swimContinuousM != null;
+    const value = anyData ? Math.round(parts.reduce((s2, p) => s2 + p.pct * p.weight, 0)) : null;
+    out.push({ sport, leg: legLabel, value, parts, best });
+  }
+  return out;
+}
+function fmtPace(sec) {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 // src/calendar/phases.ts
 var isRunGoal = (g) => g === "semimaraton" || g === "maraton";
 var RUN_DISTANCE_KM = { semimaraton: 21.0975, maraton: 42.195 };
@@ -353,88 +470,6 @@ function paceFromResult(r2, distanceKm) {
   if (r2.mod === "ritm") return parsePace(r2.valoare);
   const t = parseDuration(r2.valoare);
   return t ? t / distanceKm : null;
-}
-
-// src/bar/sport-readiness.ts
-var LEGS = {
-  "70.3": { inot: 1.9, bicicleta: 90, alergare: 21.1 },
-  olimpic: { inot: 1.5, bicicleta: 40, alergare: 10 },
-  sprint: { inot: 0.75, bicicleta: 20, alergare: 5 },
-  semimaraton: { alergare: 21.1 },
-  maraton: { alergare: 42.2 }
-};
-var SWIM_CUTOFF_MIN = { "70.3": 70 };
-var BRICK_TARGET_KM = { "70.3": 8, olimpic: 4, sprint: 2 };
-var WINDOW = 42;
-var BRICK_GAP_MIN = 30;
-var ro = (x, d = 1) => x.toLocaleString("ro-RO", { maximumFractionDigits: d });
-var pct = (x) => Math.round(Math.max(0, Math.min(1, x)) * 100);
-var hm = (s) => s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null;
-function isBrickRun(run, all) {
-  const start = hm(run.startLocal);
-  if (run.sport !== "alergare" || start == null) return false;
-  return all.some((b) => {
-    if (b.sport !== "bicicleta" || b.date !== run.date) return false;
-    const bs = hm(b.startLocal);
-    if (bs == null) return false;
-    const gap = start - (bs + b.minutes);
-    return gap >= -5 && gap <= BRICK_GAP_MIN;
-  });
-}
-function sportReadiness(goal, activities, today) {
-  const legs = LEGS[goal];
-  const recent = activities.filter((a) => {
-    const d = diffDays(a.date, today);
-    return d >= 0 && d < WINDOW;
-  });
-  const out = [];
-  const name = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare" };
-  for (const sport of ["inot", "bicicleta", "alergare"]) {
-    const leg = legs[sport];
-    if (!leg) continue;
-    const fmtD = (km2) => sport === "inot" ? `${Math.round(km2 * 1e3).toLocaleString("ro-RO")} m` : `${ro(km2)} km`;
-    const legLabel = `${fmtD(leg)} ${name[sport]}`;
-    const mine = recent.filter((a) => a.sport === sport);
-    if (sport === "inot") {
-      const measured = mine.filter((a) => a.details?.continuousM != null);
-      const best = measured.reduce((m2, a) => !m2 || a.details.continuousM > m2.details.continuousM ? a : m2, null);
-      if (!best) {
-        out.push({ sport, leg: legLabel, value: mine.length ? 0 : null, parts: mine.length ? [{ label: "\xCEnot f\u0103r\u0103 oprire", have: "nem\u0103surat", target: fmtD(leg), pct: 0, weight: 1 }] : [] });
-        continue;
-      }
-      const m = best.details.continuousM;
-      const parts2 = [{ label: "Cel mai lung \xEEnot f\u0103r\u0103 oprire", have: `${m.toLocaleString("ro-RO")} m`, target: fmtD(leg), pct: pct(m / (leg * 1e3)), weight: 1 }];
-      let value = parts2[0].pct;
-      const cutoff = SWIM_CUTOFF_MIN[goal];
-      const pace = best.details.continuousPace100mSec;
-      if (cutoff && m >= leg * 1e3 && pace) {
-        const need = cutoff * 60 / (leg * 10);
-        parts2.push({ label: "Ritm fa\u021B\u0103 de timpul-limit\u0103", have: `${fmtPace(pace)}/100 m`, target: `${fmtPace(need)}/100 m`, pct: pct(need / pace), weight: 0 });
-        if (pace > need) value = Math.min(value, 90);
-      }
-      out.push({ sport, leg: legLabel, value, parts: parts2, best: m });
-      continue;
-    }
-    const withDist = mine.filter((a) => (a.distanceKm ?? 0) > 0);
-    const longest = withDist.reduce((mx, a) => Math.max(mx, a.distanceKm), 0);
-    if (!longest) {
-      out.push({ sport, leg: legLabel, value: null, parts: [] });
-      continue;
-    }
-    const parts = [{ label: sport === "bicicleta" ? "Cea mai lung\u0103 tur\u0103" : "Cea mai lung\u0103 alergare", have: fmtD(longest), target: fmtD(leg), pct: pct(longest / leg), weight: 1 }];
-    const brickTarget = BRICK_TARGET_KM[goal];
-    if (sport === "alergare" && brickTarget) {
-      const brick = recent.filter((a) => isBrickRun(a, recent) && (a.distanceKm ?? 0) > 0).reduce((mx, a) => Math.max(mx, a.distanceKm), 0);
-      parts[0].weight = 0.7;
-      parts.push({ label: "Alergare imediat dup\u0103 biciclet\u0103", have: brick ? `${ro(brick)} km` : "niciuna", target: `${ro(brickTarget)} km`, pct: pct(brick / brickTarget), weight: 0.3 });
-    }
-    out.push({ sport, leg: legLabel, value: Math.round(parts.reduce((s2, p) => s2 + p.pct * p.weight, 0)), parts, best: longest });
-  }
-  return out;
-}
-function fmtPace(sec) {
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 // src/collector/details.ts
@@ -1089,7 +1124,7 @@ function buildPacket(input) {
     plan_saptamana: { interval: `${monday} \u2013 ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ""}`, zile },
     vreme: input.weather ?? null,
     progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
-    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today).map((r2) => ({ proba: r2.leg, procent: r2.value, demonstrat: r2.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
+    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today, { swimContinuousM: input.athlete.declaredSwimM ?? null }).map((r2) => ({ proba: r2.leg, procent: r2.value, demonstrat: r2.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
     alte_activitati: (() => {
       const recent = (input.others ?? []).filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) <= 7);
       return {
@@ -1403,7 +1438,7 @@ async function collect(userId, today, event) {
     today,
     event,
     nowLocal: new Intl.DateTimeFormat("en-GB", { timeZone: user.tz || "Europe/Bucharest", hour: "2-digit", minute: "2-digit", hour12: false }).format(/* @__PURE__ */ new Date()),
-    athlete: { goal: user.goal ?? null, obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
+    athlete: { goal: user.goal ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness,
     activities,
     plan: planRes.workouts,
@@ -4337,7 +4372,7 @@ async function buildMe(userId, today) {
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
-    sportReady: user.goal ? sportReadiness(user.goal, activities, today) : [],
+    sportReady: user.goal ? sportReadiness(user.goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,

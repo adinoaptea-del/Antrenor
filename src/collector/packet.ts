@@ -583,7 +583,7 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
     vreme: input.weather ?? null,
     progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
-    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today).map((r) => ({ proba: r.leg, procent: r.value, demonstrat: r.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
+    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today, { swimContinuousM: input.athlete.declaredSwimM ?? null }).map((r) => ({ proba: r.leg, procent: r.value, demonstrat: r.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
     alte_activitati: (() => {
       const recent = (input.others ?? []).filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) <= 7);
       return {

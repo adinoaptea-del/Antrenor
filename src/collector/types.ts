@@ -102,7 +102,7 @@ export interface CollectorInput {
   event: 'dimineata' | 'dupa_antrenament' | 'saptamanal';
   /** Ora locală a sportivului (HH:MM) când rulează agenții: mesajul se scrie pentru momentul zilei. */
   nowLocal?: string | null;
-  athlete: { obiectiv: string; goal?: Goal | null; raceDate: string; phase: Phase; weekLabel?: string; sex?: 'm' | 'f' | null; varsta?: number | null; inaltimeCm?: number | null };
+  athlete: { obiectiv: string; goal?: Goal | null; declaredSwimM?: number | null; raceDate: string; phase: Phase; weekLabel?: string; sex?: 'm' | 'f' | null; varsta?: number | null; inaltimeCm?: number | null };
   wellness: SourceDaily[];
   activities: SourceActivity[];
   plan: PlannedWorkout[];

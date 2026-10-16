@@ -1,4 +1,4 @@
-import { sportReadiness } from '../../src/bar/sport-readiness.js';
+import { swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
@@ -167,7 +167,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
-    sportReady: user.goal ? sportReadiness(user.goal as Goal, activities, today) : [],
+    sportReady: user.goal ? sportReadiness(user.goal as Goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
@@ -225,3 +225,4 @@ function alignWithState(d: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reas
   const why = { verde: 'Datele de sănătate sunt bune: faci antrenamentul din plan.', galben: 'Recuperarea nu e la maxim: ai o variantă mai ușoară ca sugestie; alegi tu.', rosu: 'Datele de sănătate arată o zi grea: azi pauză.' }[v];
   return { verdict: v, reason: why };
 }
+

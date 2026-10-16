@@ -884,3 +884,4 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .as-step { display: grid; gap: 2px; font-size: 12.5px; line-height: 1.45; }
 .as-step b { font-weight: 700; }
 .as-step span { color: var(--muted); }
+.rp-w { color: var(--muted-2); font-weight: 600; font-size: 11px; }

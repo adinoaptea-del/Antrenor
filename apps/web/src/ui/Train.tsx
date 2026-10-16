@@ -232,7 +232,7 @@ function ReadyCard({ sport }: { sport: Sport }) {
           {r.parts.map((p) => (
             <div key={p.label} className="ready-part">
               <div className="rp-top">
-                <span className="rp-l">{p.label}</span>
+                <span className="rp-l">{p.label} <small className="rp-w">{Math.round(p.weight * 100)}%{p.source === 'declarat' ? ' · declarat' : ''}</small></span>
                 <span className="rp-v">
                   <b>{p.have}</b> din {p.target}
                 </span>
@@ -243,12 +243,7 @@ function ReadyCard({ sport }: { sport: Sport }) {
             </div>
           ))}
           <div className="tiny muted">
-            {sport === 'inot'
-              ? 'Contează doar cea mai lungă porțiune înotată fără oprire, din turele ceasului; totalul cu pauze nu. '
-              : sport === 'alergare' && r.parts.length > 1
-                ? 'La triatlon, alergarea vine după 90 km de bicicletă: de aceea contează și alergarea imediat după tură. '
-                : ''}
-            Din ultimele 6 săptămâni, doar ce au măsurat brățările. Nu e o predicție de timp.
+            Rezistență 60% (poți acoperi distanța probei?), volum 25% (media pe săptămână față de 1,5 × distanța probei), specific 15% (condițiile cursei). Din ultimele 6 săptămâni, doar ce au măsurat brățările; „declarat” = din chestionar, până apare o măsurătoare. Nu e o predicție de timp.
           </div>
         </div>
       )}
