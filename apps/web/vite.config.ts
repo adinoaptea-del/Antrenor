@@ -9,4 +9,6 @@ export default defineConfig({
     alias: { '@core': fileURLToPath(new URL('../../src', import.meta.url)) },
   },
   server: { fs: { allow: ['../..'] } },
+  // Ieșirea în dist/ din rădăcina repo-ului: acolo o caută Vercel (preset Vite, „Output Directory: dist”).
+  build: { outDir: '../../dist', emptyOutDir: true },
 });
