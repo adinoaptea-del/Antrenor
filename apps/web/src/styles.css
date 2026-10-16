@@ -631,3 +631,10 @@ ul.plain b { color: var(--fg); }
 @keyframes scr-back { from { transform: translate3d(-24%, 0, 0); opacity: 0.5; } to { transform: none; opacity: 1; } }
 @keyframes scr-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .screen.nav-fwd, .screen.nav-back, .screen.nav-fade { animation: none; } }
+.day-verdict { display: grid; gap: 4px; margin: 10px auto 0; max-width: 520px; text-align: center; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--line-2); }
+.day-verdict b { font-size: 14px; }
+.day-verdict span { font-size: 12px; color: var(--fg); }
+.day-verdict small { font-size: 11px; color: var(--muted); }
+.day-verdict.v-verde b { color: #30d158; }
+.day-verdict.v-galben b { color: #ffd60a; }
+.day-verdict.v-rosu b, .day-verdict.v-stop b { color: var(--c-rosu); }

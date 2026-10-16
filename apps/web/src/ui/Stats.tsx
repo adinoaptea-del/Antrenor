@@ -3,6 +3,7 @@ import { AreaChart, Avatar, Card, CircleBtn, Ecg, Icons, Ring, Spark, Stat, fmtD
 import { SyncButton } from './SyncButton';
 import { useMe } from '../data/store';
 import { DAY_NAMES, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm } from '../data/model';
+import { cleanRefs } from '../data/model';
 
 const COMPONENT_LABEL: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', consistenta: 'Consistență', forma: 'Formă' };
 
@@ -45,17 +46,23 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
 
       <div className="ring-wrap">
         <Ring value={recovery} size={156} stroke={10}>
-          <span className="lb">Recuperare azi</span>
+          <span className="lb">Recuperare brățară</span>
           <span className="num" style={{ fontSize: 56 }}>
             {recovery ?? '–'}
           </span>
-          <span className={`st ${me.readiness?.verdict ?? ''}`}>{me.readiness ? { verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[me.readiness.verdict] : recovery == null ? 'fără date' : ''}</span>
+          <span className="st">{recovery == null ? 'fără date' : 'din 100'}</span>
           <Ecg />
         </Ring>
         <div className="tiny muted" style={{ marginTop: 6, textAlign: 'center' }}>
           {w ? `${w.source ?? 'brățară'}${w.hrv != null ? ` · HRV ${w.hrv} ms` : ''}${w.rhr != null ? ` · puls de repaus ${w.rhr}` : ''}${w.sleepMin != null ? ` · somn ${fmtMinutes(w.sleepMin)}` : ''}` : 'Nicio brățară nu a trimis date pentru azi.'}
         </div>
-        {me.readiness?.reason && <div className="tiny muted" style={{ marginTop: 2, textAlign: 'center' }}>{me.readiness.reason}</div>}
+        {me.readiness && (
+          <div className={`day-verdict v-${me.readiness.verdict}`}>
+            <b>Decizia zilei: {{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[me.readiness.verdict]}</b>
+            {me.readiness.reason && <span>{cleanRefs(me.readiness.reason)}</span>}
+            <small>Cifra din cerc e recuperarea de pe brățară. Decizia zilei o ia Fiziologul din toate datele: recuperare, somn, încărcarea antrenamentelor și cum te simți.</small>
+          </div>
+        )}
       </div>
 
       <div className="stack">
