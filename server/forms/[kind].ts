@@ -159,7 +159,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!sex) throw new HttpError(400, 'alege sexul');
       if (!Number.isInteger(year) || year < 1930 || year > maxYear) throw new HttpError(400, `anul nașterii între 1930 și ${maxYear}`);
       await update('users', { id: `eq.${u.id}` }, { sex, birth_year: year });
-      json(res, 200, { ok: true });
+      // Vârsta schimbă structura planului (descărcare mai des de la 40 de ani): planul se reface.
+      const intakeRow = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === 'profil') {

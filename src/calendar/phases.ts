@@ -112,7 +112,8 @@ export function phaseLengths(totalWeeks: number): Record<Phase, number> {
   return out;
 }
 
-export function phaseWeeks(startDate: string, raceDate: string): PhaseWeek[] {
+/** recoveryEvery: a câta săptămână din fază e descărcare (4 implicit; 3 de la 40 de ani, recuperarea e mai lentă). */
+export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4): PhaseWeek[] {
   const first = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first, raceWeek) / 7) + 1;
@@ -127,7 +128,7 @@ export function phaseWeeks(startDate: string, raceDate: string): PhaseWeek[] {
         index,
         phase,
         weekInPhase: w,
-        recovery: phase !== 'taper' && w % 4 === 3,
+        recovery: phase !== 'taper' && w % recoveryEvery === recoveryEvery - 1,
       });
       index += 1;
     }

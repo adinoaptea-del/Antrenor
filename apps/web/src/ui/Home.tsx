@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { isRunGoal } from '@core/calendar/phases.js';
-import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
+import { BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
 import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, workoutsOn } from '../data/model';
@@ -55,14 +55,11 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   return (
     <>
       <div className="topline">
-        <button className="profile-btn" onClick={() => onOpen('profil')} aria-label="Profil">
-          <Avatar name={me.user.name || 'S'} />
-          <span>Profil</span>
-        </button>
+        <span />
         <SyncButton />
       </div>
       <div className="hub-name">
-        <button onClick={() => onOpen('profil')} aria-label="Profil">
+        <button className="name-ring" onClick={() => onOpen('profil')} aria-label="Profil">
           {me.user.name || 'Sportiv'}
         </button>
         <div className="sub">{me.user.raceDate ? `${fmtDayMonth(me.user.raceDate)} ${me.user.raceDate.slice(0, 4)}` : 'completează chestionarul ca să pornească planul'}</div>

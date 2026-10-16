@@ -15,6 +15,8 @@ export interface GenerateInput {
   historyHoursPerWeek: number[];
   intensityAllowed: IntensityAllowed;
   swimContinuous400: boolean;
+  /** Vârsta și sexul. Vârsta schimbă structura (descărcare mai des, fără intervale VO2max după 55); sexul nu schimbă volumul, doar nutriția și pragurile analizelor. */
+  athlete?: { age: number | null; sex: 'm' | 'f' | null };
   /** Doar la semimaraton / maraton: ritmul-țintă de cursă (s/km) și dacă poate alerga deja distanța. */
   run?: { goalPaceSecKm: number | null; canDoDistance: boolean | null; longestRunKm?: number | null };
 }
@@ -52,7 +54,8 @@ const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicle
 
 export function generatePlan(input: GenerateInput): GenerateResult {
   const budget = weeklyBudget(input.freeBlocks);
-  const weeks = phaseWeeks(input.startDate, input.raceDate);
+  const age = input.athlete?.age ?? null;
+  const weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4);
   const hours = PHASE_HOURS[input.goal];
 
   const phasesUsed = [...new Set(weeks.map((w) => w.phase))];
@@ -166,7 +169,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   const s: Session[] = [];
   const pace = input.run?.goalPaceSecKm ?? null;
   const race = input.goal === 'maraton' ? 'maraton' : 'semimaraton';
-  const quality = qualitySession(input.intensityAllowed, p);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
   const early = p === 'evaluare' || p === 'baza1';
 
   s.push({ sport: 'alergare', type: 'z2', minutes: early ? 40 : p === 'taper' ? 30 : 50, zones: [2], key: false, priority: 6 });
@@ -218,7 +221,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   const p = pw.phase;
   const s: Session[] = [];
   const swimMin = input.swimContinuous400 ? (p === 'baza1' || p === 'evaluare' ? 40 : 45) : 30;
-  const quality = qualitySession(input.intensityAllowed, p);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
 
   // Înot: 3 ședințe scurte, tehnica înainte de volum.
   const swimCount = p === 'taper' ? 2 : 3;
@@ -275,10 +278,10 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   return s;
 }
 
-function qualitySession(allowed: IntensityAllowed, phase: Phase): (minutes: number) => Session {
+function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null): (minutes: number) => Session {
   return (minutes) => {
     if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e blocată până la avizul cardiologic' };
-    if (allowed === 'pana_la_Z4' || phase === 'evaluare' || phase === 'baza1') {
+    if (allowed === 'pana_la_Z4' || phase === 'evaluare' || phase === 'baza1' || (age != null && age >= 55)) {
       return { sport: 'alergare', type: 'calitate', minutes, zones: [3, 4], key: true, priority: 3, structure: '2–3 × 8–10 min tempo', intervals: { count: 3, minutes: 8, zone: 4 } };
     }
     return { sport: 'alergare', type: 'calitate', minutes, zones: [4, 5], key: true, priority: 3, structure: '5–6 × 3–4 min intervale', intervals: { count: 5, minutes: 4, zone: 5 } };

@@ -33,6 +33,15 @@ describe('obiective doar de alergare', () => {
     assert.ok(longest <= 180 && longest >= 150, `ieșirea lungă maximă ${longest}`);
   });
 
+  it('de la 40 de ani descărcarea vine la a treia săptămână din fază', () => {
+    const base = { startDate: '2026-10-19', raceDate: '2027-04-11', goal: 'semimaraton' as const, freeBlocks: blocks, historyHoursPerWeek: [], intensityAllowed: 'toate' as const, swimContinuous400: false };
+    const young = generatePlan({ ...base, athlete: { age: 30, sex: 'm' } });
+    const older = generatePlan({ ...base, athlete: { age: 45, sex: 'f' } });
+    assert.ok(young.ok && older.ok);
+    if (!young.ok || !older.ok) return;
+    assert.ok(older.weeks.filter((w) => w.recovery).length > young.weeks.filter((w) => w.recovery).length);
+  });
+
   it('bara la semimaraton are 3 componente (fără înot și bicicletă)', () => {
     const b = computeBar({ today: '2026-10-16', activities: [], plannedColorsLast4Weeks: [], cssSecPer100m: null, ctl: null, ctlTarget: null, openFlags: [], goal: 'semimaraton' });
     assert.deepEqual(b.components.map((c) => c.name), ['alergare', 'consistenta', 'forma']);

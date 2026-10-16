@@ -302,7 +302,7 @@ function phaseLengths(totalWeeks) {
   }
   return out;
 }
-function phaseWeeks(startDate, raceDate) {
+function phaseWeeks(startDate, raceDate, recoveryEvery = 4) {
   const first2 = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first2, raceWeek) / 7) + 1;
@@ -317,7 +317,7 @@ function phaseWeeks(startDate, raceDate) {
         index,
         phase,
         weekInPhase: w,
-        recovery: phase !== "taper" && w % 4 === 3
+        recovery: phase !== "taper" && w % recoveryEvery === recoveryEvery - 1
       });
       index += 1;
     }
@@ -2949,7 +2949,8 @@ var CHANGE_MIN2 = 10;
 var MIN_SESSION_MIN = { inot: 30, alergare: 30, bicicleta: 40, forta: 30 };
 function generatePlan(input) {
   const budget = weeklyBudget(input.freeBlocks);
-  const weeks = phaseWeeks(input.startDate, input.raceDate);
+  const age = input.athlete?.age ?? null;
+  const weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4);
   const hours = PHASE_HOURS[input.goal];
   const phasesUsed = [...new Set(weeks.map((w) => w.phase))];
   const minimumHours = Math.max(...phasesUsed.map((p) => hours[p].min));
@@ -3048,7 +3049,7 @@ function runWeekTemplate(pw, input, prog) {
   const s = [];
   const pace = input.run?.goalPaceSecKm ?? null;
   const race = input.goal === "maraton" ? "maraton" : "semimaraton";
-  const quality = qualitySession(input.intensityAllowed, p);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
   const early = p === "evaluare" || p === "baza1";
   s.push({ sport: "alergare", type: "z2", minutes: early ? 40 : p === "taper" ? 30 : 50, zones: [2], key: false, priority: 6 });
   s.push({ sport: "alergare", type: "z2", minutes: early ? 35 : p === "taper" ? 25 : 45, zones: [1, 2], key: false, priority: 7, structure: "u\u0219or + 4\u20136 acceler\u0103ri de 20 s" });
@@ -3093,7 +3094,7 @@ function weekTemplate(pw, input, prog) {
   const p = pw.phase;
   const s = [];
   const swimMin = input.swimContinuous400 ? p === "baza1" || p === "evaluare" ? 40 : 45 : 30;
-  const quality = qualitySession(input.intensityAllowed, p);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
   const swimCount = p === "taper" ? 2 : 3;
   for (let i = 0; i < swimCount; i++) {
     if (p === "build" && i === 0) s.push({ sport: "inot", type: "calitate", minutes: 45, zones: [3, 4], key: false, priority: 5, structure: "set CSS" });
@@ -3140,10 +3141,10 @@ function weekTemplate(pw, input, prog) {
   }
   return s;
 }
-function qualitySession(allowed, phase) {
+function qualitySession(allowed, phase, age = null) {
   return (minutes) => {
     if (allowed === "Z2") return { sport: "alergare", type: "z2", minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: "calitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic" };
-    if (allowed === "pana_la_Z4" || phase === "evaluare" || phase === "baza1") {
+    if (allowed === "pana_la_Z4" || phase === "evaluare" || phase === "baza1" || age != null && age >= 55) {
       return { sport: "alergare", type: "calitate", minutes, zones: [3, 4], key: true, priority: 3, structure: "2\u20133 \xD7 8\u201310 min tempo", intervals: { count: 3, minutes: 8, zone: 4 } };
     }
     return { sport: "alergare", type: "calitate", minutes, zones: [4, 5], key: true, priority: 3, structure: "5\u20136 \xD7 3\u20134 min intervale", intervals: { count: 5, minutes: 4, zone: 5 } };
@@ -3302,6 +3303,7 @@ async function generateAndStore(userId, today, intake) {
     historyHoursPerWeek: history,
     intensityAllowed: intake.sanatate.avizCardiolog === "da" && !labs.limitIntensity ? "toate" : "Z2",
     swimContinuous400: intake.inot?.nivel === "continuu_400" || intake.inot?.nivel === "peste_1500",
+    athlete: await athleteInfo(userId, today),
     run: isRunGoal(intake.obiectiv) ? {
       goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
       canDoDistance: intake.alergare?.poateDistanta ?? null,
@@ -3330,6 +3332,11 @@ async function generateAndStore(userId, today, intake) {
     withoutLabs: !labs.valid,
     note: labs.limitIntensity ? `Intensitatea r\u0103m\xE2ne la Z1\u2013Z2: ${labs.why}. De discutat cu medicul; planul se reface c\xE2nd urci analize noi.` : void 0
   };
+}
+async function athleteInfo(userId, today) {
+  const u = await select("users", { id: `eq.${userId}` }, { select: "sex,birth_year", limit: 1 }).catch(() => []);
+  const r2 = u[0];
+  return { age: r2?.birth_year ? Number(today.slice(0, 4)) - r2.birth_year : null, sex: r2?.sex ?? null };
 }
 
 // server/forms/[kind].ts
@@ -3465,7 +3472,9 @@ async function handler8(req, res) {
       if (!sex) throw new HttpError(400, "alege sexul");
       if (!Number.isInteger(year) || year < 1930 || year > maxYear) throw new HttpError(400, `anul na\u0219terii \xEEntre 1930 \u0219i ${maxYear}`);
       await update("users", { id: `eq.${u.id}` }, { sex, birth_year: year });
-      json(res, 200, { ok: true });
+      const intakeRow = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === "profil") {

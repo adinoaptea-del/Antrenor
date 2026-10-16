@@ -89,6 +89,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     historyHoursPerWeek: history,
     intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
+    athlete: await athleteInfo(userId, today),
     run: isRunGoal(intake.obiectiv)
       ? {
           goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
@@ -120,4 +121,10 @@ export async function generateAndStore(userId: string, today: string, intake: In
     withoutLabs: !labs.valid,
     note: labs.limitIntensity ? `Intensitatea rămâne la Z1–Z2: ${labs.why}. De discutat cu medicul; planul se reface când urci analize noi.` : undefined,
   };
+}
+
+async function athleteInfo(userId: string, today: string): Promise<{ age: number | null; sex: 'm' | 'f' | null }> {
+  const u = await select<{ sex: 'm' | 'f' | null; birth_year: number | null }>('users', { id: `eq.${userId}` }, { select: 'sex,birth_year', limit: 1 }).catch(() => []);
+  const r = u[0];
+  return { age: r?.birth_year ? Number(today.slice(0, 4)) - r.birth_year : null, sex: r?.sex ?? null };
 }
