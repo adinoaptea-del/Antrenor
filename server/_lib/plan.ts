@@ -1,6 +1,6 @@
 // Planul: din chestionarul de intrare (program, nivel, aviz) și istoricul de activități → generatePlan → workouts_planned.
 import { insert, remove, select, update, upsert } from './db.js';
-import { loadLabs, toWorkoutRow } from './collect.js';
+import { loadLabs, loadZones, toWorkoutRow } from './collect.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
@@ -18,6 +18,7 @@ export interface IntakeLike {
   program: FreeBlock[];
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null };
   echipament?: { ceas?: string | null; whoop?: boolean; oura?: boolean };
+  evaluare?: { inot400?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
 }
 
 /** Orele pe săptămână din ultimele până la 8 săptămâni, din activitățile deja sincronizate (gol = fără istoric). */
@@ -90,6 +91,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
     athlete: await athleteInfo(userId, today),
+    tests: await testsAvailable(userId, intake),
     run: isRunGoal(intake.obiectiv)
       ? {
           goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
@@ -127,4 +129,14 @@ async function athleteInfo(userId: string, today: string): Promise<{ age: number
   const u = await select<{ sex: 'm' | 'f' | null; birth_year: number | null }>('users', { id: `eq.${userId}` }, { select: 'sex,birth_year', limit: 1 }).catch(() => []);
   const r = u[0];
   return { age: r?.birth_year ? Number(today.slice(0, 4)) - r.birth_year : null, sex: r?.sex ?? null };
+}
+
+/** Unde există deja date de test (zone din test, FTP, CSS) planul nu mai pune test în evaluare. */
+async function testsAvailable(userId: string, intake: IntakeLike): Promise<{ alergare: boolean; bicicleta: boolean; inot: boolean }> {
+  const z = await loadZones(userId).catch(() => null);
+  return {
+    alergare: !!(z?.alergare.fc_z1_z5 || z?.alergare.pace_prag),
+    bicicleta: !!(z?.bicicleta.ftp || z?.bicicleta.fc_z1_z5 || intake.evaluare?.ftp),
+    inot: !!z?.inot.css,
+  };
 }

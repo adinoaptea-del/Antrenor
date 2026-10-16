@@ -48,6 +48,8 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const set = (patch: Partial<IntakeAnswers>) => setA((prev) => ({ ...prev, ...patch }));
+  const ev = a.evaluare ?? {};
+  const setEv = (patch: NonNullable<IntakeAnswers['evaluare']>) => set({ evaluare: { ...ev, ...patch } });
   const next = async () => {
     if (step < STEPS.length - 1) {
       setStep(step + 1);
@@ -86,7 +88,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
       case 'Program':
         return a.program.length > 0;
       case 'Sănătate':
-        return a.sanatate.avizCardiolog != null;
+        return a.sanatate.avizCardiolog != null && !!a.evaluare?.testEfort;
       case 'Gata':
         return a.consimtamant;
       default:
@@ -185,6 +187,9 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Ape deschise?">
               <Chips value={a.inot.apeDeschise} options={[{ id: 'nu', label: 'Niciodată' }, { id: 'putin', label: 'De câteva ori' }, { id: 'da', label: 'Regulat' }]} onChange={(apeDeschise) => set({ inot: { ...a.inot, apeDeschise } })} />
             </Q>
+            <Q title="Timpul tău pe 400 m (dacă îl știi)" hint="Opțional, min:sec. Fără el, planul pune un test CSS în primele săptămâni.">
+              <input className="date" inputMode="numeric" placeholder="ex. 8:30" value={ev.inot400 ?? ''} onChange={(e) => setEv({ inot400: e.target.value || null })} />
+            </Q>
             <Q title="Ai acces la un bazin?">
               <Chips value={a.inot.bazin == null ? null : a.inot.bazin ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ inot: { ...a.inot, bazin: v === 'da' } })} />
             </Q>
@@ -202,6 +207,14 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                   <Toggle label="Trainer acasă" value={a.bicicleta.trainer} onChange={(trainer) => set({ bicicleta: { ...a.bicicleta, trainer } })} />
                   <Toggle label="Senzor de putere" value={a.bicicleta.putere} onChange={(putere) => set({ bicicleta: { ...a.bicicleta, putere } })} />
                 </div>
+                <Q title="Viteza medie pe o tură obișnuită (dacă o știi)" hint="Opțional, pe teren plat, în km/h.">
+                  <input className="date" type="number" inputMode="decimal" placeholder="ex. 27" value={ev.bicicletaViteza ?? ''} onChange={(e) => setEv({ bicicletaViteza: e.target.value ? Number(e.target.value) : null })} />
+                </Q>
+                {a.bicicleta.putere && (
+                  <Q title="FTP (dacă îl știi)" hint="Opțional, în wați. Fără el, planul pune un test de 20 min.">
+                    <input className="date" type="number" inputMode="numeric" placeholder="ex. 220" value={ev.ftp ?? ''} onChange={(e) => setEv({ ftp: e.target.value ? Number(e.target.value) : null })} />
+                  </Q>
+                )}
                 <Q title="Cea mai lungă tură din ultimele 3 luni">
                   <Stepper value={a.bicicleta.ceaMaiLungaOre} min={0} max={6} step={0.5} unit="ore" fallback={1} onChange={(ceaMaiLungaOre) => set({ bicicleta: { ...a.bicicleta, ceaMaiLungaOre } })} />
                 </Q>
@@ -214,6 +227,15 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
           <>
             <Q title="Cea mai lungă alergare din ultimele 3 luni">
               <Stepper value={a.alergare.ceaMaiLungaKm} min={0} max={42} step={1} unit="km" fallback={5} onChange={(ceaMaiLungaKm) => set({ alergare: { ...a.alergare, ceaMaiLungaKm } })} />
+            </Q>
+            <Q title="Cu ce ritm alergi ușor acum?" hint="Opțional, min:sec pe km.">
+              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={ev.ritmUsor ?? ''} onChange={(e) => setEv({ ritmUsor: e.target.value || null })} />
+            </Q>
+            <Q title="Un timp recent pe 5 km sau 10 km (dacă ai)" hint="Opțional. Fără el, planul pune un test de 30 min în primele săptămâni.">
+              <div className="grid-2">
+                <input className="date" inputMode="numeric" placeholder="5 km, ex. 27:30" value={ev.alergare5k ?? ''} onChange={(e) => setEv({ alergare5k: e.target.value || null })} />
+                <input className="date" inputMode="numeric" placeholder="10 km, ex. 58:00" value={ev.alergare10k ?? ''} onChange={(e) => setEv({ alergare10k: e.target.value || null })} />
+              </div>
             </Q>
             <Q title="Curse în ultimul an?">
               <Chips value={a.alergare.curseRecente} options={[{ id: 'niciuna', label: 'Niciuna' }, { id: '5-10', label: '5 sau 10 km' }, { id: 'semimaraton', label: 'Semimaraton' }, { id: 'maraton', label: 'Maraton' }]} onChange={(curseRecente) => set({ alergare: { ...a.alergare, curseRecente } })} />
@@ -248,6 +270,9 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
           <>
             <Q title="Aviz cardiologic pentru efort?" hint="Fără aviz, planul rămâne la Z1–Z2: fără intensitate, oricât de bine ai sta.">
               <Chips value={a.sanatate.avizCardiolog === 'programat' ? 'nu' : a.sanatate.avizCardiolog} options={[{ id: 'da', label: 'Am aviz' }, { id: 'nu', label: 'Nu am aviz' }]} onChange={(avizCardiolog) => set({ sanatate: { ...a.sanatate, avizCardiolog } })} />
+            </Q>
+            <Q title="Ai făcut un test de efort?" hint="Zonele vin dintr-un test, nu din estimări. Dacă ai raportul, îl urci după chestionar din Profil → Date de bază → Test de efort.">
+              <Chips value={ev.testEfort ?? null} options={[{ id: 'cpet', label: 'CPET', sub: 'ergospirometrie' }, { id: 'lactat', label: 'Test de lactat' }, { id: 'teren', label: 'Test de teren' }, { id: 'nu', label: 'Nu' }]} onChange={(testEfort) => setEv({ testEfort })} />
             </Q>
             <Q title="Accidentări sau dureri în ultimul an" hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
               <TextBox value={a.sanatate.accidentari} onChange={(accidentari) => set({ sanatate: { ...a.sanatate, accidentari } })} placeholder="ex. genunchi drept, primăvară; tendon ahilean stâng" />

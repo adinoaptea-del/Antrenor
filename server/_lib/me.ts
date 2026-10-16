@@ -142,6 +142,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     today,
     phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today) : null,
     budgetHours: planRow?.budget_hours ?? null,
+    planStart: planRow?.start_date ?? null,
     plan: planned,
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,

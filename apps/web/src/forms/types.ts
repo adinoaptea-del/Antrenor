@@ -29,6 +29,8 @@ export interface IntakeAnswers {
     /** Dacă da: în cât timp sau cu ce ritm. */
     rezultatActual?: RunResult | null;
   };
+  /** Cum se evaluează acum fiecare sport (opțional, ce știe sportivul): din asta pornesc antrenamentele până la primul test. */
+  evaluare?: { inot400?: string | null; bicicletaViteza?: number | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; ritmUsor?: string | null; testEfort?: 'cpet' | 'lactat' | 'teren' | 'nu' | null };
   echipament: { ceas: 'garmin' | 'apple' | 'altul' | 'nu' | null; whoop: boolean; oura: boolean; cantar: boolean };
   program: FreeBlock[];
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string };

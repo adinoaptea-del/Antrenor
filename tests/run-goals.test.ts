@@ -47,3 +47,46 @@ describe('obiective doar de alergare', () => {
     assert.deepEqual(b.components.map((c) => c.name), ['alergare', 'consistenta', 'forma']);
   });
 });
+
+describe('planul de triatlon până la cursă', () => {
+  const tri = generatePlan({
+    startDate: '2026-10-19',
+    raceDate: '2027-09-26',
+    goal: '70.3',
+    freeBlocks: blocks,
+    historyHoursPerWeek: [6, 7, 7],
+    intensityAllowed: 'toate',
+    swimContinuous400: true,
+    tests: { alergare: false, bicicleta: false, inot: false },
+  });
+
+  it('acoperă toate săptămânile până la cursă, cu toate cele trei sporturi', () => {
+    assert.ok(tri.ok);
+    if (!tri.ok) return;
+    assert.equal(tri.weeks.at(-1)!.weekStart, '2027-09-20');
+    const sports = new Set(tri.weeks.flatMap((w) => w.workouts.map((x) => x.sport)));
+    for (const s of ['inot', 'bicicleta', 'alergare', 'forta']) assert.ok(sports.has(s as never), s);
+  });
+
+  it('o singură ședință intensă pe zi, în afară de peak (cel mult 2 zile duble pe săptămână)', () => {
+    if (!tri.ok) return;
+    for (const w of tri.weeks) {
+      const byDay = new Map<string, number>();
+      for (const x of w.workouts) if (x.type === 'calitate') byDay.set(x.date, (byDay.get(x.date) ?? 0) + 1);
+      const doubles = [...byDay.values()].filter((n) => n >= 2).length;
+      if (w.phase === 'peak') assert.ok(doubles <= 2);
+      else assert.equal(doubles, 0, `${w.weekStart} ${w.phase}`);
+    }
+  });
+
+  it('intensitatea crește în trepte: fără calitate în evaluare (doar teste), Z5 abia în peak', () => {
+    if (!tri.ok) return;
+    const maxZone = (phase: string) => Math.max(0, ...tri.weeks.filter((w) => w.phase === phase).flatMap((w) => w.workouts.filter((x) => x.type === 'calitate' && !(x.structure ?? '').startsWith('TEST')).flatMap((x) => x.targetZones)));
+    assert.equal(maxZone('evaluare'), 0);
+    assert.ok(maxZone('baza1') <= 3);
+    assert.ok(maxZone('build') <= 4);
+    assert.equal(maxZone('peak'), 5);
+    const tests = tri.weeks.filter((w) => w.phase === 'evaluare').flatMap((w) => w.workouts).filter((x) => (x.structure ?? '').startsWith('TEST'));
+    assert.ok(tests.length >= 2);
+  });
+});

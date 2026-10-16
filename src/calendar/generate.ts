@@ -15,6 +15,8 @@ export interface GenerateInput {
   historyHoursPerWeek: number[];
   intensityAllowed: IntensityAllowed;
   swimContinuous400: boolean;
+  /** Ce sporturi au deja date de test (zone/prag/CSS): pentru ele evaluarea nu mai pune test. */
+  tests?: { alergare: boolean; bicicleta: boolean; inot: boolean };
   /** Vârsta și sexul. Vârsta schimbă structura (descărcare mai des, fără intervale VO2max după 55); sexul nu schimbă volumul, doar nutriția și pragurile analizelor. */
   athlete?: { age: number | null; sex: 'm' | 'f' | null };
   /** Doar la semimaraton / maraton: ritmul-țintă de cursă (s/km) și dacă poate alerga deja distanța. */
@@ -101,7 +103,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     else advanceProgression(prog, pw);
     const sessions = runGoal ? runWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
     const fitted = fitToHours(sessions, target, pw.recovery);
-    const placed = place(fitted.sessions, budget.blocks, pw.weekStart);
+    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
 
     out.push({
@@ -197,6 +199,11 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
     });
   }
 
+  for (const t of fieldTests(pw, input, ['alergare'])) {
+    const easy = s.findIndex((x) => x.sport === 'alergare' && x.type === 'z2' && !x.key);
+    if (easy >= 0) s.splice(easy, 1, t);
+  }
+
   const fortaCount = p === 'taper' ? 1 : 2;
   for (let i = 0; i < fortaCount; i++) {
     s.push({ sport: 'forta', type: 'forta', minutes: early ? 40 : p === 'taper' ? 30 : 35, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === 'taper' ? 'ușor, fără încărcări noi' : 'picioare, core, gambe + pliometrie ușoară' });
@@ -226,13 +233,16 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   // Înot: 3 ședințe scurte, tehnica înainte de volum.
   const swimCount = p === 'taper' ? 2 : 3;
   for (let i = 0; i < swimCount; i++) {
-    if (p === 'build' && i === 0) s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 5, structure: 'set CSS' });
+    if ((p === 'build' || p === 'peak') && i === 1 && input.intensityAllowed !== 'Z2' && input.swimContinuous400) s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 5, structure: p === 'peak' ? 'set CSS la ritm de cursă' : 'set CSS' });
     else if (p === 'peak' && i === 0) s.push({ sport: 'inot', type: 'lung', minutes: 60, zones: [2, 3], key: false, priority: 5, structure: 'distanța de cursă continuu' });
     else s.push({ sport: 'inot', type: 'tehnica', minutes: p === 'taper' ? 35 : swimMin, zones: [1, 2], key: false, priority: 5, structure: 'un element de tehnică' });
   }
 
-  // Bicicletă: una Z2 (prima care cade când nu încap orele; volumul de bicicletă vine din tura lungă) + tura lungă (din baza2 devine brick).
-  s.push({ sport: 'bicicleta', type: 'z2', minutes: p === 'baza1' || p === 'evaluare' ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 7 });
+  // Bicicletă: a doua ședință crește și ea în trepte: Z2 în evaluare/baza1, sweet spot (Z3) în baza2, prag (Z4) în build, ritm de cursă în peak.
+  if (p === 'baza2' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3], key: false, priority: 5.5, structure: '3 × 10 min sweet spot (Z3), 5 min ușor între' });
+  else if (p === 'build' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [4], key: false, priority: 5.5, structure: '2 × 15 min la prag (Z4), 5 min ușor între' });
+  else if (p === 'peak' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3, 4], key: false, priority: 5.5, structure: '3 × 15 min la ritm de cursă, 5 min ușor între' });
+  else s.push({ sport: 'bicicleta', type: 'z2', minutes: p === 'baza1' || p === 'evaluare' ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 7 });
   if (p === 'evaluare' || p === 'baza1') {
     s.push({ sport: 'bicicleta', type: 'lung', minutes: prog.longRide, zones: [2], key: true, priority: 1 });
   } else if (p === 'taper' && pw.weekInPhase > 0) {
@@ -254,6 +264,13 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   s.push(quality(p === 'taper' ? 30 : p === 'baza1' || p === 'evaluare' ? 50 : 55));
   if (!(p === 'taper' && pw.weekInPhase > 0)) {
     s.push({ sport: 'alergare', type: 'lung', minutes: prog.longRun, zones: [2], key: true, priority: 2 });
+  }
+
+  // Testele înlocuiesc o ședință ușoară a aceluiași sport din săptămâna lor.
+  for (const t of fieldTests(pw, input, ['inot', 'bicicleta', 'alergare'])) {
+    const easy = s.findIndex((x) => x.sport === t.sport && (x.type === 'z2' || x.type === 'tehnica') && !x.key);
+    if (easy >= 0) s.splice(easy, 1, t);
+    else s.push(t);
   }
 
   // Forță: 2 ședințe, încărcări mari + pliometrie; în taper una scurtă.
@@ -278,14 +295,34 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   return s;
 }
 
+/**
+ * Calitatea la alergare crește în trepte, de la o fază la alta (crescendo):
+ * evaluare = fără calitate (doar accelerări); baza1 = tempo scurt; baza2 = tempo lung; build = prag (Z4);
+ * peak = intervale VO2max (Z5) — cel mai intens abia aproape de cursă.
+ */
 function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null): (minutes: number) => Session {
   return (minutes) => {
     if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e blocată până la avizul cardiologic' };
-    if (allowed === 'pana_la_Z4' || phase === 'evaluare' || phase === 'baza1' || (age != null && age >= 55)) {
-      return { sport: 'alergare', type: 'calitate', minutes, zones: [3, 4], key: true, priority: 3, structure: '2–3 × 8–10 min tempo', intervals: { count: 3, minutes: 8, zone: 4 } };
-    }
-    return { sport: 'alergare', type: 'calitate', minutes, zones: [4, 5], key: true, priority: 3, structure: '5–6 × 3–4 min intervale', intervals: { count: 5, minutes: 4, zone: 5 } };
+    if (phase === 'evaluare') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'ușor + 6 accelerări de 20 s (fără calitate în evaluare)' };
+    const capZ4 = allowed === 'pana_la_Z4' || (age != null && age >= 55);
+    if (phase === 'baza1') return { sport: 'alergare', type: 'calitate', minutes, zones: [3], key: true, priority: 3, structure: '2 × 8 min tempo (Z3), 3 min ușor între', intervals: { count: 2, minutes: 8, zone: 3 } };
+    if (phase === 'baza2' || phase === 'taper') return { sport: 'alergare', type: 'calitate', minutes, zones: [3, 4], key: true, priority: 3, structure: '3 × 10 min tempo (Z3–Z4), 3 min ușor între', intervals: { count: 3, minutes: 10, zone: 4 } };
+    if (phase === 'build' || capZ4) return { sport: 'alergare', type: 'calitate', minutes, zones: [4], key: true, priority: 3, structure: '4–5 × 6 min la prag (Z4), 2 min ușor între', intervals: { count: 5, minutes: 6, zone: 4 } };
+    return { sport: 'alergare', type: 'calitate', minutes, zones: [4, 5], key: true, priority: 3, structure: '5–6 × 3 min intervale (Z5), 3 min ușor între', intervals: { count: 5, minutes: 3, zone: 5 } };
   };
+}
+
+/** Testele de teren: în evaluare (doar unde lipsesc datele) și reluate la începutul fazelor baza2 și build. */
+function fieldTests(pw: PhaseWeek, input: GenerateInput, sports: Sport[]): Session[] {
+  if (pw.recovery || input.intensityAllowed === 'Z2') return [];
+  const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
+  const out: Session[] = [];
+  const due = (sport: Sport, week: number) =>
+    (pw.phase === 'evaluare' && pw.weekInPhase === week && !have[sport as 'alergare' | 'bicicleta' | 'inot']) || ((pw.phase === 'baza2' || pw.phase === 'build') && pw.weekInPhase === 0);
+  if (sports.includes('alergare') && due('alergare', 1)) out.push({ sport: 'alergare', type: 'calitate', minutes: 50, zones: [4, 5], key: true, priority: 2.5, structure: 'TEST: 15 min ușor, 30 min cât de tare poți constant (pulsul mediu din ultimele 20 min = prag), 5 min ușor' });
+  if (sports.includes('bicicleta') && due('bicicleta', 1)) out.push({ sport: 'bicicleta', type: 'calitate', minutes: 55, zones: [4, 5], key: true, priority: 2.5, structure: 'TEST: 20 min încălzire, 20 min cât de tare poți constant (FTP ≈ 95% din puterea medie; fără putere: pulsul mediu), 10 min ușor' });
+  if (sports.includes('inot') && input.swimContinuous400 && due('inot', 2)) out.push({ sport: 'inot', type: 'calitate', minutes: 40, zones: [4, 5], key: true, priority: 2.5, structure: 'TEST CSS: încălzire, 400 m tare, 5 min pauză, 200 m tare; notează timpii' });
+  return out;
 }
 
 /** Potrivește ședințele la orele-țintă: cheile rămân, restul se scalează sau cade, după prioritate. */
@@ -321,18 +358,21 @@ interface DayState {
   count: number;
   hasKey: boolean;
   hasQuality: boolean;
+  /** Orice ședință intensă (calitate, test), din orice sport. */
+  hard: number;
   hasLongRun: boolean;
   hasLong: boolean;
   hasForta: boolean;
   sports: Set<Sport>;
 }
 
-function place(sessions: Session[], blocks: FreeBlock[], weekStart: string): { workouts: PlannedWorkout[]; notes: string[] } {
+function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phase: Phase = 'baza1'): { workouts: PlannedWorkout[]; notes: string[] } {
   const days: DayState[] = Array.from({ length: 7 }, (_, d) => ({
     blocks: blocks.filter((b) => b.day === d).map((b) => b.endMin - b.startMin),
     count: 0,
     hasKey: false,
     hasQuality: false,
+    hard: 0,
     hasLongRun: false,
     hasLong: false,
     hasForta: false,
@@ -340,6 +380,7 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string): { w
   }));
   const workouts: PlannedWorkout[] = [];
   const notes: string[] = [];
+  let doubleHardDays = 0;
   const ordered = [...sessions].sort((a, b) => a.priority - b.priority || b.minutes - a.minutes);
   let n = 0;
 
@@ -356,6 +397,8 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string): { w
         if (s.type === 'lung' || s.type === 'brick') {
           if (st.hasLong) return false;
         }
+        // O singură ședință intensă pe zi; două (ex. intervale la alergare + tempo la înot) doar aproape de cursă (peak), cel mult de 2 ori pe săptămână.
+        if (s.type === 'calitate' && st.hard >= 1 && !(phase === 'peak' && st.hard === 1 && doubleHardDays < 2)) return false;
         if (s.type === 'calitate' && s.sport === 'alergare') {
           if (st.hasForta || st.hasLong) return false;
           const prev = days[d - 1];
@@ -388,6 +431,10 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string): { w
     st.sports.add(s.sport);
     if (s.key) st.hasKey = true;
     if (s.type === 'calitate' && s.sport === 'alergare') st.hasQuality = true;
+    if (s.type === 'calitate') {
+      if (st.hard === 1) doubleHardDays += 1;
+      st.hard += 1;
+    }
     if (s.type === 'lung' && s.sport === 'alergare') st.hasLongRun = true;
     if (s.type === 'lung' || s.type === 'brick') st.hasLong = true;
     if (s.type === 'forta') st.hasForta = true;

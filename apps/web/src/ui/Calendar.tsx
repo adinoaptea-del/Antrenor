@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle } from './common';
 import { useMe } from '../data/store';
+import { phaseWeeks } from '@core/calendar/phases.js';
+import { weekStart } from '@core/util/dates.js';
 import { COLOR_LABEL, SPORT_LABEL, TYPE_LABEL, activitiesOn, colorOf, fmtMinutes, reasonsOf, sessionSteps, workoutsOn } from '../data/model';
 
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
@@ -39,6 +41,14 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
           <Avatar name={me.user.name || 'S'} onClick={() => onOpen('profil')} />
         </div>
       </header>
+
+      <PlanOverview
+        onPick={(iso) => {
+          setYear(Number(iso.slice(0, 4)));
+          setMonth(Number(iso.slice(5, 7)) - 1);
+          setSelected(iso);
+        }}
+      />
 
       <Card>
         <div className="cal-head">
@@ -161,5 +171,79 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
         </div>
       </div>
     </>
+  );
+}
+
+const PHASE_LABEL: Record<string, string> = { evaluare: 'Evaluare', baza1: 'Bază 1', baza2: 'Bază 2', build: 'Build', peak: 'Peak', taper: 'Taper' };
+const PHASE_WHAT: Record<string, string> = {
+  evaluare: 'teste de teren, doar ușor',
+  baza1: 'volum aerob, tempo scurt',
+  baza2: 'volum mai mare, tempo lung, sweet spot',
+  build: 'prag, brick-uri, ieșiri lungi',
+  peak: 'ritm de cursă, intervale Z5',
+  taper: 'volum jos, prospețime',
+};
+
+/** Tot planul până la cursă: fazele, săptămânile și orele pe săptămână (se vede creșterea și descărcările). */
+function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
+  const me = useMe();
+  if (!me.planStart || !me.user.raceDate || me.plan.length === 0) return null;
+  let weeks: ReturnType<typeof phaseWeeks>;
+  try {
+    const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
+    weeks = phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4);
+  } catch {
+    return null;
+  }
+  const hours = new Map<string, { min: number; hard: number }>();
+  for (const w of me.plan) {
+    if (w.status === 'sters' || w.status === 'anulat_sistem') continue;
+    const k = weekStart(w.date);
+    const h = hours.get(k) ?? { min: 0, hard: 0 };
+    h.min += w.plannedMinutes;
+    if (w.type === 'calitate') h.hard += 1;
+    hours.set(k, h);
+  }
+  const max = Math.max(1, ...[...hours.values()].map((h) => h.min));
+  const thisWeek = weekStart(me.today);
+  const phases = [...new Set(weeks.map((w) => w.phase))];
+  return (
+    <Card>
+      <Label>Planul până la cursă</Label>
+      <div className="tiny muted" style={{ marginBottom: 10 }}>
+        {weeks.length} săptămâni, de la {me.planStart.split('-').reverse().join('.')} la cursă. Fiecare bară e o săptămână: înălțimea = ore planificate; barele scurte sunt descărcările.
+      </div>
+      <div className="po-bars" role="img" aria-label="Orele planificate pe săptămână până la cursă">
+        {weeks.map((w) => {
+          const h = hours.get(w.weekStart);
+          return (
+            <button
+              key={w.weekStart}
+              className={`po-bar ph-${w.phase} ${w.weekStart === thisWeek ? 'now' : ''} ${w.weekStart < thisWeek ? 'past' : ''}`}
+              style={{ height: `${Math.max(6, ((h?.min ?? 0) / max) * 100)}%` }}
+              title={`${w.weekStart}: ${fmtMinutes(h?.min ?? 0)}`}
+              onClick={() => onPick(w.weekStart)}
+            />
+          );
+        })}
+      </div>
+      <div className="po-phases">
+        {phases.map((ph) => {
+          const ws = weeks.filter((w) => w.phase === ph);
+          const mins = ws.map((w) => hours.get(w.weekStart)?.min ?? 0).filter((m) => m > 0);
+          const avg = mins.length ? mins.reduce((a, b) => a + b, 0) / mins.length : 0;
+          return (
+            <button key={ph} className="po-row" onClick={() => onPick(ws[0]!.weekStart)}>
+              <span className={`po-dot ph-${ph}`} />
+              <span className="po-n">
+                <b>{PHASE_LABEL[ph]}</b> · {ws.length} săpt. · de la {ws[0]!.weekStart.split('-').reverse().slice(0, 2).join('.')}
+                <small>{PHASE_WHAT[ph]}</small>
+              </span>
+              <span className="po-h">~{fmtMinutes(Math.round(avg))}/săpt.</span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

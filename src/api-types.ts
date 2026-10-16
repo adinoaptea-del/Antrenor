@@ -109,6 +109,8 @@ export interface Me {
   today: string;
   phase: Phase | null;
   budgetHours: number | null;
+  /** Prima zi a planului activ (luni). */
+  planStart?: string | null;
   plan: PlannedWorkout[];
   scores: Record<string, { color: Color; reasons: string[]; final: boolean }>;
   activities: MeActivity[];

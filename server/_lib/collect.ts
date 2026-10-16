@@ -257,7 +257,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const input: CollectorInput = {
     today,
     event,
-    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null },
+    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null },
     wellness,
     activities,
     plan: planRes.workouts,
@@ -327,4 +327,20 @@ function runGoalText(goal: string | null, intake: Record<string, unknown> | null
     a.poateDistanta === true ? `poate distanța acum${now ? `: ${fmtDuration(now * d)} (${fmtPaceSec(now)}/km)` : ''}` : a.poateDistanta === false ? 'nu poate încă distanța' : null,
   ].filter(Boolean);
   return parts.length ? ` · doar alergare · ${parts.join(' · ')}` : ' · doar alergare';
+}
+
+/** Ce a declarat sportivul în chestionar despre nivelul de acum, pe sport (până la primul test). */
+function declaredLevel(intake: Record<string, unknown> | null): string {
+  const e = (intake?.evaluare ?? null) as { inot400?: string | null; bicicletaViteza?: number | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; ritmUsor?: string | null; testEfort?: string | null } | null;
+  if (!e) return '';
+  const parts = [
+    e.inot400 ? `400 m înot ${e.inot400}` : null,
+    e.bicicletaViteza ? `bicicletă ${e.bicicletaViteza} km/h medie` : null,
+    e.ftp ? `FTP declarat ${e.ftp} W` : null,
+    e.ritmUsor ? `alergare ușoară ${e.ritmUsor}/km` : null,
+    e.alergare5k ? `5 km în ${e.alergare5k}` : null,
+    e.alergare10k ? `10 km în ${e.alergare10k}` : null,
+    e.testEfort && e.testEfort !== 'nu' ? `test de efort: ${e.testEfort}` : null,
+  ].filter(Boolean);
+  return parts.length ? ` · nivel declarat: ${parts.join(', ')}` : '';
 }
