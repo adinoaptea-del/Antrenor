@@ -13,6 +13,10 @@ function first(names, optional = false) {
     const v = process.env[n2];
     if (v) return v.trim();
   }
+  for (const n2 of names) {
+    const k = Object.keys(process.env).find((key) => key.endsWith(`_${n2}`) && process.env[key]);
+    if (k) return process.env[k].trim();
+  }
   if (optional) return "";
   throw new Error(`lipse\u0219te variabila de mediu ${names[0]}`);
 }

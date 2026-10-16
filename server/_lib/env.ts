@@ -14,6 +14,11 @@ function first(names: string[], optional = false): string {
     const v = process.env[n];
     if (v) return v.trim();
   }
+  // Integrarea Vercel ↔ Supabase poate pune un prefix (ex. STORAGE_SUPABASE_URL): căutăm și după sufix.
+  for (const n of names) {
+    const k = Object.keys(process.env).find((key) => key.endsWith(`_${n}`) && process.env[key]);
+    if (k) return process.env[k]!.trim();
+  }
   if (optional) return '';
   throw new Error(`lipsește variabila de mediu ${names[0]}`);
 }
