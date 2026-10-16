@@ -182,7 +182,7 @@ export class ApiError extends Error {
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const s = await getSession();
   if (!s) throw new ApiError(401, 'neautentificat');
-  const res = await fetchWithTimeout(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, ...(init.headers ?? {}) } }, path.includes('analize-citire') || path.includes('/agents/') ? 120_000 : 30_000);
+  const res = await fetchWithTimeout(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, ...(init.headers ?? {}) } }, path.includes('-citire') ? 280_000 : path.includes('/agents/') ? 120_000 : 30_000);
   const text = await res.text();
   let body: unknown = null;
   try {

@@ -803,10 +803,10 @@ async function loadForms(userId, today) {
 async function loadZones(userId) {
   const z = await one("zones", { user_id: `eq.${userId}` });
   if (!z || z.source === "provizoriu") return null;
-  const five = (a) => a && a.length === 5 ? a : null;
+  const five2 = (a) => a && a.length === 5 ? a : null;
   return {
-    alergare: { fc_z1_z5: five(z.run_hr_zones), pace_prag: z.run_threshold_pace_sec_km ? `${Math.floor(z.run_threshold_pace_sec_km / 60)}:${String(z.run_threshold_pace_sec_km % 60).padStart(2, "0")}` : null },
-    bicicleta: { ftp: z.bike_ftp_w, fc_z1_z5: five(z.bike_hr_zones) },
+    alergare: { fc_z1_z5: five2(z.run_hr_zones), pace_prag: z.run_threshold_pace_sec_km ? `${Math.floor(z.run_threshold_pace_sec_km / 60)}:${String(z.run_threshold_pace_sec_km % 60).padStart(2, "0")}` : null },
+    bicicleta: { ftp: z.bike_ftp_w, fc_z1_z5: five2(z.bike_hr_zones) },
     inot: { css: z.swim_css_sec_100m },
     fcmax_test: z.hr_max_test,
     data_test: z.tested_at
@@ -2523,15 +2523,96 @@ function redirect(res, to) {
   res.end();
 }
 
+// server/_lib/test-extract.ts
+var SYSTEM = `Transcrii un raport de test de efort (CPET / ergospirometrie, test de lactat sau test de teren). Reguli:
+- Copiezi exact ce scrie; nu calculezi, nu estimezi, nu completezi din memorie. Ce nu apare \xEEn raport = null.
+- tip: "cpet" (ergospirometrie, VO2, praguri ventilatorii VT1/VT2, AT/RCP), "lactat" (praguri de lactat LT1/LT2), "teren", altfel "altul".
+- ergometru: "banda" (alergare / treadmill), "bicicleta" (cicloergometru), altfel "altul".
+- prag1_fc = FC la primul prag (VT1 / AT / LT1 / prag aerob); prag2_fc = FC la al doilea prag (VT2 / RCP / LT2 / prag anaerob).
+- prag2_ritm_min_km = ritmul la al doilea prag, format "m:ss" pe km (dac\u0103 raportul d\u0103 viteza \xEEn km/h, o copiezi doar dac\u0103 e scris\u0103 \u0219i ca ritm; altfel null).
+- prag2_putere_w = puterea la al doilea prag; ftp_w doar dac\u0103 raportul scrie explicit FTP.
+- zone_alergare_fc_max / zone_bicicleta_fc_max: DOAR dac\u0103 raportul are un tabel de zone de antrenament pe FC: limita de SUS a fiec\u0103rei zone, Z1..Z5 (dac\u0103 tabelul are 3 sau 6-7 zone, nu le adaptezi: la\u0219i toate null). Zonele de pe band\u0103 merg la alergare, cele de pe biciclet\u0103 la biciclet\u0103.
+- data_testului \xEEn format YYYY-MM-DD; clinica = numele clinicii sau al laboratorului.
+- lizibil = false dac\u0103 documentul nu e un raport de test de efort sau nu se poate citi.`;
+var ZONES = { type: "array", items: { type: ["number", "null"] } };
+var SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["lizibil", "tip", "data_testului", "clinica", "ergometru", "fc_max", "vo2max_ml_kg_min", "prag1_fc", "prag2_fc", "prag2_ritm_min_km", "prag2_putere_w", "ftp_w", "zone_alergare_fc_max", "zone_bicicleta_fc_max"],
+  properties: {
+    lizibil: { type: "boolean" },
+    tip: { type: "string", enum: ["cpet", "lactat", "teren", "altul"] },
+    data_testului: { type: ["string", "null"] },
+    clinica: { type: ["string", "null"] },
+    ergometru: { type: ["string", "null"] },
+    fc_max: { type: ["number", "null"] },
+    vo2max_ml_kg_min: { type: ["number", "null"] },
+    prag1_fc: { type: ["number", "null"] },
+    prag2_fc: { type: ["number", "null"] },
+    prag2_ritm_min_km: { type: ["string", "null"] },
+    prag2_putere_w: { type: ["number", "null"] },
+    ftp_w: { type: ["number", "null"] },
+    zone_alergare_fc_max: ZONES,
+    zone_bicicleta_fc_max: ZONES
+  }
+};
+var full = (z) => z.length === 5 && z.every((v) => v != null);
+var five = (z) => Array.isArray(z) && z.length === 5 ? z.map((v) => typeof v === "number" ? v : null) : [null, null, null, null, null];
+function toTestForm(r2) {
+  const note = [];
+  const fromThresholds = [null, r2.prag1_fc, null, r2.prag2_fc, r2.fc_max];
+  const hasThr = r2.prag1_fc != null || r2.prag2_fc != null;
+  let run = [null, null, null, null, null];
+  let bike = [null, null, null, null, null];
+  if (full(five(r2.zone_alergare_fc_max))) run = five(r2.zone_alergare_fc_max);
+  if (full(five(r2.zone_bicicleta_fc_max))) bike = five(r2.zone_bicicleta_fc_max);
+  if (!full(run) && !full(bike) && hasThr) {
+    if (r2.ergometru === "bicicleta") bike = fromThresholds;
+    else run = fromThresholds;
+    note.push("raportul nu are tabel de zone: am pus pragurile (Z2 sus = primul prag, Z4 sus = al doilea prag, Z5 = FC max); completeaz\u0103 Z1 \u0219i Z3 din raport, altfel zonele de FC nu intr\u0103 \xEEn plan (doar FC max \u0219i ritmul de prag)");
+  }
+  if (r2.ergometru === "banda" && !full(bike)) note.push("testul a fost pe band\u0103: zonele de biciclet\u0103 nu se copiaz\u0103 din alergare (FC pe biciclet\u0103 e mai mic\u0103)");
+  if (r2.ergometru === "bicicleta" && !full(run)) note.push("testul a fost pe biciclet\u0103: zonele de alergare nu se copiaz\u0103 din biciclet\u0103");
+  if (r2.vo2max_ml_kg_min != null) note.push(`VO2max ${r2.vo2max_ml_kg_min} ml/kg/min`);
+  const date = r2.data_testului && /^\d{4}-\d{2}-\d{2}$/.test(r2.data_testului) ? r2.data_testului : null;
+  if (!["banda", "bicicleta", "altul"].includes(String(r2.ergometru))) r2.ergometru = null;
+  const pace = r2.prag2_ritm_min_km && /^\d{1,2}:\d{2}$/.test(r2.prag2_ritm_min_km) ? r2.prag2_ritm_min_km : null;
+  return { reading: r2, form: { tip: r2.tip, data: date, fcmax: r2.fc_max, alergare_z: run, pace_prag: pace, ftp: r2.ftp_w, bicicleta_z: bike }, note };
+}
+async function readTest(base64, mediaType) {
+  const block = mediaType === "application/pdf" ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } } : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": ENV.modelKey(), "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: ENV.modelSpecialist(),
+      max_tokens: 16e3,
+      system: SYSTEM,
+      messages: [{ role: "user", content: [block, { type: "text", text: "Transcrie raportul \xEEn JSON-ul cerut." }] }],
+      output_config: { format: { type: "json_schema", schema: SCHEMA } }
+    })
+  });
+  if (!res.ok) throw new Error(`citirea raportului a e\u0219uat (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  const text = data.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+  if (data.stop_reason === "max_tokens") throw new Error("raportul e prea lung pentru o singur\u0103 citire; \xEEncarc\u0103 doar paginile cu pragurile \u0219i zonele");
+  if (!text) throw new Error("modelul nu a \xEEntors nimic");
+  try {
+    return toTestForm(JSON.parse(text));
+  } catch {
+    throw new Error("citirea raportului a ie\u0219it incomplet\u0103; \xEEncearc\u0103 din nou sau \xEEncarc\u0103 o poz\u0103 mai clar\u0103");
+  }
+}
+
 // server/_lib/labs-extract.ts
-var SYSTEM = `Transcrii un buletin de analize medicale. Reguli:
+var SYSTEM2 = `Transcrii un buletin de analize medicale. Reguli:
 - Copiezi exact ce scrie: numele analizei, valoarea, unitatea, intervalul de referin\u021B\u0103 al laboratorului. Nu calculezi, nu converte\u0219ti, nu interpretezi, nu completezi din memorie.
 - valoare = num\u0103rul rezultatului (punct zecimal); dac\u0103 rezultatul nu e num\u0103r (ex. "negativ", "<0,5"), valoare = null \u0219i pui textul \xEEn valoare_text.
 - ref_min / ref_max = capetele intervalului de referin\u021B\u0103 de pe buletin; ce nu exist\u0103 e null; textul intervalului \xEEl copiezi \xEEn ref_text.
 - cod: "feritina", "vitamina_d" (25-OH vitamina D), "hemoglobina", "ck" (creatinkinaza / CK / CPK total), "crp" (proteina C reactiv\u0103, inclusiv hs-CRP); orice altceva = "altul".
 - data_recoltarii \xEEn format YYYY-MM-DD dac\u0103 apare; altfel null. laborator = numele laboratorului, dac\u0103 apare.
 - lizibil = false dac\u0103 documentul nu e un buletin de analize sau nu se poate citi.`;
-var SCHEMA = {
+var SCHEMA2 = {
   type: "object",
   additionalProperties: false,
   required: ["lizibil", "data_recoltarii", "laborator", "valori"],
@@ -2614,9 +2695,9 @@ async function readLabs(base64, mediaType) {
     body: JSON.stringify({
       model: ENV.modelSpecialist(),
       max_tokens: 16e3,
-      system: SYSTEM,
+      system: SYSTEM2,
       messages: [{ role: "user", content: [block, { type: "text", text: "Transcrie buletinul \xEEn JSON-ul cerut." }] }],
-      output_config: { format: { type: "json_schema", schema: SCHEMA } }
+      output_config: { format: { type: "json_schema", schema: SCHEMA2 } }
     })
   });
   if (!res.ok) throw new Error(`citirea analizelor a e\u0219uat (${res.status}): ${(await res.text()).slice(0, 200)}`);
@@ -3195,6 +3276,14 @@ async function handler8(req, res) {
       if (!file) throw new HttpError(400, "lipse\u0219te fi\u0219ierul");
       if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mediaType)) throw new HttpError(400, "doar PDF sau poz\u0103 (JPG, PNG)");
       json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
+      return;
+    }
+    if (kind === "teste-citire") {
+      const file = typeof body.file === "string" ? body.file : "";
+      const mediaType = typeof body.mediaType === "string" ? body.mediaType : "";
+      if (!file) throw new HttpError(400, "lipse\u0219te fi\u0219ierul");
+      if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mediaType)) throw new HttpError(400, "doar PDF sau poz\u0103 (JPG, PNG)");
+      json(res, 200, { ok: true, citire: await readTest(file, mediaType) });
       return;
     }
     if (kind === "admin-chei") {

@@ -84,7 +84,7 @@ const EMPTY_TESTS: TestsForm = { data: '', tip: 'teren', fcmax: null, alergare_z
 
 export function Tests({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
   const me = useMe();
-  const { submitForm } = useData();
+  const { submitForm, local } = useData();
   const [t, setT] = useState<TestsForm>(me.baseline.tests ?? { ...EMPTY_TESTS, data: me.today });
   const [busy, setBusy] = useState(false);
   const setZ = (k: 'alergare_z' | 'bicicleta_z', i: number, v: number | null) => {
@@ -108,6 +108,7 @@ export function Tests({ onBack, onDone }: { onBack: () => void; onDone: () => vo
         <p className="hint" style={{ marginTop: 0 }}>
           Zonele vin dintr-un test, nu din estimările ceasului: test de efort cardiopulmonar (CPET), test de lactat sau test de teren. Până atunci planul rămâne pe Z1–Z2 și pe testul vorbirii.
         </p>
+        {!local && <TestUpload current={t} onRead={(x) => setT(x)} />}
         <Q title="Ce test?">
           <Chips value={t.tip} options={[{ id: 'cpet', label: 'CPET', sub: 'cu praguri ventilatorii' }, { id: 'lactat', label: 'Lactat' }, { id: 'teren', label: 'Test de teren', sub: '30 min alergare / 20 min bicicletă' }, { id: 'altul', label: 'Altul' }]} onChange={(tip) => setT({ ...t, tip })} />
         </Q>
@@ -328,6 +329,56 @@ function LabsUpload({ onRead, current }: { onRead: (l: LabsForm) => void; curren
       <p className="hint">PDF sau poză. Claude transcrie valorile exact cum sunt pe buletin, cu intervalele laboratorului; nu salvează nimic până nu verifici tu.</p>
       <label className="btn dark" style={{ textAlign: 'center' }}>
         {state === 'busy' ? 'Citesc buletinul…' : 'Alege PDF sau poză'}
+        <input type="file" accept="application/pdf,image/*" hidden disabled={state === 'busy'} onChange={(e) => void pick(e.target.files?.[0])} />
+      </label>
+      {msg && (
+        <p className="hint" style={state === 'err' ? { color: 'var(--c-rosu)' } : undefined}>
+          {msg}
+        </p>
+      )}
+    </section>
+  );
+}
+
+type TestRead = { reading: { lizibil: boolean; clinica: string | null }; form: Omit<TestsForm, 'data' | 'css'> & { data: string | null }; note: string[] };
+
+function TestUpload({ onRead, current }: { onRead: (t: TestsForm) => void; current: TestsForm }) {
+  const { submitForm } = useData();
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'err'>('idle');
+  const [msg, setMsg] = useState('');
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setState('busy');
+    setMsg('');
+    try {
+      const r = await submitForm('teste-citire', await fileToPayload(f));
+      const c = r.data?.citire as TestRead | undefined;
+      if (!c || !c.reading.lizibil) throw new Error('nu pare un raport de test de efort sau nu se citește; încearcă o poză mai clară');
+      const keep = <T,>(v: T | null, old: T | null) => (v == null ? old : v);
+      const zones = (z: TestsForm['alergare_z'], old: TestsForm['alergare_z']) => (z.some((v) => v != null) ? z : old);
+      onRead({
+        ...current,
+        tip: c.form.tip,
+        data: c.form.data ?? current.data,
+        fcmax: keep(c.form.fcmax, current.fcmax),
+        alergare_z: zones(c.form.alergare_z, current.alergare_z),
+        pace_prag: keep(c.form.pace_prag, current.pace_prag),
+        ftp: keep(c.form.ftp, current.ftp),
+        bicicleta_z: zones(c.form.bicicleta_z, current.bicicleta_z),
+      });
+      setState('done');
+      setMsg(`Raport citit${c.reading.clinica ? ` · ${c.reading.clinica}` : ''}. Verifică valorile cu raportul, apoi Salvează.${c.note.length ? ` ${c.note.join('; ')}.` : ''}`);
+    } catch (e) {
+      setState('err');
+      setMsg(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <section className="q">
+      <h3>Încarcă raportul clinicii</h3>
+      <p className="hint">PDF sau poză a raportului de test de efort (CPET, lactat). Claude copiază FC max, pragurile și zonele exact cum sunt în raport; nu salvează nimic până nu verifici tu.</p>
+      <label className="btn dark" style={{ textAlign: 'center' }}>
+        {state === 'busy' ? 'Citesc raportul…' : 'Alege PDF sau poză'}
         <input type="file" accept="application/pdf,image/*" hidden disabled={state === 'busy'} onChange={(e) => void pick(e.target.files?.[0])} />
       </label>
       {msg && (

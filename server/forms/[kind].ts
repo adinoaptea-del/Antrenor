@@ -2,6 +2,7 @@ import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/a
 import { q, type Req, type Res } from '../_lib/http.js';
 import { insert, one, remove, update, upsert } from '../_lib/db.js';
 import { geocode } from '../_lib/weather.js';
+import { readTest } from '../_lib/test-extract.js';
 import { readLabs } from '../_lib/labs-extract.js';
 import { saveSettings } from '../_lib/settings.js';
 import { newAppleToken } from '../webhooks/apple.js';
@@ -112,6 +113,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!file) throw new HttpError(400, 'lipsește fișierul');
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
       json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
+      return;
+    }
+    if (kind === 'teste-citire') {
+      // Doar citire: raportul clinicii; sportivul verifică și salvează prin „teste”.
+      const file = typeof body.file === 'string' ? body.file : '';
+      const mediaType = typeof body.mediaType === 'string' ? body.mediaType : '';
+      if (!file) throw new HttpError(400, 'lipsește fișierul');
+      if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
+      json(res, 200, { ok: true, citire: await readTest(file, mediaType) });
       return;
     }
     if (kind === 'admin-chei') {
