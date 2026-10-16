@@ -1,7 +1,7 @@
 // Starea aplicației: sesiunea, obiectul `Me` de la server, reîncărcarea după formulare și sincronizare.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Me } from '@core/api-types.js';
-import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, runSetup, server, signOut } from './api';
+import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, runSetup, server, setBootStage, signOut } from './api';
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
@@ -39,6 +39,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     if (!SERVER?.ready) {
       try {
+        setBootStage('verific serverul');
         const c = await loadServerConfig();
         if (!c.configured) {
           setError(c.reason ?? null);
@@ -49,14 +50,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setStatus('setup');
           return;
         }
-        if (c.upgrade) await runSetup().catch(() => undefined);
+        // Actualizarea bazei rulează în fundal; nu ține aplicația pe loc.
+        if (c.upgrade) void runSetup().catch(() => undefined);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setStatus('unconfigured');
         return;
       }
     }
-    const s = await getSession();
+    setBootStage('verific contul');
+    const s = await getSession().catch(() => null);
     if (!s) {
       setStatus('anon');
       setMe(null);
@@ -64,6 +67,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     setStatus((st) => (st === 'ready' ? st : 'loading'));
     try {
+      setBootStage('citesc datele contului');
       setMe(await server.me());
       setStatus('ready');
       setError(null);

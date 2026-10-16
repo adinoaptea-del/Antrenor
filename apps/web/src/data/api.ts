@@ -29,8 +29,28 @@ export interface ServerConfig {
 export let SERVER: ServerConfig | null = null;
 
 /** Cheile Supabase vin de la server la pornire, nu din build: un singur deploy, fără variabile VITE_. */
+/** Etapa pornirii, afișată pe ecranul de încărcare ca să știm unde s-a oprit. */
+export let BOOT_STAGE = 'pornesc';
+export function setBootStage(s: string): void {
+  BOOT_STAGE = s;
+}
+
+/** Nicio cerere nu atârnă la nesfârșit: după timeout apare o eroare cu „Încearcă din nou”. */
+export async function fetchWithTimeout(input: string, init: RequestInit = {}, ms = 30_000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (ctrl.signal.aborted) throw new ApiError(0, `serverul nu a răspuns în ${Math.round(ms / 1000)} s (${input.split('?')[0]})`);
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function loadServerConfig(): Promise<ServerConfig> {
-  const res = await fetch('/api/config', { headers: { accept: 'application/json' } });
+  const res = await fetchWithTimeout('/api/config', { headers: { accept: 'application/json' } }, 20_000);
   if (!res.ok) throw new Error(`serverul nu răspunde (${res.status})`);
   const c = (await res.json()) as ServerConfig;
   SERVER = c;
@@ -94,11 +114,11 @@ export function captureSessionFromUrl(): boolean {
 }
 
 async function refreshSession(s: Session): Promise<Session | null> {
-  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+  const res = await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
     method: 'POST',
     headers: { ...keyHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ refresh_token: s.refresh_token }),
-  });
+  }, 15_000);
   if (!res.ok) {
     writeSession(null);
     return null;
@@ -162,9 +182,14 @@ export class ApiError extends Error {
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const s = await getSession();
   if (!s) throw new ApiError(401, 'neautentificat');
-  const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, ...(init.headers ?? {}) } });
+  const res = await fetchWithTimeout(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, ...(init.headers ?? {}) } }, path.includes('analize-citire') || path.includes('/agents/') ? 120_000 : 30_000);
   const text = await res.text();
-  const body = text ? (JSON.parse(text) as unknown) : null;
+  let body: unknown = null;
+  try {
+    body = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    throw new ApiError(res.status, `serverul a răspuns ciudat (${res.status}): ${text.slice(0, 80)}`);
+  }
   if (!res.ok) throw new ApiError(res.status, (body as { error?: string } | null)?.error ?? `eroare ${res.status}`);
   return body as T;
 }

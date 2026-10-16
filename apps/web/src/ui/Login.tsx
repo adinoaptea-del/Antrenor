@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { SERVER, runSetup, signInWithPassword, signUp } from '../data/api';
+import { useEffect, useState } from 'react';
+import { BOOT_STAGE, SERVER, hardReload, runSetup, signInWithPassword, signUp } from '../data/api';
 import { useData } from '../data/store';
 import { Icons } from './common';
 
@@ -130,12 +130,28 @@ export function Setup() {
 }
 
 export function Loading({ text = 'Citesc datele…' }: { text?: string }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 10_000);
+    return () => clearTimeout(t);
+  }, []);
   return (
-    <div className="login" style={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
+    <div className="login" style={{ display: 'grid', placeItems: 'center', minHeight: '60vh', gap: 14 }}>
       <div className="sync busy" style={{ cursor: 'default' }}>
         <span className="circ-mini">{Icons.refresh}</span>
         {text}
       </div>
+      {slow && (
+        <div className="q" style={{ textAlign: 'center' }}>
+          <p className="hint">Durează mai mult decât trebuie. Etapa: {BOOT_STAGE}.</p>
+          <button className="btn" onClick={() => location.reload()}>
+            Încearcă din nou
+          </button>
+          <button className="btn dark" onClick={() => void hardReload()}>
+            Repornește aplicația
+          </button>
+        </div>
+      )}
     </div>
   );
 }
