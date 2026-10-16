@@ -66,17 +66,22 @@ export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch)
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: req.model,
-          max_tokens: req.maxTokens ?? 1500,
+          // Plafon larg: modelul poate gândi înainte de răspuns, iar gândirea consumă din max_tokens.
+          max_tokens: Math.max(req.maxTokens ?? 0, 16000),
           system: req.system,
           messages: [{ role: 'user', content: req.user }],
           output_config: { format: { type: 'json_schema', schema: req.schema } },
         }),
       });
       if (!res.ok) throw new Error(`model ${res.status}: ${await res.text()}`);
-      const data = (await res.json()) as { content: { type: string; text?: string }[] };
-      const text = data.content.find((b) => b.type === 'text')?.text;
-      if (!text) throw new Error('model: răspuns fără text');
-      return JSON.parse(text) as T;
+      const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+      const text = data.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+      if (!text) throw new Error(`model: răspuns fără text (${data.stop_reason ?? 'necunoscut'})`);
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new Error(`model: răspuns incomplet (${data.stop_reason ?? 'necunoscut'})`);
+      }
     },
   };
 }

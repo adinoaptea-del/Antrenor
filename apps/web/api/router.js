@@ -1158,7 +1158,8 @@ function anthropicClient(apiKey, fetchImpl = fetch) {
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
           model: req.model,
-          max_tokens: req.maxTokens ?? 1500,
+          // Plafon larg: modelul poate gândi înainte de răspuns, iar gândirea consumă din max_tokens.
+          max_tokens: Math.max(req.maxTokens ?? 0, 16e3),
           system: req.system,
           messages: [{ role: "user", content: req.user }],
           output_config: { format: { type: "json_schema", schema: req.schema } }
@@ -1166,9 +1167,13 @@ function anthropicClient(apiKey, fetchImpl = fetch) {
       });
       if (!res.ok) throw new Error(`model ${res.status}: ${await res.text()}`);
       const data = await res.json();
-      const text = data.content.find((b) => b.type === "text")?.text;
-      if (!text) throw new Error("model: r\u0103spuns f\u0103r\u0103 text");
-      return JSON.parse(text);
+      const text = data.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+      if (!text) throw new Error(`model: r\u0103spuns f\u0103r\u0103 text (${data.stop_reason ?? "necunoscut"})`);
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`model: r\u0103spuns incomplet (${data.stop_reason ?? "necunoscut"})`);
+      }
     }
   };
 }
