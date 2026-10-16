@@ -1,3 +1,4 @@
+import { classifyOther, type OtherActivity } from '../../src/collector/other.js';
 // Apple Watch prin aplicația iPhone „Health Auto Export” (REST API automation, format JSON).
 // Luăm somnul, HRV-ul, pulsul de repaus și antrenamentele (inclusiv cele de pe Garmin, trimise de Garmin Connect în Apple Health).
 // Dublurile cu alte surse (Whoop, Strava) le scoate dedupeActivities.
@@ -128,6 +129,27 @@ export function parseHealthWorkouts(body: unknown): AppleWorkout[] {
       avg_pace_min_km: sport === 'alergare' && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
       name,
     });
+  }
+  return out;
+}
+
+/** Recuperarea și mișcarea în plus din Apple Health (yoga, stretching, plimbări, alte sporturi). */
+export function parseHealthOther(body: unknown): OtherActivity[] {
+  const list = ((body as { data?: { workouts?: Record<string, unknown>[] } })?.data?.workouts ?? []) as Record<string, unknown>[];
+  const out: OtherActivity[] = [];
+  for (const w of list) {
+    const name = String(w.name ?? '');
+    const start = typeof w.start === 'string' ? w.start : null;
+    if (!start || sportOf(name)) continue;
+    const c = classifyOther(name);
+    if (!c) continue;
+    const sec = num(w.duration);
+    if (sec == null || sec < 300) continue;
+    const hr = (w.heartRate ?? {}) as { avg?: unknown; max?: unknown };
+    const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
+    const max = qty(w.maxHeartRate) ?? qty(hr.max);
+    const id = typeof w.id === 'string' ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, '');
+    out.push({ id: `apple-o-${id}`, source: 'apple', externalId: id, date: start.slice(0, 10), startLocal: hm(start), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
   }
   return out;
 }

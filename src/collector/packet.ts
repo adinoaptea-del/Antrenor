@@ -95,6 +95,8 @@ export interface Packet {
   /** Creșterea controlată (+10% volum săptămâna viitoare): eligibil doar cu 7 zile verzi la rând, încărcare sub 1,3 (total și pe fiecare sport), aderență >= 80% și fără creștere în ultimele 13 zile. */
   progres: { zile_verzi_la_rand: number | null; ultima_crestere: string | null; eligibil: boolean; motiv: string };
   totaluri_de_la_start: CollectorInput['totals'] | null;
+  /** Recuperarea (saună, baie rece, yoga, stretching, masaj) și mișcarea în plus din ultimele 7 zile, de pe brățări. */
+  alte_activitati: { recuperare_7z_min: number; activ_extra_7z_min: number; lista: { data: string; ora: string | null; tip: 'recuperare' | 'activ'; nume: string; minute: number; fc_medie: number | null }[] };
   aderenta_14z: { planificate: number; facute: number; sarite: { data: string; sport: Sport; cheie: boolean }[] } | null;
   /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
   verdict_fiziolog: 'verde' | 'galben' | 'rosu' | 'stop' | null;
@@ -529,6 +531,16 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
     vreme: input.weather ?? null,
     progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
+    alte_activitati: (() => {
+      const recent = (input.others ?? []).filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) <= 7);
+      return {
+        recuperare_7z_min: recent.filter((o) => o.kind === 'recuperare').reduce((n, o) => n + o.minutes, 0),
+        activ_extra_7z_min: recent.filter((o) => o.kind === 'activ').reduce((n, o) => n + o.minutes, 0),
+        lista: recent
+          .sort((a, b) => diffDays(a.date, b.date) || (b.startLocal ?? '').localeCompare(a.startLocal ?? ''))
+          .map((o) => ({ data: o.date, ora: o.startLocal, tip: o.kind, nume: o.name, minute: o.minutes, fc_medie: o.avgHr })),
+      };
+    })(),
     totaluri_de_la_start: input.totals ?? null,
     aderenta_14z: aderenta,
     verdict_fiziolog: null,

@@ -3,6 +3,7 @@ import { select, one } from './db.js';
 import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
 import { addDays, labsExpired } from '../../src/util/dates.js';
+import type { OtherActivity } from '../../src/collector/other.js';
 import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
@@ -254,7 +255,9 @@ export async function collect(userId: string, today: string, event: CollectorInp
     loadHistory(userId, today),
     planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
   ]);
+  const others = await loadOthers(userId, addDays(today, -8));
   const input: CollectorInput = {
+    others,
     today,
     event,
     athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null },
@@ -343,4 +346,9 @@ function declaredLevel(intake: Record<string, unknown> | null): string {
     e.testEfort && e.testEfort !== 'nu' ? `test de efort: ${e.testEfort}` : null,
   ].filter(Boolean);
   return parts.length ? ` · nivel declarat: ${parts.join(', ')}` : '';
+}
+
+export async function loadOthers(userId: string, from: string): Promise<OtherActivity[]> {
+  const rows = await select<{ id: string; source: string; external_id: string; date: string; start_local: string | null; kind: 'recuperare' | 'activ'; name: string; minutes: number; avg_hr: number | null; max_hr: number | null }>('other_activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 200 }).catch(() => []);
+  return rows.map((r) => ({ id: r.id, source: r.source, externalId: r.external_id, date: r.date, startLocal: r.start_local, kind: r.kind, name: r.name, minutes: r.minutes, avgHr: r.avg_hr, maxHr: r.max_hr }));
 }

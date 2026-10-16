@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { fail, HttpError, json, readJson } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
 import { one, upsert } from '../_lib/db.js';
-import { parseHealthExport, parseHealthWorkouts } from '../_lib/apple.js';
+import { parseHealthExport, parseHealthOther, parseHealthWorkouts } from '../_lib/apple.js';
+import { saveOthers } from '../_lib/sync.js';
 
 /** POST /api/webhooks/apple?t=<token personal> — trimis de Health Auto Export de pe iPhone-ul sportivului. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -15,6 +16,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const body = await readJson(req);
     const days = parseHealthExport(body);
     const workouts = parseHealthWorkouts(body);
+    await saveOthers(user.id, parseHealthOther(body));
     if (days.length) {
       await upsert(
         'wellness_daily',

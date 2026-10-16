@@ -1,3 +1,4 @@
+import type { OtherActivity } from './other.js';
 import type { LabsComparison } from './labs-compare.js';
 // Tipurile colectorului: ce intră de la brățări și formulare, în formă normalizată, independentă de producător.
 // Adaptorii (whoop.ts, strava.ts, oura.ts) produc aceste structuri; packet.ts le transformă în pachetul agenților.
@@ -103,6 +104,8 @@ export interface CollectorInput {
   morning?: MorningForm | null;
   evenings: EveningForm[];
   labs?: LabsInput | null;
+  /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */
+  others?: OtherActivity[];
   nutrition?: NutritionDay[];
   load?: LoadInput | null;
   aviz: { cardiolog: 'da' | 'nu' | string; intensitate_permisa: IntensityAllowed };

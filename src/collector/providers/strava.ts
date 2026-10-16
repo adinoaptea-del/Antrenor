@@ -1,4 +1,5 @@
 // Strava API v3: calea pentru activitățile de pe Garmin cât timp programul de developeri Garmin e suspendat
+import { classifyOther, type OtherActivity } from '../other.js';
 // (Garmin → Strava → aplicație). Scope: activity:read_all. Aplicațiile noi pot conecta un singur sportiv
 // (dezvoltatorul) până la o cerere de mărire a limitei. Rate limit: 200 cereri / 15 min, 2 000 / zi.
 // Documentație: https://developers.strava.com/docs/reference/
@@ -65,6 +66,15 @@ export async function listActivities(token: string, afterEpochSec: number, befor
     if (rows.length < 100) break;
   }
   return out;
+}
+
+export function normalizeStravaOther(a: StravaActivity): OtherActivity | null {
+  if (STRAVA_SPORT[a.sport_type]) return null;
+  const c = classifyOther(a.sport_type);
+  if (!c) return null;
+  const minutes = Math.round((a.elapsed_time ?? a.moving_time) / 60);
+  if (minutes < 5) return null;
+  return { id: `strava-o-${a.id}`, source: 'strava', externalId: String(a.id), date: a.start_date_local.slice(0, 10), startLocal: a.start_date_local.slice(11, 16), kind: c.kind, name: c.name, minutes, avgHr: a.average_heartrate != null ? Math.round(a.average_heartrate) : null, maxHr: a.max_heartrate != null ? Math.round(a.max_heartrate) : null };
 }
 
 export function normalizeStravaActivity(a: StravaActivity): SourceActivity | null {

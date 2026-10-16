@@ -59,6 +59,59 @@ function Shell() {
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
   const hiddenAt = useRef<number | null>(null);
+  // Gestul de „înapoi” ca pe iPhone: tragi din marginea stângă spre dreapta.
+  const swipeBack = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    let sx = 0;
+    let sy = 0;
+    let active = false;
+    let el: HTMLElement | null = null;
+    const reset = (animate: boolean) => {
+      if (!el) return;
+      el.style.transition = animate ? 'transform 0.2s ease' : '';
+      el.style.transform = '';
+    };
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0];
+      active = !!t && t.clientX <= 28 && !!swipeBack.current;
+      if (!active || !t) return;
+      sx = t.clientX;
+      sy = t.clientY;
+      el = document.querySelector('.app');
+      if (el) el.style.transition = '';
+    };
+    const move = (e: TouchEvent) => {
+      if (!active || !el) return;
+      const t = e.touches[0];
+      if (!t) return;
+      const dx = t.clientX - sx;
+      const dy = Math.abs(t.clientY - sy);
+      if (dy > 40 && dy > dx) {
+        active = false;
+        reset(true);
+        return;
+      }
+      if (dx > 0) el.style.transform = `translateX(${Math.min(dx, window.innerWidth) * 0.6}px)`;
+    };
+    const end = (e: TouchEvent) => {
+      if (!active) return;
+      active = false;
+      const t = e.changedTouches[0];
+      const dx = t ? t.clientX - sx : 0;
+      reset(true);
+      if (dx > 80) swipeBack.current?.();
+    };
+    window.addEventListener('touchstart', start, { passive: true });
+    window.addEventListener('touchmove', move, { passive: true });
+    window.addEventListener('touchend', end, { passive: true });
+    window.addEventListener('touchcancel', end, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', start);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', end);
+      window.removeEventListener('touchcancel', end);
+    };
+  }, []);
 
   useEffect(() => {
     const onHash = () => setScreen(readScreen());
@@ -105,6 +158,15 @@ function Shell() {
   };
   const back = () => go(lastMain);
   const isMain = MAIN.some((m) => m.id === screen);
+  // Unde duce gestul de „înapoi” de pe fiecare ecran (pe Acasă nu face nimic).
+  swipeBack.current =
+    screen === 'acasa' || countdown || memento || labsGate || tour
+      ? null
+      : screen === 'prieteni' || screen === 'intake'
+        ? () => go('profil')
+        : isMain || lastMain === screen
+          ? () => go('acasa')
+          : back;
   const isForm = ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'].includes(screen);
 
   // Primul pas: fără chestionar de intrare nu există plan. Intri direct în el.

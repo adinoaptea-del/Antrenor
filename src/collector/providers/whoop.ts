@@ -1,4 +1,5 @@
 // WHOOP Developer API v2 (iulie 2025). OAuth 2.0; accesul „development” acoperă 10 membri fără aprobare.
+import { classifyOther, type OtherActivity } from '../other.js';
 // Documentație: https://developer.whoop.com/docs/developing/getting-started/ · https://developer.whoop.com/api/
 // Verifică la implementare: numele exacte ale header-elor de semnătură pentru webhook și câmpurile v2.
 
@@ -150,6 +151,16 @@ export function normalizeWhoopWorkout(w: WhoopWorkout): SourceActivity | null {
     timeInZonesMin: null,
     name: z ? `whoop ${w.sport_name}; z1–z5 (min): ${[z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 60_000)).join('/')}` : `whoop ${w.sport_name}`,
   };
+}
+
+/** Recuperarea și mișcarea în plus (saună, yoga, plimbări, alte sporturi) înregistrate în WHOOP. */
+export function normalizeWhoopOther(w: WhoopWorkout): OtherActivity | null {
+  if (WHOOP_SPORT[w.sport_name.toLowerCase()]) return null;
+  const c = classifyOther(w.sport_name);
+  if (!c) return null;
+  const minutes = Math.round((new Date(w.end).getTime() - new Date(w.start).getTime()) / 60_000);
+  if (minutes < 5) return null;
+  return { id: `whoop-o-${w.id}`, source: 'whoop', externalId: w.id, date: localDate(w.start, w.timezone_offset), startLocal: localHm(w.start, w.timezone_offset), kind: c.kind, name: c.name, minutes, avgHr: w.score?.average_heart_rate ?? null, maxHr: w.score?.max_heart_rate ?? null };
 }
 
 /** Webhook v2: WHOOP trimite doar evenimentul și id-ul; recordul se cere apoi prin API. */

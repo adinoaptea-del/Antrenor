@@ -34,3 +34,26 @@ alter table public.users add column if not exists schema_v smallint not null def
 -- Sex și anul nașterii: contează pentru intervalele analizelor, nutriție și recuperare.
 alter table public.users add column if not exists sex text check (sex in ('m', 'f'));
 alter table public.users add column if not exists birth_year smallint;
+
+-- Recuperarea (saună, baie rece, yoga, stretching, masaj) și mișcarea în plus (plimbări, alte sporturi) de pe brățări.
+create table if not exists public.other_activities (
+  id text primary key,
+  user_id uuid not null references public.users(id) on delete cascade,
+  source text not null,
+  external_id text not null,
+  date date not null,
+  start_local text,
+  kind text not null check (kind in ('recuperare', 'activ')),
+  name text not null,
+  minutes int not null,
+  avg_hr smallint,
+  max_hr smallint,
+  synced_at timestamptz not null default now()
+);
+create index if not exists other_activities_user_date on public.other_activities (user_id, date desc);
+alter table public.other_activities enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename = 'other_activities' and policyname = 'other_activities_select_own') then
+    create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);
+  end if;
+end $$;

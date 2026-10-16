@@ -2,8 +2,9 @@
 import { insert, upsert } from './db.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
 import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
-import { normalizeWhoopNight, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
-import { listActivities, normalizeStravaActivity } from '../../src/collector/providers/strava.js';
+import { normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
+import { listActivities, normalizeStravaActivity, normalizeStravaOther } from '../../src/collector/providers/strava.js';
+import type { OtherActivity } from '../../src/collector/other.js';
 import { normalizeOuraNight, ouraApi } from '../../src/collector/providers/oura.js';
 
 export interface SyncReport {
@@ -17,7 +18,7 @@ function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function pullWhoop(userId: string, token: string, days: number): Promise<{ wellness: SourceDaily[]; activities: SourceActivity[] }> {
+async function pullWhoop(userId: string, token: string, days: number): Promise<{ wellness: SourceDaily[]; activities: SourceActivity[]; others: OtherActivity[] }> {
   const end = new Date();
   const start = new Date(end.getTime() - days * 86_400_000);
   const [recoveries, sleeps, workouts] = await Promise.all([whoopApi.recovery(token, isoDay(start), isoDay(end)), whoopApi.sleep(token, isoDay(start), isoDay(end)), whoopApi.workouts(token, isoDay(start), isoDay(end))]);
@@ -28,14 +29,15 @@ async function pullWhoop(userId: string, token: string, days: number): Promise<{
     if (n) wellness.push(n);
   }
   const activities = workouts.map(normalizeWhoopWorkout).filter((a): a is SourceActivity => a != null);
+  const others = workouts.map(normalizeWhoopOther).filter((a): a is OtherActivity => a != null);
   void userId;
-  return { wellness, activities };
+  return { wellness, activities, others };
 }
 
-async function pullStrava(token: string, days: number): Promise<SourceActivity[]> {
+async function pullStrava(token: string, days: number): Promise<{ activities: SourceActivity[]; others: OtherActivity[] }> {
   const now = Math.floor(Date.now() / 1000);
   const rows = await listActivities(token, now - days * 86_400, now + 3600);
-  return rows.map(normalizeStravaActivity).filter((a): a is SourceActivity => a != null);
+  return { activities: rows.map(normalizeStravaActivity).filter((a): a is SourceActivity => a != null), others: rows.map(normalizeStravaOther).filter((a): a is OtherActivity => a != null) };
 }
 
 async function pullOura(token: string, days: number): Promise<SourceDaily[]> {
@@ -102,12 +104,14 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
       if (!token) throw new Error('fără token');
       let rows = 0;
       if (provider === 'whoop') {
-        const { wellness, activities } = await pullWhoop(userId, token, days);
+        const { wellness, activities, others } = await pullWhoop(userId, token, days);
+        await saveOthers(userId, others);
         if (wellness.length) await upsert('wellness_daily', wellness.map((w) => wellnessRow(userId, w)), 'user_id,date,source');
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');
         rows = wellness.length + activities.length;
       } else if (provider === 'strava') {
-        const activities = await pullStrava(token, days);
+        const { activities, others } = await pullStrava(token, days);
+        await saveOthers(userId, others);
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');
         rows = activities.length;
       } else if (provider === 'oura') {
@@ -124,4 +128,14 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
     }
   }
   return reports;
+}
+
+/** Recuperarea și mișcarea în plus; dacă tabelul nu există încă (schemă veche), nu oprește sincronizarea. */
+export async function saveOthers(userId: string, others: OtherActivity[]): Promise<void> {
+  if (!others.length) return;
+  await upsert(
+    'other_activities',
+    others.map((o) => ({ id: o.id, user_id: userId, source: o.source, external_id: o.externalId, date: o.date, start_local: o.startLocal, kind: o.kind, name: o.name, minutes: o.minutes, avg_hr: o.avgHr, max_hr: o.maxHr, synced_at: new Date().toISOString() })),
+    'id',
+  ).catch(() => undefined);
 }
