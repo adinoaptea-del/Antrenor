@@ -1,12 +1,28 @@
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
-import type { PlannedWorkout, Sport } from '../types.js';
+import type { Activity, PlannedWorkout, Sport } from '../types.js';
+import { scoreWorkout, zoneDirection } from '../scoring/score.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
 const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
 const DAY_NAMES = ['luni', 'marti', 'miercuri', 'joi', 'vineri', 'sambata', 'duminica'];
+
+/** Cum a ieșit o ședință față de cea propusă: durată, zonă, direcție, compensare, eficiență (0–100). */
+export interface Execution {
+  tip_planificat: string;
+  durata_planificata: number;
+  zone_tinta: number[];
+  structura: string | null;
+  durata_pct: number | null;
+  in_zona_pct: number | null;
+  directie: 'mai_tare' | 'mai_usor' | 'conform' | null;
+  compensat: string | null;
+  eficienta: number | null;
+  culoare: string;
+  motive: string[];
+}
 
 export interface Packet {
   meta: {
@@ -60,9 +76,11 @@ export interface Packet {
     comentariu: string | null;
     in_plan: boolean;
     tip_neplanificat: EveningForm['tip_neplanificat'];
+    /** Execuția față de ședința propusă (calculată de cod din datele brățării). null = în afara planului. */
+    fata_de_plan: Execution | null;
   } | null;
   /** Celelalte ședințe din ziua ultimei ședințe și din ziua dinainte: pulsul se judecă în contextul oboselii acumulate. */
-  sedinte_48h: { sport: Sport; data: string; ora: string | null; durata: number; fc_medie: number | null; z4_z5_min: number | null }[];
+  sedinte_48h: { sport: Sport; data: string; ora: string | null; durata: number; fc_medie: number | null; z4_z5_min: number | null; fata_de_plan: Execution | null }[];
   plan_azi: { sport: Sport; tip: string; durata_planificata: number; zone_tinta: number[]; structura: string | null; cheie: boolean } | null;
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
@@ -340,6 +358,36 @@ export function buildPacket(input: CollectorInput): Packet {
   const evening = lastAct ? (input.evenings.find((e) => e.activityId === lastAct.externalId) ?? input.evenings.find((e) => e.date === lastAct.date) ?? null) : null;
   const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && Math.abs(diffDays(w.date, lastAct.date)) <= 1 && w.status !== 'sters') : false;
 
+  // Ședința propusă de care se leagă o activitate (același sport, ±1 zi, cea mai apropiată).
+  const plannedFor = (a: SourceActivity): PlannedWorkout | null =>
+    input.plan
+      .filter((w) => w.sport === a.sport && Math.abs(diffDays(w.date, a.date)) <= 1 && w.status !== 'sters' && w.status !== 'anulat_sistem')
+      .sort((x, y) => Math.abs(diffDays(x.date, a.date)) - Math.abs(diffDays(y.date, a.date)))[0] ?? null;
+  const execution = (a: SourceActivity, ev: EveningForm | null): Execution | null => {
+    const w = plannedFor(a);
+    if (!w) return null;
+    const sameDay = acts
+      .filter((o) => o !== a && o.date === a.date)
+      .map((o) => {
+        const ow = plannedFor(o);
+        return { sport: o.sport, directie: ow ? zoneDirection(ow, o as unknown as Activity) : null };
+      });
+    const r = scoreWorkout({ planned: w, activity: a as unknown as Activity, questionnaire: ev ? { rpe: ev.rpe, painScore: ev.durere.scor } : null, today, sameDay });
+    return {
+      tip_planificat: w.type,
+      durata_planificata: w.plannedMinutes,
+      zone_tinta: w.targetZones,
+      structura: w.structure ?? null,
+      durata_pct: r.metrics.durationPct,
+      in_zona_pct: r.metrics.zonePct,
+      directie: r.metrics.directie ?? null,
+      compensat: r.metrics.compensat ?? null,
+      eficienta: r.metrics.eficienta ?? null,
+      culoare: r.color,
+      motive: r.reasons,
+    };
+  };
+
   const planToday = input.plan.filter((w) => w.date === today && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
   const tomorrow = addDays(today, 1);
   const planTomorrow = input.plan.filter((w) => w.date === tomorrow && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
@@ -429,6 +477,7 @@ export function buildPacket(input: CollectorInput): Packet {
           comentariu: evening?.comentariu ?? null,
           in_plan: inPlan,
           tip_neplanificat: inPlan ? null : (evening?.tip_neplanificat ?? null),
+          fata_de_plan: execution(lastAct, evening),
         }
       : null,
     sedinte_48h: lastAct
@@ -442,6 +491,7 @@ export function buildPacket(input: CollectorInput): Packet {
             durata: a.minutes,
             fc_medie: a.avgHr ?? null,
             z4_z5_min: a.timeInZonesMin ? (a.timeInZonesMin[4] ?? 0) + (a.timeInZonesMin[5] ?? 0) : null,
+            fata_de_plan: execution(a, input.evenings.find((e) => e.activityId === a.externalId) ?? null),
           }))
       : [],
     plan_azi: planToday

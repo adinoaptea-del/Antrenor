@@ -48,8 +48,11 @@ describe('scoreWorkout', () => {
     assert.equal(r.flags.cardiacDrift, true);
   });
 
-  it('portocaliu când zona e sub 50% sau durere 3–4', () => {
-    assert.equal(scoreWorkout({ planned, activity: activity({ timeInZonesMin: { 2: 20, 3: 30 } }), questionnaire: { rpe: 4 }, today: '2026-11-03' }).color, 'portocaliu');
+  it('ieșitul din zonă nu e greșit: galben, eficiență mai mică, direcția „mai tare”; durerea 3–4 rămâne portocaliu', () => {
+    const z = scoreWorkout({ planned, activity: activity({ timeInZonesMin: { 2: 20, 3: 30 } }), questionnaire: { rpe: 4 }, today: '2026-11-03' });
+    assert.equal(z.color, 'galben');
+    assert.equal(z.metrics.directie, 'mai_tare');
+    assert.ok((z.metrics.eficienta ?? 0) < 100 && (z.metrics.eficienta ?? 0) >= 60);
     const r2 = scoreWorkout({ planned, activity: activity(), questionnaire: { rpe: 4, painScore: 3 }, today: '2026-11-03' });
     assert.equal(r2.color, 'portocaliu');
     assert.equal(r2.flags.escalate, false);
@@ -92,5 +95,22 @@ describe('scoreWorkout', () => {
       scoreWorkout({ planned: q, activity: activity({ intervalsHitPct: 80, mainSetAbandoned: true }), questionnaire: { rpe: 7 }, today: '2026-11-03' }).color,
       'portocaliu',
     );
+  });
+
+  it('compensare în aceeași zi: mai ușor aici, mai tare la alt sport = fără penalizare pe zonă', () => {
+    const easy = activity({ timeInZonesMin: { 1: 30, 2: 20 } });
+    const alone = scoreWorkout({ planned, activity: easy, questionnaire: { rpe: 4 }, today: '2026-11-03' });
+    const comp = scoreWorkout({ planned, activity: easy, questionnaire: { rpe: 4 }, today: '2026-11-03', sameDay: [{ sport: 'alergare', directie: 'mai_tare' }] });
+    assert.equal(alone.metrics.directie, 'mai_usor');
+    assert.equal(alone.color, 'galben');
+    assert.equal(comp.color, 'verde');
+    assert.ok(comp.metrics.compensat);
+    assert.ok((comp.metrics.eficienta ?? 0) > (alone.metrics.eficienta ?? 0));
+  });
+
+  it('nefăcut: marcat ca ratat, fără eficiență', () => {
+    const r = scoreWorkout({ planned, activity: null, today: '2026-11-10' });
+    assert.equal(r.flags.missed, true);
+    assert.equal(r.metrics.eficienta, undefined);
   });
 });

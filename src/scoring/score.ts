@@ -2,9 +2,13 @@
 // RPE față de așteptări, durere. Aceleași praguri pentru toți sportivii.
 //
 // verde:      durată 90–115% din plan; timp în zonă ≥ 75%; RPE în ±1; durere < 3
-// galben:     durată 75–90% sau > 115%; zonă 50–75%; RPE +2; un interval abandonat; derivație cardiacă > 8%
-// portocaliu: durată 50–75%; zonă < 50%; RPE ≥ +3; durere 3–4 (≥ 5 = portocaliu + escaladare); set principal abandonat
-// rosu:       nicio activitate până la finalul zilei următoare, sau durată < 50%
+// galben:     durată 75–90% sau > 115%; zona-țintă respectată sub 75% (făcut, dar mai puțin eficient); RPE +2; un interval abandonat; derivație cardiacă > 8%
+// portocaliu: durată 50–75%; RPE ≥ +3; durere 3–4 (≥ 5 = portocaliu + escaladare); set principal abandonat
+// rosu:       nicio activitate până la finalul zilei următoare (nefăcut: nu e o greșeală, doar nu se pune la progres), sau durată < 50%
+//
+// Pe lângă culoare, fiecare ședință are un scor intern de eficiență (0–100): cât din efectul planificat a obținut.
+// Ieșitul din zonă scade eficiența, nu face ședința „greșită”. În zilele cu mai multe sporturi, o ședință mai ușoară
+// compensată de una mai tare în aceeași zi (sau invers) nu e penalizată pe zonă.
 // gri:        anulat de sistem
 // asteptare:  încă în fereastră (azi sau mâine), fără activitate
 
@@ -28,10 +32,20 @@ export interface ScoreInput {
   questionnaire?: EveningQuestionnaire | null;
   /** Head coach-ul a dat roșu (readiness, boală, durere): antrenamentul devine gri. */
   systemCancelled?: boolean;
+  /** Celelalte ședințe planificate și făcute în aceeași zi, cu direcția lor față de plan (pentru compensare). */
+  sameDay?: { sport: string; directie: Direction }[];
   today: string;
 }
 
+export type Direction = 'mai_tare' | 'mai_usor' | 'conform' | null;
+
 export interface ScoreMetrics {
+  /** Scor intern de eficiență 0–100; null = nefăcut / încă în fereastră / anulat. */
+  eficienta?: number | null;
+  /** Intensitatea față de zona-țintă: mai tare, mai ușor sau conform. */
+  directie?: Direction;
+  /** Compensat de altă ședință din aceeași zi (text scurt) sau null. */
+  compensat?: string | null;
   durationPct: number | null;
   zonePct: number | null;
   rpeDelta: number | null;
@@ -43,7 +57,7 @@ export interface ScoreResult {
   color: Color;
   reasons: string[];
   metrics: ScoreMetrics;
-  flags: { noQuestionnaire: boolean; noZoneData: boolean; cardiacDrift: boolean; escalate: boolean };
+  flags: { noQuestionnaire: boolean; noZoneData: boolean; cardiacDrift: boolean; escalate: boolean; missed?: boolean };
   /** false = se mai poate schimba o dată (chestionarul poate veni în 24 h sau fereastra nu s-a închis). */
   final: boolean;
 }
@@ -61,7 +75,7 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   if (!activity) {
     const windowClosed = diffDays(addDays(planned.date, 1), today) > 0;
     if (windowClosed) {
-      return { color: 'rosu', reasons: ['nicio activitate potrivită până la finalul zilei următoare'], metrics: empty, flags, final: true };
+      return { color: 'rosu', reasons: ['nefăcut: nu se pune la progres (nu schimbă planul)'], metrics: empty, flags: { ...flags, missed: true }, final: true };
     }
     return { color: 'asteptare', reasons: [`fereastra se închide la finalul zilei de ${addDays(planned.date, 1)}`], metrics: empty, flags, final: false };
   }
@@ -79,7 +93,10 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   const cardiacDriftPct = computeDrift(activity);
   if (cardiacDriftPct != null && cardiacDriftPct > 8) flags.cardiacDrift = true;
 
-  const metrics: ScoreMetrics = { durationPct, zonePct, rpeDelta, pain, cardiacDriftPct };
+  const directie = zoneDirection(planned, activity, extraActivity ?? null);
+  const other = (input.sameDay ?? []).find((o) => (directie === 'mai_usor' && o.directie === 'mai_tare') || (directie === 'mai_tare' && o.directie === 'mai_usor'));
+  const compensat = other ? `${directie === 'mai_usor' ? 'mai ușor' : 'mai tare'} aici, ${other.directie === 'mai_tare' ? 'mai tare' : 'mai ușor'} la ${other.sport} în aceeași zi` : null;
+  const metrics: ScoreMetrics = { durationPct, zonePct, rpeDelta, pain, cardiacDriftPct, directie, compensat };
 
   // Roșu: executat sub jumătate.
   if (durationPct != null && durationPct < 50) {
@@ -100,8 +117,9 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   }
 
   if (zonePct != null) {
-    if (zonePct < 50) bump(2, `timp în zona-țintă ${zonePct}% (sub 50%)`);
-    else if (zonePct < 75) bump(1, `timp în zona-țintă ${zonePct}% (50–75%)`);
+    const dir = directie === 'mai_tare' ? ', mai tare decât planul' : directie === 'mai_usor' ? ', mai ușor decât planul' : '';
+    if (compensat && zonePct < 75) reasons.push(`timp în zona-țintă ${zonePct}%${dir}: compensat (${compensat})`);
+    else if (zonePct < 75) bump(1, `timp în zona-țintă ${zonePct}%${dir}: făcut, dar mai puțin eficient`);
   } else {
     reasons.push('fără date de zone: criteriul de zonă nu s-a aplicat');
   }
@@ -123,11 +141,51 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
 
   if (flags.cardiacDrift) bump(1, `derivație cardiacă ${cardiacDriftPct}% (peste 8%)`);
 
+  metrics.eficienta = efficiency(metrics, activity, !!compensat);
   const color: Color = level === 0 ? 'verde' : level === 1 ? 'galben' : 'portocaliu';
   if (color === 'verde') reasons.unshift('durată, zone și RPE în țintă');
   if (flags.noQuestionnaire) reasons.push('fără chestionar: RPE și durerea lipsesc');
 
   return { color, reasons, metrics, flags, final: isFinal(flags, planned, today) };
+}
+
+/** Cât din efectul planificat s-a obținut (0–100). Zona ratată scade eficiența, nu anulează ședința. */
+function efficiency(m: ScoreMetrics, a: Activity, compensated: boolean): number {
+  let pen = 0;
+  if (m.durationPct != null) {
+    if (m.durationPct < 90) pen += Math.min(50, 90 - m.durationPct);
+    else if (m.durationPct > 115) pen += Math.min(20, (m.durationPct - 115) * 0.5);
+  }
+  if (m.zonePct != null && !compensated) pen += Math.min(40, (100 - m.zonePct) * 0.5);
+  if (a.mainSetAbandoned) pen += 30;
+  else pen += Math.min(20, (a.intervalsAbandoned ?? 0) * 10);
+  if (m.rpeDelta != null && m.rpeDelta >= 2) pen += 10;
+  return Math.max(0, Math.min(100, Math.round(100 - pen)));
+}
+
+/** Direcția intensității: minutele peste zona-țintă față de cele sub ea (prag 15% din timp). */
+export function zoneDirection(planned: PlannedWorkout, activity: Activity, extra: Activity | null = null): Direction {
+  if (!planned.targetZones.length) return null;
+  const parts = [activity, extra].filter((a): a is Activity => !!a && !!a.timeInZonesMin);
+  if (parts.length === 0) return null;
+  const lo = Math.min(...planned.targetZones);
+  const hi = Math.max(...planned.targetZones);
+  let above = 0;
+  let below = 0;
+  let total = 0;
+  for (const a of parts) {
+    const zones = a.timeInZonesMin as Partial<Record<Zone, number>>;
+    for (const z of [1, 2, 3, 4, 5] as Zone[]) {
+      const m = zones[z] ?? 0;
+      total += m;
+      if (z > hi) above += m;
+      if (z < lo) below += m;
+    }
+  }
+  if (total === 0) return null;
+  if (above / total >= 0.15 && above >= below) return 'mai_tare';
+  if (below / total >= 0.15) return 'mai_usor';
+  return 'conform';
 }
 
 /** Culoarea e definitivă după 24 h de la ziua antrenamentului, sau imediat dacă a venit chestionarul. */

@@ -2,7 +2,7 @@
 import { select, upsert } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadZones } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import { scoreWorkout } from '../../src/scoring/score.js';
+import { scoreWorkout, zoneDirection, type Direction } from '../../src/scoring/score.js';
 import { computeBar, type BarResult, type ScoredActivity } from '../../src/bar/bar.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import type { Activity, Color, EveningQuestionnaire } from '../../src/types.js';
@@ -29,9 +29,15 @@ export async function rescore(userId: string, today: string, goal: '70.3' | 'oli
   const { matches, unplanned } = matchActivities(planned, activities, today);
 
   const colors = new Map<string, Color>();
+  // Prima trecere: direcția fiecărei ședințe făcute (pentru compensarea între sporturi în aceeași zi).
+  const dirs = new Map<string, Direction>();
+  for (const m of matches) if (m.activity) dirs.set(m.planned.id, zoneDirection(m.planned, m.activity, m.extraActivity ?? null));
   const rows = matches.map((m) => {
+    const sameDay = matches
+      .filter((o) => o !== m && o.activity && o.planned.date === m.planned.date)
+      .map((o) => ({ sport: o.planned.sport, directie: dirs.get(o.planned.id) ?? null }));
     const evening = forms.evenings.find((e) => e.activityId && m.activity && (e.activityId === m.activity.id || e.activityId === (m.activity as { externalId?: string }).externalId)) ?? forms.evenings.find((e) => e.date === m.planned.date);
-    const r = scoreWorkout({ planned: m.planned, activity: m.activity, extraActivity: m.extraActivity, questionnaire: toQuestionnaire(evening), systemCancelled: m.planned.status === 'anulat_sistem', today });
+    const r = scoreWorkout({ planned: m.planned, activity: m.activity, extraActivity: m.extraActivity, questionnaire: toQuestionnaire(evening), systemCancelled: m.planned.status === 'anulat_sistem', today, sameDay });
     colors.set(m.planned.id, r.color);
     return {
       workout_id: m.planned.id,
