@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Sport } from '@core/types.js';
-import { weekday } from '@core/util/dates.js';
+import { addDays, weekday } from '@core/util/dates.js';
 import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
@@ -42,7 +42,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const strength = nextWorkout(me, 'forta');
   const todayCount = workoutsOn(me, me.today).length;
   const unplanned = unplannedActivities(me);
-  const pendingUnplanned = unplanned.filter((a) => !a.tipNeplanificat);
+  // Întrebăm doar de ședințele neplanificate de azi și ieri; istoricul tras la conectarea brățării nu cere formular.
+  const yesterday = addDays(me.today, -1);
+  const pendingUnplanned = unplanned.filter((a) => !a.tipNeplanificat && a.date >= yesterday).slice(0, 2);
   const days = daysToRace(me);
 
   return (
@@ -110,7 +112,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           <button key={a.id} className="form-tile todo" onClick={() => onOpen('seara', { activityId: a.id })}>
             <span className="k">Neplanificat</span>
             <span className="v">
-              {SPORT_LABEL[a.sport]} {DAY_SHORT[weekday(a.date)]} · ce a fost?
+              {SPORT_LABEL[a.sport]} {a.date === me.today ? 'azi' : 'ieri'} · ce a fost?
             </span>
           </button>
         ))}
