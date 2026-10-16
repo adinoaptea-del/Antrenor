@@ -1,25 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#ffffff"/>
   <defs>
-    <!-- brațul încordat (stânga), lipit de corpul lui „i” -->
-    <path id="arm" d="M218 296
-             C 206 262 166 248 136 266
-             C 122 274 115 286 111 298
-             C 105 278 106 252 112 228
-             C 123 224 131 211 129 196
-             C 127 176 113 164 93 164
-             L 67 166
-             C 43 170 33 190 37 212
-             C 39 228 45 236 51 242
-             C 39 280 31 322 39 352
-             C 47 378 73 388 103 386
-             L 218 370 Z"/>
+    <!-- brațul încordat = dintele lateral al tridentului: umăr lipit de „i”, biceps sus, antebraț vertical terminat în vârf de lance cu ghimpi -->
+    <path id="arm" d="M232 360
+      L 150 360
+      C 112 360 92 340 92 304
+      L 92 190
+      L 68 214
+      L 116 92
+      L 164 214
+      L 140 190
+      L 140 292
+      C 128 226 172 206 200 220 C 226 232 234 268 232 300 Z"/>
   </defs>
-  <g fill="#e8331f" transform="translate(256 262) scale(0.86) translate(-256 -262)">
-    <!-- punctul lui „i” = capul -->
-    <circle cx="256" cy="116" r="40"/>
-    <!-- corpul lui „i” -->
-    <rect x="226" y="180" width="60" height="244" rx="30"/>
+  <g fill="#e8331f" transform="translate(256 270) scale(0.84) translate(-256 -270)">
+    <!-- punctul lui „i” -->
+    <circle cx="256" cy="84" r="32"/>
+    <!-- corpul lui „i” = coada tridentului, cu vârf de lance -->
+    <path d="M256 128 L 298 222 L 280 206 L 280 456 Q 280 480 256 480 Q 232 480 232 456 L 232 206 L 214 222 Z"/>
     <use href="#arm"/>
     <use href="#arm" transform="translate(512 0) scale(-1 1)"/>
   </g>
