@@ -81,8 +81,18 @@ export interface MeBaseline {
   cardiolog: 'da' | 'nu' | 'programat' | null;
 }
 
+export interface SportTotal {
+  km: number;
+  ore: number;
+  sedinte: number;
+}
+
 export interface Me {
   baseline: MeBaseline;
+  /** Oraș (pentru vreme) și Apple Watch prin Health Auto Export. */
+  profile: { city: string | null; appleConnected: boolean; appleLastSync: string | null };
+  /** Totaluri de la începutul pregătirii (data planului). null fără plan. */
+  totals: { since: string; bySport: Record<Sport, SportTotal> } | null;
   user: MeUser;
   consent: boolean;
   intakeComplete: boolean;

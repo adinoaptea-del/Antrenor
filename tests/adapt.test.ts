@@ -154,3 +154,18 @@ describe('adapt · activitate în afara planului', () => {
     assert.equal(lr2.plannedMinutes, 80, 'cursa sub 60 min nu oprește progresia');
   });
 });
+
+describe('progres: creștere controlată', () => {
+  it('pune +10% din săptămâna viitoare pe ședințele ușoare, max 15 min pe ședință, fără cheie', () => {
+    const r = adapt(plan(), { kind: 'progres', date: '2026-11-08' }, ctx);
+    const r2 = r.plan.find((w) => w.id === 'r2')!;
+    assert.equal(r2.plannedMinutes, 65);
+    assert.equal(r.plan.find((w) => w.id === 'b2')!.plannedMinutes, 135);
+    assert.equal(r.plan.find((w) => w.id === 'lr2')!.plannedMinutes, 80);
+    assert.ok(r.changes.some((c) => c.startsWith('progres:')));
+  });
+  it('nu crește un sport restricționat', () => {
+    const r = adapt(plan(), { kind: 'progres', date: '2026-11-08', restricted: ['alergare'] }, ctx);
+    assert.equal(r.changes.length, 0);
+  });
+});

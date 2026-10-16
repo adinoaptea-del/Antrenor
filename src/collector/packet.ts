@@ -16,6 +16,8 @@ export interface Packet {
     faza: string;
     obiectiv: string;
     zile_pana_la_cursa: number;
+    /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
+    bilant_lunar: boolean;
     surse: Record<string, string | null>;
   };
   somn: { durata: string | null; durata_min: number | null; ora_culcare: string | null; scor: number | null; media7_durata: string | null; media7_durata_min: number | null };
@@ -60,6 +62,10 @@ export interface Packet {
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
   /** Ultimele 14 zile (fără azi): ședințe planificate vs făcute (activitate pe același sport, ±1 zi). null fără activități de la brățări în 28 de zile: nu putem ști dacă s-a sărit sau doar nu s-a sincronizat. */
+  vreme: CollectorInput['weather'] | null;
+  /** Creșterea controlată (+10% volum săptămâna viitoare): eligibil doar cu 7 zile verzi la rând, încărcare sub 1,3 (total și pe fiecare sport), aderență >= 80% și fără creștere în ultimele 13 zile. */
+  progres: { zile_verzi_la_rand: number | null; ultima_crestere: string | null; eligibil: boolean; motiv: string };
+  totaluri_de_la_start: CollectorInput['totals'] | null;
   aderenta_14z: { planificate: number; facute: number; sarite: { data: string; sport: Sport; cheie: boolean }[] } | null;
   /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
   verdict_fiziolog: 'verde' | 'galben' | 'rosu' | 'stop' | null;
@@ -87,7 +93,8 @@ export interface MergedDaily {
   sources: Record<string, string | null>;
 }
 
-const PRIORITY: Record<string, number> = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, manual: 4, strava: 9 };
+// Apple dă HRV ca SDNN (alt calcul decât rMSSD-ul Whoop/Oura/Garmin): ultima opțiune pentru HRV.
+const PRIORITY: Record<string, number> = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, apple: 4, manual: 5, strava: 9 };
 
 function mean(xs: number[]): number | null {
   if (xs.length === 0) return null;
@@ -264,6 +271,8 @@ export function buildPacket(input: CollectorInput): Packet {
     zile[DAY_NAMES[i]!] = ws.length ? ws.map((w) => `${planLabel(w)}${w.status !== 'planificat' ? ` [${w.status}]` : ''}`).join(' + ') : 'odihnă';
   }
 
+  const acwrTotal = acwr(acts, today);
+  const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
   const pastPlanned = input.plan.filter((w) => w.status === 'planificat' && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
   const doneW = pastPlanned.filter((w) => acts.some((a) => a.sport === w.sport && Math.abs(diffDays(w.date, a.date)) <= 1));
@@ -283,6 +292,7 @@ export function buildPacket(input: CollectorInput): Packet {
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
+      bilant_lunar: input.event === 'saptamanal' && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
       surse: { ...(todayRow?.sources ?? { hrv: null, puls_repaus: null, somn: null, recuperare: null }), activitati: [...new Set(acts.map((a) => a.source))].join('+') || null, incarcare: input.load?.source ?? null },
     },
     somn: {
@@ -308,8 +318,8 @@ export function buildPacket(input: CollectorInput): Packet {
       },
     },
     incarcare: {
-      acwr: acwr(acts, today),
-      acwr_sport: { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') },
+      acwr: acwrTotal,
+      acwr_sport: acwrBySport,
       ctl: input.load?.ctl ?? null,
       atl: input.load?.atl ?? null,
       tsb: input.load?.tsb ?? null,
@@ -344,6 +354,9 @@ export function buildPacket(input: CollectorInput): Packet {
       : null,
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
+    vreme: input.weather ?? null,
+    progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
+    totaluri_de_la_start: input.totals ?? null,
     aderenta_14z: aderenta,
     verdict_fiziolog: null,
     zone: input.zones,
@@ -364,4 +377,25 @@ export function buildPacket(input: CollectorInput): Packet {
     analize: input.labs ?? null,
     aviz: input.aviz,
   };
+}
+
+/** Regula de creștere, deterministă: modelul nu decide singur să crească volumul. */
+export function progresStatus(
+  input: CollectorInput,
+  acwrTotal: number | null,
+  bySport: Record<Sport, number | null>,
+  aderenta: { planificate: number; facute: number } | null,
+): Packet['progres'] {
+  const h = input.history ?? null;
+  const base = { zile_verzi_la_rand: h ? h.greenStreak : null, ultima_crestere: h?.lastIncrease ?? null };
+  const no = (motiv: string) => ({ ...base, eligibil: false, motiv });
+  if (!h) return no('fără istoric de readiness');
+  if (h.greenStreak < 7) return no(`${h.greenStreak} zile verzi la rând (trebuie 7)`);
+  if (acwrTotal == null) return no('încărcare necunoscută (sub 4 săptămâni de istoric)');
+  if (acwrTotal >= 1.3) return no('încărcare totală peste 1,3');
+  const hot = (Object.entries(bySport) as [Sport, number | null][]).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
+  if (hot.length) return no(`încărcare peste 1,3 la ${hot.join(', ')}`);
+  if (!aderenta || aderenta.planificate === 0 || aderenta.facute / aderenta.planificate < 0.8) return no('aderență sub 80% în 14 zile');
+  if (h.lastIncrease && diffDays(h.lastIncrease, input.today) < 13) return no(`creștere deja pe ${h.lastIncrease}`);
+  return { ...base, eligibil: true, motiv: '7 zile verzi, încărcare sub 1,3, aderență bună' };
 }

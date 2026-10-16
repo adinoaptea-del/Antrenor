@@ -3,7 +3,7 @@
 
 import type { Activity, IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../types.js';
 
-export type Source = 'whoop' | 'garmin' | 'oura' | 'strava' | 'manual' | 'athletedata';
+export type Source = 'whoop' | 'garmin' | 'oura' | 'strava' | 'manual' | 'athletedata' | 'apple';
 
 /** O noapte / o zi de la o sursă. `date` = ziua trezirii (YYYY-MM-DD, ora locală a sportivului). */
 export interface SourceDaily {
@@ -99,6 +99,25 @@ export interface CollectorInput {
   nutrition?: NutritionDay[];
   load?: LoadInput | null;
   aviz: { cardiolog: 'da' | 'nu' | string; intensitate_permisa: IntensityAllowed };
+  /** Prognoza pentru orașul din profil (Open-Meteo). null fără oraș. */
+  weather?: WeatherInput | null;
+  /** Istoric pentru creșterea controlată: zile verzi la rând (readiness), ultima creștere aplicată. */
+  history?: { greenStreak: number; lastIncrease: string | null } | null;
+  /** Totaluri de la începutul pregătirii (data planului), pe sport. */
+  totals?: { since: string; bySport: Record<Sport, { km: number; ore: number; sedinte: number }> } | null;
+}
+
+export interface WeatherDay {
+  tmax: number | null;
+  tmin: number | null;
+  resimtita_max: number | null;
+  ploaie_mm: number | null;
+  vant_kmh: number | null;
+}
+export interface WeatherInput {
+  oras: string;
+  azi: WeatherDay;
+  maine: WeatherDay;
 }
 
 export type Zones5 = Partial<Record<Zone, number>>;

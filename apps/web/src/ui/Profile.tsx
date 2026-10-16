@@ -144,6 +144,10 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
           </div>
         </Card>
 
+        {!local && <AppleCard />}
+
+        {!local && <CityCard />}
+
         <Card>
           <Label>Date disponibile</Label>
           <div className="kv">
@@ -187,5 +191,104 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
         </Card>
       </div>
     </>
+  );
+}
+
+/** Orașul pentru prognoză: căldura, vântul și ploaia intră în decizia zilei. */
+function CityCard() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [city, setCity] = useState(me.profile.city ?? '');
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await submitForm('profil', { oras: city });
+      setMsg(r.data?.oras ? `salvat: ${String(r.data.oras)}` : 'șters');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <Label>Orașul tău</Label>
+      <div className="row" style={{ gap: 8 }}>
+        <input className="date" style={{ flex: 1, minWidth: 0 }} placeholder="ex. București" value={city} onChange={(e) => setCity(e.target.value)} />
+        <button className="pill on" disabled={busy} onClick={() => void save()}>
+          {busy ? '…' : 'Salvează'}
+        </button>
+      </div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>
+        {msg ?? (me.profile.city ? `Vremea vine pentru ${me.profile.city}.` : 'Fără oraș, antrenorii nu țin cont de vreme (căldură, vânt, ploaie, ger).')}
+      </div>
+    </Card>
+  );
+}
+
+/** Apple Watch: somn, HRV și puls de repaus prin aplicația iPhone „Health Auto Export”; antrenamentele prin Strava. */
+function AppleCard() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const make = async () => {
+    setErr(null);
+    try {
+      const r = await submitForm('apple', {});
+      setUrl(typeof r.data?.url === 'string' ? r.data.url : null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Card>
+      <Label icon={Icons.watch}>Apple Watch</Label>
+      <div className="small">
+        {me.profile.appleConnected
+          ? me.profile.appleLastSync
+            ? `primește date · ultima trimitere ${fmtTime(me.profile.appleLastSync)}`
+            : 'adresă creată · încă n-a venit nimic de pe iPhone'
+          : 'Antrenamentele vin prin Strava (Conectează mai sus). Somnul, HRV-ul și pulsul de repaus vin prin aplicația iPhone „Health Auto Export”.'}
+      </div>
+      {url ? (
+        <>
+          <div className="tiny" style={{ marginTop: 10, wordBreak: 'break-all', userSelect: 'all' }}>
+            {url}
+          </div>
+          <button className="pill on" style={{ marginTop: 8 }} onClick={() => void copy()}>
+            {copied ? 'Copiat' : 'Copiază adresa'}
+          </button>
+          <ol className="tiny muted" style={{ marginTop: 10, paddingLeft: 18 }}>
+            <li>Instalează „Health Auto Export” din App Store; exportul automat e în versiunea plătită.</li>
+            <li>Automations → New → REST API. URL: adresa de mai sus. Format: JSON.</li>
+            <li>Health Metrics: Heart Rate Variability, Resting Heart Rate, Sleep Analysis.</li>
+            <li>Sync cadence: la o oră. Salvează și apasă „Manual Export” o dată.</li>
+          </ol>
+        </>
+      ) : (
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => void make()}>
+          {me.profile.appleConnected ? 'Fă o adresă nouă' : 'Conectează Apple Watch'}
+        </button>
+      )}
+      {err && (
+        <div className="small" style={{ marginTop: 8, color: 'var(--c-rosu)' }}>
+          {err}
+        </div>
+      )}
+    </Card>
   );
 }

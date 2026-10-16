@@ -67,6 +67,7 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
       </div>
 
       <div className="stack">
+        <TotalsCard sport={sport} />
         {sport === 'inot' && (
           <>
             <div className="map-wrap">
@@ -193,5 +194,39 @@ function OutdoorMap() {
         afară
       </span>
     </div>
+  );
+}
+
+/** Cumulul pe sport de la începutul pregătirii: doar ce au înregistrat brățările, fără estimări. */
+function TotalsCard({ sport }: { sport: Sport }) {
+  const me = useMe();
+  const t = me.totals?.bySport[sport];
+  const since = me.totals?.since;
+  const fmtSince = since ? `${Number(since.slice(8, 10))} ${['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'][Number(since.slice(5, 7)) - 1]}` : null;
+  const km = t ? (sport === 'inot' ? `${Math.round(t.km * 1000).toLocaleString('ro-RO')}` : t.km.toLocaleString('ro-RO')) : '–';
+  return (
+    <Card tight>
+      <Label>{fmtSince ? `Total de la ${fmtSince}` : 'Total'}</Label>
+      {t && t.sedinte > 0 ? (
+        <div className="grid-3">
+          {sport !== 'forta' && (
+            <div>
+              <span className="num md">{km}</span>
+              <span className="unit">{sport === 'inot' ? 'm' : 'km'}</span>
+            </div>
+          )}
+          <div>
+            <span className="num md">{t.ore.toLocaleString('ro-RO')}</span>
+            <span className="unit">ore</span>
+          </div>
+          <div>
+            <span className="num md">{t.sedinte}</span>
+            <span className="unit">ședințe</span>
+          </div>
+        </div>
+      ) : (
+        <div className="small muted">{me.totals ? 'fără ședințe înregistrate încă; se adună din brățări' : 'fără date: planul începe după chestionar'}</div>
+      )}
+    </Card>
   );
 }

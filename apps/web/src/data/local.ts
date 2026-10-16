@@ -75,6 +75,8 @@ function buildMe(): Me {
 
   const z = state.tests;
   return {
+    profile: { city: null, appleConnected: false, appleLastSync: null },
+    totals: null,
     baseline: { labs: state.labs, tests: state.tests, body: state.body, cardiolog: i?.sanatate.avizCardiolog ?? null },
     user: { id: 'local', email: '', name: i?.nume ?? '', goal: i?.obiectiv ?? null, raceName: raceName(i?.obiectiv), raceDate: i?.dataCursa ?? null, tz: 'Europe/Bucharest' },
     consent: !!i?.consimtamant,

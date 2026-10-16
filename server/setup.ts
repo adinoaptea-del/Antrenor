@@ -3,6 +3,7 @@ import type { Req, Res } from './_lib/http.js';
 import { one } from './_lib/db.js';
 import { ENV } from './_lib/env.js';
 import { runSetup, setupStatus } from './_lib/setup.js';
+import { supabaseKeyHeaders } from './_lib/env.js';
 
 /**
  * GET  /api/setup → starea bazei de date (fără să schimbe nimic).
@@ -17,7 +18,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     }
     if (req.method !== 'POST') throw new HttpError(405, 'GET sau POST');
     const status = await setupStatus();
-    if (status.tables) {
+    const needsUpgrade = status.tables && !(await hasUpgrade());
+    if (status.tables && !needsUpgrade) {
       const u = await requireUser(req);
       const me = await one<{ role: string }>('users', { id: `eq.${u.id}` });
       if (me?.role !== 'admin') throw new HttpError(403, 'doar adminul poate rula din nou pregătirea');
@@ -29,4 +31,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   } catch (e) {
     fail(res, e);
   }
+}
+
+/** Actualizarea (0002) e idempotentă și nu atinge date: o poate declanșa oricine când lipsește. */
+async function hasUpgrade(): Promise<boolean> {
+  const r = await fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
+  return r.ok;
 }

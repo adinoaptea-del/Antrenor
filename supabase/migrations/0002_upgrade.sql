@@ -1,0 +1,11 @@
+-- Actualizări idempotente: rulează la fiecare „Pregătește” (și automat când aplicația vede schema veche).
+alter table public.users add column if not exists city text;
+alter table public.users add column if not exists lat double precision;
+alter table public.users add column if not exists lon double precision;
+alter table public.users add column if not exists apple_token text;
+create unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;
+
+-- Apple Health (prin Health Auto Export) ca sursă de somn, HRV și puls de repaus.
+alter table public.wellness_daily drop constraint if exists wellness_daily_source_check;
+alter table public.wellness_daily add constraint wellness_daily_source_check
+  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));

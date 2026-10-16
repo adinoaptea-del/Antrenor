@@ -4,6 +4,7 @@
 
 import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
+import type { Sport } from '../types.js';
 import { HEAD_SCHEMA, SPECIALIST_SCHEMA, type HeadResponse } from './schema.js';
 import { AGENTS, getPath, numbersIn, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
 
@@ -195,6 +196,11 @@ export function eventsFrom(p: Packet, decision: HeadResponse['decizie']): AdaptE
   const u = p.antrenament_ultim;
   if (u && !u.in_plan && u.tip_neplanificat && u.tip_neplanificat !== 'altceva') {
     ev.push({ kind: 'neplanificat', activity: { id: `${u.sport}-${u.data}`, date: u.data, sport: u.sport, minutes: u.durata, distanceKm: u.distanta ?? null }, rpe: u.rpe ?? null, tip: u.tip_neplanificat });
+  }
+  // Creșterea o decide regula (pachetul), nu modelul: doar duminica, doar pe o zi verde.
+  if (p.meta.eveniment === 'saptamanal' && decision === 'verde' && p.progres?.eligibil) {
+    const restricted = (Object.entries(p.incarcare.acwr_sport) as [Sport, number | null][]).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
+    ev.push({ kind: 'progres', date: p.meta.data, restricted });
   }
   return ev;
 }

@@ -1,7 +1,7 @@
 // Calendarul viu: regulile de adaptare din protocol, aplicate determinist pe antrenamentele viitoare.
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
-import type { Activity, Color, FreeBlock, PlannedWorkout } from '../types.js';
+import type { Activity, Color, FreeBlock, PlannedWorkout, Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 
 export type AdaptEvent =
@@ -15,7 +15,9 @@ export type AdaptEvent =
       rpe?: number | null;
       /** Ce a fost, din răspunsul sportivului în aplicație: cursă, antrenament liber sau altceva (plimbare, joacă). */
       tip?: 'cursa' | 'antrenament' | 'altceva' | null;
-    };
+    }
+  /** Creșterea controlată: +10% volum săptămâna viitoare, doar pe ședințele ușoare (Z1–Z2), fără intensitate în plus. */
+  | { kind: 'progres'; date: string; restricted?: Sport[] };
 
 export interface AdaptContext {
   today: string;
@@ -52,6 +54,9 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
       break;
     case 'neplanificat':
       applyUnplanned(next, event, changes);
+      break;
+    case 'progres':
+      applyProgress(next, event, ctx, changes);
       break;
   }
 
@@ -285,4 +290,31 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
       changes.push(`${x.id}: ${x.sport} ${x.type} rămâne la ${x.plannedMinutes} min (progresie oprită după cursă)`);
     }
   }
+}
+
+/**
+ * +10% din volumul săptămânii viitoare, pus pe ședințele ușoare (z2/tehnica, fără cheie), cele mai lungi primele,
+ * maximum +15 min pe ședință și fără să depășească fereastra liberă a zilei. Intensitatea nu crește niciodată aici.
+ */
+function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'progres' }>, ctx: AdaptContext, changes: string[]): void {
+  const monday = addDays(ev.date, 7 - weekday(ev.date));
+  const week = plan.filter((w) => w.status === 'planificat' && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
+  const total = week.reduce((n, w) => n + w.plannedMinutes, 0);
+  let budget = Math.floor((total * 0.1) / 5) * 5;
+  if (budget < 5) return;
+  const easy = week
+    .filter((w) => !w.key && (w.type === 'z2' || w.type === 'tehnica') && w.sport !== 'forta' && !(ev.restricted ?? []).includes(w.sport))
+    .sort((a, b) => b.plannedMinutes - a.plannedMinutes);
+  for (const w of easy) {
+    if (budget <= 0) break;
+    const window = ctx.freeBlocks.filter((b) => b.day === weekday(w.date)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
+    const room = window ? window - w.plannedMinutes : 15;
+    const add = Math.min(15, budget, Math.floor(room / 5) * 5);
+    if (add <= 0) continue;
+    w.plannedMinutes += add;
+    w.note = `+${add} min: creștere controlată (7 zile verzi)`;
+    budget -= add;
+    changes.push(`${w.id}: ${w.sport} ${w.date} +${add} min (progres)`);
+  }
+  if (changes.length) changes.push(`progres: săptămâna ${monday}, +${Math.round(((total * 0.1 - budget) / Math.max(total, 1)) * 100)}% față de ${total} min`);
 }

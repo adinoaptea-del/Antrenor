@@ -127,3 +127,17 @@ it('aderenta_14z: sărite doar când există activități de la brățară', () 
   assert.equal(p.aderenta_14z?.facute, 1);
   assert.deepEqual(p.aderenta_14z?.sarite, [{ data: '2026-10-14', sport: 'inot', cheie: true }]);
 });
+
+describe('progresStatus', () => {
+  const inp = (h: { greenStreak: number; lastIncrease: string | null } | null) => ({ today: '2026-11-08', history: h }) as unknown as CollectorInput;
+  const sport = { inot: 1.0, bicicleta: 1.1, alergare: 1.0, forta: null };
+  it('eligibil doar cu toate condițiile', async () => {
+    const { progresStatus } = await import('../src/collector/packet.js');
+    assert.equal(progresStatus(inp({ greenStreak: 8, lastIncrease: null }), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, true);
+    assert.equal(progresStatus(inp({ greenStreak: 6, lastIncrease: null }), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, false);
+    assert.equal(progresStatus(inp({ greenStreak: 8, lastIncrease: null }), 1.1, { ...sport, alergare: 1.35 }, { planificate: 10, facute: 9 }).eligibil, false);
+    assert.equal(progresStatus(inp({ greenStreak: 8, lastIncrease: '2026-11-01' }), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, false);
+    assert.equal(progresStatus(inp({ greenStreak: 8, lastIncrease: null }), 1.1, sport, { planificate: 10, facute: 7 }).eligibil, false);
+    assert.equal(progresStatus(inp(null), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, false);
+  });
+});

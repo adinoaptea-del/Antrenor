@@ -20,10 +20,16 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
     }
     let ready = false;
     let users = 0;
+    let upgrade = false;
     try {
       const r = await fetch(`${supabaseUrl}/rest/v1/users?select=id`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: 'count=exact', range: '0-0' } });
       ready = r.ok;
       users = Number(r.headers.get('content-range')?.split('/')[1] ?? 0) || 0;
+      if (ready) {
+        // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
+        const c = await fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
+        upgrade = !c.ok;
+      }
     } catch {
       ready = false;
     }
@@ -32,6 +38,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       supabaseUrl,
       publishableKey,
       ready,
+      upgrade,
       signupOpen: ready && users < ENV.maxUsers(),
       firstUser: ready && users === 0,
       agents: !!process.env.ANTHROPIC_API_KEY,

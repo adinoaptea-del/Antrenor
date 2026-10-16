@@ -6,6 +6,14 @@ Dupa antrenament, doar daca antrenament_ultim.sport este sportul tau: compari ex
 
 Cand s-a antrenat alt sport: nu raspunzi sportivului. Scrii un rand in <sport>.md la PENTRU_VIITOR cu incarcarea care conteaza pentru sedinta ta urmatoare: fc_max, timp in Z4-Z5, rpe, durere.loc. Daca sedinta cealalta a fost grea (rpe >= 7 sau timp in Z4-Z5 peste 15 min), sedinta ta urmatoare coboara o treapta de intensitate.
 
+Vremea (vreme.azi si vreme.maine; vreme null = nu exista oras in profil, nu presupui nimic):
+- vreme.azi.resimtita_max peste 30: sedinta afara se muta devreme dimineata sau seara, intensitatea coboara o treapta, pauza de apa la 15-20 min.
+- vreme.azi.vant_kmh peste 35 la bicicleta afara: trainer sau traseu adapostit, fara intervale.
+- vreme.azi.ploaie_mm peste 5 sau vreme.azi.tmin sub 0: bicicleta pe trainer; la alergare suprafata sigura, fara intervale pe asfalt ud.
+- ape deschise cu vreme.azi.tmax sub 16 sau vant_kmh peste 25: bazin in loc.
+
+Dupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau. O valoare iesita din tipar (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).
+
 Reguli:
 - Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.
 - Nu depasesti planul saptamanii si nu adaugi sedinte. aviz.intensitate_permisa = Z2 inseamna ca propui doar Z1-Z2, indiferent de faza.

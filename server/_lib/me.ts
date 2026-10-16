@@ -1,6 +1,6 @@
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select } from './db.js';
-import { loadActivities, loadForms, loadPlan, loadUser, phaseAt } from './collect.js';
+import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
@@ -105,10 +105,19 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     cardiolog: clearance?.cardiology ? 'da' : aviz,
   };
 
+  const u2 = user as UserRow;
+  const [totals, appleRow] = await Promise.all([
+    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
+    one<{ synced_at: string }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.apple' }, { order: 'synced_at.desc' }).catch(() => null),
+  ]);
+  if (u2.apple_token) (appleRow ? have : missing).push('Apple Watch (Health Auto Export)');
+
   const memento = messagesRows.find((m) => m.kind === 'memento' && m.created_at >= `${today}T00:00:00`)?.body ?? null;
 
   return {
     baseline,
+    profile: { city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
+    totals,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,

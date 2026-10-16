@@ -18,6 +18,8 @@ export interface ServerConfig {
   supabaseUrl?: string;
   publishableKey?: string;
   ready?: boolean;
+  /** Schema bazei e mai veche decât codul: aplicația rulează singură actualizarea (idempotentă). */
+  upgrade?: boolean;
   signupOpen?: boolean;
   firstUser?: boolean;
   agents?: boolean;

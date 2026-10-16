@@ -1,6 +1,7 @@
 // Pregătirea bazei de date dintr-un singur apel: tabelele (migrarea), drepturile pentru Data API și programările
 // pg_cron (citirea brățărilor la 15 minute, dimineața, seara). Idempotent: se poate rula din nou după schimbarea domeniului.
 import MIGRATION from '../../supabase/migrations/0001_init.sql';
+import UPGRADE from '../../supabase/migrations/0002_upgrade.sql';
 import { ENV } from './env.js';
 import { connect, lit, type PgClient } from './pg.js';
 
@@ -62,6 +63,7 @@ export async function runSetup(appUrl: string): Promise<SetupStep[]> {
     const exists = (await c.query("select to_regclass('public.users') is not null as ok")).rows[0]?.ok === 't';
     if (exists) steps.push({ step: 'tabele', ok: true, detail: 'existau deja' });
     else await step('tabele', `begin;\n${MIGRATION}\ncommit;`);
+    await step('actualizări', UPGRADE);
     await step('drepturi', GRANTS, true);
 
     const cron = await step('pg_cron', 'create extension if not exists pg_cron with schema pg_catalog', true);

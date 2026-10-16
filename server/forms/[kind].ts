@@ -1,6 +1,9 @@
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
-import { insert, remove, upsert } from '../_lib/db.js';
+import { insert, remove, update, upsert } from '../_lib/db.js';
+import { geocode } from '../_lib/weather.js';
+import { newAppleToken } from '../webhooks/apple.js';
+import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
@@ -95,6 +98,26 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const date = isDate(b.data) ? b.data : today;
       await upsert('wellness_daily', { user_id: u.id, date, source: 'manual', weight_kg: n(b.greutate), body_fat_pct: n(b.grasime_pct) }, 'user_id,date,source');
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'profil') {
+      const city = typeof body.oras === 'string' ? body.oras.trim() : '';
+      if (!city) {
+        await update('users', { id: `eq.${u.id}` }, { city: null, lat: null, lon: null });
+        json(res, 200, { ok: true, oras: null });
+        return;
+      }
+      const g = await geocode(city);
+      if (!g) throw new HttpError(400, `nu găsesc orașul „${city}”`);
+      await update('users', { id: `eq.${u.id}` }, { city: g.name, lat: g.lat, lon: g.lon });
+      json(res, 200, { ok: true, oras: g.name });
+      return;
+    }
+    if (kind === 'apple') {
+      // Un token personal nou: adresa veche nu mai primește date.
+      const token = newAppleToken();
+      await update('users', { id: `eq.${u.id}` }, { apple_token: token });
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
       return;
     }
     throw new HttpError(404, `formular necunoscut: ${kind}`);

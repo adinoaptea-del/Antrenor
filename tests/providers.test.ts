@@ -88,3 +88,19 @@ describe('adaptoare de producător', () => {
     assert.equal(localHm('2026-10-16T04:57:21.070Z', '-05:00'), '23:57');
   });
 });
+
+describe('Apple Health (Health Auto Export)', () => {
+  it('ia HRV (media pe zi), pulsul de repaus și somnul pe ziua trezirii', async () => {
+    const { parseHealthExport } = await import('../server/_lib/apple.js');
+    const days = parseHealthExport({
+      data: {
+        metrics: [
+          { name: 'heart_rate_variability', units: 'ms', data: [{ date: '2026-10-16 03:10:00 +0300', qty: 40 }, { date: '2026-10-16 05:10:00 +0300', qty: 50 }] },
+          { name: 'resting_heart_rate', units: 'count/min', data: [{ date: '2026-10-16 00:00:00 +0300', qty: 52.4 }] },
+          { name: 'sleep_analysis', units: 'hr', data: [{ date: '2026-10-16 00:00:00 +0300', totalSleep: 7.25, sleepStart: '2026-10-15 23:40:00 +0300', sleepEnd: '2026-10-16 07:05:00 +0300' }] },
+        ],
+      },
+    });
+    assert.deepEqual(days, [{ date: '2026-10-16', hrv: 45, rhr: 52, sleep_min: 435, bedtime: '23:40', wake_time: '07:05' }]);
+  });
+});

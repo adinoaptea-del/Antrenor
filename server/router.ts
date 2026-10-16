@@ -17,6 +17,7 @@ import setup from './setup.js';
 import sync from './sync.js';
 import webhooks_strava from './webhooks/strava.js';
 import webhooks_whoop from './webhooks/whoop.js';
+import webhooks_apple from './webhooks/apple.js';
 
 type Handler = (req: Req, res: Res) => Promise<void>;
 
@@ -33,6 +34,7 @@ const STATIC: Record<string, Handler> = {
   sync,
   'webhooks/strava': webhooks_strava,
   'webhooks/whoop': webhooks_whoop,
+  'webhooks/apple': webhooks_apple,
 };
 
 export function resolve(path: string): { handler: Handler; params: Record<string, string> } | null {

@@ -4,6 +4,8 @@ import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivit
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
 import { addDays } from '../../src/util/dates.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
+import { dedupeActivities } from '../../src/collector/packet.js';
+import { forecast } from './weather.js';
 
 export interface UserRow {
   id: string;
@@ -13,6 +15,10 @@ export interface UserRow {
   goal: '70.3' | 'olimpic' | 'sprint' | 'full' | null;
   race_name: string | null;
   race_date: string | null;
+  city?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  apple_token?: string | null;
 }
 
 export interface WorkoutRow {
@@ -203,6 +209,11 @@ export async function collect(userId: string, today: string, event: CollectorInp
   ]);
   const planRow = planRes.planId ? await one<{ start_date: string; race_date: string }>('plans', { id: `eq.${planRes.planId}` }) : null;
   const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today) ?? 'evaluare') : 'evaluare';
+  const [weather, history, totals] = await Promise.all([
+    user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
+    loadHistory(userId, today),
+    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
+  ]);
   const input: CollectorInput = {
     today,
     event,
@@ -216,6 +227,49 @@ export async function collect(userId: string, today: string, event: CollectorInp
     labs,
     load: null,
     aviz,
+    weather,
+    history,
+    totals,
   };
   return { input, user, planId: planRes.planId };
+}
+
+/** Zile verzi la rând (până ieri inclusiv) și data ultimei creșteri aplicate de calendar. */
+export async function loadHistory(userId: string, today: string): Promise<{ greenStreak: number; lastIncrease: string | null }> {
+  const [rows, inc] = await Promise.all([
+    select<{ date: string; verdict: string }>('readiness_daily', { user_id: `eq.${userId}`, date: [`gte.${addDays(today, -30)}`, `lt.${today}`] }, { order: 'date.desc', limit: 31 }),
+    one<{ date: string }>('journal', { user_id: `eq.${userId}`, entry: 'like.calendar: progres:*' }, { order: 'date.desc' }),
+  ]);
+  let streak = 0;
+  let expected = addDays(today, -1);
+  for (const r of rows) {
+    if (r.date !== expected || r.verdict !== 'verde') break;
+    streak++;
+    expected = addDays(expected, -1);
+  }
+  return { greenStreak: streak, lastIncrease: inc?.date ?? null };
+}
+
+/** Totaluri pe sport de la începutul pregătirii (data planului activ). Activități deduplicate pe sursă. */
+export async function loadTotals(userId: string, since: string): Promise<NonNullable<CollectorInput['totals']>> {
+  // Pe ferestre de 30 de zile: Supabase întoarce maximum 1000 de rânduri pe cerere.
+  const raw: SourceActivity[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  for (let from = since; from <= today; from = addDays(from, 30)) {
+    const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1000 });
+    raw.push(...rows.map(toSourceActivity));
+  }
+  const acts = dedupeActivities(raw);
+  const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+  for (const a of acts) {
+    const t = bySport[a.sport];
+    t.km += a.distanceKm ?? 0;
+    t.ore += a.minutes / 60;
+    t.sedinte += 1;
+  }
+  for (const t of Object.values(bySport)) {
+    t.km = Math.round(t.km * 10) / 10;
+    t.ore = Math.round(t.ore * 10) / 10;
+  }
+  return { since, bySport };
 }

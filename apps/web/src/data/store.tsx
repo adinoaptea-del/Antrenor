@@ -1,11 +1,11 @@
 // Starea aplicației: sesiunea, obiectul `Me` de la server, reîncărcarea după formulare și sincronizare.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Me } from '@core/api-types.js';
-import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, server, signOut } from './api';
+import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, runSetup, server, signOut } from './api';
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple';
 
 export interface Data {
   status: Status;
@@ -16,7 +16,7 @@ export interface Data {
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   /** Trimite un formular la server (sau îl ține local în demo) și reîncarcă. */
-  submitForm: (kind: FormKind, body: unknown) => Promise<{ ok: boolean; info?: string }>;
+  submitForm: (kind: FormKind, body: unknown) => Promise<{ ok: boolean; info?: string; data?: Record<string, unknown> }>;
   sync: () => Promise<string | null>;
   connect: (provider: 'whoop' | 'strava' | 'oura') => Promise<void>;
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => Promise<string>;
@@ -49,6 +49,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setStatus('setup');
           return;
         }
+        if (c.upgrade) await runSetup().catch(() => undefined);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setStatus('unconfigured');
@@ -83,7 +84,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await load();
       const plan = r.plan as { ok?: boolean; reason?: string; budgetHours?: number; weeks?: number } | undefined;
       if (kind === 'intrare' && plan) return { ok: !!plan.ok, info: plan.ok ? `Plan pe ${plan.weeks} săptămâni, ${plan.budgetHours} h/săpt.` : plan.reason };
-      return { ok: true };
+      return { ok: true, data: r as unknown as Record<string, unknown> };
     },
     [backend, load],
   );

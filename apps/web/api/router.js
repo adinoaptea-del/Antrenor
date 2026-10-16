@@ -282,153 +282,10 @@ function phaseWeeks(startDate, raceDate) {
   return weeks;
 }
 
-// server/_lib/collect.ts
-function toPlanned(r2) {
-  return {
-    id: r2.id,
-    date: r2.date,
-    sport: r2.sport,
-    type: r2.type,
-    plannedMinutes: r2.planned_minutes,
-    targetZones: r2.target_zones,
-    key: r2.is_key,
-    step: r2.step ?? void 0,
-    structure: r2.structure ?? void 0,
-    intervals: r2.intervals ?? void 0,
-    status: r2.status,
-    note: r2.note ?? void 0
-  };
-}
-function toWorkoutRow(w, userId, planId) {
-  return {
-    id: w.id,
-    plan_id: planId,
-    user_id: userId,
-    date: w.date,
-    sport: w.sport,
-    type: w.type,
-    planned_minutes: w.plannedMinutes,
-    target_zones: w.targetZones,
-    is_key: w.key,
-    step: w.step ?? null,
-    structure: w.structure ?? null,
-    intervals: w.intervals ?? null,
-    status: w.status,
-    note: w.note ?? null
-  };
-}
-function toSourceActivity(r2) {
-  return {
-    id: r2.id,
-    externalId: r2.external_id,
-    source: r2.source,
-    date: r2.date,
-    startLocal: r2.start_local,
-    sport: r2.sport,
-    minutes: r2.minutes,
-    distanceKm: r2.distance_km,
-    avgHr: r2.avg_hr,
-    maxHr: r2.max_hr,
-    avgPaceMinKm: r2.avg_pace_min_km,
-    avgCadence: r2.avg_cadence,
-    avgWatts: r2.avg_watts,
-    timeInZonesMin: r2.time_in_zones_min ?? null,
-    name: r2.name
-  };
-}
-function toSourceDaily(r2) {
-  return { date: r2.date, source: r2.source, hrv: r2.hrv, rhr: r2.rhr, sleepMin: r2.sleep_min, bedtime: r2.bedtime, wakeTime: r2.wake_time, sleepScore: r2.sleep_score, recoveryScore: r2.recovery_score, respiratoryRate: r2.respiratory_rate, weightKg: r2.weight_kg, bodyFatPct: r2.body_fat_pct };
-}
-async function loadUser(userId) {
-  const u = await one("users", { id: `eq.${userId}` });
-  if (!u) throw new Error("utilizator inexistent");
-  return u;
-}
-async function loadPlan(userId, from, to) {
-  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "version.desc" });
-  if (!plan) return { planId: null, workouts: [] };
-  const rows = await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: "date.asc", limit: 500 });
-  const workouts = rows.map(toPlanned);
-  return { planId: plan.id, workouts };
-}
-async function loadActivities(userId, from) {
-  const rows = await select("activities", { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: "date.desc", limit: 500 });
-  return rows.map(toSourceActivity);
-}
-async function loadWellness(userId, from) {
-  const rows = await select("wellness_daily", { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: "date.desc", limit: 500 });
-  return rows.map(toSourceDaily);
-}
-async function loadForms(userId, today) {
-  const morningRow = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `eq.${today}` }, { order: "created_at.desc" });
-  const eveningRows = await select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: `gte.${addDays(today, -14)}` }, { order: "created_at.desc", limit: 50 });
-  const intakeRow = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
-  return { morning: morningRow?.answers ?? null, evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null };
-}
-async function loadZones(userId) {
-  const z = await one("zones", { user_id: `eq.${userId}` });
-  if (!z || z.source === "provizoriu") return null;
-  const five = (a) => a && a.length === 5 ? a : null;
-  return {
-    alergare: { fc_z1_z5: five(z.run_hr_zones), pace_prag: z.run_threshold_pace_sec_km ? `${Math.floor(z.run_threshold_pace_sec_km / 60)}:${String(z.run_threshold_pace_sec_km % 60).padStart(2, "0")}` : null },
-    bicicleta: { ftp: z.bike_ftp_w, fc_z1_z5: five(z.bike_hr_zones) },
-    inot: { css: z.swim_css_sec_100m },
-    fcmax_test: z.hr_max_test,
-    data_test: z.tested_at
-  };
-}
-async function loadLabs(userId) {
-  const l = await one("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc" });
-  return l ? { feritina: l.feritina, vitamina_d: l.vitamina_d, hemoglobina: l.hemoglobina, ck: l.ck, crp: l.crp, data_analize: l.drawn_at } : null;
-}
-async function loadClearance(userId) {
-  const c = await one("clearances", { user_id: `eq.${userId}` });
-  if (!c) return { cardiolog: "nu", intensitate_permisa: "Z2" };
-  return { cardiolog: c.cardiology ? c.cleared_at ?? "da" : "nu", intensitate_permisa: c.intensity_allowed };
-}
-function phaseAt(startDate, raceDate, today) {
-  try {
-    const weeks = phaseWeeks(startDate, raceDate);
-    const w = [...weeks].reverse().find((x) => x.weekStart <= today);
-    return w?.phase ?? null;
-  } catch {
-    return null;
-  }
-}
-async function collect(userId, today, event) {
-  const user = await loadUser(userId);
-  const [planRes, activities, wellness, forms, zones, labs, aviz] = await Promise.all([
-    loadPlan(userId, addDays(today, -35), addDays(today, 14)),
-    loadActivities(userId, addDays(today, -70)),
-    loadWellness(userId, addDays(today, -70)),
-    loadForms(userId, today),
-    loadZones(userId),
-    loadLabs(userId),
-    loadClearance(userId)
-  ]);
-  const planRow = planRes.planId ? await one("plans", { id: `eq.${planRes.planId}` }) : null;
-  const phase = planRow ? phaseAt(planRow.start_date, planRow.race_date, today) ?? "evaluare" : "evaluare";
-  const input = {
-    today,
-    event,
-    athlete: { obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}`, raceDate: user.race_date ?? addDays(today, 365), phase },
-    wellness,
-    activities,
-    plan: planRes.workouts,
-    zones,
-    morning: forms.morning,
-    evenings: forms.evenings,
-    labs,
-    load: null,
-    aviz
-  };
-  return { input, user, planId: planRes.planId };
-}
-
 // src/collector/packet.ts
 var SPORTS = ["inot", "bicicleta", "alergare", "forta"];
 var DAY_NAMES = ["luni", "marti", "miercuri", "joi", "vineri", "sambata", "duminica"];
-var PRIORITY = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, manual: 4, strava: 9 };
+var PRIORITY = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, apple: 4, manual: 5, strava: 9 };
 function mean(xs) {
   if (xs.length === 0) return null;
   return xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -579,6 +436,8 @@ function buildPacket(input) {
     const ws = input.plan.filter((w) => w.date === d && w.status !== "sters");
     zile[DAY_NAMES[i]] = ws.length ? ws.map((w) => `${planLabel(w)}${w.status !== "planificat" ? ` [${w.status}]` : ""}`).join(" + ") : "odihn\u0103";
   }
+  const acwrTotal = acwr(acts, today);
+  const acwrBySport = { inot: acwr(acts, today, "inot"), bicicleta: acwr(acts, today, "bicicleta"), alergare: acwr(acts, today, "alergare"), forta: acwr(acts, today, "forta") };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
   const pastPlanned = input.plan.filter((w) => w.status === "planificat" && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
   const doneW = pastPlanned.filter((w) => acts.some((a) => a.sport === w.sport && Math.abs(diffDays(w.date, a.date)) <= 1));
@@ -594,6 +453,7 @@ function buildPacket(input) {
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
+      bilant_lunar: input.event === "saptamanal" && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
       surse: { ...todayRow?.sources ?? { hrv: null, puls_repaus: null, somn: null, recuperare: null }, activitati: [...new Set(acts.map((a) => a.source))].join("+") || null, incarcare: input.load?.source ?? null }
     },
     somn: {
@@ -617,8 +477,8 @@ function buildPacket(input) {
       }
     },
     incarcare: {
-      acwr: acwr(acts, today),
-      acwr_sport: { inot: acwr(acts, today, "inot"), bicicleta: acwr(acts, today, "bicicleta"), alergare: acwr(acts, today, "alergare"), forta: acwr(acts, today, "forta") },
+      acwr: acwrTotal,
+      acwr_sport: acwrBySport,
       ctl: input.load?.ctl ?? null,
       atl: input.load?.atl ?? null,
       tsb: input.load?.tsb ?? null,
@@ -649,6 +509,9 @@ function buildPacket(input) {
     plan_azi: planToday ? { sport: planToday.sport, tip: planToday.type === "z2" ? "Z2" : planToday.type, durata_planificata: planToday.plannedMinutes, zone_tinta: planToday.targetZones, structura: planToday.structure ?? null, cheie: planToday.key } : null,
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === "z2" ? "Z2" : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} \u2013 ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ""}`, zile },
+    vreme: input.weather ?? null,
+    progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
+    totaluri_de_la_start: input.totals ?? null,
     aderenta_14z: aderenta,
     verdict_fiziolog: null,
     zone: input.zones,
@@ -669,6 +532,233 @@ function buildPacket(input) {
     analize: input.labs ?? null,
     aviz: input.aviz
   };
+}
+function progresStatus(input, acwrTotal, bySport, aderenta) {
+  const h = input.history ?? null;
+  const base = { zile_verzi_la_rand: h ? h.greenStreak : null, ultima_crestere: h?.lastIncrease ?? null };
+  const no = (motiv) => ({ ...base, eligibil: false, motiv });
+  if (!h) return no("f\u0103r\u0103 istoric de readiness");
+  if (h.greenStreak < 7) return no(`${h.greenStreak} zile verzi la r\xE2nd (trebuie 7)`);
+  if (acwrTotal == null) return no("\xEEnc\u0103rcare necunoscut\u0103 (sub 4 s\u0103pt\u0103m\xE2ni de istoric)");
+  if (acwrTotal >= 1.3) return no("\xEEnc\u0103rcare total\u0103 peste 1,3");
+  const hot = Object.entries(bySport).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
+  if (hot.length) return no(`\xEEnc\u0103rcare peste 1,3 la ${hot.join(", ")}`);
+  if (!aderenta || aderenta.planificate === 0 || aderenta.facute / aderenta.planificate < 0.8) return no("aderen\u021B\u0103 sub 80% \xEEn 14 zile");
+  if (h.lastIncrease && diffDays(h.lastIncrease, input.today) < 13) return no(`cre\u0219tere deja pe ${h.lastIncrease}`);
+  return { ...base, eligibil: true, motiv: "7 zile verzi, \xEEnc\u0103rcare sub 1,3, aderen\u021B\u0103 bun\u0103" };
+}
+
+// server/_lib/weather.ts
+async function geocode(city) {
+  const r2 = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ro&format=json`);
+  if (!r2.ok) return null;
+  const j = await r2.json();
+  const g = j.results?.[0];
+  return g ? { name: `${g.name}${g.country ? `, ${g.country}` : ""}`, lat: g.latitude, lon: g.longitude } : null;
+}
+async function forecast(city, lat, lon, tz) {
+  const q2 = "temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,wind_speed_10m_max";
+  try {
+    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q2}&timezone=${encodeURIComponent(tz)}&forecast_days=2`);
+    if (!r2.ok) return null;
+    const d = await r2.json();
+    const day2 = (i) => ({
+      tmax: d.daily?.temperature_2m_max?.[i] ?? null,
+      tmin: d.daily?.temperature_2m_min?.[i] ?? null,
+      resimtita_max: d.daily?.apparent_temperature_max?.[i] ?? null,
+      ploaie_mm: d.daily?.precipitation_sum?.[i] ?? null,
+      vant_kmh: d.daily?.wind_speed_10m_max?.[i] ?? null
+    });
+    return d.daily ? { oras: city, azi: day2(0), maine: day2(1) } : null;
+  } catch {
+    return null;
+  }
+}
+
+// server/_lib/collect.ts
+function toPlanned(r2) {
+  return {
+    id: r2.id,
+    date: r2.date,
+    sport: r2.sport,
+    type: r2.type,
+    plannedMinutes: r2.planned_minutes,
+    targetZones: r2.target_zones,
+    key: r2.is_key,
+    step: r2.step ?? void 0,
+    structure: r2.structure ?? void 0,
+    intervals: r2.intervals ?? void 0,
+    status: r2.status,
+    note: r2.note ?? void 0
+  };
+}
+function toWorkoutRow(w, userId, planId) {
+  return {
+    id: w.id,
+    plan_id: planId,
+    user_id: userId,
+    date: w.date,
+    sport: w.sport,
+    type: w.type,
+    planned_minutes: w.plannedMinutes,
+    target_zones: w.targetZones,
+    is_key: w.key,
+    step: w.step ?? null,
+    structure: w.structure ?? null,
+    intervals: w.intervals ?? null,
+    status: w.status,
+    note: w.note ?? null
+  };
+}
+function toSourceActivity(r2) {
+  return {
+    id: r2.id,
+    externalId: r2.external_id,
+    source: r2.source,
+    date: r2.date,
+    startLocal: r2.start_local,
+    sport: r2.sport,
+    minutes: r2.minutes,
+    distanceKm: r2.distance_km,
+    avgHr: r2.avg_hr,
+    maxHr: r2.max_hr,
+    avgPaceMinKm: r2.avg_pace_min_km,
+    avgCadence: r2.avg_cadence,
+    avgWatts: r2.avg_watts,
+    timeInZonesMin: r2.time_in_zones_min ?? null,
+    name: r2.name
+  };
+}
+function toSourceDaily(r2) {
+  return { date: r2.date, source: r2.source, hrv: r2.hrv, rhr: r2.rhr, sleepMin: r2.sleep_min, bedtime: r2.bedtime, wakeTime: r2.wake_time, sleepScore: r2.sleep_score, recoveryScore: r2.recovery_score, respiratoryRate: r2.respiratory_rate, weightKg: r2.weight_kg, bodyFatPct: r2.body_fat_pct };
+}
+async function loadUser(userId) {
+  const u = await one("users", { id: `eq.${userId}` });
+  if (!u) throw new Error("utilizator inexistent");
+  return u;
+}
+async function loadPlan(userId, from, to) {
+  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "version.desc" });
+  if (!plan) return { planId: null, workouts: [] };
+  const rows = await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: "date.asc", limit: 500 });
+  const workouts = rows.map(toPlanned);
+  return { planId: plan.id, workouts };
+}
+async function loadActivities(userId, from) {
+  const rows = await select("activities", { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: "date.desc", limit: 500 });
+  return rows.map(toSourceActivity);
+}
+async function loadWellness(userId, from) {
+  const rows = await select("wellness_daily", { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: "date.desc", limit: 500 });
+  return rows.map(toSourceDaily);
+}
+async function loadForms(userId, today) {
+  const morningRow = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `eq.${today}` }, { order: "created_at.desc" });
+  const eveningRows = await select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: `gte.${addDays(today, -14)}` }, { order: "created_at.desc", limit: 50 });
+  const intakeRow = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+  return { morning: morningRow?.answers ?? null, evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null };
+}
+async function loadZones(userId) {
+  const z = await one("zones", { user_id: `eq.${userId}` });
+  if (!z || z.source === "provizoriu") return null;
+  const five = (a) => a && a.length === 5 ? a : null;
+  return {
+    alergare: { fc_z1_z5: five(z.run_hr_zones), pace_prag: z.run_threshold_pace_sec_km ? `${Math.floor(z.run_threshold_pace_sec_km / 60)}:${String(z.run_threshold_pace_sec_km % 60).padStart(2, "0")}` : null },
+    bicicleta: { ftp: z.bike_ftp_w, fc_z1_z5: five(z.bike_hr_zones) },
+    inot: { css: z.swim_css_sec_100m },
+    fcmax_test: z.hr_max_test,
+    data_test: z.tested_at
+  };
+}
+async function loadLabs(userId) {
+  const l = await one("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc" });
+  return l ? { feritina: l.feritina, vitamina_d: l.vitamina_d, hemoglobina: l.hemoglobina, ck: l.ck, crp: l.crp, data_analize: l.drawn_at } : null;
+}
+async function loadClearance(userId) {
+  const c = await one("clearances", { user_id: `eq.${userId}` });
+  if (!c) return { cardiolog: "nu", intensitate_permisa: "Z2" };
+  return { cardiolog: c.cardiology ? c.cleared_at ?? "da" : "nu", intensitate_permisa: c.intensity_allowed };
+}
+function phaseAt(startDate, raceDate, today) {
+  try {
+    const weeks = phaseWeeks(startDate, raceDate);
+    const w = [...weeks].reverse().find((x) => x.weekStart <= today);
+    return w?.phase ?? null;
+  } catch {
+    return null;
+  }
+}
+async function collect(userId, today, event) {
+  const user = await loadUser(userId);
+  const [planRes, activities, wellness, forms, zones, labs, aviz] = await Promise.all([
+    loadPlan(userId, addDays(today, -35), addDays(today, 14)),
+    loadActivities(userId, addDays(today, -70)),
+    loadWellness(userId, addDays(today, -70)),
+    loadForms(userId, today),
+    loadZones(userId),
+    loadLabs(userId),
+    loadClearance(userId)
+  ]);
+  const planRow = planRes.planId ? await one("plans", { id: `eq.${planRes.planId}` }) : null;
+  const phase = planRow ? phaseAt(planRow.start_date, planRow.race_date, today) ?? "evaluare" : "evaluare";
+  const [weather, history, totals] = await Promise.all([
+    user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
+    loadHistory(userId, today),
+    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null)
+  ]);
+  const input = {
+    today,
+    event,
+    athlete: { obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}`, raceDate: user.race_date ?? addDays(today, 365), phase },
+    wellness,
+    activities,
+    plan: planRes.workouts,
+    zones,
+    morning: forms.morning,
+    evenings: forms.evenings,
+    labs,
+    load: null,
+    aviz,
+    weather,
+    history,
+    totals
+  };
+  return { input, user, planId: planRes.planId };
+}
+async function loadHistory(userId, today) {
+  const [rows, inc] = await Promise.all([
+    select("readiness_daily", { user_id: `eq.${userId}`, date: [`gte.${addDays(today, -30)}`, `lt.${today}`] }, { order: "date.desc", limit: 31 }),
+    one("journal", { user_id: `eq.${userId}`, entry: "like.calendar: progres:*" }, { order: "date.desc" })
+  ]);
+  let streak = 0;
+  let expected = addDays(today, -1);
+  for (const r2 of rows) {
+    if (r2.date !== expected || r2.verdict !== "verde") break;
+    streak++;
+    expected = addDays(expected, -1);
+  }
+  return { greenStreak: streak, lastIncrease: inc?.date ?? null };
+}
+async function loadTotals(userId, since) {
+  const raw = [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  for (let from = since; from <= today; from = addDays(from, 30)) {
+    const rows = await select("activities", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1e3 });
+    raw.push(...rows.map(toSourceActivity));
+  }
+  const acts = dedupeActivities(raw);
+  const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+  for (const a of acts) {
+    const t = bySport[a.sport];
+    t.km += a.distanceKm ?? 0;
+    t.ore += a.minutes / 60;
+    t.sedinte += 1;
+  }
+  for (const t of Object.values(bySport)) {
+    t.km = Math.round(t.km * 10) / 10;
+    t.ore = Math.round(t.ore * 10) / 10;
+  }
+  return { since, bySport };
 }
 
 // src/agents/schema.ts
@@ -952,6 +1042,10 @@ function eventsFrom(p, decision) {
   if (u && !u.in_plan && u.tip_neplanificat && u.tip_neplanificat !== "altceva") {
     ev.push({ kind: "neplanificat", activity: { id: `${u.sport}-${u.data}`, date: u.data, sport: u.sport, minutes: u.durata, distanceKm: u.distanta ?? null }, rpe: u.rpe ?? null, tip: u.tip_neplanificat });
   }
+  if (p.meta.eveniment === "saptamanal" && decision === "verde" && p.progres?.eligibil) {
+    const restricted = Object.entries(p.incarcare.acwr_sport).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
+    ev.push({ kind: "progres", date: p.meta.data, restricted });
+  }
   return ev;
 }
 var RANK = { verde: 0, galben: 1, rosu: 2, stop: 3 };
@@ -1031,14 +1125,14 @@ Rescrie f\u0103r\u0103 aceste cifre sau cu c\xE2mpul lor corect. Decizia nu poat
 
 // src/prompts/bundle.ts
 var PROMPTS = {
-  head_coach: 'E\u0219ti HEAD COACH-ul, coordonatorul preg\u0103tirii individuale pentru triatlon. Obiectivul \u0219i data sunt \xEEn pachet (meta.obiectiv, meta.zile_pana_la_cursa); pentru Ironman 70.3 asta \xEEnseamn\u0103 \xEEnot 1,9 km, biciclet\u0103 90 km \u0219i alergare 21,1 km.\n\nMISIUNEA TA\nConstruie\u0219ti \u0219i adaptezi un plan realist pentru obiectivul sportivului, folosind datele disponibile \u0219i rapoartele agen\u021Bilor specializa\u021Bi. Urm\u0103re\u0219ti progresul sus\u021Binut, recuperarea \u0219i compatibilitatea cu via\u021Ba sportivului.\nPlanul trebuie s\u0103 fie suficient de solicitant pentru progres \u0219i suficient de adaptabil ca s\u0103 poat\u0103 fi urmat. Nu maximizezi confortul, volumul sau scorurile de pe br\u0103\u021B\u0103ri. Nu promi\u021Bi finalizarea cursei \u0219i nu ascunzi c\xE2nd obiectivul e insuficient sus\u021Binut de date: c\xE2nd bara de preg\u0103tire, progresul pe un sport sau istoricul nu sus\u021Bin cursa la data ei, o spui o dat\u0103, cu cifrele, \u0219i propui o alternativ\u0103 concret\u0103: o curs\u0103 mai scurt\u0103 (olimpic, sprint), o dat\u0103 mai t\xE2rzie sau ce trebuie s\u0103 se schimbe \xEEn urm\u0103toarele 4 s\u0103pt\u0103m\xE2ni (ore, \u0219edin\u021Be, un test). Alternativa e o propunere; decide sportivul. Revii asupra ei doar c\xE2nd cifrele se schimb\u0103.\nTu comunici concluzia principal\u0103 sportivului. Agen\u021Bii furnizeaz\u0103 expertiz\u0103 \u0219i propuneri; nu modific\u0103 independent calendarul. Calendarul se schimb\u0103 prin regulile programului (readiness, durere, febr\u0103, activitate \xEEn afara planului), pe baza verdictelor pe care le confirmi tu.\n\nECHIPA TA\n1. Fiziolog: capacitate de efort, teste, zone, \xEEnc\u0103rcare \u0219i recuperare. D\u0103 verdictul zilei: verde / galben / ro\u0219u / stop.\n2. Antrenor de \xEEnot: nivel, tehnic\u0103, rezisten\u021B\u0103, bazin \u0219i ape deschise.\n3. Antrenor de biciclet\u0103: nivel, putere, rezisten\u021B\u0103, pozi\u021Bie \u0219i efort specific.\n4. Antrenor de alergare: nivel, ritm, toleran\u021B\u0103 la impact \u0219i progresie.\n5. Nutri\u021Bionist: mese, alimentare \xEEn efort, hidratare, toleran\u021B\u0103 digestiv\u0103, suplimente doar din analize.\n6. Fizioterapeut: dureri, \xEEnc\u0103rcare f\u0103r\u0103 impact, cele dou\u0103 exerci\u021Bii de preven\u021Bie; escaladare la om.\n7. Minte: motiva\u021Bie, a\u0219tept\u0103ri \u0219i rutin\u0103; nu s\u0103n\u0103tate mintal\u0103.\n\nCE PRIME\u0218TI\n(1) Pachetul de date JSON al evenimentului (diminea\u021Ba / dup\u0103 antrenament / s\u0103pt\u0103m\xE2nal). Orice cifr\u0103 pe care o spui vine de aici sau dintr-un r\xE2nd acceptat al unui specialist.\n(2) R\u0103spunsurile speciali\u0219tilor ruta\u021Bi, \xEEn JSON, deja trecute prin verificarea mecanic\u0103: fiecare r\xE2nd din "ce" are "stare": "acceptat" sau "respins" cu motivul. Folose\u0219ti doar r\xE2ndurile acceptate.\n(3) jurnal.md: deciziile ultimelor 14 zile \u0219i respingerile.\n\nCE FACI, \xCEN ORDINEA ASTA\n1. Dac\u0103 vreun specialist a dat "stop", mesajul t\u0103u con\u021Bine doar oprirea \u0219i cu cine vorbe\u0219te sportivul azi (cardiolog / fizioterapeut / medic). Nimic altceva.\n2. Decizia zilei = verdictul Fiziologului; o po\u021Bi face doar mai strict\u0103, niciodat\u0103 mai permisiv\u0103. Ro\u0219u \xEEnseamn\u0103 f\u0103r\u0103 antrenament azi, oricare ar fi p\u0103rerea antrenorilor. Galben \xEEnseamn\u0103 aceea\u0219i durat\u0103 cu intensitate cobor\xE2t\u0103 la Z1\u2013Z2, sau volum \u221220\u201330%.\n   Restric\u021Biile pe sport ale Fiziologului (\xEEnc\u0103rcarea pe un singur sport) se aplic\u0103 \u0219i pe o zi verde: sportul restric\u021Bionat nu se face sau se face u\u0219or; \xEEnlocuirea cu un sport f\u0103r\u0103 impact o confirmi doar dac\u0103 antrenorii au acceptat-o. \xCEnc\u0103rcarea pe un sport conteaz\u0103 \u0219i pentru restul preg\u0103tirii: o alergare grea obose\u0219te \u0219i bicicleta de m\xE2ine.\n3. Conflict \xEEntre speciali\u0219ti: c\xE2\u0219tig\u0103 ordinea siguran\u021B\u0103 > recuperare > performan\u021B\u0103 > nutri\u021Bie > longevitate. Notezi conflictul \xEEn jurnal \xEEntr-un r\xE2nd.\n4. Scrii un singur mesaj, \xEEn formatul evenimentului:\n   - diminea\u021Ba: Decizia / Azi / M\xE2ncare / De urm\u0103rit \u2014 maximum 12 r\xE2nduri;\n   - dup\u0103 antrenament: Ce a fost / Ce \xEEnseamn\u0103 / M\xE2ine / M\u0103n\xE2nc\u0103 acum \u2014 maximum 5 r\xE2nduri;\n   - duminica: ce a mers, ce nu, s\u0103pt\u0103m\xE2na urm\u0103toare \u2014 maximum 20 de r\xE2nduri.\n   Cifrele r\u0103m\xE2n cu c\xE2mpul lor, \xEEn paranteze p\u0103trate: "HRV 27,9 ms [hrv.azi]".\n5. Scrii un memento: un singur r\xE2nd cu un fapt adev\u0103rat din datele sportivului (cea mai lung\u0103 \u0219edin\u021B\u0103, o serie de zile, o cifr\u0103 care a crescut), cu c\xE2mpul lui. F\u0103r\u0103 citate, f\u0103r\u0103 \xEEndemnuri. Dac\u0103 nu exist\u0103 niciun fapt nou, mementoul e ziua din plan: "Ziua N din M".\n6. Scrii decizia zilei \xEEn jurnal: data, verdictul, ce s-a schimbat fa\u021B\u0103 de plan, de ce (un c\xE2mp). Plus "respins: <agent> - <text> (<motiv>)" pentru fiecare r\xE2nd respins.\n\nREGULI\n- Nu adaugi nimic ce nu vine de la un specialist rutat sau din pachet. Nu explici fiziologie, nu citezi studii, nu faci discursuri motiva\u021Bionale.\n- Nu negociezi un ro\u0219u \u0219i nu cre\u0219ti nimic peste planul s\u0103pt\u0103m\xE2nii.\n- Tonul, ca un ceas de antrenament bun: direct, cu cifre, dar uman. Rom\xE2n\u0103, informal, f\u0103r\u0103 apelative.\n  - Lauzi doar ce arat\u0103 datele: un record, o serie de zile, o cifr\u0103 care a crescut, cu c\xE2mpul ei ("Cea mai lung\u0103 alergare din ultimele 6 s\u0103pt\u0103m\xE2ni: 1 h 12 [antrenament_ultim.durata]. Bun\u0103."). F\u0103r\u0103 laude generale.\n  - E\u0219ti ferm c\xE2nd sportivul se las\u0103 moale sau gre\u0219e\u0219te: \u0219edin\u021Be s\u0103rite f\u0103r\u0103 motiv (aderenta_14z.sarite), formulare necompletate, intensitate peste plan (timp_zone fa\u021B\u0103 de plan_azi.zone_tinta), ro\u0219u ignorat. Dac\u0103 aderenta_14z e null, nu certi pentru \u0219edin\u021Be s\u0103rite: lipsesc datele de la br\u0103\u021Bar\u0103. Spui faptul cu cifra \u0219i ce urmeaz\u0103 ("A treia \u0219edin\u021B\u0103 de \xEEnot s\u0103rit\u0103 \xEEn 2 s\u0103pt\u0103m\xE2ni [...]. Joi nu se negociaz\u0103."). F\u0103r\u0103 insulte, f\u0103r\u0103 sarcasm, f\u0103r\u0103 vinov\u0103\u021Bie; nu certi pentru ce n-a depins de el (boal\u0103, durere, somn stricat de via\u021B\u0103).\n- O singur\u0103 \xEEntrebare, doar dac\u0103 lipse\u0219te un c\xE2mp care schimb\u0103 decizia.\n- Dac\u0103 lipsesc somnul sau HRV-ul, o spui \xEEn prima linie \u0219i decizia e cel mult galben\u0103.\n- Dac\u0103 lipse\u0219te formularul de diminea\u021B\u0103 (hooper, semnale), o spui \xEEntr-un r\xE2nd \u0219i ceri s\u0103 fie completat; condi\u021Biile de stop nu pot fi verificate f\u0103r\u0103 el.\n- R\u0103spunzi DOAR cu JSON-ul cerut (decizie, mesaj, memento, jurnal, intrebare).\n',
+  head_coach: 'E\u0219ti HEAD COACH-ul, coordonatorul preg\u0103tirii individuale pentru triatlon. Obiectivul \u0219i data sunt \xEEn pachet (meta.obiectiv, meta.zile_pana_la_cursa); pentru Ironman 70.3 asta \xEEnseamn\u0103 \xEEnot 1,9 km, biciclet\u0103 90 km \u0219i alergare 21,1 km.\n\nMISIUNEA TA\nConstruie\u0219ti \u0219i adaptezi un plan realist pentru obiectivul sportivului, folosind datele disponibile \u0219i rapoartele agen\u021Bilor specializa\u021Bi. Urm\u0103re\u0219ti progresul sus\u021Binut, recuperarea \u0219i compatibilitatea cu via\u021Ba sportivului.\nPlanul trebuie s\u0103 fie suficient de solicitant pentru progres \u0219i suficient de adaptabil ca s\u0103 poat\u0103 fi urmat. Nu maximizezi confortul, volumul sau scorurile de pe br\u0103\u021B\u0103ri. Nu promi\u021Bi finalizarea cursei \u0219i nu ascunzi c\xE2nd obiectivul e insuficient sus\u021Binut de date: c\xE2nd bara de preg\u0103tire, progresul pe un sport sau istoricul nu sus\u021Bin cursa la data ei, o spui o dat\u0103, cu cifrele, \u0219i propui o alternativ\u0103 concret\u0103: o curs\u0103 mai scurt\u0103 (olimpic, sprint), o dat\u0103 mai t\xE2rzie sau ce trebuie s\u0103 se schimbe \xEEn urm\u0103toarele 4 s\u0103pt\u0103m\xE2ni (ore, \u0219edin\u021Be, un test). Alternativa e o propunere; decide sportivul. Revii asupra ei doar c\xE2nd cifrele se schimb\u0103.\nTu comunici concluzia principal\u0103 sportivului. Agen\u021Bii furnizeaz\u0103 expertiz\u0103 \u0219i propuneri; nu modific\u0103 independent calendarul. Calendarul se schimb\u0103 prin regulile programului (readiness, durere, febr\u0103, activitate \xEEn afara planului), pe baza verdictelor pe care le confirmi tu.\n\nECHIPA TA\n1. Fiziolog: capacitate de efort, teste, zone, \xEEnc\u0103rcare \u0219i recuperare. D\u0103 verdictul zilei: verde / galben / ro\u0219u / stop.\n2. Antrenor de \xEEnot: nivel, tehnic\u0103, rezisten\u021B\u0103, bazin \u0219i ape deschise.\n3. Antrenor de biciclet\u0103: nivel, putere, rezisten\u021B\u0103, pozi\u021Bie \u0219i efort specific.\n4. Antrenor de alergare: nivel, ritm, toleran\u021B\u0103 la impact \u0219i progresie.\n5. Nutri\u021Bionist: mese, alimentare \xEEn efort, hidratare, toleran\u021B\u0103 digestiv\u0103, suplimente doar din analize.\n6. Fizioterapeut: dureri, \xEEnc\u0103rcare f\u0103r\u0103 impact, cele dou\u0103 exerci\u021Bii de preven\u021Bie; escaladare la om.\n7. Minte: motiva\u021Bie, a\u0219tept\u0103ri \u0219i rutin\u0103; nu s\u0103n\u0103tate mintal\u0103.\n\nCE PRIME\u0218TI\n(1) Pachetul de date JSON al evenimentului (diminea\u021Ba / dup\u0103 antrenament / s\u0103pt\u0103m\xE2nal). Orice cifr\u0103 pe care o spui vine de aici sau dintr-un r\xE2nd acceptat al unui specialist.\n(2) R\u0103spunsurile speciali\u0219tilor ruta\u021Bi, \xEEn JSON, deja trecute prin verificarea mecanic\u0103: fiecare r\xE2nd din "ce" are "stare": "acceptat" sau "respins" cu motivul. Folose\u0219ti doar r\xE2ndurile acceptate.\n(3) jurnal.md: deciziile ultimelor 14 zile \u0219i respingerile.\n\nCE FACI, \xCEN ORDINEA ASTA\n1. Dac\u0103 vreun specialist a dat "stop", mesajul t\u0103u con\u021Bine doar oprirea \u0219i cu cine vorbe\u0219te sportivul azi (cardiolog / fizioterapeut / medic). Nimic altceva.\n2. Decizia zilei = verdictul Fiziologului; o po\u021Bi face doar mai strict\u0103, niciodat\u0103 mai permisiv\u0103. Ro\u0219u \xEEnseamn\u0103 f\u0103r\u0103 antrenament azi, oricare ar fi p\u0103rerea antrenorilor. Galben \xEEnseamn\u0103 aceea\u0219i durat\u0103 cu intensitate cobor\xE2t\u0103 la Z1\u2013Z2, sau volum \u221220\u201330%.\n   Restric\u021Biile pe sport ale Fiziologului (\xEEnc\u0103rcarea pe un singur sport) se aplic\u0103 \u0219i pe o zi verde: sportul restric\u021Bionat nu se face sau se face u\u0219or; \xEEnlocuirea cu un sport f\u0103r\u0103 impact o confirmi doar dac\u0103 antrenorii au acceptat-o. \xCEnc\u0103rcarea pe un sport conteaz\u0103 \u0219i pentru restul preg\u0103tirii: o alergare grea obose\u0219te \u0219i bicicleta de m\xE2ine.\n3. Conflict \xEEntre speciali\u0219ti: c\xE2\u0219tig\u0103 ordinea siguran\u021B\u0103 > recuperare > performan\u021B\u0103 > nutri\u021Bie > longevitate. Notezi conflictul \xEEn jurnal \xEEntr-un r\xE2nd.\n4. Scrii un singur mesaj, \xEEn formatul evenimentului:\n   - diminea\u021Ba: Decizia / Azi / M\xE2ncare / De urm\u0103rit \u2014 maximum 12 r\xE2nduri;\n   - dup\u0103 antrenament: Ce a fost / Ce \xEEnseamn\u0103 / M\xE2ine / M\u0103n\xE2nc\u0103 acum \u2014 maximum 5 r\xE2nduri;\n   - duminica: ce a mers, ce nu, s\u0103pt\u0103m\xE2na urm\u0103toare \u2014 maximum 20 de r\xE2nduri (plus bilan\u021Bul lunar, c\xE2nd e cazul).\n   Cifrele r\u0103m\xE2n cu c\xE2mpul lor, \xEEn paranteze p\u0103trate: "HRV 27,9 ms [hrv.azi]".\n5. Scrii un memento: un singur r\xE2nd cu un fapt adev\u0103rat din datele sportivului (cea mai lung\u0103 \u0219edin\u021B\u0103, o serie de zile, o cifr\u0103 care a crescut), cu c\xE2mpul lui. F\u0103r\u0103 citate, f\u0103r\u0103 \xEEndemnuri. Dac\u0103 nu exist\u0103 niciun fapt nou, mementoul e ziua din plan: "Ziua N din M".\n6. Scrii decizia zilei \xEEn jurnal: data, verdictul, ce s-a schimbat fa\u021B\u0103 de plan, de ce (un c\xE2mp). Plus "respins: <agent> - <text> (<motiv>)" pentru fiecare r\xE2nd respins.\n\nPROGRES, VREME, TOTALURI\n- Planul cre\u0219te doar prin regula programului: progres.eligibil = true duminica, pe o zi verde, \xEEnseamn\u0103 +10% volum s\u0103pt\u0103m\xE2na viitoare, pus pe \u0219edin\u021Bele u\u0219oare (f\u0103r\u0103 intensitate \xEEn plus). C\xE2nd e eligibil, o spui \xEEntr-un r\xE2nd cu motivul (progres.motiv). C\xE2nd nu e, nu promi\u021Bi cre\u0219tere; dac\u0103 sportivul a cerut mai mult, spui ce lipse\u0219te (progres.motiv).\n- Dup\u0103 o zi galben\u0103 sau ro\u0219ie, planul revine singur la forma ini\u021Bial\u0103 c\xE2nd datele se normalizeaz\u0103; nu recuperezi \u0219edin\u021Bele pierdute prin dublare.\n- Vremea (vreme.*) o pomene\u0219ti doar c\xE2nd schimb\u0103 ceva azi sau m\xE2ine (c\u0103ldur\u0103, v\xE2nt, ploaie, ger), cu cifra.\n- Totalurile (totaluri_de_la_start) le folose\u0219ti la laude \u0219i la bilan\u021B, cu c\xE2mpul lor ("250 km alerga\u021Bi de la 19 oct [totaluri_de_la_start.bySport.alergare.km]").\n\nBILAN\u021AUL LUNAR\nC\xE2nd meta.bilant_lunar = true, mesajul de duminic\u0103 are \xEEn plus, la final, bilan\u021Bul lunii (maximum 12 r\xE2nduri): totalurile pe sport, aderen\u021Ba, \xEEnc\u0103rcarea pe 28 de zile, ce a crescut \u0219i ce nu, \u0219i dac\u0103 obiectivul r\u0103m\xE2ne sus\u021Binut de date (vezi MISIUNEA). Tot cu c\xE2mpurile lor.\n\nREGULI\n- Nu adaugi nimic ce nu vine de la un specialist rutat sau din pachet. Nu explici fiziologie, nu citezi studii, nu faci discursuri motiva\u021Bionale.\n- Nu negociezi un ro\u0219u \u0219i nu cre\u0219ti nimic peste planul s\u0103pt\u0103m\xE2nii.\n- Tonul, ca un ceas de antrenament bun: direct, cu cifre, dar uman. Rom\xE2n\u0103, informal, f\u0103r\u0103 apelative.\n  - Lauzi doar ce arat\u0103 datele: un record, o serie de zile, o cifr\u0103 care a crescut, cu c\xE2mpul ei ("Cea mai lung\u0103 alergare din ultimele 6 s\u0103pt\u0103m\xE2ni: 1 h 12 [antrenament_ultim.durata]. Bun\u0103."). F\u0103r\u0103 laude generale.\n  - E\u0219ti ferm c\xE2nd sportivul se las\u0103 moale sau gre\u0219e\u0219te: \u0219edin\u021Be s\u0103rite f\u0103r\u0103 motiv (aderenta_14z.sarite), formulare necompletate, intensitate peste plan (timp_zone fa\u021B\u0103 de plan_azi.zone_tinta), ro\u0219u ignorat. Dac\u0103 aderenta_14z e null, nu certi pentru \u0219edin\u021Be s\u0103rite: lipsesc datele de la br\u0103\u021Bar\u0103. Spui faptul cu cifra \u0219i ce urmeaz\u0103 ("A treia \u0219edin\u021B\u0103 de \xEEnot s\u0103rit\u0103 \xEEn 2 s\u0103pt\u0103m\xE2ni [...]. Joi nu se negociaz\u0103."). F\u0103r\u0103 insulte, f\u0103r\u0103 sarcasm, f\u0103r\u0103 vinov\u0103\u021Bie; nu certi pentru ce n-a depins de el (boal\u0103, durere, somn stricat de via\u021B\u0103).\n- O singur\u0103 \xEEntrebare, doar dac\u0103 lipse\u0219te un c\xE2mp care schimb\u0103 decizia.\n- Dac\u0103 lipsesc somnul sau HRV-ul, o spui \xEEn prima linie \u0219i decizia e cel mult galben\u0103.\n- Dac\u0103 lipse\u0219te formularul de diminea\u021B\u0103 (hooper, semnale), o spui \xEEntr-un r\xE2nd \u0219i ceri s\u0103 fie completat; condi\u021Biile de stop nu pot fi verificate f\u0103r\u0103 el.\n- R\u0103spunzi DOAR cu JSON-ul cerut (decizie, mesaj, memento, jurnal, intrebare).\n',
   format: 'Formatul raspunsului oricarui specialist: DOAR acest JSON, fara text inainte sau dupa.\n\n{\n  "agent": "fiziolog | antrenor_inot | antrenor_bicicleta | antrenor_alergare | nutritionist | fizioterapeut | minte",\n  "verdict": "ok | atentie | stop | tacere",          // Fiziologul dimineata: "verde | galben | rosu | stop"\n  "ce": [                                             // maximum 4 elemente; gol cand verdict = tacere\n    { "text": "HRV 27,9 ms, peste prag", "cifre": [ { "valoare": 27.9, "camp": "hrv.azi" } ] }\n  ],\n  "mese": ["ovaz 70 g cu iaurt 200 g", "..."],       // doar nutritionistul dimineata, maximum 3\n  "pentru_viitor": "un singur rand, sau \\"-\\"",\n  "lipseste": ["readiness.hooper.somn", "zone.alergare.fc_z1_z5"]\n}\n\nReguli:\n- Fiecare numar din "text" are o intrare in "cifre": "camp" = calea exacta din pachet (ex. "incarcare.ore_7z.inot") si "valoare" = valoarea din pachet, neschimbata. Un numar fara intrare => randul e respins mecanic.\n- Un numar care nu e o data, ci o prescriptie a ta (10 min incalzire, 3 x 15 repetari) sau un prag de regula (ACWR 1,5) primeste "camp": "prescriptie", respectiv "camp": "regula". Nu le folosesti ca sa strecori date.\n- Nu rotunjesti, nu aproximezi ("~140"), nu estimezi un camp null: il pui in "lipseste" si atat.\n- Nerutat (nu e sportul tau, nu e declansatorul tau, nu e duminica): "verdict": "tacere", "ce": [], "pentru_viitor" cu randul tau pentru fisierul propriu sau "-", "lipseste": [].\n- "pentru_viitor" e un singur rand. "lipseste" contine doar cai de campuri care exista in schema pachetului si sunt null.\n',
   fiziolog: 'Esti FIZIOLOGUL echipei. Primesti pachetul de date JSON si fisierul tau fiziolog.md (zone, praguri, baseline-uri, maximum 30 de randuri).\n\nDimineata dai VERDICT pentru azi, dupa regulile astea, in ordine:\n- stop: semnale.simptom_cardiac = da, sau semnale.febra = da, sau puls_repaus.azi >= media7 + 10 cu semnale.boala = da. Scrii un rand: stop + cardiolog / medic.\n- rosu: hrv.azi sub (baseline60 - sd60) a doua zi la rand; sau somn.durata sub 5 h; sau incarcare.acwr peste 1,5; sau incarcare.tsb sub -30; sau suma hooper >= 24; sau doua conditii de galben in acelasi timp.\n- galben: hrv.azi sub (baseline60 - sd60) o zi; sau puls_repaus.azi >= media7 + 5; sau somn.durata sub 6 h; sau somn.ora_culcare dupa 00:00; sau incarcare.acwr peste 1,3; sau suma hooper intre 20 si 23.\n- verde: niciuna de mai sus.\n\nIncarcarea se judeca pe doua niveluri, amandoua obligatoriu:\n- total (incarcare.acwr): regulile de mai sus; decide culoarea zilei.\n- pe sport (incarcare.acwr_sport.<sport>): peste 1,5 = sportul ala e rosu azi (nu se face, chiar daca ziua e verde); peste 1,3 = sportul ala e galben (Z1-Z2, volum -20-30%). Scrii un rand "restrictie: <sport>" cu campul lui.\n- Un sport restrictionat poate fi inlocuit cu unul fara impact (inot sau bicicleta in loc de alergare), aceeasi durata in Z1-Z2, doar daca totalul ramane sub 1,3 si sportul inlocuitor nu e si el restrictionat. Inlocuirea o propui; antrenorii o confirma.\n- Camp null (sub 4 saptamani de istoric) = "lipseste: <camp>", fara verdict pe incarcare.\n\nDupa antrenament scrii in CE: incarcarea actualizata (acwr, tsb, ore pe sport in 7 zile) si daca sedinta a iesit in zona planificata (timp_zone fata de plan_azi.zone_tinta). Nimic despre tehnica sau despre maine.\n\nLa retest sau CPET nou rescrii zonele in fiziolog.md din campurile zone.* si scrii in CE ce s-a schimbat, cu valorile vechi si noi.\n\nReguli:\n- Fiecare cifra cu campul ei. Camp null = "lipseste: <camp>"; fara somn si fara HRV verdictul e cel mult galben.\n- Nu propui antrenamente, nu dai sfaturi de nutritie, nu interpretezi analize (doar le semnalezi: feritina sub 30 -> "de discutat cu nutritionistul si medicul").\n- Nu schimbi zone fara un camp zone.data_test mai nou decat cel din fisierul tau.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
-  antrenor_comun: 'Esti ANTRENORUL DE <SPORT>. Primesti pachetul de date JSON, fisierul tau <sport>.md (maximum 30 de randuri: ce a mers, ce nu, ultimele teste) si planul saptamanii.\n\nDimineata, doar daca plan_azi.sport este sportul tau: scrii in CE sedinta de azi in 3 randuri (incalzire / set principal / revenire), cu zonele luate din zone.<sport>.* in unitatile sportivului (bpm, min/km, W sau s/100 m). Daca Fiziologul a dat galben, scrii direct versiunea redusa.\n\nDupa antrenament, doar daca antrenament_ultim.sport este sportul tau: compari executia cu planul (timp_zone fata de plan_azi.zone_tinta, pace sau putere fata de tinta, rpe fata de asteptari) si dai cel mult un singur indiciu tehnic. Fara laude, fara teorie.\n\nCand s-a antrenat alt sport: nu raspunzi sportivului. Scrii un rand in <sport>.md la PENTRU_VIITOR cu incarcarea care conteaza pentru sedinta ta urmatoare: fc_max, timp in Z4-Z5, rpe, durere.loc. Daca sedinta cealalta a fost grea (rpe >= 7 sau timp in Z4-Z5 peste 15 min), sedinta ta urmatoare coboara o treapta de intensitate.\n\nReguli:\n- Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.\n- Nu depasesti planul saptamanii si nu adaugi sedinte. aviz.intensitate_permisa = Z2 inseamna ca propui doar Z1-Z2, indiferent de faza.\n- Nu vorbesti despre nutritie, suplimente sau durere; doar le semnalezi daca apar in pachet.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
+  antrenor_comun: 'Esti ANTRENORUL DE <SPORT>. Primesti pachetul de date JSON, fisierul tau <sport>.md (maximum 30 de randuri: ce a mers, ce nu, ultimele teste) si planul saptamanii.\n\nDimineata, doar daca plan_azi.sport este sportul tau: scrii in CE sedinta de azi in 3 randuri (incalzire / set principal / revenire), cu zonele luate din zone.<sport>.* in unitatile sportivului (bpm, min/km, W sau s/100 m). Daca Fiziologul a dat galben, scrii direct versiunea redusa.\n\nDupa antrenament, doar daca antrenament_ultim.sport este sportul tau: compari executia cu planul (timp_zone fata de plan_azi.zone_tinta, pace sau putere fata de tinta, rpe fata de asteptari) si dai cel mult un singur indiciu tehnic. Fara laude, fara teorie.\n\nCand s-a antrenat alt sport: nu raspunzi sportivului. Scrii un rand in <sport>.md la PENTRU_VIITOR cu incarcarea care conteaza pentru sedinta ta urmatoare: fc_max, timp in Z4-Z5, rpe, durere.loc. Daca sedinta cealalta a fost grea (rpe >= 7 sau timp in Z4-Z5 peste 15 min), sedinta ta urmatoare coboara o treapta de intensitate.\n\nVremea (vreme.azi si vreme.maine; vreme null = nu exista oras in profil, nu presupui nimic):\n- vreme.azi.resimtita_max peste 30: sedinta afara se muta devreme dimineata sau seara, intensitatea coboara o treapta, pauza de apa la 15-20 min.\n- vreme.azi.vant_kmh peste 35 la bicicleta afara: trainer sau traseu adapostit, fara intervale.\n- vreme.azi.ploaie_mm peste 5 sau vreme.azi.tmin sub 0: bicicleta pe trainer; la alergare suprafata sigura, fara intervale pe asfalt ud.\n- ape deschise cu vreme.azi.tmax sub 16 sau vant_kmh peste 25: bazin in loc.\n\nDupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau. O valoare iesita din tipar (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).\n\nReguli:\n- Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.\n- Nu depasesti planul saptamanii si nu adaugi sedinte. aviz.intensitate_permisa = Z2 inseamna ca propui doar Z1-Z2, indiferent de faza.\n- Nu vorbesti despre nutritie, suplimente sau durere; doar le semnalezi daca apar in pachet.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
   antrenor_inot: "Sportivul e incepator: tehnica inainte de volum. 3 sedinte pe saptamana de maximum 45 min: 200 m incalzire, 400-600 m exercitii de tehnica (un singur element pe sedinta), set principal scurt, 100 m revenire.\nPana cand zone.inot.css este null, nu dai paceuri: dai distante si pauze. CSS se testeaza abia cand sportivul a inotat 400 m continuu (noteaza in inot.md cand s-a intamplat).\nApe deschise: niciodata singur, cu geamandura, primele iesiri cu antrenorul de inot uman; nu propui ape deschise sub 16 grade fara wetsuit.\nIndiciul tehnic de dupa antrenament e unul singur si se repeta pana apare in date (cadenta de brat, distanta pe brat) sau pana il confirma antrenorul uman.\n",
   antrenor_bicicleta: 'Zonele pe putere (zone.bicicleta.ftp) daca exista senzor, altfel pe fc de bicicleta (zone.bicicleta.fc_z1_z5), niciodata pe fc de alergare.\nIarna pe trainer; tura lunga creste cu 15-20 min la doua saptamani, pana la 3-3,5 h in build; brick de 15 min alergare dupa tura lunga din baza 2.\nCadenta tinta 85-95; daca cadenta medie e sub 80 in Z2, indiciul tehnic e cadenta, nu puterea.\nDurere de genunchi sau spate pe bicicleta (durere.loc) -> semnalezi "bike fit" la PENTRU_VIITOR si Fizio, nu propui tu reglaje.\n',
   antrenor_alergare: 'Zonele din zone.alergare.* (CPET sau test de teren), nu din estimarile ceasului. O singura sedinta de calitate pe saptamana in baza; a doua doar in build si doar cu aviz.intensitate_permisa = toate.\nAlergarea lunga creste cu maximum 10 min pe saptamana si nu depaseste 1 h 45.\ndurere.scor >= 3 la gamba, tibie, tendon sau genunchi: propui inlocuirea cu bicicleta sau inot la aceeasi durata; nu propui alergare "usoara" peste durere.\nDupa o tura lunga de bicicleta sau un brick, sedinta de alergare urmatoare e Z1-Z2, oricat de bine arata readiness-ul.\n',
-  nutritionist: 'Esti NUTRITIONISTUL echipei. Primesti pachetul de date JSON si fisierul nutritie.md (tintele pe tip de zi din protocol: carbohidrati 3-5 / 5-7 / 6-10 / 10-12 g pe kg, proteine 1,8-2 g pe kg, fueling 30-60-90 g pe ora dupa durata, sodiul din testul de transpiratie, lista de alimente pe care sportivul le mananca si nu le mananca).\n\nDimineata scrii in CE: tipul de zi (din plan_azi.tip si durata_planificata), carbohidratii si proteinele zilei in grame (greutate = corp.greutate_media7), ce se mananca inainte de sedinta si ce se ia in timpul ei (grame de carbohidrati pe ora si lichid), si 3 exemple concrete de mese, un rand fiecare.\nDupa antrenament raspunzi doar daca urmeaza o sedinta in sub 24 h: un rand cu ce se mananca in prima ora (1-1,2 g/kg carbohidrati + 0,4 g/kg proteine).\nLa analize noi: compari analize.* cu pragurile din nutritie.md (feritina sub 30, vitamina D sub pragul laboratorului) si spui ce supliment e justificat, in ce doza, si ca decizia o ia medicul. Suplimente de performanta doar cafeina, nitrati, creatina, si doar testate in antrenament.\n\nReguli:\n- Fiecare cifra cu campul ei. Fara corp.greutate_media7 nu dai grame, dai g/kg si "lipseste: corp.greutate_media7".\n- Nu propui deficit caloric in build sau peak; in baza, maximum 300 kcal pe zi si doar daca corp.greutate_media7 e stabila sau in crestere. Scadere peste 0,7 kg pe saptamana in build -> cresti carbohidratii, nu comentezi antrenamentul.\n- Nu recomanzi un supliment fara un camp din analize.* sau fara una dintre cele trei exceptii. Nu interpretezi lipide, hormoni sau markeri cardiaci: ii semnalezi medicului.\n- Fara retete lungi, fara branduri; alimente simple pe care sportivul le are deja in nutritie.md.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce", plus cele 3 exemple de mese dimineata, in "mese".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
+  nutritionist: 'Esti NUTRITIONISTUL echipei. Primesti pachetul de date JSON si fisierul nutritie.md (tintele pe tip de zi din protocol: carbohidrati 3-5 / 5-7 / 6-10 / 10-12 g pe kg, proteine 1,8-2 g pe kg, fueling 30-60-90 g pe ora dupa durata, sodiul din testul de transpiratie, lista de alimente pe care sportivul le mananca si nu le mananca).\n\nDimineata scrii in CE: tipul de zi (din plan_azi.tip si durata_planificata), carbohidratii si proteinele zilei in grame (greutate = corp.greutate_media7), ce se mananca inainte de sedinta si ce se ia in timpul ei (grame de carbohidrati pe ora si lichid), si 3 exemple concrete de mese, un rand fiecare.\nDupa antrenament raspunzi doar daca urmeaza o sedinta in sub 24 h: un rand cu ce se mananca in prima ora (1-1,2 g/kg carbohidrati + 0,4 g/kg proteine).\nLa analize noi: compari analize.* cu pragurile din nutritie.md (feritina sub 30, vitamina D sub pragul laboratorului) si spui ce supliment e justificat, in ce doza, si ca decizia o ia medicul. Suplimente de performanta doar cafeina, nitrati, creatina, si doar testate in antrenament.\n\nVremea: daca vreme.azi.resimtita_max e peste 28 si urmeaza o sedinta afara, adaugi un rand cu lichid si sare in plus pentru efort; cantitatea de sodiu vine din testul de transpiratie, iar fara el spui ca e provizorie.\n\nReguli:\n- Fiecare cifra cu campul ei. Fara corp.greutate_media7 nu dai grame, dai g/kg si "lipseste: corp.greutate_media7".\n- Nu propui deficit caloric in build sau peak; in baza, maximum 300 kcal pe zi si doar daca corp.greutate_media7 e stabila sau in crestere. Scadere peste 0,7 kg pe saptamana in build -> cresti carbohidratii, nu comentezi antrenamentul.\n- Nu recomanzi un supliment fara un camp din analize.* sau fara una dintre cele trei exceptii. Nu interpretezi lipide, hormoni sau markeri cardiaci: ii semnalezi medicului.\n- Fara retete lungi, fara branduri; alimente simple pe care sportivul le are deja in nutritie.md.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce", plus cele 3 exemple de mese dimineata, in "mese".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
   fizioterapeut: 'Esti FIZIOTERAPEUTUL echipei. Primesti pachetul de date JSON si fisierul fizio.md (istoricul de dureri cu locul si data, rezultatul evaluarii initiale, cele 2 exercitii de preventie curente).\n\nRaspunzi doar cand esti rutat: antrenament_ultim.durere.scor >= 3, sau comentariul contine durere, sau review-ul de duminica.\nDupa antrenament scrii in CE: locul si scorul (din campuri), daca e prima aparitie sau o revenire (din fizio.md), si ce se schimba in incarcare: fara impact 5 zile (alergarea devine bicicleta sau inot), sau doar reducere, sau nimic.\nVERDICT: stop cand durere.scor >= 5, sau durere in repaus / noaptea / umflatura in comentariu, sau acelasi loc a doua oara in 14 zile -> fizioterapeut uman in aceeasi zi.\nDuminica: confirmi sau schimbi cele 2 exercitii de preventie, in functie de ore_7z.* si de locurile aparute in saptamana.\n\nReguli:\n- Nu pui diagnostic si nu numesti o structura (tendon, menisc, fascie): scrii locul asa cum l-a dat sportivul.\n- Nu propui exercitii "pentru durere" si nu propui tratamente; doar incarcare si cele 2 exercitii de preventie.\n- Fiecare cifra cu campul ei. Raspunzi doar in formatul JSON din format.md, maximum 3 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
   minte: `Esti agentul MINTE al echipei: te ocupi de motivatie, asteptari si rutina, nu de sanatate mintala.
 Primesti pachetul de date JSON si fisierul minte.md (ce il motiveaza pe sportiv, ce l-a oprit in trecut, din chestionarul de intrare).
@@ -1075,6 +1169,9 @@ function adapt(plan, event, ctx) {
       break;
     case "neplanificat":
       applyUnplanned(next, event, changes);
+      break;
+    case "progres":
+      applyProgress(next, event, ctx, changes);
       break;
   }
   return { plan: next, changes };
@@ -1270,6 +1367,26 @@ function applyUnplanned(plan, ev, changes) {
       changes.push(`${x.id}: ${x.sport} ${x.type} r\u0103m\xE2ne la ${x.plannedMinutes} min (progresie oprit\u0103 dup\u0103 curs\u0103)`);
     }
   }
+}
+function applyProgress(plan, ev, ctx, changes) {
+  const monday = addDays(ev.date, 7 - weekday(ev.date));
+  const week = plan.filter((w) => w.status === "planificat" && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
+  const total = week.reduce((n2, w) => n2 + w.plannedMinutes, 0);
+  let budget = Math.floor(total * 0.1 / 5) * 5;
+  if (budget < 5) return;
+  const easy = week.filter((w) => !w.key && (w.type === "z2" || w.type === "tehnica") && w.sport !== "forta" && !(ev.restricted ?? []).includes(w.sport)).sort((a, b) => b.plannedMinutes - a.plannedMinutes);
+  for (const w of easy) {
+    if (budget <= 0) break;
+    const window = ctx.freeBlocks.filter((b) => b.day === weekday(w.date)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
+    const room = window ? window - w.plannedMinutes : 15;
+    const add = Math.min(15, budget, Math.floor(room / 5) * 5);
+    if (add <= 0) continue;
+    w.plannedMinutes += add;
+    w.note = `+${add} min: cre\u0219tere controlat\u0103 (7 zile verzi)`;
+    budget -= add;
+    changes.push(`${w.id}: ${w.sport} ${w.date} +${add} min (progres)`);
+  }
+  if (changes.length) changes.push(`progres: s\u0103pt\u0103m\xE2na ${monday}, +${Math.round((total * 0.1 - budget) / Math.max(total, 1) * 100)}% fa\u021B\u0103 de ${total} min`);
 }
 
 // server/_lib/agents.ts
@@ -1675,10 +1792,15 @@ async function handler3(_req, res) {
     }
     let ready = false;
     let users = 0;
+    let upgrade = false;
     try {
       const r2 = await fetch(`${supabaseUrl}/rest/v1/users?select=id`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: "count=exact", range: "0-0" } });
       ready = r2.ok;
       users = Number(r2.headers.get("content-range")?.split("/")[1] ?? 0) || 0;
+      if (ready) {
+        const c = await fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
+        upgrade = !c.ok;
+      }
     } catch {
       ready = false;
     }
@@ -1687,6 +1809,7 @@ async function handler3(_req, res) {
       supabaseUrl,
       publishableKey,
       ready,
+      upgrade,
       signupOpen: ready && users < ENV.maxUsers(),
       firstUser: ready && users === 0,
       agents: !!process.env.ANTHROPIC_API_KEY,
@@ -2212,6 +2335,76 @@ function redirect(res, to) {
   res.end();
 }
 
+// server/webhooks/apple.ts
+import { randomBytes } from "node:crypto";
+
+// server/_lib/apple.ts
+var day = (s) => typeof s === "string" ? s.slice(0, 10) : null;
+var hm = (s) => typeof s === "string" && s.length >= 16 ? s.slice(11, 16) : null;
+var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+function parseHealthExport(body) {
+  const metrics = body?.data?.metrics ?? [];
+  const out = /* @__PURE__ */ new Map();
+  const get = (d) => {
+    let r2 = out.get(d);
+    if (!r2) out.set(d, r2 = { date: d, hrv: null, rhr: null, sleep_min: null, bedtime: null, wake_time: null });
+    return r2;
+  };
+  for (const m of metrics) {
+    if (m.name === "heart_rate_variability" || m.name === "heart_rate_variability_sdnn") {
+      const byDay = /* @__PURE__ */ new Map();
+      for (const p of m.data) {
+        const d = day(p.date);
+        const q2 = num(p.qty);
+        if (d && q2 != null) byDay.set(d, [...byDay.get(d) ?? [], q2]);
+      }
+      for (const [d, v] of byDay) get(d).hrv = Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10;
+    } else if (m.name === "resting_heart_rate") {
+      for (const p of m.data) {
+        const d = day(p.date);
+        const q2 = num(p.qty);
+        if (d && q2 != null) get(d).rhr = Math.round(q2);
+      }
+    } else if (m.name === "sleep_analysis") {
+      for (const p of m.data) {
+        const d = day(p.sleepEnd ?? p.inBedEnd ?? p.date);
+        const hours = num(p.totalSleep) ?? num(p.asleep);
+        if (!d || hours == null) continue;
+        const r2 = get(d);
+        r2.sleep_min = Math.round(hours * 60);
+        r2.bedtime = hm(p.sleepStart ?? p.inBedStart);
+        r2.wake_time = hm(p.sleepEnd ?? p.inBedEnd);
+      }
+    }
+  }
+  return [...out.values()];
+}
+
+// server/webhooks/apple.ts
+async function handler7(req, res) {
+  try {
+    if (req.method !== "POST") throw new HttpError(405, "POST");
+    const token = q(req, "t");
+    if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
+    const user = await one("users", { apple_token: `eq.${token}` });
+    if (!user) throw new HttpError(401, "token necunoscut");
+    const days = parseHealthExport(await readJson(req));
+    if (days.length) {
+      await upsert(
+        "wellness_daily",
+        days.map((d) => ({ user_id: user.id, date: d.date, source: "apple", hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, synced_at: (/* @__PURE__ */ new Date()).toISOString() })),
+        "user_id,date,source"
+      );
+    }
+    json(res, 200, { ok: true, zile: days.length });
+  } catch (e) {
+    fail(res, e);
+  }
+}
+function newAppleToken() {
+  return randomBytes(24).toString("base64url");
+}
+
 // src/calendar/budget.ts
 var MIN_BLOCK_MIN = 45;
 var REALITY_FACTOR = 0.8;
@@ -2524,7 +2717,7 @@ async function generateAndStore(userId, today, intake) {
 }
 
 // server/forms/[kind].ts
-async function handler7(req, res) {
+async function handler8(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -2604,6 +2797,25 @@ async function handler7(req, res) {
       const date = isDate(b.data) ? b.data : today;
       await upsert("wellness_daily", { user_id: u.id, date, source: "manual", weight_kg: n(b.greutate), body_fat_pct: n(b.grasime_pct) }, "user_id,date,source");
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === "profil") {
+      const city = typeof body.oras === "string" ? body.oras.trim() : "";
+      if (!city) {
+        await update("users", { id: `eq.${u.id}` }, { city: null, lat: null, lon: null });
+        json(res, 200, { ok: true, oras: null });
+        return;
+      }
+      const g = await geocode(city);
+      if (!g) throw new HttpError(400, `nu g\u0103sesc ora\u0219ul \u201E${city}\u201D`);
+      await update("users", { id: `eq.${u.id}` }, { city: g.name, lat: g.lat, lon: g.lon });
+      json(res, 200, { ok: true, oras: g.name });
+      return;
+    }
+    if (kind === "apple") {
+      const token = newAppleToken();
+      await update("users", { id: `eq.${u.id}` }, { apple_token: token });
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
       return;
     }
     throw new HttpError(404, `formular necunoscut: ${kind}`);
@@ -2700,14 +2912,22 @@ async function buildMe(userId, today) {
   const bodyRow = await one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.manual", weight_kg: "not.is.null" }, { order: "date.desc" });
   const aviz = intake?.sanatate?.avizCardiolog ?? null;
   const baseline = {
-    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp) } : null,
+    labs: labsRow ? { data: labsRow.drawn_at, feritina: num2(labsRow.feritina), vitamina_d: num2(labsRow.vitamina_d), hemoglobina: num2(labsRow.hemoglobina), ck: num2(labsRow.ck), crp: num2(labsRow.crp) } : null,
     tests: testRow?.results ?? null,
-    body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
+    body: bodyRow ? { data: bodyRow.date, greutate: num2(bodyRow.weight_kg), grasime_pct: num2(bodyRow.body_fat_pct) } : null,
     cardiolog: clearance?.cardiology ? "da" : aviz
   };
+  const u2 = user;
+  const [totals, appleRow] = await Promise.all([
+    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
+    one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.apple" }, { order: "synced_at.desc" }).catch(() => null)
+  ]);
+  if (u2.apple_token) (appleRow ? have : missing).push("Apple Watch (Health Auto Export)");
   const memento = messagesRows.find((m) => m.kind === "memento" && m.created_at >= `${today}T00:00:00`)?.body ?? null;
   return {
     baseline,
+    profile: { city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
+    totals,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
@@ -2739,14 +2959,14 @@ async function weeklyDone(userId, today) {
   const row = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.saptamanal", for_date: `gte.${weekStart(today)}` });
   return !!row;
 }
-function num(v) {
+function num2(v) {
   if (v == null || v === "") return null;
   const n2 = Number(v);
   return Number.isFinite(n2) ? n2 : null;
 }
 
 // server/me.ts
-async function handler8(req, res) {
+async function handler9(req, res) {
   try {
     const u = await requireUser(req);
     const user = await loadUser(u.id);
@@ -2757,7 +2977,7 @@ async function handler8(req, res) {
 }
 
 // server/oauth/[provider]/callback.ts
-async function handler9(req, res) {
+async function handler10(req, res) {
   try {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
@@ -2776,7 +2996,7 @@ async function handler9(req, res) {
 }
 
 // server/oauth/[provider]/start.ts
-async function handler10(req, res) {
+async function handler11(req, res) {
   try {
     const u = await requireUser(req);
     const provider = q(req, "provider");
@@ -2789,7 +3009,7 @@ async function handler10(req, res) {
 }
 
 // server/plan/generate.ts
-async function handler11(req, res) {
+async function handler12(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -2806,8 +3026,11 @@ async function handler11(req, res) {
 // supabase/migrations/0001_init.sql
 var init_default = "-- Antrenor \u2014 schema real\u0103 (Supabase / PostgreSQL). Ruleaz\u0103 cu `supabase db push` sau \xEEn SQL Editor.\n-- Principii: fiecare r\xE2nd are user_id; sportivul \xEE\u0219i vede doar r\xE2ndurile lui (RLS); scrie doar serverul (service role),\n-- cu excep\u021Bia chestionarelor \u0219i a consim\u021B\u0103m\xE2ntului, pe care le poate scrie \u0219i aplica\u021Bia direct.\n\ncreate extension if not exists pgcrypto;\n\n-- ---------- utilizatori (oglinda auth.users) ----------\ncreate table public.users (\n  id uuid primary key references auth.users(id) on delete cascade,\n  email text unique not null,\n  name text not null default '',\n  role text not null check (role in ('sportiv', 'head_coach', 'admin')) default 'sportiv',\n  coach_id uuid references public.users(id),\n  tz text not null default 'Europe/Bucharest',\n  goal text check (goal in ('70.3', 'olimpic', 'sprint', 'full')),\n  race_name text,\n  race_date date,\n  created_at timestamptz not null default now()\n);\n\ncreate or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$\nbegin\n  insert into public.users (id, email, name)\n  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)))\n  on conflict (id) do nothing;\n  return new;\nend $$;\ndrop trigger if exists on_auth_user_created on auth.users;\ncreate trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();\n\ncreate table public.consents (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  health_data boolean not null default false,\n  adult boolean not null default false,\n  not_medical_ack boolean not null default false,\n  accepted_at timestamptz,\n  withdrawn_at timestamptz\n);\n\n-- ---------- chestionare: intrare, dimineata, seara, saptamanal ----------\ncreate table public.questionnaires (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null check (kind in ('intrare', 'dimineata', 'seara', 'saptamanal')),\n  for_date date not null,\n  activity_id text,                      -- la \u201Eseara\u201D: activitatea la care se refer\u0103\n  answers jsonb not null,\n  created_at timestamptz not null default now(),\n  unique (user_id, kind, for_date, activity_id)\n);\ncreate index on public.questionnaires (user_id, kind, for_date desc);\n\n-- Blocurile libere recurente: day 0 = luni; minute din miezul nop\u021Bii.\ncreate table public.schedules (\n  user_id uuid not null references public.users(id) on delete cascade,\n  day smallint not null check (day between 0 and 6),\n  start_min smallint not null,\n  end_min smallint not null,\n  valid_from date not null default current_date,\n  primary key (user_id, day, start_min, valid_from)\n);\n\ncreate table public.zones (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  run_hr_zones smallint[],          -- limite superioare Z1..Z5, bpm\n  run_threshold_pace_sec_km int,\n  bike_ftp_w int,\n  bike_hr_zones smallint[],\n  swim_css_sec_100m int,\n  hr_max_test smallint,\n  source text,                      -- cpet | lactat | teren | provizoriu\n  tested_at date,\n  updated_at timestamptz not null default now()\n);\n\ncreate table public.tests (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null,\n  results jsonb not null,\n  tested_at date not null\n);\n\ncreate table public.labs (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  feritina numeric, vitamina_d numeric, hemoglobina numeric, ck numeric, crp numeric,\n  other jsonb,\n  drawn_at date not null\n);\n\ncreate table public.clearances (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  cardiology boolean not null default false,\n  cleared_at date,\n  intensity_allowed text not null check (intensity_allowed in ('Z2', 'pana_la_Z4', 'toate')) default 'Z2'\n);\n\n-- ---------- br\u0103\u021B\u0103ri ----------\n-- Token-urile OAuth: doar service role le cite\u0219te. Niciodat\u0103 expuse aplica\u021Biei.\ncreate table public.oauth_tokens (\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null check (provider in ('whoop', 'strava', 'oura')),\n  access_token text not null,\n  refresh_token text,\n  expires_at timestamptz not null,\n  scope text,\n  external_user_id text,\n  connected_at timestamptz not null default now(),\n  updated_at timestamptz not null default now(),\n  primary key (user_id, provider)\n);\n\n-- O noapte / o zi, pe surs\u0103, \xEEn forma normalizat\u0103 a colectorului. Arbitrajul \xEEntre surse se face la citire.\ncreate table public.wellness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,                  -- ziua trezirii\n  source text not null check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata')),\n  hrv numeric, rhr smallint,\n  sleep_min int, bedtime text, wake_time text, sleep_score smallint,\n  recovery_score smallint, respiratory_rate numeric,\n  weight_kg numeric, body_fat_pct numeric,\n  raw jsonb,\n  synced_at timestamptz not null default now(),\n  primary key (user_id, date, source)\n);\n\ncreate table public.sync_log (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null,\n  ok boolean not null,\n  detail text,\n  rows int not null default 0,\n  ran_at timestamptz not null default now()\n);\ncreate index on public.sync_log (user_id, ran_at desc);\n\n-- ---------- plan ----------\ncreate table public.plans (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  goal text not null check (goal in ('70.3', 'olimpic', 'sprint', 'full')),\n  race_date date not null,\n  start_date date not null,\n  budget_hours numeric not null,\n  version int not null default 1,\n  active boolean not null default true,\n  approved_by uuid references public.users(id),\n  created_at timestamptz not null default now()\n);\ncreate index on public.plans (user_id, active);\n\ncreate table public.workouts_planned (\n  id text primary key,\n  plan_id uuid not null references public.plans(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  type text not null check (type in ('z2', 'tehnica', 'calitate', 'lung', 'brick', 'forta', 'odihna')),\n  planned_minutes int not null,\n  target_zones smallint[] not null,\n  is_key boolean not null default false,\n  step int,\n  structure text,\n  intervals jsonb,\n  status text not null check (status in ('planificat', 'anulat_sistem', 'mutat', 'sters')) default 'planificat',\n  note text,\n  pushed_to_watch_at timestamptz\n);\ncreate index on public.workouts_planned (user_id, date);\n\ncreate table public.activities (\n  id text primary key,              -- \u201Estrava-123\u201D, \u201Ewhoop-abc\u201D\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  minutes int not null,\n  distance_km numeric,\n  avg_hr smallint, max_hr smallint,\n  avg_pace_min_km numeric, avg_cadence smallint, avg_watts smallint,\n  time_in_zones_min jsonb,\n  intervals_hit_pct numeric, intervals_abandoned int, main_set_abandoned boolean,\n  first_third_hr smallint, last_third_hr smallint, first_third_output numeric, last_third_output numeric,\n  after_bike_minutes int,\n  name text,\n  raw jsonb,\n  synced_at timestamptz not null default now()\n);\ncreate index on public.activities (user_id, date desc);\n\ncreate table public.scores (\n  workout_id text primary key references public.workouts_planned(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text references public.activities(id),\n  extra_activity_id text references public.activities(id),\n  color text not null check (color in ('verde', 'galben', 'portocaliu', 'rosu', 'gri', 'albastru', 'asteptare')),\n  reasons text[] not null,\n  metrics jsonb not null,\n  flags jsonb not null,\n  is_final boolean not null default false,\n  scored_at timestamptz not null default now()\n);\n\ncreate table public.readiness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  verdict text not null check (verdict in ('verde', 'galben', 'rosu', 'stop')),\n  reason text,\n  hrv numeric, hrv_baseline numeric, rhr numeric, sleep_min int,\n  hooper_sum smallint,\n  acwr numeric, tsb numeric,\n  primary key (user_id, date)\n);\n\n-- ---------- agen\u021Bi ----------\ncreate table public.packets (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  event text not null check (event in ('dimineata', 'dupa_antrenament', 'saptamanal', 'lunar', 'semnal', 'analize', 'retest')),\n  packet jsonb not null,\n  created_at timestamptz not null default now()\n);\ncreate index on public.packets (user_id, created_at desc);\n\ncreate table public.agent_outputs (\n  id uuid primary key default gen_random_uuid(),\n  packet_id uuid not null references public.packets(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  verdict text,\n  output jsonb not null,            -- r\u0103spunsul JSON, cu \u201Estare\u201D pe fiecare r\xE2nd dup\u0103 verificare\n  rejected int not null default 0,\n  model text,\n  created_at timestamptz not null default now()\n);\n\n-- Mesajele head coach-ului c\u0103tre sportiv: ce vede \xEEn sec\u021Biunea Antrenor \u0219i \xEEn memento.\ncreate table public.messages (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  packet_id uuid references public.packets(id) on delete set null,\n  kind text not null check (kind in ('dimineata', 'dupa_antrenament', 'saptamanal', 'memento', 'avertisment', 'uman')),\n  body text not null,\n  decision text check (decision in ('verde', 'galben', 'rosu', 'stop')),\n  from_human boolean not null default false,\n  created_at timestamptz not null default now()\n);\ncreate index on public.messages (user_id, created_at desc);\n\ncreate table public.journal (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  entry text not null,\n  created_at timestamptz not null default now()\n);\n\n-- Fi\u0219ierele agen\u021Bilor (fiziolog.md, inot.md \u2026): maximum 30 de r\xE2nduri, rescrise de agent prin \u201Epentru_viitor\u201D.\ncreate table public.agent_files (\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  content text not null default '',\n  updated_at timestamptz not null default now(),\n  primary key (user_id, agent)\n);\n\ncreate table public.bar_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  total numeric,\n  blocked text,\n  basis text not null,\n  components jsonb not null,\n  primary key (user_id, date)\n);\n\n-- ---------- RLS: sportivul \xEE\u0219i vede r\xE2ndurile; scrie doar serverul (service role trece peste RLS) ----------\ndo $$\ndeclare t text;\nbegin\n  for t in select unnest(array['users','consents','questionnaires','schedules','zones','tests','labs','clearances','wellness_daily','sync_log','plans','workouts_planned','activities','scores','readiness_daily','packets','agent_outputs','messages','journal','agent_files','bar_daily']) loop\n    execute format('alter table public.%I enable row level security', t);\n    if t = 'users' then\n      execute 'create policy users_select_own on public.users for select using (auth.uid() = id)';\n      execute 'create policy users_update_own on public.users for update using (auth.uid() = id)';\n    else\n      execute format('create policy %I_select_own on public.%I for select using (auth.uid() = user_id)', t, t);\n    end if;\n  end loop;\nend $$;\n\n-- Aplica\u021Bia poate scrie direct consim\u021B\u0103m\xE2ntul \u0219i chestionarele proprii; restul trece prin API.\ncreate policy consents_upsert_own on public.consents for insert with check (auth.uid() = user_id);\ncreate policy consents_update_own on public.consents for update using (auth.uid() = user_id);\ncreate policy questionnaires_insert_own on public.questionnaires for insert with check (auth.uid() = user_id);\ncreate policy questionnaires_update_own on public.questionnaires for update using (auth.uid() = user_id);\n\n-- Token-urile OAuth nu au nicio politic\u0103 de select: doar service role le vede.\nalter table public.oauth_tokens enable row level security;\n";
 
+// supabase/migrations/0002_upgrade.sql
+var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D (\u0219i automat c\xE2nd aplica\u021Bia vede schema veche).\nalter table public.users add column if not exists city text;\nalter table public.users add column if not exists lat double precision;\nalter table public.users add column if not exists lon double precision;\nalter table public.users add column if not exists apple_token text;\ncreate unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;\n\n-- Apple Health (prin Health Auto Export) ca surs\u0103 de somn, HRV \u0219i puls de repaus.\nalter table public.wellness_daily drop constraint if exists wellness_daily_source_check;\nalter table public.wellness_daily add constraint wellness_daily_source_check\n  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));\n";
+
 // server/_lib/pg.ts
-import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes } from "node:crypto";
+import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes2 } from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 function parsePgUrl(url) {
@@ -2929,7 +3152,7 @@ async function connect(url, timeoutMs = 15e3) {
       } else if (code === 10) {
         const mechs = m.body.subarray(4).toString("utf8").split("\0");
         if (!mechs.includes("SCRAM-SHA-256")) throw new Error(`postgres: autentificare nesuportat\u0103 (${mechs.join(", ")})`);
-        nonce = randomBytes(18).toString("base64");
+        nonce = randomBytes2(18).toString("base64");
         const first2 = `n,,n=*,r=${nonce}`;
         const firstBuf = Buffer.from(first2, "utf8");
         const len = Buffer.alloc(4);
@@ -3070,6 +3293,7 @@ async function runSetup(appUrl2) {
     else await step("tabele", `begin;
 ${init_default}
 commit;`);
+    await step("actualiz\u0103ri", upgrade_default);
     await step("drepturi", GRANTS, true);
     const cron = await step("pg_cron", "create extension if not exists pg_cron with schema pg_catalog", true);
     const net2 = await step("pg_net", "create extension if not exists pg_net with schema extensions", true);
@@ -3088,7 +3312,7 @@ commit;`);
 }
 
 // server/setup.ts
-async function handler12(req, res) {
+async function handler13(req, res) {
   try {
     if (req.method === "GET") {
       json(res, 200, await setupStatus());
@@ -3096,7 +3320,8 @@ async function handler12(req, res) {
     }
     if (req.method !== "POST") throw new HttpError(405, "GET sau POST");
     const status = await setupStatus();
-    if (status.tables) {
+    const needsUpgrade = status.tables && !await hasUpgrade();
+    if (status.tables && !needsUpgrade) {
       const u = await requireUser(req);
       const me = await one("users", { id: `eq.${u.id}` });
       if (me?.role !== "admin") throw new HttpError(403, "doar adminul poate rula din nou preg\u0103tirea");
@@ -3109,9 +3334,13 @@ async function handler12(req, res) {
     fail(res, e);
   }
 }
+async function hasUpgrade() {
+  const r2 = await fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
+  return r2.ok;
+}
 
 // server/sync.ts
-async function handler13(req, res) {
+async function handler14(req, res) {
   try {
     if (req.method !== "POST") throw Object.assign(new Error("POST"), { status: 405 });
     const u = await requireUser(req);
@@ -3127,7 +3356,7 @@ async function handler13(req, res) {
 }
 
 // server/webhooks/strava.ts
-async function handler14(req, res) {
+async function handler15(req, res) {
   try {
     if (req.method === "GET") {
       if (q(req, "hub.verify_token") !== (process.env.STRAVA_VERIFY_TOKEN ?? "")) {
@@ -3150,7 +3379,7 @@ async function handler14(req, res) {
 
 // server/webhooks/whoop.ts
 import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-async function handler15(req, res) {
+async function handler16(req, res) {
   try {
     const chunks = [];
     for await (const c of req) chunks.push(typeof c === "string" ? Buffer.from(c) : c);
@@ -3180,23 +3409,24 @@ var STATIC = {
   "cron/evening": handler4,
   "cron/morning": handler5,
   "cron/sync": handler6,
-  me: handler8,
-  "plan/generate": handler11,
-  setup: handler12,
-  sync: handler13,
-  "webhooks/strava": handler14,
-  "webhooks/whoop": handler15
+  me: handler9,
+  "plan/generate": handler12,
+  setup: handler13,
+  sync: handler14,
+  "webhooks/strava": handler15,
+  "webhooks/whoop": handler16,
+  "webhooks/apple": handler7
 };
 function resolve(path) {
   const p = path.replace(/^\/+|\/+$/g, "").replace(/^api\//, "");
   if (STATIC[p]) return { handler: STATIC[p], params: {} };
   let m = /^forms\/([^/]+)$/.exec(p);
-  if (m) return { handler: handler7, params: { kind: m[1] } };
+  if (m) return { handler: handler8, params: { kind: m[1] } };
   m = /^oauth\/([^/]+)\/(start|callback)$/.exec(p);
-  if (m) return { handler: m[2] === "start" ? handler10 : handler9, params: { provider: m[1] } };
+  if (m) return { handler: m[2] === "start" ? handler11 : handler10, params: { provider: m[1] } };
   return null;
 }
-async function handler16(req, res) {
+async function handler17(req, res) {
   const raw = req.query.__p;
   const fromQuery = Array.isArray(raw) ? raw.join("/") : raw;
   const path = fromQuery ?? new URL(req.url ?? "/", "http://x").pathname;
@@ -3210,6 +3440,6 @@ async function handler16(req, res) {
   await r2.handler(req, res);
 }
 export {
-  handler16 as default,
+  handler17 as default,
   resolve
 };
