@@ -47,9 +47,6 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
                 <i /> {online ? 'online acum' : 'scrie dimineața la 05:30 și seara după antrenament'}
               </div>
             </div>
-            <span className="icon-circle" style={{ width: 44, height: 44 }}>
-              {Icons.chat}
-            </span>
           </div>
           <div className="grid-2" style={{ marginTop: 14 }}>
             <button className="btn" disabled={busy || local || !me.intakeComplete} onClick={() => void run('dimineata')}>
@@ -60,7 +57,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
             </button>
           </div>
           <div className="tiny muted" style={{ marginTop: 10 }}>
-            {me.intakeComplete ? 'Rularea manuală e pentru pilot: pachetul se construiește din datele de acum, specialiștii răspund, verificarea respinge cifrele fără sursă, head coach-ul scrie.' : 'Completează chestionarul de intrare ca să existe un plan de comentat.'}
+            {me.intakeComplete ? 'Antrenorul îți scrie singur dimineața și după antrenament. Butoanele de sus îl pun să scrie acum, cu datele de până în acest moment.' : 'Completează chestionarul de intrare ca să existe un plan de comentat.'}
           </div>
           {note && (
             <div className="small" style={{ marginTop: 8 }}>
