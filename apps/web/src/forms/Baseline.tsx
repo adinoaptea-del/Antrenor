@@ -36,7 +36,7 @@ export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => voi
       </header>
       <div className="wizard">
         <p className="hint" style={{ marginTop: 0 }}>
-          Cinci valori din buletinul de analize, cu unitățile de pe el. Nutriționistul recomandă suplimente doar din ele; fără ele nu recomandă nimic. Celelalte valori (lipide, hormoni, markeri cardiaci) le discuți cu medicul, nu cu aplicația.
+          Încarcă tot buletinul. Aplicația citește toate valorile și îți semnalează ce iese din intervalul laboratorului, de discutat cu medicul. Cele cinci de mai jos au reguli care schimbă planul automat (fier, oxigen, oase, mușchi, inflamație).
         </p>
         {!local && <LabsUpload onRead={(r) => setL(r)} current={l} />}
         <Q title="Data recoltării" hint={l.data && labsExpired(l.data, me.today) ? 'Mai vechi de 12 luni: se salvează, dar nu se folosesc în plan. Fă analize noi.' : 'Analizele sunt valabile 12 luni de la recoltare.'}>

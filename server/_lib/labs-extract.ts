@@ -125,15 +125,20 @@ export async function readLabs(base64: string, mediaType: string): Promise<LabsR
     headers: { 'content-type': 'application/json', 'x-api-key': ENV.modelKey(), 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model: ENV.modelSpecialist(),
-      max_tokens: 4000,
+      max_tokens: 16000,
       system: SYSTEM,
       messages: [{ role: 'user', content: [block, { type: 'text', text: 'Transcrie buletinul în JSON-ul cerut.' }] }],
       output_config: { format: { type: 'json_schema', schema: SCHEMA } },
     }),
   });
   if (!res.ok) throw new Error(`citirea analizelor a eșuat (${res.status}): ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { content: { type: string; text?: string }[] };
-  const text = data.content.find((b) => b.type === 'text')?.text;
+  const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+  const text = data.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+  if (data.stop_reason === 'max_tokens') throw new Error('buletinul e prea lung pentru o singură citire; încarcă-l pe pagini (poze separate)');
   if (!text) throw new Error('modelul nu a întors nimic');
-  return finalize(JSON.parse(text));
+  try {
+    return finalize(JSON.parse(text));
+  } catch {
+    throw new Error('citirea buletinului a ieșit incompletă; încearcă din nou sau încarcă o poză mai clară');
+  }
 }

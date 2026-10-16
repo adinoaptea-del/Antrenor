@@ -2522,7 +2522,7 @@ async function readLabs(base64, mediaType) {
     headers: { "content-type": "application/json", "x-api-key": ENV.modelKey(), "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: ENV.modelSpecialist(),
-      max_tokens: 4e3,
+      max_tokens: 16e3,
       system: SYSTEM,
       messages: [{ role: "user", content: [block, { type: "text", text: "Transcrie buletinul \xEEn JSON-ul cerut." }] }],
       output_config: { format: { type: "json_schema", schema: SCHEMA } }
@@ -2530,9 +2530,14 @@ async function readLabs(base64, mediaType) {
   });
   if (!res.ok) throw new Error(`citirea analizelor a e\u0219uat (${res.status}): ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
-  const text = data.content.find((b) => b.type === "text")?.text;
+  const text = data.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+  if (data.stop_reason === "max_tokens") throw new Error("buletinul e prea lung pentru o singur\u0103 citire; \xEEncarc\u0103-l pe pagini (poze separate)");
   if (!text) throw new Error("modelul nu a \xEEntors nimic");
-  return finalize(JSON.parse(text));
+  try {
+    return finalize(JSON.parse(text));
+  } catch {
+    throw new Error("citirea buletinului a ie\u0219it incomplet\u0103; \xEEncearc\u0103 din nou sau \xEEncarc\u0103 o poz\u0103 mai clar\u0103");
+  }
 }
 
 // server/webhooks/apple.ts
