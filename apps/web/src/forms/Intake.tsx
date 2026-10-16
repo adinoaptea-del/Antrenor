@@ -49,7 +49,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const saved = me.forms.intake as IntakeAnswers | null;
   const [a, setA] = useState<IntakeAnswers>(() => {
     const base = saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa };
-    return { ...base, sex: base.sex ?? me.profile.sex, anNastere: base.anNastere ?? me.profile.birthYear };
+    return { ...base, sex: base.sex ?? me.profile.sex, anNastere: base.anNastere ?? me.profile.birthYear, inaltime: base.inaltime ?? me.profile.heightCm };
   });
   const [step, setStep] = useState(0);
   const runGoal = isRunGoal(a.obiectiv);
@@ -83,7 +83,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const canContinue = (() => {
     switch (STEPS[step]) {
       case 'Obiectiv':
-        return a.nume.trim().length > 0 && !!a.dataCursa && !!a.sex && !!a.anNastere && a.anNastere >= 1930 && a.anNastere <= new Date().getFullYear() - 18;
+        return a.nume.trim().length > 0 && !!a.dataCursa && !!a.sex && !!a.inaltime && a.inaltime >= 120 && a.inaltime <= 230 && !!a.anNastere && a.anNastere >= 1930 && a.anNastere <= new Date().getFullYear() - 18;
       case 'Înot':
         return a.inot.nivel != null && a.inot.apeDeschise != null && a.inot.bazin != null;
       case 'Bicicletă':
@@ -135,6 +135,9 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             </Q>
             <Q title="Anul nașterii">
               <input className="date" type="number" inputMode="numeric" placeholder="ex. 1988" value={a.anNastere ?? ''} onChange={(e) => set({ anNastere: e.target.value ? Number(e.target.value) : null })} />
+            </Q>
+            <Q title="Înălțimea" hint="În centimetri. Cu greutatea, dă necesarul de energie și indicele de masă corporală.">
+              <input className="date" type="number" inputMode="numeric" placeholder="ex. 180" value={a.inaltime ?? ''} onChange={(e) => set({ inaltime: e.target.value ? Number(e.target.value) : null })} />
             </Q>
             <Q title="Pentru ce te pregătești?" hint="Obiectivul decide fazele, orele și ce înseamnă „gata”.">
               <Chips

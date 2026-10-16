@@ -37,7 +37,7 @@ export interface Packet {
     bilant_lunar: boolean;
     surse: Record<string, string | null>;
     /** Sexul și vârsta (din profil). null = necompletate. */
-    sportiv: { sex: 'barbat' | 'femeie' | null; varsta: number | null };
+    sportiv: { sex: 'barbat' | 'femeie' | null; varsta: number | null; inaltime_cm: number | null };
     /** Când sunt 2+ brățări: valorile fiecăreia azi și dezacordurile mari. null = o singură sursă. */
     dispozitive: { azi: MergedDaily['perDevice']; dezacord: string[] } | null;
   };
@@ -101,7 +101,7 @@ export interface Packet {
   /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
   verdict_fiziolog: 'verde' | 'galben' | 'rosu' | 'stop' | null;
   zone: CollectorInput['zones'];
-  corp: { greutate_azi: number | null; greutate_media7: number | null; cantariri_7z: number; grasime_pct: number | null; data_masurare: string | null };
+  corp: { greutate_azi: number | null; greutate_media7: number | null; /** Indicele de masă corporală din media greutății pe 7 zile și înălțime (calculat). */ imc: number | null; cantariri_7z: number; grasime_pct: number | null; data_masurare: string | null };
   nutritie_ieri: { kcal: number | null; carbohidrati_g: number | null; proteine_g: number | null; apa_l: number | null } | null;
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
   analize: CollectorInput['labs'] | null;
@@ -445,7 +445,7 @@ export function buildPacket(input: CollectorInput): Packet {
       data: today,
       zi_saptamana: DAY_NAMES[weekday(today)]!,
       eveniment: input.event,
-      sportiv: { sex: input.athlete.sex === 'm' ? 'barbat' : input.athlete.sex === 'f' ? 'femeie' : null, varsta: input.athlete.varsta ?? null },
+      sportiv: { sex: input.athlete.sex === 'm' ? 'barbat' : input.athlete.sex === 'f' ? 'femeie' : null, varsta: input.athlete.varsta ?? null, inaltime_cm: input.athlete.inaltimeCm ?? null },
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
@@ -548,6 +548,11 @@ export function buildPacket(input: CollectorInput): Packet {
     corp: {
       greutate_azi: todayRow?.weightKg ?? null,
       greutate_media7: weights.length ? round(mean(weights.map((r) => r.weightKg!)), 1) : null,
+      imc: (() => {
+        const h = input.athlete.inaltimeCm;
+        const w = weights.length ? mean(weights.map((r) => r.weightKg!)) : (lastWeight?.weightKg ?? null);
+        return h && w ? round(w / (h / 100) ** 2, 1) : null;
+      })(),
       cantariri_7z: weights.length,
       grasime_pct: lastWeight?.bodyFatPct ?? null,
       data_masurare: lastWeight?.date ?? null,

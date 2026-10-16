@@ -28,6 +28,7 @@ export interface UserRow {
   role?: string;
   sex?: 'm' | 'f' | null;
   birth_year?: number | null;
+  height_cm?: number | null;
 }
 
 export interface WorkoutRow {
@@ -260,7 +261,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     others,
     today,
     event,
-    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null },
+    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness,
     activities,
     plan: planRes.workouts,

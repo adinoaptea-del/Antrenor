@@ -13,6 +13,8 @@ export interface IntakeAnswers {
   nume: string;
   sex?: 'm' | 'f' | null;
   anNastere?: number | null;
+  /** Înălțimea în cm. */
+  inaltime?: number | null;
   obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };

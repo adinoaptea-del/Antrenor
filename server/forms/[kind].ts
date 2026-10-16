@@ -158,7 +158,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const maxYear = Number(today.slice(0, 4)) - 18;
       if (!sex) throw new HttpError(400, 'alege sexul');
       if (!Number.isInteger(year) || year < 1930 || year > maxYear) throw new HttpError(400, `anul nașterii între 1930 și ${maxYear}`);
-      await update('users', { id: `eq.${u.id}` }, { sex, birth_year: year });
+      const h = Number(body.inaltime);
+      if (body.inaltime != null && body.inaltime !== '' && (!Number.isFinite(h) || h < 120 || h > 230)) throw new HttpError(400, 'înălțimea în cm, între 120 și 230');
+      await update('users', { id: `eq.${u.id}` }, { sex, birth_year: year, ...(Number.isFinite(h) && h >= 120 && h <= 230 ? { height_cm: Math.round(h) } : {}) });
       // Vârsta schimbă structura planului (descărcare mai des de la 40 de ani): planul se reface.
       const intakeRow = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
       const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;

@@ -57,3 +57,6 @@ do $$ begin
     create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);
   end if;
 end $$;
+
+-- Înălțimea: pentru indicele de masă corporală și necesarul de energie.
+alter table public.users add column if not exists height_cm smallint;

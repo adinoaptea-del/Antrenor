@@ -134,7 +134,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   return {
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
-    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
+    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
     totals,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,

@@ -228,13 +228,14 @@ function AboutCard() {
   const { submitForm } = useData();
   const [sex, setSex] = useState<'m' | 'f' | null>(me.profile.sex);
   const [year, setYear] = useState<string>(me.profile.birthYear ? String(me.profile.birthYear) : '');
+  const [height, setHeight] = useState<string>(me.profile.heightCm ? String(me.profile.heightCm) : '');
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     setMsg(null);
     try {
-      await submitForm('profil', { sex, anNastere: Number(year) });
+      await submitForm('profil', { sex, anNastere: Number(year), inaltime: height ? Number(height) : null });
       setMsg('salvat');
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -252,13 +253,14 @@ function AboutCard() {
         <button className={`pill ${sex === 'f' ? 'on' : ''}`} onClick={() => setSex('f')}>
           Femeie
         </button>
-        <input className="date" style={{ flex: 1, minWidth: 110 }} type="number" inputMode="numeric" placeholder="anul nașterii" value={year} onChange={(e) => setYear(e.target.value)} />
+        <input className="date" style={{ flex: 1, minWidth: 100 }} type="number" inputMode="numeric" placeholder="anul nașterii" value={year} onChange={(e) => setYear(e.target.value)} />
+        <input className="date" style={{ flex: 1, minWidth: 90 }} type="number" inputMode="numeric" placeholder="înălțime cm" value={height} onChange={(e) => setHeight(e.target.value)} />
         <button className="pill on" disabled={busy || !sex || !year} onClick={() => void save()}>
           {busy ? '…' : 'Salvează'}
         </button>
       </div>
       <div className="tiny muted" style={{ marginTop: 8 }}>
-        {msg ?? 'Contează pentru intervalele analizelor (fier, hemoglobină), nutriție și recuperare.'}
+        {msg ?? 'Sex, an, înălțime: contează pentru analize (fier, hemoglobină), necesarul de energie și recuperare.'}
       </div>
     </Card>
   );

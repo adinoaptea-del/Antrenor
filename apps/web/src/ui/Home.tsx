@@ -147,9 +147,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         })}
       </div>
 
-      {me.intakeComplete && (!me.profile.sex || !me.profile.birthYear) && (
+      {me.intakeComplete && (!me.profile.sex || !me.profile.birthYear || !me.profile.heightCm) && (
         <button className="labs-alert" onClick={() => onOpen('profil')}>
-          <b>Lipsesc sexul și vârsta</b>
+          <b>Completează sexul, vârsta și înălțimea</b>
           <span>Contează pentru analize, nutriție și recuperare. Completează-le în Profil → Despre tine.</span>
         </button>
       )}
