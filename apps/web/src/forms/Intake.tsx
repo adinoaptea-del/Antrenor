@@ -12,6 +12,17 @@ const TRI_STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 
 const RUN_STEPS = ['Obiectiv', 'Ținta', 'Nivelul acum', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
 type Step = (typeof TRI_STEPS)[number] | (typeof RUN_STEPS)[number];
 
+/**
+ * Tastatura de cifre de pe iPhone nu are „:”. Scrii doar cifre și punem noi două puncte:
+ * „830” → „8:30”, „2730” → „27:30”, „15500” → „1:55:00”.
+ */
+function autoColon(raw: string, hms: boolean): string {
+  const d = raw.replace(/\D/g, '').slice(0, hms ? 6 : 4);
+  if (d.length <= 2) return d;
+  if (!hms || d.length <= 4) return `${d.slice(0, -2)}:${d.slice(-2)}`;
+  return `${d.slice(0, -4)}:${d.slice(-4, -2)}:${d.slice(-2)}`;
+}
+
 /** Ritm sau timp final: două butoane + un câmp; arată și echivalentul calculat. */
 function RunResultInput({ value, onChange, distanceKm }: { value: RunResult | null | undefined; onChange: (r: RunResult) => void; distanceKm: number }) {
   const mod = value?.mod ?? 'timp';
@@ -23,9 +34,9 @@ function RunResultInput({ value, onChange, distanceKm }: { value: RunResult | nu
         className="date"
         style={{ marginTop: 8 }}
         inputMode="numeric"
-        placeholder={mod === 'timp' ? 'ex. 1:55:00 (ore:min:sec)' : 'ex. 5:30 (min:sec pe km)'}
+        placeholder={mod === 'timp' ? 'ex. 1:55:00 — scrii 15500' : 'ex. 5:30 — scrii 530'}
         value={value?.valoare ?? ''}
-        onChange={(e) => onChange({ mod, valoare: e.target.value })}
+        onChange={(e) => onChange({ mod, valoare: autoColon(e.target.value, mod === 'timp') })}
       />
       {pace != null && <p className="hint">{mod === 'timp' ? `adică ${fmtPaceSec(pace)} min/km` : `adică ${fmtDuration(pace * distanceKm)} timp final`}</p>}
     </>
@@ -153,8 +164,8 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
         {STEPS[step] === 'Nivelul acum' && (
           <>
-            <Q title="Cu ce ritm alergi acum?" hint="Ritmul obișnuit la o alergare ușoară, în minute pe km.">
-              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={a.alergare.ritmActual ?? ''} onChange={(e) => set({ alergare: { ...a.alergare, ritmActual: e.target.value } })} />
+            <Q title="Cu ce ritm alergi acum?" hint="Ritmul obișnuit la o alergare ușoară. Scrii doar cifrele: 615 = 6:15 pe km.">
+              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={a.alergare.ritmActual ?? ''} onChange={(e) => set({ alergare: { ...a.alergare, ritmActual: autoColon(e.target.value, false) } })} />
             </Q>
             <Q title={`Poți alerga acum ${raceWord}?`}>
               <Chips value={a.alergare.poateDistanta == null ? null : a.alergare.poateDistanta ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ alergare: { ...a.alergare, poateDistanta: v === 'da', rezultatActual: v === 'da' ? a.alergare.rezultatActual ?? null : null } })} />
@@ -187,8 +198,8 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Ape deschise?">
               <Chips value={a.inot.apeDeschise} options={[{ id: 'nu', label: 'Niciodată' }, { id: 'putin', label: 'De câteva ori' }, { id: 'da', label: 'Regulat' }]} onChange={(apeDeschise) => set({ inot: { ...a.inot, apeDeschise } })} />
             </Q>
-            <Q title="Timpul tău pe 400 m (dacă îl știi)" hint="Opțional, min:sec. Fără el, planul pune un test CSS în primele săptămâni.">
-              <input className="date" inputMode="numeric" placeholder="ex. 8:30" value={ev.inot400 ?? ''} onChange={(e) => setEv({ inot400: e.target.value || null })} />
+            <Q title="Timpul tău pe 400 m (dacă îl știi)" hint="Opțional: scrii doar cifrele (830 = 8:30). Dacă nu-l știi, lasă gol: planul pune un test CSS în primele săptămâni.">
+              <input className="date" inputMode="numeric" placeholder="ex. 8:30" value={ev.inot400 ?? ''} onChange={(e) => setEv({ inot400: autoColon(e.target.value, false) || null })} />
             </Q>
             <Q title="Ai acces la un bazin?">
               <Chips value={a.inot.bazin == null ? null : a.inot.bazin ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ inot: { ...a.inot, bazin: v === 'da' } })} />
@@ -228,13 +239,13 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Cea mai lungă alergare din ultimele 3 luni">
               <Stepper value={a.alergare.ceaMaiLungaKm} min={0} max={42} step={1} unit="km" fallback={5} onChange={(ceaMaiLungaKm) => set({ alergare: { ...a.alergare, ceaMaiLungaKm } })} />
             </Q>
-            <Q title="Cu ce ritm alergi ușor acum?" hint="Opțional, min:sec pe km.">
-              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={ev.ritmUsor ?? ''} onChange={(e) => setEv({ ritmUsor: e.target.value || null })} />
+            <Q title="Cu ce ritm alergi ușor acum?" hint="Opțional: scrii doar cifrele (615 = 6:15 pe km).">
+              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={ev.ritmUsor ?? ''} onChange={(e) => setEv({ ritmUsor: autoColon(e.target.value, false) || null })} />
             </Q>
-            <Q title="Un timp recent pe 5 km sau 10 km (dacă ai)" hint="Opțional. Fără el, planul pune un test de 30 min în primele săptămâni.">
+            <Q title="Un timp recent pe 5 km sau 10 km (dacă ai)" hint="Opțional: doar cifrele (2730 = 27:30). Dacă nu ai, lasă gol: planul pune un test de 30 min.">
               <div className="grid-2">
-                <input className="date" inputMode="numeric" placeholder="5 km, ex. 27:30" value={ev.alergare5k ?? ''} onChange={(e) => setEv({ alergare5k: e.target.value || null })} />
-                <input className="date" inputMode="numeric" placeholder="10 km, ex. 58:00" value={ev.alergare10k ?? ''} onChange={(e) => setEv({ alergare10k: e.target.value || null })} />
+                <input className="date" inputMode="numeric" placeholder="5 km, ex. 27:30" value={ev.alergare5k ?? ''} onChange={(e) => setEv({ alergare5k: autoColon(e.target.value, true) || null })} />
+                <input className="date" inputMode="numeric" placeholder="10 km, ex. 58:00" value={ev.alergare10k ?? ''} onChange={(e) => setEv({ alergare10k: autoColon(e.target.value, true) || null })} />
               </div>
             </Q>
             <Q title="Curse în ultimul an?">
