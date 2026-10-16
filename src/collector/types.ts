@@ -1,0 +1,105 @@
+// Tipurile colectorului: ce intră de la brățări și formulare, în formă normalizată, independentă de producător.
+// Adaptorii (whoop.ts, strava.ts, oura.ts) produc aceste structuri; packet.ts le transformă în pachetul agenților.
+
+import type { Activity, IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../types.js';
+
+export type Source = 'whoop' | 'garmin' | 'oura' | 'strava' | 'manual' | 'athletedata';
+
+/** O noapte / o zi de la o sursă. `date` = ziua trezirii (YYYY-MM-DD, ora locală a sportivului). */
+export interface SourceDaily {
+  date: string;
+  source: Source;
+  hrv?: number | null; // ms, rMSSD
+  rhr?: number | null; // bpm
+  sleepMin?: number | null; // minute dormite (nu în pat)
+  bedtime?: string | null; // HH:MM local, ora adormirii
+  wakeTime?: string | null; // HH:MM local
+  sleepScore?: number | null; // 0–100, al producătorului
+  recoveryScore?: number | null; // Whoop recovery %, Oura readiness
+  respiratoryRate?: number | null;
+  weightKg?: number | null;
+  bodyFatPct?: number | null;
+}
+
+/** O activitate de la o sursă, înainte de dedupe. */
+export interface SourceActivity extends Activity {
+  source: Source;
+  /** Identificatorul la producător, pentru dedupe și pentru legarea chestionarului de seară. */
+  externalId: string;
+  startLocal?: string | null; // HH:MM
+  avgPaceMinKm?: number | null;
+  avgCadence?: number | null;
+  avgWatts?: number | null;
+  name?: string | null;
+}
+
+export interface MorningForm {
+  date: string;
+  hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null }; // 1–7
+  semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
+}
+
+export interface EveningForm {
+  date: string;
+  activityId?: string | null;
+  rpe: number | null; // 0–10
+  fata_de_asteptari: 'mai_usor' | 'la_fel' | 'mai_greu' | null;
+  durere: { scor: number | null; loc: string | null };
+  ce_a_incurcat: 'nimic' | 'somn' | 'mancare' | 'stres' | 'vreme' | 'timp' | null;
+  fueling_conform: 'da' | 'partial' | 'nu' | null;
+  comentariu: string | null;
+  /** Dacă activitatea a fost în afara planului: ce a fost. */
+  tip_neplanificat?: 'cursa' | 'antrenament' | 'altceva' | null;
+}
+
+export interface ZonesInput {
+  alergare: { fc_z1_z5: [number, number, number, number, number] | null; pace_prag: string | null };
+  bicicleta: { ftp: number | null; fc_z1_z5: [number, number, number, number, number] | null };
+  inot: { css: number | null };
+  fcmax_test: number | null;
+  data_test: string | null;
+}
+
+export interface LabsInput {
+  feritina: number | null;
+  vitamina_d: number | null;
+  hemoglobina: number | null;
+  ck: number | null;
+  crp: number | null;
+  data_analize: string | null;
+}
+
+export interface NutritionDay {
+  date: string;
+  kcal: number | null;
+  carbohidrati_g: number | null;
+  proteine_g: number | null;
+  apa_l: number | null;
+}
+
+/** Încărcarea calculată de un agregator (CTL/ATL/TSB), dacă există. Colectorul nu o estimează singur. */
+export interface LoadInput {
+  ctl: number | null;
+  atl: number | null;
+  tsb: number | null;
+  source: Source;
+}
+
+export interface CollectorInput {
+  today: string;
+  event: 'dimineata' | 'dupa_antrenament' | 'saptamanal';
+  athlete: { obiectiv: string; raceDate: string; phase: Phase; weekLabel?: string };
+  wellness: SourceDaily[];
+  activities: SourceActivity[];
+  plan: PlannedWorkout[];
+  zones: ZonesInput | null;
+  morning?: MorningForm | null;
+  evenings: EveningForm[];
+  labs?: LabsInput | null;
+  nutrition?: NutritionDay[];
+  load?: LoadInput | null;
+  aviz: { cardiolog: 'da' | 'nu' | string; intensitate_permisa: IntensityAllowed };
+}
+
+export type Zones5 = Partial<Record<Zone, number>>;
+export type SportHours = Record<Sport, number>;

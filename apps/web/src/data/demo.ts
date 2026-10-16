@@ -2,6 +2,7 @@
 // Nimic de aici nu e datele sportivului; aplicația reală primește aceleași structuri de la server.
 
 import { computeBar, type BarResult, type ScoredActivity } from '@core/bar/bar.js';
+import { adapt } from '@core/calendar/adapt.js';
 import { generatePlan, type WeekPlan } from '@core/calendar/generate.js';
 import type { Color, FreeBlock, PlannedWorkout, Sport } from '@core/types.js';
 import { addDays, diffDays, weekStart, weekday } from '@core/util/dates.js';
@@ -183,6 +184,50 @@ export function workoutsOn(date: string): PlannedWorkout[] {
   return allWorkouts
     .filter((w) => w.date === date && w.status !== 'sters')
     .sort((a, b) => Number(b.key) - Number(a.key) || ORDER[a.sport] - ORDER[b.sport]);
+}
+
+// ---------- Activitate în afara planului (demo): o cursă de 10 km sâmbăta trecută, venită de pe ceas ----------
+export const unplannedActivity = {
+  id: 'demo-cursa-10k',
+  date: '2026-12-05',
+  sport: 'alergare' as Sport,
+  minutes: 55,
+  distanceKm: 10,
+  avgHr: 171,
+  maxHr: 186,
+  name: 'Alergare · 10 km',
+};
+
+export function unplannedOn(date: string) {
+  return unplannedActivity.date === date ? [unplannedActivity] : [];
+}
+
+/** Ce schimbă nucleul în plan dacă sportivul spune ce a fost activitatea. Rulează regula reală din @core/calendar/adapt. */
+export function unplannedChanges(tip: 'cursa' | 'antrenament' | 'altceva', rpe: number | null): string[] {
+  if (tip === 'altceva') return ['nimic: plimbările și joaca nu intră în plan'];
+  const r = adapt(
+    allWorkouts,
+    { kind: 'neplanificat', activity: { id: unplannedActivity.id, date: unplannedActivity.date, sport: unplannedActivity.sport, minutes: unplannedActivity.minutes, distanceKm: unplannedActivity.distanceKm }, rpe, tip },
+    { today: TODAY, freeBlocks, recentKeyScores: [] },
+  );
+  if (r.changes.length === 0) return ['nimic de schimbat: efort mic, fără ședințe de același sport de înlocuit'];
+  // Schimbările din nucleu încep cu id-ul ședinței; aici devin „sâmbătă 5 dec · bicicletă lung”.
+  return r.changes.map((c) => {
+    const m = /^([^:\s]+):\s*(.*)$/.exec(c);
+    const w = m ? allWorkouts.find((x) => x.id === m[1]) : undefined;
+    if (!m || !w) return c;
+    const when = `${DAY_NAMES[weekday(w.date)]} ${Number(w.date.slice(8))} ${MONTH_SHORT[Number(w.date.slice(5, 7)) - 1]}`;
+    return `${when} · ${SPORT_LABEL[w.sport].toLowerCase()}${w.type === 'forta' ? '' : ` ${TYPE_LABEL[w.type]}`}: ${m[2]}`;
+  });
+}
+
+// Ultima ședință executată înainte de azi (pentru chestionarul de seară din demo).
+export function lastDoneWorkout(): PlannedWorkout | null {
+  return (
+    allWorkouts
+      .filter((w) => diffDays(w.date, TODAY) > 0 && ['verde', 'galben', 'portocaliu'].includes(colorOf(w)))
+      .sort((a, b) => diffDays(a.date, b.date))[0] ?? null
+  );
 }
 
 // Următoarea ședință neexecutată a unui sport (azi inclusiv).

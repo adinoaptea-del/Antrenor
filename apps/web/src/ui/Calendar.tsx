@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle, fmtMinutes } from './common';
-import { ATHLETE, COLOR_LABEL, SPORT_LABEL, TODAY, TYPE_LABEL, colorOf, scores, workoutsOn } from '../data/demo';
+import { ATHLETE, COLOR_LABEL, SPORT_LABEL, TODAY, TYPE_LABEL, colorOf, scores, unplannedOn, workoutsOn } from '../data/demo';
 
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
 const DOW = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'];
@@ -83,6 +83,9 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
                     .map((w) => (
                       <Dot key={w.id} color={colorOf(w)} />
                     ))}
+                  {unplannedOn(iso).map((u) => (
+                    <Dot key={u.id} color="albastru" />
+                  ))}
                 </span>
               </button>
             ),
@@ -97,15 +100,30 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
           <span>
             <Dot color="asteptare" /> urmează
           </span>
+          <span>
+            <Dot color="albastru" /> în afara planului
+          </span>
         </div>
       </Card>
 
       <div className="stack" style={{ marginTop: 12 }}>
         <Card>
           <Label>{selected === TODAY ? 'Azi' : selected.split('-').reverse().join('.')}</Label>
-          {dayWorkouts.length === 0 ? (
+          {unplannedOn(selected).map((u) => (
+            <div key={u.id} className="item">
+              <Dot color="albastru" />
+              <div style={{ minWidth: 0 }}>
+                <div className="t">{u.name} · în afara planului</div>
+                <div className="s">
+                  FC medie {u.avgHr}, max {u.maxHr} · intră în încărcare, nu în scor
+                </div>
+              </div>
+              <div className="m">{fmtMinutes(u.minutes)}</div>
+            </div>
+          ))}
+          {dayWorkouts.length === 0 && unplannedOn(selected).length === 0 ? (
             <div className="muted small">Zi fără antrenament.</div>
-          ) : (
+          ) : dayWorkouts.length === 0 ? null : (
             <div className="list">
               {dayWorkouts.map((w) => {
                 const color = colorOf(w);

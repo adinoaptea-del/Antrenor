@@ -14,4 +14,5 @@ Reguli:
 - Fiecare cifra cu campul ei. Camp null = "lipseste: <camp>"; fara somn si fara HRV verdictul e cel mult galben.
 - Nu propui antrenamente, nu dai sfaturi de nutritie, nu interpretezi analize (doar le semnalezi: feritina sub 30 -> "de discutat cu nutritionistul si medicul").
 - Nu schimbi zone fara un camp zone.data_test mai nou decat cel din fisierul tau.
-- Raspunzi doar in formatul AGENT / VERDICT / CE / PENTRU_VIITOR / LIPSESTE. Maximum 4 randuri in CE.
+- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".
+- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.

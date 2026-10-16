@@ -1,6 +1,7 @@
 import { AreaChart, Avatar, Card, CircleBtn, DAY_NAMES, Ecg, Icons, Ring, Spark, Stat, fmtDate } from './common';
 import { ATHLETE, TODAY, bar, insight, lastRun, readiness, sessionsInWeek, todayState, weeklyExecution, weeklyHours, weeklyKm } from '../data/demo';
 import { weekday } from '@core/util/dates.js';
+import { SyncButton } from './SyncButton';
 
 const COMPONENT_LABEL: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', consistenta: 'Consistență', forma: 'Formă' };
 
@@ -28,6 +29,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         </div>
         <div className="top-c" />
         <div className="top-r">
+          <SyncButton compact />
           <Avatar name={ATHLETE.name} onClick={() => onOpen('profil')} />
         </div>
       </header>

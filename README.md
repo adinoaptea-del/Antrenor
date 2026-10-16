@@ -8,7 +8,7 @@ Cerințe: Node 20+.
 
 ```bash
 npm install
-npm test        # 36 de teste (node:test prin tsx)
+npm test        # 61 de teste (node:test prin tsx)
 npm run demo    # un calendar de două săptămâni, un scor, o adaptare, bara
 npm run typecheck
 ```
@@ -23,9 +23,11 @@ npm run typecheck
 | `src/calendar/budget.ts` | bugetul de ore din blocurile libere (≥ 45 min) × 0,8 | De la chestionare la primul calendar |
 | `src/calendar/phases.ts` | fazele înapoi de la cursă (evaluare, bază 1, bază 2, build, peak, taper), orele pe faze, săptămâna a 4-a de descărcare | Structura planului |
 | `src/calendar/generate.ts` | primul calendar: progresie +10%/săpt. până la ținta fazei, antrenamente-cheie în zile diferite, plasare în blocurile reale; refuză planul când orele nu ajung | De la chestionare la primul calendar |
-| `src/calendar/adapt.ts` | regulile calendarului viu: treaptă repetată / coborâtă, −20% după două chei slabe, readiness roșu → gri (+ mutare cu o zi), durere → fără impact 5 zile, febră, activitate neplanificată | Calendarul viu |
+| `src/calendar/adapt.ts` | regulile calendarului viu: treaptă repetată / coborâtă, −20% după două chei slabe, readiness roșu → gri (+ mutare cu o zi), durere → fără impact 5 zile, febră, activitate / cursă în afara planului (înlocuiește volumul, zile ușoare, progresie oprită) | Calendarul viu |
 | `src/bar/bar.ts` | bara de pregătire: 5 componente din ultimele 6 săptămâni, „fără date” în loc de 0, blocată la semnale deschise | Bara de pregătire |
-| `src/prompts/*.md` | prompturile celor 8 agenți, exact cum sunt în tab-ul Agenți | Agenți |
+| `src/prompts/*.md` | prompturile celor 8 agenți; `format.md` = răspunsul JSON obligatoriu al specialiștilor | Agenți |
+| `src/agents/verify.ts` | verificarea mecanică a răspunsurilor (număr ↔ câmp ↔ valoare), rulată înaintea head coach-ului; testul-canar | Agenți |
+| `src/collector/` | pachetul de date din brățări + formulare: arbitraj între surse, dedupe, medii, ACWR pe sport; adaptoare Whoop v2, Strava, Oura (`docs/integrari.md`) | Aplicația · Pachetul de date |
 | `db/schema.sql` | tabelele PostgreSQL, cu `user_id` pe fiecare rând | Aplicația · Tehnic |
 | `scripts/demo.ts` | exemplul din `npm run demo` | — |
 
@@ -40,7 +42,7 @@ Culorile și pragurile sunt cele din document; dacă le schimbi acolo, le schimb
 
 ## Ce ai de făcut tu înainte de Sprint 1
 
-- **Integrări**: AthleteData (TRAINER) agregă deja Strava, Garmin, Whoop, Oura, Withings, Apple Health, dar conectorul merge în Claude, nu într-o aplicație. De verificat cu ei dacă oferă API/OAuth pentru aplicații terțe. Dacă nu: Strava API (activități; acoperă și Apple Watch), Whoop API și Oura API (somn, HRV); Garmin Health API mai târziu (cere aprobare).
+- **Integrări**: vezi `docs/integrari.md` — Garmin nu mai primește developeri noi (program suspendat din primăvara 2026), deci activitățile Garmin intră prin Strava; WHOOP direct (API v2, 10 membri fără aprobare); Oura direct. De creat aplicațiile WHOOP și Strava (30 min) și de întrebat AthleteData de API.
 - **Garmin, contul tău**: conexiunea actuală către AthleteData nu are permisiunea de „workouts”, deci antrenamentele nu pot fi trimise pe ceas. Reconectează Garmin din athletedata.health/dashboard/integrations cu toate permisiunile pornite.
 - **Server**: un VPS în UE (Hetzner sau similar) + un domeniu; datele prietenilor nu stau pe Mac Mini.
 - **Cheie API** pentru modelul care rulează agenții.
@@ -63,6 +65,9 @@ Navigare: bara-pastilă de jos are trei butoane, cu **Acasă la mijloc** (Antren
 Ecrane:
 - **Acasă** (după desenul lui Cuza): numele (atins → profil), bara de pregătire pentru 70.3 cu procentul și componentele, mesajul zilei din date, trei carduri Înot / Bicicletă / Alergare cu ilustrație și următoarea ședință (cardul zilei e marcat „azi”), zilele până la cursă, trei pătrate Recuperare / Forța / Calendar, avertismentele.
 - **Antrenament**: Înot (bazin / ape deschise din pastila de pe hartă), Bicicletă, Alergare, Forță — carduri de statistică, următoarea ședință, ședințele săptămânii.
+- **La deschidere**: mementoul pe tot ecranul — ziua X din Y și un fapt din datele tale; atingi, dispare în fade. Revine dacă aplicația a stat ascunsă peste 30 de minute.
+- **Formulare** (`src/forms/`): chestionarul de intrare (9 pași, totul de atins: obiectiv, înot, bicicletă, alergare, echipament, programul pe o grilă zile × ferestre, sănătate, motivație, consimțământ), dimineața (4 note Hooper + 4 semnale, ~20 s), după antrenament (RPE, așteptări, durere + loc, ce a încurcat, fueling, comentariu; la o activitate din afara planului și „ce a fost?”), săptămânal (3 întrebări, duminica). Răspunsurile au exact forma din `@core/collector/types` și stau în localStorage în demo.
+- **Citirea datelor** (`src/ui/sync.ts`): butonul „citit HH:MM”, plus automat la deschidere, la revenire și la 15 minute; real = `POST /api/sync`.
 - **Recuperare**: inelul de recuperare (Whoop), apoi statisticile: ore / FC medie / ședințe cu sparkline, graficul „Ore pe săptămână”, „Execuție”, bara de pregătire cu cele 5 componente și formula, km alergare, observația zilei.
 - **Calendar**: luna colorată + cardul zilei cu motivele. **Antrenor**: mesaje, live, programare. **Profil**: brățări cu „Conectează”, date, consimțământ.
 

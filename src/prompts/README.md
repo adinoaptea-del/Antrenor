@@ -2,14 +2,8 @@
 
 Un prompt = un fișier. Antrenorii de sport = `antrenor_comun.md` cu `<SPORT>`/`<sport>` înlocuit, urmat de fișierul sportului.
 
-Formatul de răspuns al oricărui specialist (verificat mecanic de head coach):
+Formatul de răspuns al oricărui specialist e JSON-ul din `format.md` (agent, verdict, ce[], mese[], pentru_viitor, lipseste[]). Fiecare număr din „ce” are perechea lui `{ valoare, camp }`; `src/agents/verify.ts` verifică mecanic fiecare pereche față de pachet și marchează rândul acceptat sau respins, înainte ca head coach-ul să vadă ceva. Head coach-ul primește doar rânduri acceptate și scrie respingerile în jurnal.
 
-```
-AGENT: <nume>
-VERDICT: ok | atentie | stop
-CE: maximum 4 randuri; fiecare cifra cu campul ei din pachet, ex. "FC medie 158 [antrenament_ultim.fc_medie]"
-PENTRU_VIITOR: 1 rand sau "-"
-LIPSESTE: campurile necesare si absente, sau "-"
-```
+Ordinea rulării: colectorul face pachetul → Fiziologul → verificare → antrenorul sportului din plan + Nutriționistul (+ Fizio / Minte doar dacă sunt rutați), cu verdictul Fiziologului în pachet → verificare → Head coach. Agenții nerutați răspund cu `verdict: "tacere"`.
 
-Regula de aur: fără câmp, fără afirmație. Orice cifră fără `[camp]` e respinsă.
+Regula de aur: fără câmp, fără afirmație. Orice număr fără pereche e respins.

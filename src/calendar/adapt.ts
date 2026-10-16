@@ -9,7 +9,13 @@ export type AdaptEvent =
   | { kind: 'readiness'; date: string; verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason?: string }
   | { kind: 'durere'; date: string; score: number; loc: string }
   | { kind: 'febra'; date: string }
-  | { kind: 'neplanificat'; activity: Activity; rpe?: number | null };
+  | {
+      kind: 'neplanificat';
+      activity: Activity;
+      rpe?: number | null;
+      /** Ce a fost, din răspunsul sportivului în aplicație: cursă, antrenament liber sau altceva (plimbare, joacă). */
+      tip?: 'cursa' | 'antrenament' | 'altceva' | null;
+    };
 
 export interface AdaptContext {
   today: string;
@@ -182,19 +188,101 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
   }
 }
 
+/**
+ * Activitate în afara planului (cursă benevolă, antrenament liber). Principiul: se cuantifică și se ține cont de ea,
+ * nu se adaugă peste plan.
+ *  1. Volumul ei înlocuiește ședințele planificate ale aceluiași sport din aceeași săptămână, până la minutele ei
+ *     (întâi cele ne-cheie; cheia doar dacă a fost cursă). Celelalte ședințe din ziua cursei se anulează.
+ *  2. Efort mare (cursă, ≥ 90 min sau RPE ≥ 7): zilele următoare (2 după cursă, 1 altfel) devin Z1, fără calitate;
+ *     cheile din 72 h după o cursă coboară la Z1–Z2, −25%.
+ *  3. Cursă de ≥ 60 min: săptămâna următoare nu progresează — cheile rămân la minutele cheilor de același tip din
+ *     săptămâna cursei.
+ */
 function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'neplanificat' }>, changes: string[]): void {
-  const big = ev.activity.minutes >= 90 || (ev.rpe ?? 0) >= 7;
-  if (!big) return;
-  const tomorrow = addDays(ev.activity.date, 1);
-  for (const x of plan) {
-    if (x.status !== 'planificat' || x.date !== tomorrow) continue;
-    if (x.key) continue; // un antrenament-cheie nu se înlocuiește din cauza unei activități neplanificate
-    x.targetZones = x.sport === 'forta' ? [] : [1];
-    if (x.type === 'calitate') {
-      x.type = 'z2';
-      x.intervals = undefined;
+  const a = ev.activity;
+  if (a.minutes < 30) return;
+  const isRace = ev.tip === 'cursa';
+  const big = isRace || a.minutes >= 90 || (ev.rpe ?? 0) >= 7;
+  const longRace = isRace && a.minutes >= 60;
+  const monday = addDays(a.date, -weekday(a.date));
+  const sunday = addDays(monday, 6);
+  const inWeek = (d: string) => diffDays(monday, d) >= 0 && diffDays(d, sunday) >= 0;
+
+  // 1. Ziua cursei: restul ședințelor planificate se anulează (sportivul a făcut cursa în locul lor).
+  if (isRace) {
+    for (const x of plan) {
+      if (x.status === 'planificat' && x.date === a.date) {
+        x.status = 'anulat_sistem';
+        x.note = `zi de cursă neplanificată (${a.sport} ${a.minutes} min)`;
+        changes.push(`${x.id}: anulat, zi de cursă`);
+      }
     }
-    x.note = `Z1 după activitate neplanificată mare (${ev.activity.minutes} min)`;
-    changes.push(`${x.id}: Z1 (activitate neplanificată ieri)`);
+  }
+
+  // 1b. Volumul înlocuiește ședințele aceluiași sport din aceeași săptămână, de după activitate.
+  let remaining = a.minutes;
+  const sameSport = plan
+    .filter((x) => x.status === 'planificat' && x.sport === a.sport && inWeek(x.date) && diffDays(a.date, x.date) > 0)
+    .sort((p, q) => diffDays(q.date, p.date) || Number(p.key) - Number(q.key));
+  for (const x of sameSport) {
+    if (remaining <= 0) break;
+    if (x.key && !isRace) continue;
+    if (x.plannedMinutes > remaining + CHANGE_MIN) continue;
+    x.status = 'sters';
+    x.note = `înlocuit: ${isRace ? 'cursă' : 'activitate'} neplanificată de ${a.minutes} min pe ${a.date}`;
+    remaining -= x.plannedMinutes;
+    changes.push(`${x.id}: ${x.sport} ${x.type} ${x.plannedMinutes} min scos, volumul l-a acoperit activitatea din ${a.date}`);
+  }
+
+  if (!big) return;
+
+  // 2. Zilele următoare: Z1, fără calitate; după cursă și cheile din 72 h coboară.
+  const easyDays = isRace ? 2 : 1;
+  for (const x of plan) {
+    if (x.status !== 'planificat') continue;
+    const d = diffDays(a.date, x.date);
+    if (d < 1) continue;
+    if (d <= easyDays) {
+      if (x.key && !isRace) continue;
+      x.targetZones = x.sport === 'forta' ? [] : [1];
+      if (x.type === 'calitate') {
+        x.type = 'z2';
+        x.intervals = undefined;
+      }
+      if (x.key) {
+        x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
+        x.note = `după cursă: Z1, −25% (${a.minutes} min pe ${a.date})`;
+        changes.push(`${x.id}: cheie coborâtă la Z1, −25% (cursă neplanificată)`);
+      } else {
+        const how = x.sport === 'forta' ? 'ușor, fără încărcări mari' : 'Z1';
+        x.note = `${how} după ${isRace ? 'cursă' : 'activitate'} neplanificată (${a.minutes} min)`;
+        changes.push(`${x.id}: ${how} (${isRace ? 'cursă' : 'activitate'} neplanificată din ${a.date})`);
+      }
+    } else if (isRace && d <= 3 && x.key) {
+      x.targetZones = x.sport === 'forta' ? [] : [1, 2];
+      x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
+      x.intervals = undefined;
+      if (x.type === 'calitate') x.type = 'z2';
+      x.note = `în 72 h după cursă: Z1–Z2, −25%`;
+      changes.push(`${x.id}: cheie coborâtă la Z1–Z2, −25% (72 h după cursă)`);
+    }
+  }
+
+  // 3. Cursă lungă: săptămâna următoare nu progresează.
+  if (!longRace) return;
+  const nextMonday = addDays(monday, 7);
+  const nextSunday = addDays(nextMonday, 6);
+  // Referința e cheia planificată a săptămânii cursei, chiar dacă a fost înlocuită de cursă.
+  const thisWeekKeys = plan.filter((x) => x.key && inWeek(x.date));
+  for (const x of plan) {
+    if (!x.key || x.status !== 'planificat') continue;
+    if (diffDays(nextMonday, x.date) < 0 || diffDays(x.date, nextSunday) < 0) continue;
+    const ref = thisWeekKeys.find((k) => k.sport === x.sport && k.type === x.type);
+    if (ref && x.plannedMinutes > ref.plannedMinutes) {
+      x.plannedMinutes = ref.plannedMinutes;
+      x.step = ref.step;
+      x.note = [x.note, `progresie oprită după cursa din ${a.date}`].filter(Boolean).join('; ');
+      changes.push(`${x.id}: ${x.sport} ${x.type} rămâne la ${x.plannedMinutes} min (progresie oprită după cursă)`);
+    }
   }
 }

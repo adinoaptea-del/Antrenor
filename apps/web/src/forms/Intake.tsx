@@ -1,0 +1,208 @@
+import { useState } from 'react';
+import { weeklyBudget } from '@core/calendar/budget.js';
+import { CircleBtn, Icons, LiveTitle } from '../ui/common';
+import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
+import { forms, useForms } from './store';
+import { EMPTY_INTAKE, type IntakeAnswers } from './types';
+
+// Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
+const STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+
+export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
+  const saved = useForms().intake;
+  const [a, setA] = useState<IntakeAnswers>(saved ?? EMPTY_INTAKE);
+  const [step, setStep] = useState(0);
+  const set = (patch: Partial<IntakeAnswers>) => setA((prev) => ({ ...prev, ...patch }));
+  const next = () => {
+    forms.saveIntake(a);
+    if (step < STEPS.length - 1) setStep(step + 1);
+    else onDone();
+  };
+  const back = () => (step === 0 ? onBack() : setStep(step - 1));
+  const budget = weeklyBudget(a.program);
+
+  const canContinue = (() => {
+    switch (STEPS[step]) {
+      case 'Înot':
+        return a.inot.nivel != null && a.inot.apeDeschise != null && a.inot.bazin != null;
+      case 'Bicicletă':
+        return a.bicicleta.tip != null && (a.bicicleta.tip === 'nu_am' || (a.bicicleta.trainer != null && a.bicicleta.putere != null && a.bicicleta.ceaMaiLungaOre != null));
+      case 'Alergare':
+        return a.alergare.ceaMaiLungaKm != null && a.alergare.curseRecente != null;
+      case 'Echipament':
+        return a.echipament.ceas != null;
+      case 'Program':
+        return a.program.length > 0;
+      case 'Sănătate':
+        return a.sanatate.avizCardiolog != null;
+      case 'Gata':
+        return a.consimtamant;
+      default:
+        return true;
+    }
+  })();
+
+  return (
+    <>
+      <header className="top">
+        <div className="top-l">
+          <CircleBtn icon={Icons.arrowLeft} label="Înapoi" onClick={back} />
+        </div>
+        <div className="top-c">
+          <LiveTitle>Chestionar</LiveTitle>
+        </div>
+        <div className="top-r">
+          <span className="small muted">
+            {step + 1}/{STEPS.length}
+          </span>
+        </div>
+      </header>
+      <Progress step={step} total={STEPS.length} />
+
+      <div className="wizard">
+        {STEPS[step] === 'Obiectiv' && (
+          <>
+            <Q title="Pentru ce te pregătești?" hint="Obiectivul decide fazele, orele și ce înseamnă „gata”.">
+              <Chips
+                value={a.obiectiv}
+                options={[
+                  { id: '70.3', label: 'Ironman 70.3', sub: '1,9 km · 90 km · 21 km' },
+                  { id: 'olimpic', label: 'Olimpic', sub: '1,5 · 40 · 10' },
+                  { id: 'sprint', label: 'Sprint', sub: '0,75 · 20 · 5' },
+                  { id: 'full', label: 'Ironman', sub: '3,8 · 180 · 42' },
+                ]}
+                onChange={(obiectiv) => set({ obiectiv })}
+              />
+            </Q>
+            <Q title="Data cursei">
+              <input className="date" type="date" value={a.dataCursa} onChange={(e) => set({ dataCursa: e.target.value })} />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Înot' && (
+          <>
+            <Q title="Cât înoți acum, fără să te oprești?" hint="Răspunde sincer: de aici pornesc ședințele de tehnică.">
+              <Chips
+                value={a.inot.nivel}
+                options={[
+                  { id: 'nu_stiu', label: 'Nu știu să înot bine' },
+                  { id: 'bazin_scurt', label: 'Câteva lungimi', sub: 'cu pauze' },
+                  { id: 'continuu_400', label: '400 m continuu' },
+                  { id: 'peste_1500', label: 'Peste 1.500 m' },
+                ]}
+                onChange={(nivel) => set({ inot: { ...a.inot, nivel } })}
+              />
+            </Q>
+            <Q title="Ape deschise?">
+              <Chips value={a.inot.apeDeschise} options={[{ id: 'nu', label: 'Niciodată' }, { id: 'putin', label: 'De câteva ori' }, { id: 'da', label: 'Regulat' }]} onChange={(apeDeschise) => set({ inot: { ...a.inot, apeDeschise } })} />
+            </Q>
+            <Q title="Ai acces la un bazin?">
+              <Chips value={a.inot.bazin == null ? null : a.inot.bazin ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ inot: { ...a.inot, bazin: v === 'da' } })} />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Bicicletă' && (
+          <>
+            <Q title="Ce bicicletă ai?">
+              <Chips value={a.bicicleta.tip} options={[{ id: 'sosea', label: 'Șosea' }, { id: 'tt', label: 'Triatlon / TT' }, { id: 'mtb', label: 'MTB / altceva' }, { id: 'nu_am', label: 'Nu am încă' }]} onChange={(tip) => set({ bicicleta: { ...a.bicicleta, tip } })} />
+            </Q>
+            {a.bicicleta.tip && a.bicicleta.tip !== 'nu_am' && (
+              <>
+                <div className="grid-2">
+                  <Toggle label="Trainer acasă" value={a.bicicleta.trainer} onChange={(trainer) => set({ bicicleta: { ...a.bicicleta, trainer } })} />
+                  <Toggle label="Senzor de putere" value={a.bicicleta.putere} onChange={(putere) => set({ bicicleta: { ...a.bicicleta, putere } })} />
+                </div>
+                <Q title="Cea mai lungă tură din ultimele 3 luni">
+                  <Stepper value={a.bicicleta.ceaMaiLungaOre} min={0} max={6} step={0.5} unit="ore" fallback={1} onChange={(ceaMaiLungaOre) => set({ bicicleta: { ...a.bicicleta, ceaMaiLungaOre } })} />
+                </Q>
+              </>
+            )}
+          </>
+        )}
+
+        {STEPS[step] === 'Alergare' && (
+          <>
+            <Q title="Cea mai lungă alergare din ultimele 3 luni">
+              <Stepper value={a.alergare.ceaMaiLungaKm} min={0} max={42} step={1} unit="km" fallback={5} onChange={(ceaMaiLungaKm) => set({ alergare: { ...a.alergare, ceaMaiLungaKm } })} />
+            </Q>
+            <Q title="Curse în ultimul an?">
+              <Chips value={a.alergare.curseRecente} options={[{ id: 'niciuna', label: 'Niciuna' }, { id: '5-10', label: '5 sau 10 km' }, { id: 'semimaraton', label: 'Semimaraton' }, { id: 'maraton', label: 'Maraton' }]} onChange={(curseRecente) => set({ alergare: { ...a.alergare, curseRecente } })} />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Echipament' && (
+          <>
+            <Q title="Ce porți la antrenament?" hint="Brățările se conectează la final, din Profil, cu un singur buton fiecare.">
+              <Chips value={a.echipament.ceas} options={[{ id: 'garmin', label: 'Garmin' }, { id: 'apple', label: 'Apple Watch' }, { id: 'altul', label: 'Alt ceas' }, { id: 'nu', label: 'Niciun ceas' }]} onChange={(ceas) => set({ echipament: { ...a.echipament, ceas } })} />
+            </Q>
+            <div className="stack" style={{ gap: 8 }}>
+              <Toggle label="Whoop" value={a.echipament.whoop} onChange={(whoop) => set({ echipament: { ...a.echipament, whoop } })} />
+              <Toggle label="Oura" value={a.echipament.oura} onChange={(oura) => set({ echipament: { ...a.echipament, oura } })} />
+              <Toggle label="Cântar (zilnic, dimineața)" value={a.echipament.cantar} onChange={(cantar) => set({ echipament: { ...a.echipament, cantar } })} />
+            </div>
+          </>
+        )}
+
+        {STEPS[step] === 'Program' && (
+          <Q title="Când poți să te antrenezi?" hint="Atinge ferestrele libere dintr-o săptămână obișnuită. Planul se construiește doar în ele, cu 20% rezervă.">
+            <ScheduleGrid value={a.program} onChange={(program) => set({ program })} />
+            <div className="budget">
+              <span className="num md">{budget.toLocaleString('ro-RO')}</span>
+              <span className="unit">ore pe săptămână pentru plan</span>
+            </div>
+          </Q>
+        )}
+
+        {STEPS[step] === 'Sănătate' && (
+          <>
+            <Q title="Aviz cardiologic pentru efort?" hint="Fără aviz, planul rămâne la Z1–Z2: fără intensitate, oricât de bine ai sta.">
+              <Chips value={a.sanatate.avizCardiolog} options={[{ id: 'da', label: 'Da, am' }, { id: 'programat', label: 'Programat' }, { id: 'nu', label: 'Nu încă' }]} onChange={(avizCardiolog) => set({ sanatate: { ...a.sanatate, avizCardiolog } })} />
+            </Q>
+            <Q title="Accidentări sau dureri în ultimul an" hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
+              <TextBox value={a.sanatate.accidentari} onChange={(accidentari) => set({ sanatate: { ...a.sanatate, accidentari } })} placeholder="ex. genunchi drept, primăvară; tendon ahilean stâng" />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Ce te ține' && (
+          <>
+            <Q title="Ce te motivează la cursa asta?" hint="Un rând. Îl citește doar agentul Minte, când e nevoie.">
+              <TextBox value={a.minte.motiveaza} onChange={(motiveaza) => set({ minte: { ...a.minte, motiveaza } })} placeholder="ex. să termin alături de prieteni; să-mi dovedesc că pot" />
+            </Q>
+            <Q title="Ce te-a oprit în trecut?">
+              <TextBox value={a.minte.aOprit} onChange={(aOprit) => set({ minte: { ...a.minte, aOprit } })} placeholder="ex. programul de la radio; m-am accidentat când am forțat" />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Gata' && (
+          <>
+            <Q title="Ce urmează">
+              <ul className="plain">
+                <li>
+                  Primul calendar pe <b>{budget.toLocaleString('ro-RO')} h</b> pe săptămână, din ferestrele tale.
+                </li>
+                <li>Intensitate: {a.sanatate.avizCardiolog === 'da' ? 'după zonele testate' : 'doar Z1–Z2 până la avizul cardiologic'}.</li>
+                <li>Înot: {a.inot.nivel === 'nu_stiu' || a.inot.nivel === 'bazin_scurt' ? 'tehnică înainte de volum, fără ritmuri până la 400 m continuu' : 'CSS se testează la prima ședință'}.</li>
+                <li>Brățările se conectează din Profil; până atunci bara rămâne „fără date”.</li>
+              </ul>
+            </Q>
+            <Toggle label="Am peste 18 ani, înțeleg că nu e serviciu medical și sunt de acord cu folosirea datelor de sănătate pentru planul meu. Le pot șterge oricând." value={a.consimtamant} onChange={(consimtamant) => set({ consimtamant })} />
+          </>
+        )}
+      </div>
+
+      <div className="wizard-nav">
+        <button className="btn dark" onClick={back}>
+          {step === 0 ? 'Renunț' : 'Înapoi'}
+        </button>
+        <button className="btn" onClick={next} disabled={!canContinue}>
+          {step === STEPS.length - 1 ? 'Generează planul' : 'Continuă'} {Icons.arrowRight}
+        </button>
+      </div>
+    </>
+  );
+}

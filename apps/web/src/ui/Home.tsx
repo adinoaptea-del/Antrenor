@@ -1,24 +1,43 @@
 import type { Sport } from '@core/types.js';
 import { BikeArt, Card, DAY_NAMES, Icons, RunArt, SwimArt, fmtDayMonth, fmtMinutes } from './common';
+import { SyncButton } from './SyncButton';
+import { useForms } from '../forms/store';
+import { eveningComplete, intakeComplete, morningComplete } from '../forms/types';
 import { weekday } from '@core/util/dates.js';
-import { ATHLETE, RACE, SPORT_LABEL, TODAY, bar, daysToRace, greeting, nextWorkout, todayState, warnings, workoutsOn } from '../data/demo';
+import { ATHLETE, RACE, SPORT_LABEL, TODAY, bar, daysToRace, greeting, lastDoneWorkout, nextWorkout, todayState, unplannedActivity, unplannedChanges, warnings, workoutsOn } from '../data/demo';
 
 // Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
 // zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
+const DAY_SHORT = ['lu', 'ma', 'mi', 'jo', 'vi', 'sâ', 'du'];
 const SPORTS: { id: Sport; art: JSX.Element }[] = [
   { id: 'inot', art: <SwimArt /> },
   { id: 'bicicleta', art: <BikeArt /> },
   { id: 'alergare', art: <RunArt /> },
 ];
 
-export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport }) => void }) {
+export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
+  const f = useForms();
   const total = bar.blocked || bar.total == null ? null : Math.round(bar.total);
+  const morning = f.morning[TODAY];
+  const lastDone = lastDoneWorkout();
+  const lastDoneId = lastDone ? `demo-${lastDone.id}` : null;
+  const evening = lastDoneId ? f.evening[lastDoneId] : undefined;
+  const unplannedTip = f.unplanned[unplannedActivity.id];
+  const unplannedForm = f.evening[unplannedActivity.id];
+  const hooperSum = morningComplete(morning) ? Object.values(morning!.hooper).reduce((x, y) => (x ?? 0) + (y ?? 0), 0) : null;
+  const isSunday = weekday(TODAY) === 6;
   const known = bar.components.filter((c) => c.value != null).length;
   const strength = nextWorkout('forta');
   const todayCount = workoutsOn(TODAY).length;
 
   return (
     <>
+      <div className="topline">
+        <div className="demo-banner" role="status">
+          <i /> date demo
+        </div>
+        <SyncButton />
+      </div>
       <div className="hub-name">
         <button onClick={() => onOpen('profil')} aria-label="Profil">
           {ATHLETE.name}
@@ -46,6 +65,42 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       </div>
 
       <p className="daymsg">{greeting()}</p>
+
+      <div className="forms-row">
+        {!intakeComplete(f.intake) && (
+          <button className="form-tile todo" onClick={() => onOpen('intake')}>
+            <span className="k">Chestionar</span>
+            <span className="v">3 minute</span>
+          </button>
+        )}
+        {!unplannedTip && (
+          <button className="form-tile todo" onClick={() => onOpen('seara', { activityId: unplannedActivity.id })}>
+            <span className="k">În afara planului</span>
+            <span className="v">{SPORT_LABEL[unplannedActivity.sport]} {DAY_SHORT[weekday(unplannedActivity.date)]} · ce a fost?</span>
+          </button>
+        )}
+        <button className={`form-tile ${morningComplete(morning) ? '' : 'todo'}`} onClick={() => onOpen('dimineata')}>
+          <span className="k">
+            Dimineața {morningComplete(morning) && Icons.check}
+          </span>
+          <span className="v">{morningComplete(morning) ? `Hooper ${hooperSum}${(hooperSum ?? 0) >= 24 ? ' · roșu' : (hooperSum ?? 0) >= 20 ? ' · galben' : ''}` : '20 de secunde'}</span>
+        </button>
+        {lastDone && lastDoneId && (
+          <button className={`form-tile ${eveningComplete(evening) ? '' : 'todo'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
+            <span className="k">
+              Cum a fost {eveningComplete(evening) && Icons.check}
+            </span>
+            <span className="v">{eveningComplete(evening) ? `RPE ${evening!.rpe} · ${evening!.fata_de_asteptari === 'la_fel' ? 'cum te așteptai' : evening!.fata_de_asteptari === 'mai_greu' ? 'mai greu' : 'mai ușor'}` : `${SPORT_LABEL[lastDone.sport]} ${DAY_SHORT[weekday(lastDone.date)]}`}</span>
+          </button>
+        )}
+        {isSunday && (
+          <button className="form-tile todo" onClick={() => onOpen('saptamanal')}>
+            <span className="k">Săptămâna</span>
+            <span className="v">3 întrebări</span>
+          </button>
+        )}
+      </div>
+
 
       <div className="sports">
         {SPORTS.map((s) => {
@@ -99,6 +154,30 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           </div>
         </button>
       </div>
+
+      <Card className="blue" tight style={{ marginTop: 12 }}>
+        <div className="title">În afara planului: {unplannedActivity.name}</div>
+        <div className="small" style={{ marginTop: 4 }}>
+          {DAY_NAMES[weekday(unplannedActivity.date)]}, {fmtDayMonth(unplannedActivity.date)} · {fmtMinutes(unplannedActivity.minutes)} · FC medie {unplannedActivity.avgHr}, max {unplannedActivity.maxHr}. A venit de pe ceas, nu era în plan.
+        </div>
+        {unplannedTip ? (
+          <>
+            <div className="small" style={{ marginTop: 8 }}>
+              Ai spus: <b>{unplannedTip === 'cursa' ? 'cursă' : unplannedTip === 'antrenament' ? 'antrenament liber' : 'altceva'}</b>
+              {unplannedForm?.rpe != null ? `, RPE ${unplannedForm.rpe}` : ''}. Planul ține cont de ea așa:
+            </div>
+            <ul className="changes">
+              {unplannedChanges(unplannedTip, unplannedForm?.rpe ?? null).map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <button className="btn dark sm" style={{ marginTop: 10 }} onClick={() => onOpen('seara', { activityId: unplannedActivity.id })}>
+            Ce a fost? {Icons.arrowRight}
+          </button>
+        )}
+      </Card>
 
       {warnings.map((w) => (
         <Card key={w.title} className="warn" tight style={{ marginTop: 12 }}>

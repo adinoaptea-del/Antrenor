@@ -409,6 +409,8 @@ export const Icons = {
   user: <I d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />,
   watch: <I d="M8 5h8M8 19h8M12 10v2.5l1.5 1" extra={<rect x="6" y="5" width="12" height="14" rx="4" />} />,
   flag: <I d="M5 21V4M5 4h11l-2.5 4L16 12H5" />,
+  refresh: <I d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" />,
+  edit: <I d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z" />,
   send: <I d="M4 12l16-8-5 16-3-6z" />,
   live: <I d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13" extra={<circle cx="12" cy="12" r="1.5" fill="currentColor" />} />,
 };

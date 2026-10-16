@@ -1,5 +1,9 @@
-import { Card, CircleBtn, Icons, Label, LiveTitle } from './common';
-import { ATHLETE, RACE, budgetHours, dataAvailability } from '../data/demo';
+import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
+import { ATHLETE, RACE, TODAY, budgetHours, dataAvailability, lastDoneWorkout } from '../data/demo';
+import { forms, useForms } from '../forms/store';
+import { eveningComplete, intakeComplete, morningComplete } from '../forms/types';
+import { SyncButton } from './SyncButton';
+import { SOURCES } from './sync';
 
 const DEVICES: { name: string; state: 'conectat' | 'neconectat'; note: string }[] = [
   { name: 'Garmin', state: 'conectat', note: 'activități, somn, HRV' },
@@ -8,7 +12,11 @@ const DEVICES: { name: string; state: 'conectat' | 'neconectat'; note: string }[
   { name: 'Apple Watch', state: 'neconectat', note: 'prin Strava' },
 ];
 
-export function Profile({ onBack }: { onBack: () => void }) {
+export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
+  const f = useForms();
+  const lastDone = lastDoneWorkout();
+  const lastDoneId = lastDone ? `demo-${lastDone.id}` : null;
+  const weeks = Object.keys(f.weekly).length;
   return (
     <>
       <header className="top">
@@ -41,7 +49,54 @@ export function Profile({ onBack }: { onBack: () => void }) {
         </Card>
 
         <Card>
-          <Label icon={Icons.watch}>Brățări</Label>
+          <Label icon={Icons.edit}>Chestionare</Label>
+          <div className="kv">
+            <div>
+              <div style={{ fontWeight: 700 }}>De intrare</div>
+              <div className="tiny muted">nivel, echipament, program, sănătate</div>
+            </div>
+            <button className={`pill ${intakeComplete(f.intake) ? '' : 'on'}`} onClick={() => onOpen('intake')}>
+              {intakeComplete(f.intake) ? 'Editează' : 'Completează'}
+            </button>
+            <div>
+              <div style={{ fontWeight: 700 }}>Dimineața</div>
+              <div className="tiny muted">4 note + semnale · {fmtDayMonth(TODAY)}</div>
+            </div>
+            <button className={`pill ${morningComplete(f.morning[TODAY]) ? '' : 'on'}`} onClick={() => onOpen('dimineata')}>
+              {morningComplete(f.morning[TODAY]) ? 'Modifică' : 'Completează'}
+            </button>
+            {lastDone && lastDoneId && (
+              <>
+                <div>
+                  <div style={{ fontWeight: 700 }}>După antrenament</div>
+                  <div className="tiny muted">RPE, așteptări, durere · ultima ședință</div>
+                </div>
+                <button className={`pill ${eveningComplete(f.evening[lastDoneId]) ? '' : 'on'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
+                  {eveningComplete(f.evening[lastDoneId]) ? 'Modifică' : 'Completează'}
+                </button>
+              </>
+            )}
+            <div>
+              <div style={{ fontWeight: 700 }}>Săptămânal</div>
+              <div className="tiny muted">duminica, 3 întrebări · {weeks} completate</div>
+            </div>
+            <button className="pill" onClick={() => onOpen('saptamanal')}>
+              Deschide
+            </button>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 10 }}>
+            Niciunul nu e obligatoriu. Fără cel de dimineață, decizia zilei e cel mult galbenă; fără cel de seară, antrenorii nu au RPE și durere.
+          </div>
+        </Card>
+
+        <Card>
+          <div className="row between" style={{ marginBottom: 8 }}>
+            <Label icon={Icons.watch}>Brățări</Label>
+            <SyncButton compact />
+          </div>
+          <div className="tiny muted" style={{ marginBottom: 10 }}>
+            Se citesc: {SOURCES.join(', ')}. La apăsare, la deschidere, la revenire și la 15 minute cât e deschisă; serverul citește oricum la 15 minute.
+          </div>
           <div className="kv">
             {DEVICES.map((d) => (
               <div key={d.name} style={{ display: 'contents' }}>
@@ -97,6 +152,9 @@ export function Profile({ onBack }: { onBack: () => void }) {
         <Card tight>
           <Label>Consimțământ</Label>
           <div className="small">18+ · date de sănătate · nu e serviciu medical · ștergerea contului dintr-un buton</div>
+          <button className="pill" style={{ marginTop: 10 }} onClick={() => forms.reset()}>
+            Șterge răspunsurile din acest telefon
+          </button>
         </Card>
       </div>
     </>
