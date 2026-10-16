@@ -35,7 +35,7 @@
 html, body { height: 100%; }
 /* Aplicația stă pe loc ca o aplicație nativă: fără zoom, fără deplasare stânga-dreapta, fără elastic la margini.
    Doar derularea verticală; listele orizontale (ex. ședințele) își păstrează derularea lor. */
-html, body { overflow-x: hidden; overscroll-behavior: none; touch-action: pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { overscroll-behavior: none; touch-action: pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 #root { overflow-x: clip; max-width: 100vw; }
 .det-pills, .seg, [data-hscroll] { touch-action: pan-x pan-y; }
 body {
@@ -749,3 +749,109 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .ready-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; text-align: center; text-wrap: balance; }
 .ready-title b { font-weight: 800; color: var(--fg); }
 .bar-info .bi-btn { background: none; border: 0; padding: 0; text-align: left; color: var(--fg); font-family: var(--font-ui); cursor: pointer; }
+
+/* ==========================================================================
+   STICLĂ (în spiritul iOS „Liquid Glass”)
+   Suprafețe translucide care lasă să treacă lumina din fundal, cu blur și saturație,
+   o muchie luminoasă sus (reflexia), o umbră fină jos. Containerele mari au blur;
+   elementele din interiorul lor sunt doar translucide (un singur strat de blur = fluid pe iPhone).
+   ========================================================================== */
+:root {
+  --glass-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.035) 55%, rgba(255, 255, 255, 0.025) 100%);
+  --glass-fill-2: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.03));
+  --glass-tint: rgba(20, 20, 24, 0.38);
+  --glass-edge: rgba(255, 255, 255, 0.13);
+  --glass-edge-2: rgba(255, 255, 255, 0.09);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  --glass-hi-2: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
+  --glass-blur: blur(22px) saturate(1.7);
+  --glass-red: linear-gradient(180deg, rgba(255, 92, 78, 0.96) 0%, rgba(226, 44, 30, 0.94) 55%, rgba(196, 30, 20, 0.95) 100%);
+  --glass-red-hi: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* Lumina din fundal pe care o „vede” sticla: două pete calde, foarte difuze, fixe. */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: -10% -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 28% at 12% 18%, rgba(220, 42, 30, 0.16), transparent 70%),
+    radial-gradient(42% 30% at 92% 46%, rgba(255, 120, 90, 0.08), transparent 70%),
+    radial-gradient(46% 30% at 30% 86%, rgba(220, 42, 30, 0.12), transparent 70%),
+    radial-gradient(60% 40% at 70% 10%, rgba(255, 255, 255, 0.035), transparent 70%);
+}
+
+/* Containere mari: sticlă cu blur. */
+.card, .stat, .q, .box, .form-tile, .seg, .bar-info, .display, .tour .tip, .sport-card,
+.circ, .avatar, .profile-btn, .pill, .rec-chip, .btn.dark, .sync {
+  background: var(--glass-fill), var(--glass-tint);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-hi), var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.card.glass { background: var(--glass-fill), var(--glass-tint); }
+.circ, .pill, .rec-chip, .avatar, .profile-btn, .sync { box-shadow: var(--glass-hi), 0 4px 14px rgba(0, 0, 0, 0.28); }
+.avatar { border-color: var(--accent); box-shadow: var(--glass-hi), 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 18px rgba(220, 42, 30, 0.35); }
+
+/* Elemente din interiorul unei suprafețe: translucide, fără blur propriu. */
+.det-tile, .det-pill, .chip, .scale button, .toggle, .stepper button, .textbox, input.date, .numfield,
+.base-row, .keys-box, .route, .stat .ic, .icon-circle, .box .ic, .switch .knob, .sched-row button {
+  background: var(--glass-fill-2);
+  border-color: var(--glass-edge-2);
+  box-shadow: var(--glass-hi-2);
+}
+
+/* Navigarea: sticlă mai groasă, care plutește. */
+.nav {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04)), rgba(16, 16, 19, 0.5);
+  border-color: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(255, 255, 255, 0.04), 0 16px 44px rgba(0, 0, 0, 0.5);
+}
+.nav button.on { background: linear-gradient(180deg, rgba(255, 90, 76, 0.24), rgba(220, 42, 30, 0.14)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+
+/* Ce e selectat sau acțiunea principală: sticlă roșie, lucioasă. */
+.btn:not(.dark):not(:disabled), .seg button.on, .pill.on, .det-pill.on, .chip.on, .scale button.on, .toggle.on {
+  background: var(--glass-red);
+  border-color: rgba(255, 140, 128, 0.55);
+  box-shadow: var(--glass-red-hi), 0 8px 22px rgba(220, 42, 30, 0.32);
+  color: var(--accent-ink);
+}
+.btn:disabled { background: var(--glass-fill-2); box-shadow: var(--glass-hi-2); }
+.det-tile.on { background: linear-gradient(180deg, rgba(255, 90, 76, 0.2), rgba(220, 42, 30, 0.1)); border-color: rgba(255, 110, 96, 0.6); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+
+/* Bările: șanț de sticlă, umplere luminoasă. */
+.progress .track, .ready-bar, .rp-bar, .split .sb {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--glass-edge-2);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+.ready-bar i, .split .sb i, .rp-bar i { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+
+/* Inelul: discul din spate e sticlă, arcul are reflexie. */
+.ring-track { stroke: rgba(255, 255, 255, 0.07); }
+.ring-wrap .ring::before {
+  content: '';
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  background: radial-gradient(70% 60% at 50% 18%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 60%, transparent 75%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Apăsarea: sticla „cedează” puțin, ca pe iOS. */
+.card[role='button']:active, .box:active, .form-tile:active, .det-tile:active, .det-pill:active, .circ:active, .pill:active, .btn:active, .chip:active, .sport-card:active { transform: scale(0.97); transition: transform 0.12s ease; }
+.box, .form-tile, .det-tile, .det-pill, .circ, .pill, .btn, .chip, .sport-card { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, border-color 0.2s ease; }
+
+/* Fără suport de blur (browsere vechi): sticla devine opacă, ca textul să rămână lizibil. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card, .stat, .q, .box, .form-tile, .seg, .bar-info, .display, .sport-card, .circ, .pill, .rec-chip, .nav { background: var(--surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .card, .stat, .q, .box, .form-tile, .seg, .bar-info, .display, .sport-card, .circ, .pill, .rec-chip, .nav { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
