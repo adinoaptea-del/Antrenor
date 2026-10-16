@@ -866,3 +866,16 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .coach-msg { display: grid; gap: 8px; font-size: 15px; line-height: 1.5; }
 .coach-msg p { margin: 0; }
 .coach-msg.old { font-size: 13px; color: var(--muted); }
+
+/* Acasă se vede mereu: cerc de sticlă roșie, puțin ridicat, oricare ar fi ecranul. */
+.nav button.home { color: #fff; gap: 2px; }
+.nav button.home .home-ic {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; margin-top: -10px;
+  background: var(--glass-red); color: #fff;
+  box-shadow: var(--glass-red-hi), 0 6px 18px rgba(220, 42, 30, 0.45), 0 0 0 3px rgba(10, 10, 11, 0.6);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nav button.home .home-ic .i { width: 21px; height: 21px; color: #fff; }
+.nav button.home.on { background: transparent; box-shadow: none; }
+.nav button.home.on .home-ic { transform: scale(1.06); box-shadow: var(--glass-red-hi), 0 8px 24px rgba(220, 42, 30, 0.6), 0 0 0 3px rgba(255, 255, 255, 0.14); }
+.nav button.home:active .home-ic { transform: scale(0.94); }

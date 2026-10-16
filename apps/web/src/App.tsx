@@ -292,8 +292,8 @@ function Shell() {
       {!isForm && !gateIntake && !labsGate && (
         <nav className="nav" aria-label="Navigare">
           {[...MAIN, { id: 'antrenor' as Screen, label: 'Antrenor', icon: 'chat' as const }].map((t) => (
-            <button key={t.id} className={screen === t.id ? 'on' : ''} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>
-              {Icons[t.icon]}
+            <button key={t.id} className={`${screen === t.id ? 'on' : ''} ${t.id === 'acasa' ? 'home' : ''}`} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>
+              {t.id === 'acasa' ? <span className="home-ic">{Icons[t.icon]}</span> : Icons[t.icon]}
               <span>{t.label}</span>
             </button>
           ))}
