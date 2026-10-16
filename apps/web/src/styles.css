@@ -556,3 +556,8 @@ ul.plain b { color: var(--fg); }
 /* desfășurarea ședinței în calendar */
 .steps { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .steps b { color: var(--fg); font-weight: 700; margin-right: 4px; }
+
+/* alerta pentru analize lipsă, pe Acasă */
+.labs-alert { display: grid; gap: 4px; width: 100%; margin-top: 12px; text-align: left; font: inherit; color: var(--fg); background: rgba(220, 42, 30, 0.12); border: 1px solid rgba(220, 42, 30, 0.55); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; }
+.labs-alert b { font-size: 14px; }
+.labs-alert span { font-size: 12px; color: var(--muted); }

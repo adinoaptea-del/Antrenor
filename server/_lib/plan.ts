@@ -1,6 +1,6 @@
 // Planul: din chestionarul de intrare (program, nivel, aviz) și istoricul de activități → generatePlan → workouts_planned.
 import { insert, remove, select, update, upsert } from './db.js';
-import { toWorkoutRow } from './collect.js';
+import { loadLabs, toWorkoutRow } from './collect.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
@@ -49,6 +49,23 @@ export interface PlanOutcome {
   weeks?: number;
   workouts?: number;
   options?: string[];
+  /** De ce e planul altfel decât s-ar aștepta sportivul (ex. intensitate limitată din analize). */
+  note?: string;
+  /** Planul e făcut fără analize valabile (mai noi de 12 luni). */
+  withoutLabs?: boolean;
+}
+
+/**
+ * Analizele schimbă planul doar într-un singur fel, prudent: feritina sub 30 µg/L sau hemoglobina sub intervalul
+ * laboratorului țin intensitatea la Z1–Z2 până la analize noi (după discuția cu medicul). Nimic altceva.
+ */
+export async function labsGate(userId: string): Promise<{ valid: boolean; limitIntensity: boolean; why: string | null }> {
+  const l = await loadLabs(userId);
+  if (!l) return { valid: false, limitIntensity: false, why: null };
+  const lowFerritin = l.feritina != null && l.feritina < 30;
+  const lowHb = (l.in_afara_intervalului ?? []).some((v) => v.directie === 'sub' && /hemoglobin/i.test(v.nume));
+  const why = lowFerritin ? `feritina ${l.feritina} µg/L (sub 30)` : lowHb ? 'hemoglobina sub intervalul laboratorului' : null;
+  return { valid: true, limitIntensity: !!why, why };
 }
 
 /** Generează (sau regenerează) planul activ de la lunea următoare. Planul vechi rămâne în istoric, inactiv. */
@@ -58,13 +75,14 @@ export async function generateAndStore(userId: string, today: string, intake: In
   }
   const startDate = addDays(weekStart(today), 7);
   const history = await historyHours(userId, today);
+  const labs = await labsGate(userId);
   const result: GenerateResult = generatePlan({
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
     freeBlocks: intake.program,
     historyHoursPerWeek: history,
-    intensityAllowed: intake.sanatate.avizCardiolog === 'da' ? 'toate' : 'Z2',
+    intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
@@ -82,5 +100,12 @@ export async function generateAndStore(userId: string, today: string, intake: In
   });
   const rows = result.weeks.flatMap((w) => w.workouts.map((x) => toWorkoutRow({ ...x, id: `${plan!.id.slice(0, 8)}-${x.id}` }, userId, plan!.id)));
   for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));
-  return { ok: true, budgetHours: result.budgetHours, weeks: result.weeks.length, workouts: rows.length };
+  return {
+    ok: true,
+    budgetHours: result.budgetHours,
+    weeks: result.weeks.length,
+    workouts: rows.length,
+    withoutLabs: !labs.valid,
+    note: labs.limitIntensity ? `Intensitatea rămâne la Z1–Z2: ${labs.why}. De discutat cu medicul; planul se reface când urci analize noi.` : undefined,
+  };
 }

@@ -2318,6 +2318,18 @@ async function openFlagsFor(userId, today) {
   return flags;
 }
 
+// server/_lib/reminders.ts
+var LABS_REMINDER = "Analizele tale lipsesc (sau sunt mai vechi de 12 luni). Planul merge \u0219i f\u0103r\u0103 ele, dar nu e 100% pe corpul t\u0103u: nutri\u021Bia, fierul \u0219i semnalele de alarm\u0103 vin doar din analize. Urc\u0103-le din Date de baz\u0103 \u2192 Analize de s\xE2nge (PDF sau poz\u0103).";
+async function labsReminder(userId, today) {
+  if (await loadLabs(userId)) return false;
+  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "for_date.asc" });
+  if (!intake) return false;
+  const days = diffDays(intake.for_date, today);
+  if (days <= 0 || days % 3 !== 0) return false;
+  await insert("messages", { user_id: userId, kind: "avertisment", body: LABS_REMINDER, decision: null });
+  return true;
+}
+
 // server/cron/morning.ts
 async function handler5(req, res) {
   try {
@@ -2330,6 +2342,7 @@ async function handler5(req, res) {
       try {
         await syncUser(u.id, 3);
         await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
+        await labsReminder(u.id, today).catch(() => false);
         const r2 = await runAgents(u.id, today, "dimineata");
         out[u.id] = r2 ? { decizie: r2.decision, rutati: r2.routed, respinse: r2.rejected, schimbari: r2.changes.length } : "deja rulat";
       } catch (e) {
@@ -2823,19 +2836,28 @@ async function saveIntake(userId, today, intake) {
 function raceName(goal) {
   return { "70.3": "Ironman 70.3", olimpic: "Triatlon olimpic", sprint: "Triatlon sprint", full: "Ironman" }[goal];
 }
+async function labsGate(userId) {
+  const l = await loadLabs(userId);
+  if (!l) return { valid: false, limitIntensity: false, why: null };
+  const lowFerritin = l.feritina != null && l.feritina < 30;
+  const lowHb = (l.in_afara_intervalului ?? []).some((v) => v.directie === "sub" && /hemoglobin/i.test(v.nume));
+  const why = lowFerritin ? `feritina ${l.feritina} \xB5g/L (sub 30)` : lowHb ? "hemoglobina sub intervalul laboratorului" : null;
+  return { valid: true, limitIntensity: !!why, why };
+}
 async function generateAndStore(userId, today, intake) {
   if (intake.obiectiv === "full") {
     return { ok: false, reason: "Ironman complet nu e \xEEn versiunea asta a planului; alege 70.3 pentru acum.", budgetHours: 0 };
   }
   const startDate = addDays(weekStart(today), 7);
   const history = await historyHours(userId, today);
+  const labs = await labsGate(userId);
   const result = generatePlan({
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
     freeBlocks: intake.program,
     historyHoursPerWeek: history,
-    intensityAllowed: intake.sanatate.avizCardiolog === "da" ? "toate" : "Z2",
+    intensityAllowed: intake.sanatate.avizCardiolog === "da" && !labs.limitIntensity ? "toate" : "Z2",
     swimContinuous400: intake.inot.nivel === "continuu_400" || intake.inot.nivel === "peste_1500"
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
@@ -2852,7 +2874,14 @@ async function generateAndStore(userId, today, intake) {
   });
   const rows = result.weeks.flatMap((w) => w.workouts.map((x) => toWorkoutRow({ ...x, id: `${plan.id.slice(0, 8)}-${x.id}` }, userId, plan.id)));
   for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
-  return { ok: true, budgetHours: result.budgetHours, weeks: result.weeks.length, workouts: rows.length };
+  return {
+    ok: true,
+    budgetHours: result.budgetHours,
+    weeks: result.weeks.length,
+    workouts: rows.length,
+    withoutLabs: !labs.valid,
+    note: labs.limitIntensity ? `Intensitatea r\u0103m\xE2ne la Z1\u2013Z2: ${labs.why}. De discutat cu medicul; planul se reface c\xE2nd urci analize noi.` : void 0
+  };
 }
 
 // server/forms/[kind].ts
@@ -2902,7 +2931,9 @@ async function handler8(req, res) {
       const drawn = isDate(l.data) ? l.data : today;
       await remove("labs", { user_id: `eq.${u.id}`, drawn_at: `eq.${drawn}` });
       await insert("labs", { user_id: u.id, drawn_at: drawn, ...vals, other: l.alte?.length ? { laborator: l.laborator ?? null, valori: l.alte } : null });
-      json(res, 200, { ok: true });
+      const intakeRow = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === "teste") {

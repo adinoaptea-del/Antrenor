@@ -119,11 +119,18 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         })}
       </div>
 
-      {(!me.baseline.labs || !me.baseline.tests || !me.baseline.body || me.baseline.cardiolog !== 'da') && (
+      {me.intakeComplete && (!me.baseline.labs || me.baseline.labs.expirat) && (
+        <button className="labs-alert" onClick={() => onOpen('analize')}>
+          <b>Planul nu e 100% pe corpul tău</b>
+          <span>{me.baseline.labs?.expirat ? 'Analizele urcate sunt mai vechi de 12 luni.' : 'Lipsesc analizele de sânge.'} Urcă-le acum: PDF sau poză.</span>
+        </button>
+      )}
+
+      {(!me.baseline.labs || me.baseline.labs.expirat || !me.baseline.tests || !me.baseline.body || me.baseline.cardiolog !== 'da') && (
         <Card tight style={{ marginTop: 12 }}>
           <div className="row between" style={{ marginBottom: 6 }}>
             <div className="title">Date de bază</div>
-            <span className="small muted">{[me.baseline.labs, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4</span>
+            <span className="small muted">{[me.baseline.labs && !me.baseline.labs.expirat, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4</span>
           </div>
           <BaselineList onOpen={(s) => onOpen(s)} />
         </Card>

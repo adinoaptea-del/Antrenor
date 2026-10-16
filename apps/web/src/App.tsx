@@ -9,6 +9,7 @@ import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
 import { Countdown } from './ui/Countdown';
 import { Admin } from './ui/Admin';
+import { LabsGate } from './ui/LabsGate';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
@@ -54,6 +55,7 @@ function Shell() {
   const [eveningFor, setEveningFor] = useState<string | null>(null);
   const [memento, setMemento] = useState(true);
   const [countdown, setCountdown] = useState(false);
+  const [labsGate, setLabsGate] = useState(false);
   const hiddenAt = useRef<number | null>(null);
 
   useEffect(() => {
@@ -117,10 +119,18 @@ function Shell() {
           <i /> previzualizare fără server · datele rămân în telefon
         </div>
       )}
-      {gateIntake ? (
+      {labsGate && !gateIntake ? (
+        <LabsGate
+          onDone={() => {
+            setLabsGate(false);
+            setCountdown(true);
+            go('acasa');
+          }}
+        />
+      ) : gateIntake ? (
         <Intake onBack={() => go('profil')} onDone={() => {
           setMemento(false);
-          setCountdown(true);
+          setLabsGate(true);
           go('acasa');
         }} />
       ) : (
@@ -138,7 +148,7 @@ function Shell() {
               onDone={() => {
                 if (!me.intakeComplete) {
                   setMemento(false);
-                  setCountdown(true);
+                  setLabsGate(true);
                 }
                 go('acasa');
               }}
@@ -153,14 +163,14 @@ function Shell() {
         </>
       )}
 
-      {isMain && !gateIntake && (
+      {isMain && !gateIntake && !labsGate && (
         <button className="fab" onClick={() => go('antrenor')} aria-label="Antrenor">
           <span className="circle">{Icons.chat}</span>
           <span className="lbl">Antrenor</span>
         </button>
       )}
 
-      {!isForm && !gateIntake && (
+      {!isForm && !gateIntake && !labsGate && (
         <nav className="nav" aria-label="Navigare">
           {MAIN.map((t) => (
             <button key={t.id} className={screen === t.id ? 'on' : ''} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>

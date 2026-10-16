@@ -66,7 +66,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const drawn = isDate(l.data) ? l.data : today;
       await remove('labs', { user_id: `eq.${u.id}`, drawn_at: `eq.${drawn}` });
       await insert('labs', { user_id: u.id, drawn_at: drawn, ...vals, other: l.alte?.length ? { laborator: l.laborator ?? null, valori: l.alte } : null });
-      json(res, 200, { ok: true });
+      // Planul se reface cu analizele noi (pot limita sau elibera intensitatea).
+      const intakeRow = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === 'teste') {
