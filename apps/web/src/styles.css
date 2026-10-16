@@ -63,7 +63,8 @@ body::after {
     radial-gradient(70% 22% at 50% 104%, rgba(220, 42, 30, 0.22), transparent 70%);
 }
 
-#root { min-height: 100%; position: relative; z-index: 1; }
+/* Pe ecranul principal (aplicație web) conținutul începe sub ceas și notch, nu sub ele. */
+#root { min-height: 100%; position: relative; z-index: 1; padding-top: env(safe-area-inset-top, 0px); box-sizing: border-box; }
 
 .app {
   max-width: 430px;
