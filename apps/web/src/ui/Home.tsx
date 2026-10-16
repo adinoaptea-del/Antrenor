@@ -148,7 +148,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             <span className="v">3 minute</span>
           </button>
         )}
-        {!morningComplete(morning ?? undefined) && (
+        {/* Chestionarul de dimineață contează doar pentru decizia zilei: după 14:00 nu mai apare. */}
+        {!morningComplete(morning ?? undefined) && new Date().getHours() >= 4 && new Date().getHours() < 14 && (
           <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
             <span className="k">Dimineața</span>
             <span className="v">Cum te simți azi? · 20 de secunde</span>

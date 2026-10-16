@@ -29,6 +29,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
   const stale = !latest && todays.length > 0;
   const older = msgs.filter((m) => m !== latest).slice(0, 10);
 
+  const evening = new Date().getHours() >= 18 || new Date().getHours() < 5;
   const ask = async () => {
     setBusy(true);
     setNote(null);
@@ -76,7 +77,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
         </Card>
 
         <Card>
-          <Label icon={Icons.sparkle}>{latest ? `${KIND_LABEL[latest.kind]} · ${localTime(latest.createdAt)}` : 'Mesajul de azi'}</Label>
+          <Label icon={Icons.sparkle}>{latest ? `${kindLabel(latest.kind, latest.createdAt)} · ${localTime(latest.createdAt)}` : 'Mesajul de azi'}</Label>
           {latest ? (
             <div className="coach-msg">
               {cleanRefs(latest.body)
@@ -90,7 +91,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
             <div className="small muted">{stale ? 'Mesajul de azi a fost scris pe date mai vechi. Apasă butonul pentru unul nou.' : 'Încă nu ți-a scris azi. Îți scrie singur la 05:30 și după fiecare antrenament sincronizat.'}</div>
           )}
           <button className="btn" style={{ marginTop: 14 }} disabled={busy || local || !me.intakeComplete} onClick={() => void ask()}>
-            {busy ? 'Se gândește… (până la un minut)' : doneToday ? 'Cum a fost antrenamentul de azi?' : 'Ce fac azi?'}
+            {busy ? 'Se gândește… (până la un minut)' : doneToday ? 'Cum a fost antrenamentul de azi?' : evening ? 'Ce am mâine?' : 'Ce fac azi?'}
           </button>
           {note && note !== 'Gata.' && <div className="tiny muted" style={{ marginTop: 8 }}>{note}</div>}
         </Card>
@@ -104,7 +105,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
           older.map((m) => (
             <Card key={m.id} tight>
               <Label>
-                {KIND_LABEL[m.kind]} · {localStamp(m.createdAt)}
+                {kindLabel(m.kind, m.createdAt)} · {localStamp(m.createdAt)}
               </Label>
               <div className="coach-msg old">
                 {cleanRefs(m.body)
@@ -134,4 +135,11 @@ function localStamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
   return `${fmtDayMonth(localDay(iso))} ${localTime(iso)}`;
+}
+
+/** Eticheta după ora la care a fost scris mesajul, nu după tipul tehnic: un mesaj de „dimineață” cerut la 22:00 e de seară. */
+function kindLabel(kind: keyof typeof KIND_LABEL, iso: string): string {
+  if (kind !== 'dimineata') return KIND_LABEL[kind];
+  const h = new Date(iso).getHours();
+  return h < 11 ? 'Dimineața' : h < 18 ? 'Azi' : 'Seara';
 }

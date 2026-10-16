@@ -38,7 +38,7 @@ export const MOTIVATION: string[] = [
   'O zi ratată nu strică nimic. Ziua de azi le repară pe toate.',
   'Corpul se adaptează. Lasă-l să-și facă treaba.',
   'Sosirea se simte de acum. Continuă.',
-  'Fiecare dimineață e un nou început de antrenament.',
+  'Fiecare zi e un nou început de antrenament.',
   'Nu trebuie să-ți placă fiecare ședință. Trebuie să le duci.',
   'Mai puternic, mai rezistent, mai liniștit. Pas cu pas.',
   'Ai deja mai mulți kilometri în picioare decât crezi.',

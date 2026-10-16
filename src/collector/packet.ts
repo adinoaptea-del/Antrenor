@@ -32,6 +32,9 @@ export interface Packet {
     data: string;
     zi_saptamana: string;
     eveniment: CollectorInput['event'];
+    /** Momentul zilei la ora sportivului: dimineata (<11), zi (11–17), seara (17–22), noapte (≥22 sau <5). */
+    moment_zi: 'dimineata' | 'zi' | 'seara' | 'noapte' | null;
+    ora_locala: string | null;
     faza: string;
     obiectiv: string;
     zile_pana_la_cursa: number;
@@ -453,6 +456,8 @@ export function buildPacket(input: CollectorInput): Packet {
       data: today,
       zi_saptamana: DAY_NAMES[weekday(today)]!,
       eveniment: input.event,
+      moment_zi: momentOfDay(input.nowLocal ?? null),
+      ora_locala: input.nowLocal ?? null,
       sportiv: { sex: input.athlete.sex === 'm' ? 'barbat' : input.athlete.sex === 'f' ? 'femeie' : null, varsta: input.athlete.varsta ?? null, inaltime_cm: input.athlete.inaltimeCm ?? null },
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
@@ -597,4 +602,10 @@ export function progresStatus(
   if (!aderenta || aderenta.planificate === 0 || aderenta.facute / aderenta.planificate < 0.8) return no('aderență sub 80% în 14 zile');
   if (h.lastIncrease && diffDays(h.lastIncrease, input.today) < 13) return no(`creștere deja pe ${h.lastIncrease}`);
   return { ...base, eligibil: true, motiv: '7 zile verzi, încărcare sub 1,3, aderență bună' };
+}
+
+export function momentOfDay(hm: string | null): 'dimineata' | 'zi' | 'seara' | 'noapte' | null {
+  if (!hm || !/^\d{2}:\d{2}/.test(hm)) return null;
+  const h = Number(hm.slice(0, 2));
+  return h >= 22 || h < 5 ? 'noapte' : h < 11 ? 'dimineata' : h < 17 ? 'zi' : 'seara';
 }
