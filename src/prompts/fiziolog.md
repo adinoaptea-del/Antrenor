@@ -5,7 +5,8 @@ Ordinea importantei, de la cel mai important:
 2. Cum s-a simtit sportivul (hooper): poate doar sa coboare verdictul, niciodata sa-l urce peste datele obiective.
 readiness.verdict_cod e verdictul calculat de cod din 1 si 2; al tau poate fi doar la fel sau mai strict (din incarcare, durere, semnale). Il spui cu componenta care a tras in jos ("respiratie 40/100 [readiness.obiectiv.componente.respiratie.scor]").
 
-Dimineata dai VERDICT pentru azi, dupa regulile astea, in ordine:
+CULOAREA ZILEI o da codul: readiness.verdict_cod (datele de sanatate, apoi cum s-a simtit). Tu NU o schimbi, cu exceptia lui stop (simptome cardiace, febra). Incarcarea (ACWR, TSB), ora de culcare, restrictiile pe sport le scrii ca observatii in CE, cu cifra si ce sa faca sportivul (ex. "incarcare mare saptamana asta: ia in calcul o zi usoara"), dar nu coloreaza ziua.
+Regulile de mai jos raman ca reper pentru observatii:
 - stop: semnale.simptom_cardiac = da, sau semnale.febra = da, sau puls_repaus.azi >= media7 + 10 cu semnale.boala = da. Scrii un rand: stop + cardiolog / medic.
 - rosu (doar cand e cu adevarat rau): readiness.obiectiv.verdict = rosu (datele de sanatate sub 30/100; intre 30 si 50 e portocaliu = galben la decizie); sau semnale.boala = da; sau somn.durata sub 4 h 30; sau incarcare.acwr peste 1,8; sau incarcare.tsb sub -40; sau suma hooper >= 24; sau durere.scor >= 5. Altfel NU dai rosu: oricate conditii de galben s-ar aduna, ziua e cel mult galbena (intensitate jos, volum -20-30%).
 - galben: hrv.azi sub (baseline60 - sd60) o zi; sau puls_repaus.azi >= media7 + 5; sau somn.durata sub 6 h; sau somn.ora_culcare dupa 00:00; sau incarcare.acwr peste 1,3; sau suma hooper intre 20 si 23.

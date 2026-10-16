@@ -78,12 +78,11 @@ describe('runner · piramida', () => {
     assert.equal(r.specialists.filter((s) => s.ce.every((i) => i.stare === 'acceptat')).length, 3);
   });
 
-  it('head coach-ul nu poate fi mai permisiv decât Fiziologul: roșu rămâne roșu și produce evenimentul de readiness', async () => {
+  it('boala bifată = roșu, oricât de bine ar arăta datele; head coach-ul nu poate fi mai permisiv', async () => {
     const { client } = fakeModel({
-      fiziolog: () => ({ agent: 'fiziolog', verdict: 'rosu', ce: [{ text: 'ACWR 1,92 peste 1,8', cifre: [{ valoare: 1.92, camp: 'incarcare.acwr' }, { valoare: 1.8, camp: 'regula' }] }], pentru_viitor: '-', lipseste: [] }),
       head: () => ({ decizie: 'verde', mesaj: 'Decizia: verde.', memento: 'Ziua 1.', jurnal: [], intrebare: null }),
     });
-    const packet = { ...buildPacket(input), incarcare: { ...buildPacket(input).incarcare, acwr: 1.92 } };
+    const packet = buildPacket({ ...input, morning: { ...input.morning!, semnale: { ...input.morning!.semnale, boala: true } } });
     const r = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
     assert.equal(r.decision, 'rosu');
     assert.equal(r.head.decizie, 'rosu');
@@ -127,13 +126,13 @@ describe('runner · piramida', () => {
 });
 
 describe('roșu doar când e cu adevărat rău', () => {
-  it('ACWR 1,5 + culcare târzie cu date bune = galben, nu roșu', async () => {
+  it('ACWR 1,5 + culcare târzie cu date de sănătate verzi = verde (încărcarea e sfat, nu culoare)', async () => {
     const { client } = fakeModel({
       fiziolog: () => ({ agent: 'fiziolog', verdict: 'rosu', ce: [{ text: 'ACWR 1,5', cifre: [{ valoare: 1.5, camp: 'regula' }] }], pentru_viitor: '-', lipseste: [] }),
       head: () => ({ decizie: 'galben', mesaj: 'Decizia: galben.', memento: 'Ziua 1.', jurnal: [], intrebare: null }),
     });
     const packet = { ...buildPacket(input), incarcare: { ...buildPacket(input).incarcare, acwr: 1.5 } };
     const r = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
-    assert.equal(r.decision, 'galben');
+    assert.equal(r.decision, 'verde');
   });
 });

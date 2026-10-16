@@ -160,7 +160,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     activities: meActivities,
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: readinessRow ? { ...softenRed(readinessRow), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
@@ -205,4 +205,16 @@ function softenRed(r: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: s
   const base = n(r.hrv_baseline);
   const really = (r.sleep_min != null && r.sleep_min < 270) || (acwr != null && acwr > 1.8) || (tsb != null && tsb < -40) || (r.hooper_sum ?? 0) >= 24 || (hrv != null && base != null && hrv < base * 0.8);
   return really ? { verdict: 'rosu', reason: r.reason } : { verdict: 'galben', reason: 'Galben: încărcare sau somn de urmărit, dar datele de sănătate sunt bune. Roșu rămâne doar pentru zilele cu adevărat rele.' };
+}
+
+/**
+ * Culoarea zilei = starea din datele de sănătate. O decizie salvată mai devreme (sau după alte reguli) care nu se
+ * potrivește cu starea de acum se aliniază la ea; stop rămâne stop.
+ */
+function alignWithState(d: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null }, state: { verdict: 'verde' | 'galben' | 'portocaliu' | 'rosu' } | null): { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null } {
+  if (!state || d.verdict === 'stop') return d;
+  const v = state.verdict === 'portocaliu' ? 'galben' : state.verdict;
+  if (v === d.verdict) return d;
+  const why = { verde: 'Datele de sănătate sunt bune: faci antrenamentul din plan.', galben: 'Recuperarea nu e la maxim: ai o variantă mai ușoară ca sugestie; alegi tu.', rosu: 'Datele de sănătate arată o zi grea: azi pauză.' }[v];
+  return { verdict: v, reason: why };
 }

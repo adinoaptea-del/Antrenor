@@ -218,29 +218,13 @@ export function eventsFrom(p: Packet, decision: HeadResponse['decizie']): AdaptE
 const RANK: Record<HeadResponse['decizie'], number> = { verde: 0, galben: 1, rosu: 2, stop: 3 };
 
 function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['decizie'] {
-  const missingBasics = p.somn.durata_min == null || p.hrv.azi == null;
-  let out: HeadResponse['decizie'] = 'galben';
-  if (v && (v.verdict === 'verde' || v.verdict === 'galben' || v.verdict === 'rosu' || v.verdict === 'stop')) out = v.verdict;
-  else if (v?.verdict === 'ok') out = 'verde';
-  else if (v?.verdict === 'atentie') out = 'galben';
-  if (missingBasics && RANK[out] < RANK.galben) out = 'galben';
-  // Verdictul din cod (date obiective mediate, apoi Hooper) e pragul: Fiziologul poate doar să fie mai strict (ex. încărcare, durere).
-  // Portocaliu (date între 30 și 50) e galben la decizie: intensitate jos, volum −20–30%; roșu doar sub 30.
-  const rawCode = p.readiness.verdict_cod?.verdict;
-  const code = rawCode === 'portocaliu' ? 'galben' : rawCode;
-  if (code && RANK[code] > RANK[out]) out = code;
-  // Roșu doar când e cu adevărat rău: date de sănătate roșii, boală, somn foarte scurt, încărcare extremă, Hooper mare, durere mare.
-  if (out === 'rosu') {
-    const really =
-      code === 'rosu' ||
-      p.semnale.boala === true ||
-      (p.somn.durata_min != null && p.somn.durata_min < 270) ||
-      (p.incarcare.acwr != null && p.incarcare.acwr > 1.8) ||
-      (p.incarcare.tsb != null && p.incarcare.tsb < -40) ||
-      (p.readiness.hooper.suma ?? 0) >= 24 ||
-      (p.antrenament_ultim?.durere.scor ?? 0) >= 5;
-    if (!really) out = 'galben';
-  }
+  // Culoarea zilei = starea ta din datele de sănătate (inimă, respirație, recuperare, somn), apoi cum te simți.
+  // Încărcarea, ora de culcare etc. sunt observații în mesaj, nu schimbă culoarea. Excepții: stop (simptome, febră),
+  // boală sau durere mare = roșu.
+  const raw = p.readiness.verdict_cod?.verdict ?? 'galben';
+  let out: HeadResponse['decizie'] = raw === 'portocaliu' ? 'galben' : raw;
+  if (v?.verdict === 'stop' || p.semnale.febra === true || p.semnale.simptom_cardiac === true) return 'stop';
+  if (p.semnale.boala === true || (p.antrenament_ultim?.durere.scor ?? 0) >= 5) out = 'rosu';
   return out;
 }
 
@@ -306,7 +290,8 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
       headWarnings = again.length ? again : headWarnings;
     }
   }
-  if (RANK[head.decizie] > RANK[decision]) decision = head.decizie; // head coach-ul poate fi doar mai strict
+  // Culoarea o dau datele de sănătate; head coach-ul o poate schimba doar în stop (siguranță).
+  if (head.decizie === 'stop') decision = 'stop';
   head = { ...head, decizie: decision };
 
   return { routed, specialists, head, headWarnings, events: eventsFrom(packetWithVerdict, decision), decision, fallbackUsed };

@@ -177,9 +177,6 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
           )}
         </Card>
 
-        <button className="btn" disabled title="Trimiterea pe ceas vine după conectarea Garmin prin AthleteData sau intervals.icu">
-          Trimite pe ceas {Icons.arrowRight}
-        </button>
       </div>
     </>
   );
