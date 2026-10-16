@@ -59,47 +59,70 @@ function Shell() {
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
   const hiddenAt = useRef<number | null>(null);
-  // Gestul de „înapoi” ca pe iPhone: tragi din marginea stângă spre dreapta.
+  // Gestul de „înapoi” ca pe iPhone: tragi din marginea stângă; ecranul te urmărește cu degetul, cu umbră,
+  // iar la eliberare fie iese spre dreapta (și apare ecranul de dinainte), fie revine elastic.
   const swipeBack = useRef<(() => void) | null>(null);
+  const [navDir, setNavDir] = useState<'fwd' | 'back' | 'fade' | 'none'>('none');
   useEffect(() => {
     let sx = 0;
     let sy = 0;
+    let st = 0;
     let active = false;
     let el: HTMLElement | null = null;
-    const reset = (animate: boolean) => {
-      if (!el) return;
-      el.style.transition = animate ? 'transform 0.2s ease' : '';
-      el.style.transform = '';
-    };
+    const W = () => window.innerWidth || 390;
     const start = (e: TouchEvent) => {
       const t = e.touches[0];
-      active = !!t && t.clientX <= 28 && !!swipeBack.current;
+      active = !!t && t.clientX <= 24 && !!swipeBack.current;
       if (!active || !t) return;
       sx = t.clientX;
       sy = t.clientY;
-      el = document.querySelector('.app');
-      if (el) el.style.transition = '';
+      st = performance.now();
+      el = document.querySelector('.screen');
+      if (el) {
+        el.style.transition = 'none';
+        el.style.animation = 'none';
+      }
     };
     const move = (e: TouchEvent) => {
       if (!active || !el) return;
       const t = e.touches[0];
       if (!t) return;
-      const dx = t.clientX - sx;
+      const dx = Math.max(0, t.clientX - sx);
       const dy = Math.abs(t.clientY - sy);
-      if (dy > 40 && dy > dx) {
+      if (dy > 30 && dy > dx) {
         active = false;
-        reset(true);
+        el.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        el.style.transform = '';
         return;
       }
-      if (dx > 0) el.style.transform = `translateX(${Math.min(dx, window.innerWidth) * 0.6}px)`;
+      el.style.transform = `translate3d(${dx}px, 0, 0)`;
+      el.style.boxShadow = `-12px 0 28px rgba(0, 0, 0, ${0.45 * (1 - dx / W())})`;
     };
     const end = (e: TouchEvent) => {
-      if (!active) return;
+      if (!active || !el) return;
       active = false;
       const t = e.changedTouches[0];
-      const dx = t ? t.clientX - sx : 0;
-      reset(true);
-      if (dx > 80) swipeBack.current?.();
+      const dx = t ? Math.max(0, t.clientX - sx) : 0;
+      const speed = dx / Math.max(1, performance.now() - st); // px/ms
+      const target = el;
+      if (dx > W() * 0.35 || (speed > 0.5 && dx > 40)) {
+        target.style.transition = 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        target.style.transform = `translate3d(${W()}px, 0, 0)`;
+        setTimeout(() => {
+          target.style.transition = '';
+          target.style.transform = '';
+          target.style.boxShadow = '';
+          target.style.animation = '';
+          swipeBack.current?.();
+        }, 200);
+      } else {
+        target.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        target.style.transform = '';
+        setTimeout(() => {
+          target.style.boxShadow = '';
+          target.style.transition = '';
+        }, 280);
+      }
     };
     window.addEventListener('touchstart', start, { passive: true });
     window.addEventListener('touchmove', move, { passive: true });
@@ -148,6 +171,9 @@ function Shell() {
     if (opts?.sport) setTrainSport(opts.sport);
     if (opts?.activityId) setEveningFor(opts.activityId);
     if (MAIN.some((m) => m.id === t)) setLastMain(t);
+    // Direcția animației: mai „adânc” = intră din dreapta; înapoi = din stânga; între taburi = fade.
+    const depth = (x: Screen) => (MAIN.some((m) => m.id === x) ? 0 : x === 'prieteni' || ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'].includes(x) ? 2 : 1);
+    setNavDir(t === screen ? 'none' : depth(t) > depth(screen) ? 'fwd' : depth(t) < depth(screen) ? 'back' : 'fade');
     setScreen(t);
     try {
       history.replaceState(null, '', `#${t}`);
@@ -210,7 +236,7 @@ function Shell() {
           go('acasa');
         }} />
       ) : (
-        <>
+        <div key={screen} className={`screen nav-${navDir}`}>
           {screen === 'acasa' && <Home onOpen={go} />}
           {screen === 'antrenament' && <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
           {screen === 'recuperare' && <Stats onOpen={go} />}
@@ -236,7 +262,7 @@ function Shell() {
           {screen === 'analize' && <Labs onBack={back} onDone={() => go('acasa')} />}
           {screen === 'teste' && <Tests onBack={back} onDone={() => go('acasa')} />}
           {screen === 'corp' && <Body onBack={back} onDone={() => go('acasa')} />}
-        </>
+        </div>
       )}
 
       {isMain && !gateIntake && !labsGate && (
