@@ -848,18 +848,44 @@ function mergeWellness(rows) {
   }
   return out.sort((a, b) => diffDays(a.date, b.date));
 }
+var hmMin = (s) => s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null;
+function sameSession(a, b) {
+  if (a.date !== b.date || a.sport !== b.sport) return false;
+  const sa = hmMin(a.startLocal);
+  const sb = hmMin(b.startLocal);
+  if (sa != null && sb != null) {
+    const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
+    return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
+  }
+  return Math.abs(a.minutes - b.minutes) <= 3 && (a.distanceKm == null || b.distanceKm == null || Math.abs(a.distanceKm - b.distanceKm) < 0.3);
+}
+function pickRecording(a, b) {
+  const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
+  const [S, L] = a.minutes <= b.minutes ? [a, b] : [b, a];
+  const extraMin = L.minutes - S.minutes;
+  if (extraMin < 2) return fields2(a) >= fields2(b) ? a : b;
+  const sKm = S.distanceKm ?? null;
+  const lKm = L.distanceKm ?? null;
+  if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L;
+  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L;
+  if (S.avgHr != null && L.avgHr != null) {
+    const extraHr = (L.avgHr * L.minutes - S.avgHr * S.minutes) / extraMin;
+    if (extraHr >= 0.85 * S.avgHr) return L;
+  }
+  return S;
+}
 function dedupeActivities(acts) {
   const kept = [];
   const sorted = [...acts].sort((a, b) => diffDays(b.date, a.date));
   for (const a of sorted) {
-    const dup = kept.find((k) => k.date === a.date && k.sport === a.sport && Math.abs(k.minutes - a.minutes) <= 3 && (k.distanceKm == null || a.distanceKm == null || Math.abs(k.distanceKm - a.distanceKm) < 0.3));
+    const dup = kept.find((k) => sameSession(k, a));
     if (!dup) {
       kept.push(a);
       continue;
     }
-    const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
-    const details = mergeDetails(fields2(a) > fields2(dup) ? a.details : dup.details, fields2(a) > fields2(dup) ? dup.details : a.details);
-    kept[kept.indexOf(dup)] = { ...fields2(a) > fields2(dup) ? a : dup, details };
+    const chosen = pickRecording(dup, a);
+    const other = chosen === dup ? a : dup;
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details) };
   }
   return kept;
 }

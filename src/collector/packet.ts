@@ -286,19 +286,58 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
   return out.sort((a, b) => diffDays(a.date, b.date));
 }
 
-/** Aceeași ședință venită pe două căi (Garmin direct și prin Strava): păstrează una, cea cu mai multe câmpuri. */
+const hmMin = (s: string | null | undefined) => (s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null);
+
+/**
+ * Aceeași ședință, înregistrată de două brățări sau venită pe două căi: aceeași zi, același sport și intervale care se suprapun
+ * (cel puțin 60% din cea scurtă). Fără oră de start: durate la ±3 min și distanțe la ±0,3 km.
+ */
+export function sameSession(a: SourceActivity, b: SourceActivity): boolean {
+  if (a.date !== b.date || a.sport !== b.sport) return false;
+  const sa = hmMin(a.startLocal);
+  const sb = hmMin(b.startLocal);
+  if (sa != null && sb != null) {
+    const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
+    return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
+  }
+  return Math.abs(a.minutes - b.minutes) <= 3 && (a.distanceKm == null || b.distanceKm == null || Math.abs(a.distanceKm - b.distanceKm) < 0.3);
+}
+
+/**
+ * Care din două înregistrări ale aceleiași ședințe e cea corectă.
+ * Regula: cea mai scurtă (o brățară uitată pornită după oprire lungește ședința fără efort real),
+ * CU EXCEPȚIA cazului în care minutele în plus ale celei lungi au efort real: distanță în plus (≥ 0,5 km)
+ * sau puls mediu pe bucata în plus de cel puțin 85% din pulsul ședinței scurte. Atunci cea scurtă e o brățară oprită prea devreme.
+ */
+export function pickRecording(a: SourceActivity, b: SourceActivity): SourceActivity {
+  const fields = (x: SourceActivity) => Object.values(x).filter((v) => v != null).length;
+  const [S, L] = a.minutes <= b.minutes ? [a, b] : [b, a];
+  const extraMin = L.minutes - S.minutes;
+  if (extraMin < 2) return fields(a) >= fields(b) ? a : b;
+  const sKm = S.distanceKm ?? null;
+  const lKm = L.distanceKm ?? null;
+  if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L; // cea scurtă n-a măsurat distanța deloc
+  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L;
+  if (S.avgHr != null && L.avgHr != null) {
+    const extraHr = (L.avgHr * L.minutes - S.avgHr * S.minutes) / extraMin;
+    if (extraHr >= 0.85 * S.avgHr) return L;
+  }
+  return S;
+}
+
+/** Păstrează o singură înregistrare pe ședință (vezi pickRecording) și completează detaliile din cealaltă. */
 export function dedupeActivities(acts: SourceActivity[]): SourceActivity[] {
   const kept: SourceActivity[] = [];
   const sorted = [...acts].sort((a, b) => diffDays(b.date, a.date));
   for (const a of sorted) {
-    const dup = kept.find((k) => k.date === a.date && k.sport === a.sport && Math.abs(k.minutes - a.minutes) <= 3 && (k.distanceKm == null || a.distanceKm == null || Math.abs(k.distanceKm - a.distanceKm) < 0.3));
+    const dup = kept.find((k) => sameSession(k, a));
     if (!dup) {
       kept.push(a);
       continue;
     }
-    const fields = (x: SourceActivity) => Object.values(x).filter((v) => v != null).length;
-    const details = mergeDetails(fields(a) > fields(dup) ? a.details : dup.details, fields(a) > fields(dup) ? dup.details : a.details);
-    kept[kept.indexOf(dup)] = { ...(fields(a) > fields(dup) ? a : dup), details };
+    const chosen = pickRecording(dup, a);
+    const other = chosen === dup ? a : dup;
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details) };
   }
   return kept;
 }

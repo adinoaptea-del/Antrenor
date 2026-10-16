@@ -200,3 +200,28 @@ describe('analize: valabile 12 luni', () => {
     assert.equal(labsExpired('2025-10-15', '2026-10-16'), true);
   });
 });
+
+import { pickRecording, sameSession } from '../src/collector/packet.js';
+describe('aceeași ședință pe două brățări', () => {
+  const run = (o: Partial<SourceActivity>): SourceActivity => ({ id: 'x', externalId: 'x', source: 'strava', date: '2026-10-11', sport: 'alergare', minutes: 127, startLocal: '10:45', ...o }) as SourceActivity;
+  it('ceasul uitat pornit după oprire: aceeași distanță, puls mic pe minutele în plus → cea scurtă', () => {
+    const s = run({ id: 's', minutes: 127, distanceKm: 21.4, avgHr: 165 });
+    const l = run({ id: 'l', source: 'apple', minutes: 141, distanceKm: 21.4, avgHr: 156 });
+    assert.ok(sameSession(s, l));
+    assert.equal(pickRecording(s, l).id, 's');
+  });
+  it('brățara oprită prea devreme: cea lungă are distanță în plus → cea lungă', () => {
+    const s = run({ id: 's', source: 'whoop', minutes: 22, distanceKm: null, avgHr: 150, startLocal: '10:50' });
+    const l = run({ id: 'l', minutes: 127, distanceKm: 21.4, avgHr: 165 });
+    assert.ok(sameSession(s, l));
+    assert.equal(pickRecording(s, l).id, 'l');
+  });
+  it('fără distanță: puls susținut pe minutele în plus → cea lungă', () => {
+    const s = run({ id: 's', minutes: 40, avgHr: 150 });
+    const l = run({ id: 'l', minutes: 60, avgHr: 152 });
+    assert.equal(pickRecording(s, l).id, 'l');
+  });
+  it('două alergări diferite în aceeași zi (dimineața și seara) nu se unesc', () => {
+    assert.equal(sameSession(run({ startLocal: '07:00', minutes: 40 }), run({ startLocal: '19:00', minutes: 40 })), false);
+  });
+});
