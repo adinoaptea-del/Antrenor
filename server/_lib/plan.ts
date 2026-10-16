@@ -5,7 +5,7 @@ import { generatePlan, type GenerateResult } from '../../src/calendar/generate.j
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
 import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
-import { paceFromResult, type RunResult } from '../../src/util/run.js';
+import { paceFromResult, parsePace, type RunResult } from '../../src/util/run.js';
 
 export interface IntakeLike {
   nume?: string;
@@ -14,11 +14,12 @@ export interface IntakeLike {
   obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
   dataCursa: string;
   inot?: { nivel: string | null };
+  bicicleta?: { ceaMaiLungaOre?: number | null };
   alergare?: { ceaMaiLungaKm?: number | null; tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
   program: FreeBlock[];
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null };
   echipament?: { ceas?: string | null; whoop?: boolean; oura?: boolean };
-  evaluare?: { inot400?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
+  evaluare?: { inot400?: string | null; ritmUsor?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
 }
 
 /** Orele pe săptămână din ultimele până la 8 săptămâni, din activitățile deja sincronizate (gol = fără istoric). */
@@ -92,6 +93,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
     athlete: await athleteInfo(userId, today),
     tests: await testsAvailable(userId, intake),
+    level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     run: isRunGoal(intake.obiectiv)
       ? {
           goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),

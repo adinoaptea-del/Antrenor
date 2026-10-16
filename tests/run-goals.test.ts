@@ -90,3 +90,16 @@ describe('planul de triatlon până la cursă', () => {
     assert.ok(tests.length >= 2);
   });
 });
+
+describe('toate sporturile din prima săptămână', () => {
+  it('fără istoric și cu ore puține: cel puțin 2 înot, 2 bicicletă, 2 alergare și 1 forță în fiecare săptămână', () => {
+    const tight = ([0, 1, 2, 3, 4, 5, 6] as const).map((day) => ({ day, startMin: 360, endMin: day >= 5 ? 540 : 450 }));
+    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-09-26', goal: '70.3', freeBlocks: tight, historyHoursPerWeek: [], intensityAllowed: 'Z2', swimContinuous400: false, level: { longestRideH: 1, longestRunKm: 8 } });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    for (const w of r.weeks.slice(0, 12)) {
+      const n = (s: string) => w.workouts.filter((x) => x.sport === s).length;
+      assert.ok(n('inot') >= 2 && n('bicicleta') >= 2 && n('alergare') >= 2 && n('forta') >= 1, `${w.weekStart}: ${n('inot')}/${n('bicicleta')}/${n('alergare')}/${n('forta')}`);
+    }
+  });
+});

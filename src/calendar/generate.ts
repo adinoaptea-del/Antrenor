@@ -15,6 +15,8 @@ export interface GenerateInput {
   historyHoursPerWeek: number[];
   intensityAllowed: IntensityAllowed;
   swimContinuous400: boolean;
+  /** Nivelul de acum din chestionar: de aici pornesc ședințele lungi (nu de la o valoare fixă). */
+  level?: { longestRideH?: number | null; longestRunKm?: number | null; easyPaceSecKm?: number | null };
   /** Ce sporturi au deja date de test (zone/prag/CSS): pentru ele evaluarea nu mai pune test. */
   tests?: { alergare: boolean; bicicleta: boolean; inot: boolean };
   /** Vârsta și sexul. Vârsta schimbă structura (descărcare mai des, fără intervale VO2max după 55); sexul nu schimbă volumul, doar nutriția și pragurile analizelor. */
@@ -85,7 +87,11 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const runGoal = isRunGoal(input.goal);
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? (input.run?.canDoDistance ? (input.goal === 'maraton' ? 100 : 80) : (input.run?.longestRunKm ?? 0) >= 12 ? 70 : 50) : 60;
-  const prog = { longRide: 90, longRun: startLong, brickRun: 15 };
+  // Triatlon: tura lungă pornește de la ~80% din cea mai lungă tură recentă (60–120 min), ieșirea lungă de la ~80% din cea mai lungă alergare (40–75 min).
+  const lvl = input.level ?? {};
+  const triRide = lvl.longestRideH ? Math.min(120, Math.max(60, Math.round((lvl.longestRideH * 60 * 0.8) / 5) * 5)) : 60;
+  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(40, Math.round((lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 0.8) / 5) * 5)) : 45;
+  const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? startLong : triRun, brickRun: 15 };
   const out: WeekPlan[] = [];
 
   for (const pw of weeks) {
@@ -102,8 +108,9 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     if (runGoal) advanceRunProgression(prog, pw, input.goal as 'semimaraton' | 'maraton');
     else advanceProgression(prog, pw);
     const sessions = runGoal ? runWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
-    const fitted = fitToHours(sessions, target, pw.recovery);
-    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase);
+    const minCount: Partial<Record<Sport, number>> = runGoal ? { alergare: 3, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
+    const fitted = fitToHours(sessions, target, pw.recovery, minCount);
+    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
 
     out.push({
@@ -242,7 +249,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   if (p === 'baza2' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3], key: false, priority: 5.5, structure: '3 × 10 min sweet spot (Z3), 5 min ușor între' });
   else if (p === 'build' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [4], key: false, priority: 5.5, structure: '2 × 15 min la prag (Z4), 5 min ușor între' });
   else if (p === 'peak' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3, 4], key: false, priority: 5.5, structure: '3 × 15 min la ritm de cursă, 5 min ușor între' });
-  else s.push({ sport: 'bicicleta', type: 'z2', minutes: p === 'baza1' || p === 'evaluare' ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 7 });
+  else s.push({ sport: 'bicicleta', type: 'z2', minutes: p === 'baza1' || p === 'evaluare' ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 5.8 });
   if (p === 'evaluare' || p === 'baza1') {
     s.push({ sport: 'bicicleta', type: 'lung', minutes: prog.longRide, zones: [2], key: true, priority: 1 });
   } else if (p === 'taper' && pw.weekInPhase > 0) {
@@ -325,32 +332,47 @@ function fieldTests(pw: PhaseWeek, input: GenerateInput, sports: Sport[]): Sessi
   return out;
 }
 
-/** Potrivește ședințele la orele-țintă: cheile rămân, restul se scalează sau cade, după prioritate. */
-function fitToHours(sessions: Session[], targetHours: number, recovery: boolean): { sessions: Session[]; notes: string[] } {
+/**
+ * Potrivește ședințele la orele-țintă. Fiecare sport rămâne prezent din prima săptămână (minimum pe sport:
+ * la triatlon 2 înot, 2 bicicletă, 2 alergare, 1 forță), adaptat ca durată la nivelul și orele sportivului:
+ * întâi se scurtează, abia apoi cade ce e peste minimum, iar la nevoie se scurtează și ședințele-cheie.
+ */
+function fitToHours(sessions: Session[], targetHours: number, recovery: boolean, minCount: Partial<Record<Sport, number>>): { sessions: Session[]; notes: string[] } {
   const notes: string[] = [];
   const targetMin = targetHours * 60;
-  const keys = sessions.filter((x) => x.key);
-  let rest = sessions.filter((x) => !x.key).sort((a, b) => a.priority - b.priority);
-  const keyMin = keys.reduce((s, x) => s + x.minutes, 0);
-  let restMin = rest.reduce((s, x) => s + x.minutes, 0);
-  const available = targetMin - keyMin;
+  let all = sessions.map((x) => ({ ...x }));
+  const total = () => all.reduce((n, x) => n + x.minutes, 0);
+  const count = (sp: Sport) => all.filter((x) => x.sport === sp).length;
+  const floorOf = (x: Session) => (x.key ? Math.max(MIN_SESSION_MIN[x.sport], x.type === 'lung' || x.type === 'brick' ? (x.sport === 'bicicleta' ? 60 : 40) : 30) : MIN_SESSION_MIN[x.sport]);
 
-  if (available <= 0) {
-    notes.push('orele-țintă acoperă doar antrenamentele-cheie; restul lipsește săptămâna asta');
-    return { sessions: keys, notes };
+  // 1. Scurtează ședințele ușoare până la minimul lor.
+  const shrink = (pred: (x: Session) => boolean) => {
+    const over = total() - targetMin;
+    if (over <= 0) return;
+    const pool = all.filter(pred);
+    const room = pool.reduce((n, x) => n + (x.minutes - floorOf(x)), 0);
+    if (room <= 0) return;
+    const f = Math.min(1, over / room);
+    for (const x of pool) x.minutes = Math.max(floorOf(x), Math.round((x.minutes - (x.minutes - floorOf(x)) * f) / 5) * 5);
+  };
+  shrink((x) => !x.key);
+
+  // 2. Dacă tot nu încape: cade ce e peste minimul sportului, în ordinea priorității (cea mai puțin importantă întâi).
+  while (total() > targetMin * 1.05) {
+    const droppable = all
+      .filter((x) => !x.key && count(x.sport) > (minCount[x.sport] ?? 0))
+      .sort((a, b) => b.priority - a.priority);
+    const d = droppable[0];
+    if (!d) break;
+    all = all.filter((x) => x !== d);
+    notes.push(`fără ${d.sport} ${d.type} săptămâna asta: nu încape în ore`);
   }
 
-  // Taie ședințele de prioritate mică (bicicletă Z2, a doua ședință de forță, alergare Z2, înot) până când
-  // restul încape cu o scalare de cel mult −15%: o ședință scurtată la jumătate nu mai e ședința aia.
-  while (restMin > 0 && available / restMin < 0.85 && rest.length > 1) {
-    const dropped = rest.pop()!;
-    restMin -= dropped.minutes;
-    notes.push(`fără ${dropped.sport} ${dropped.type} ${dropped.minutes} min: nu încape în ore`);
-  }
-  const factor = restMin > 0 ? Math.min(1, available / restMin) : 1;
-  const scaled = rest.map((x) => ({ ...x, minutes: Math.max(MIN_SESSION_MIN[x.sport], Math.round((x.minutes * factor) / 5) * 5) }));
-  if (factor < 0.999) notes.push(`ședințele ușoare scalate la ${Math.round(factor * 100)}%${recovery ? ' (descărcare)' : ''}`);
-  return { sessions: [...keys, ...scaled], notes };
+  // 3. La nevoie, se scurtează și ședințele-cheie (nu sub o oră de bicicletă sau 40 min de alergare lungă).
+  shrink((x) => x.key);
+  if (total() > targetMin * 1.05) notes.push('minimul pe sport depășește puțin orele-țintă: ședințe scurte, toate sporturile păstrate');
+  else if (all.some((x, i) => x.minutes !== sessions.find((y) => y === sessions[i])?.minutes)) notes.push(`ședințe scurtate ca să încapă în ${targetHours} h${recovery ? ' (descărcare)' : ''}`);
+  return { sessions: all, notes };
 }
 
 interface DayState {
@@ -366,7 +388,7 @@ interface DayState {
   sports: Set<Sport>;
 }
 
-function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phase: Phase = 'baza1'): { workouts: PlannedWorkout[]; notes: string[] } {
+function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phase: Phase = 'baza1', minCount: Partial<Record<Sport, number>> = {}): { workouts: PlannedWorkout[]; notes: string[] } {
   const days: DayState[] = Array.from({ length: 7 }, (_, d) => ({
     blocks: blocks.filter((b) => b.day === d).map((b) => b.endMin - b.startMin),
     count: 0,
@@ -381,12 +403,23 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phas
   const workouts: PlannedWorkout[] = [];
   const notes: string[] = [];
   let doubleHardDays = 0;
-  const ordered = [...sessions].sort((a, b) => a.priority - b.priority || b.minutes - a.minutes);
+  // Întâi nucleul (ședințele-cheie + minimul fiecărui sport), apoi restul: așa niciun sport nu rămâne fără loc în program.
+  const byPrio = [...sessions].sort((a, b) => a.priority - b.priority || b.minutes - a.minutes);
+  const taken: Partial<Record<Sport, number>> = {};
+  const core = new Set<Session>();
+  for (const x of byPrio) {
+    const n = taken[x.sport] ?? 0;
+    if (x.key || n < (minCount[x.sport] ?? 0)) {
+      core.add(x);
+      taken[x.sport] = n + 1;
+    }
+  }
+  const ordered = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
   let n = 0;
 
   for (const s of ordered) {
-    const need = s.minutes + CHANGE_MIN;
-    const candidates = days
+    let need = s.minutes + CHANGE_MIN;
+    const findCandidates = () => days
       .map((st, d) => ({ st, d }))
       .filter(({ st, d }) => {
         if (st.count >= 2) return false;
@@ -415,6 +448,20 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phas
       })
       .sort((a, b) => score(b, s) - score(a, s));
 
+    let candidates = findCandidates();
+    // Nu încape întreagă nicăieri: se scurtează până la cel mai mare bloc liber (nu sub minimul sportului), ca sportul să nu dispară.
+    if (!candidates.length && !s.key) {
+      const biggest = Math.max(0, ...days.flatMap((st) => st.blocks));
+      const fit = Math.floor((biggest - CHANGE_MIN) / 5) * 5;
+      if (fit >= MIN_SESSION_MIN[s.sport] && fit < s.minutes) {
+        need = fit + CHANGE_MIN;
+        candidates = findCandidates();
+        if (candidates.length) {
+          notes.push(`${s.sport} ${s.type} scurtat la ${fit} min ca să încapă în programul tău`);
+          s.minutes = fit;
+        }
+      }
+    }
     const pick = candidates[0];
     if (!pick) {
       notes.push(`nu există bloc pentru ${s.sport} ${s.type} ${s.minutes} min; ședința a căzut`);
