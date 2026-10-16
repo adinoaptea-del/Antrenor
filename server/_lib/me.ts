@@ -7,6 +7,7 @@ import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/a
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { compareLabs } from '../../src/collector/labs-compare.js';
+import { dayVerdict, objectiveReadiness } from '../../src/collector/readiness.js';
 import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
@@ -26,7 +27,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     one<BarResult & { date: string }>('bar_daily', { user_id: `eq.${userId}` }, { order: 'date.desc' }),
     one<{ verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; date: string; acwr: number | string | null; hooper_sum: number | null; sleep_min: number | null; hrv: number | string | null; hrv_baseline: number | string | null; tsb: number | string | null }>('readiness_daily', { user_id: `eq.${userId}`, date: `eq.${today}` }),
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
-    select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
+    select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -61)}` }, { limit: 400 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
     select<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
@@ -67,10 +68,21 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
           wakeTime: r.wake_time,
           sleepScore: r.sleep_score,
           recoveryScore: r.recovery_score,
+          respiratoryRate: r.respiratory_rate,
         }) as SourceDaily,
     ),
   );
   const todayW = merged.find((m) => m.date === today) ?? null;
+  // Starea de azi, live (la fiecare sincronizare): datele de sănătate față de media ta pe 60 de zile, apoi cum te simți.
+  const prev = merged.filter((m) => m.date < today && m.date >= addDays(today, -60));
+  const base = (k: 'hrv' | 'rhr' | 'respiratoryRate') => {
+    const xs = prev.map((m) => m[k]).filter((x): x is number => x != null);
+    return xs.length >= 14 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  };
+  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base('hrv'), rhr: todayW?.rhr ?? null, rhrBaseline: base('rhr'), resp: todayW?.respiratoryRate ?? null, respBaseline: base('respiratoryRate'), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
+  const mf = forms.morning as MorningForm | null;
+  const hs = mf && [mf.hooper.somn, mf.hooper.oboseala, mf.hooper.stres, mf.hooper.dureri].every((x) => x != null) ? mf.hooper.somn! + mf.hooper.oboseala! + mf.hooper.stres! + mf.hooper.dureri! : null;
+  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor };
 
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
@@ -146,6 +158,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     plan: planned,
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,
+    state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessRow ? { ...softenRed(readinessRow), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,

@@ -115,6 +115,8 @@ export interface Me {
   scores: Record<string, { color: Color; reasons: string[]; final: boolean }>;
   activities: MeActivity[];
   wellnessToday: { hrv: number | null; rhr: number | null; sleepMin: number | null; bedtime: string | null; sleepScore: number | null; recoveryScore: number | null; source: string | null } | null;
+  /** Starea de azi din datele de sănătate (inimă, respirație, recuperare, somn) și cum te simți; dă culoarea marginilor. */
+  state?: { verdict: 'verde' | 'galben' | 'portocaliu' | 'rosu'; motiv: string; score: number | null } | null;
   readiness: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; acwr: number | null; hooperSum: number | null } | null;
   bar: BarResult | null;
   messages: MeMessage[];

@@ -3868,7 +3868,7 @@ async function buildMe(userId, today) {
     one("bar_daily", { user_id: `eq.${userId}` }, { order: "date.desc" }),
     one("readiness_daily", { user_id: `eq.${userId}`, date: `eq.${today}` }),
     select("messages", { user_id: `eq.${userId}` }, { order: "created_at.desc", limit: 20 }),
-    select("wellness_daily", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
+    select("wellness_daily", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -61)}` }, { limit: 400 }),
     one("zones", { user_id: `eq.${userId}` }),
     select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 2 }),
     select("sync_log", { user_id: `eq.${userId}` }, { order: "ran_at.desc", limit: 30 }),
@@ -3904,11 +3904,21 @@ async function buildMe(userId, today) {
         bedtime: r2.bedtime,
         wakeTime: r2.wake_time,
         sleepScore: r2.sleep_score,
-        recoveryScore: r2.recovery_score
+        recoveryScore: r2.recovery_score,
+        respiratoryRate: r2.respiratory_rate
       })
     )
   );
   const todayW = merged.find((m) => m.date === today) ?? null;
+  const prev = merged.filter((m) => m.date < today && m.date >= addDays(today, -60));
+  const base = (k) => {
+    const xs = prev.map((m) => m[k]).filter((x) => x != null);
+    return xs.length >= 14 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  };
+  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
+  const mf = forms.morning;
+  const hs = mf && [mf.hooper.somn, mf.hooper.oboseala, mf.hooper.stres, mf.hooper.dureri].every((x) => x != null) ? mf.hooper.somn + mf.hooper.oboseala + mf.hooper.stres + mf.hooper.dureri : null;
+  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor };
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
     return { provider: t.provider, connectedAt: t.connected_at, lastSync: last?.ran_at ?? null, lastOk: last ? last.ok : null, detail: last?.detail ?? null };
@@ -3976,6 +3986,7 @@ async function buildMe(userId, today) {
     plan: planned,
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,
+    state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessRow ? { ...softenRed(readinessRow), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,

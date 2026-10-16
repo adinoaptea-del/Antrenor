@@ -67,6 +67,16 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         <div className="tiny muted" style={{ marginTop: 6, textAlign: 'center' }}>
           {w ? `${w.source ?? 'brățară'}${w.hrv != null ? ` · HRV ${w.hrv} ms` : ''}${w.rhr != null ? ` · puls de repaus ${w.rhr}` : ''}${w.sleepMin != null ? ` · somn ${fmtMinutes(w.sleepMin)}` : ''}` : 'Nicio brățară nu a trimis date pentru azi.'}
         </div>
+        {me.state && (
+          <div className="tiny" style={{ marginTop: 8, textAlign: 'center' }}>
+            Starea ta azi:{' '}
+            <b className={`lvl-txt-${me.state.verdict}`}>
+              {LEVEL_LABEL[me.state.verdict]}
+              {me.state.score != null ? ` · ${me.state.score}/100` : ''}
+            </b>{' '}
+            <span className="muted">(inimă, respirație, recuperare, somn și cum te simți; e și culoarea marginilor)</span>
+          </div>
+        )}
         {me.readiness && (
           <div className={`day-verdict v-${me.readiness.verdict}`}>
             <b>Decizia zilei: {{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[me.readiness.verdict]}</b>

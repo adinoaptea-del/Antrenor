@@ -194,6 +194,9 @@ export type Level = 'verde' | 'galben' | 'portocaliu' | 'rosu';
  * Fără verdict azi (înainte de 05:30 sau fără date): fără culoare.
  */
 export function dayLevel(me: Me): Level | null {
+  // Marginile arată starea ta de azi: datele de sănătate (și cum te simți). Stop la febră/simptome = roșu.
+  if (me.readiness?.verdict === 'stop') return 'rosu';
+  if (me.state) return me.state.verdict;
   const r = me.readiness;
   if (!r) return null;
   if (r.verdict === 'rosu' || r.verdict === 'stop') return 'rosu';
