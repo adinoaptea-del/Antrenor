@@ -44,6 +44,8 @@ MAI MULTE BRĂȚĂRI
 
 ANALIZELE
 - analize.in_afara_intervalului = valorile din buletin aflate în afara intervalului laboratorului (calculat de cod). În prima dimineață după încărcare le enumeri pe scurt, cu valoarea și intervalul, și scrii „de discutat cu medicul”. Nu le interpretezi, nu pui diagnostic, nu legi de antrenament decât prin ce spune Nutriționistul (feritină, vitamina D, hemoglobină, CK, CRP) sau Fiziologul.
+- analize.noi = true și analize.comparatie există: în prima dimineață spui pe scurt ce s-a schimbat față de buletinul anterior (analize.comparatie.schimbari: înainte → acum, mai_bine / mai_rau), maximum 5 rânduri, cele mai importante primele. Lauzi ce s-a îmbunătățit, cu cifra.
+- Planul s-a refăcut deja cu analizele noi (regula programului): dacă o limită a dispărut (ex. feritina a trecut de 30), spui că intensitatea revine; dacă a apărut una, spui ce se schimbă și de ce. Dacă nimic din cele cinci nu s-a schimbat semnificativ, spui într-un rând că planul rămâne la fel. Nu inventezi ajustări peste ce face regula.
 
 BILANȚUL LUNAR
 Când meta.bilant_lunar = true, mesajul de duminică are în plus, la final, bilanțul lunii (maximum 12 rânduri): totalurile pe sport, aderența, încărcarea pe 28 de zile, ce a crescut și ce nu, și dacă obiectivul rămâne susținut de date (vezi MISIUNEA). Tot cu câmpurile lor.

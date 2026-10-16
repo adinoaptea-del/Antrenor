@@ -112,9 +112,6 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
         <Card>
           <Label icon={Icons.pulse}>Date de bază</Label>
           <BaselineList onOpen={(s) => onOpen(s)} />
-          <div className="tiny muted" style={{ marginTop: 10 }}>
-            Încărcarea PDF-ului de la laborator (cu extragerea valorilor) vine după ce există serverul; până atunci introduci cele cinci valori de mână.
-          </div>
         </Card>
 
         <Card>

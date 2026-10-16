@@ -39,6 +39,7 @@ export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => voi
           Încarcă tot buletinul. Aplicația citește toate valorile și îți semnalează ce iese din intervalul laboratorului, de discutat cu medicul. Cele cinci de mai jos au reguli care schimbă planul automat (fier, oxigen, oase, mușchi, inflamație).
         </p>
         {!local && <LabsUpload onRead={(r) => setL(r)} current={l} />}
+        {me.baseline.labsCompare && me.baseline.labsCompare.schimbari.length > 0 && <LabsCompareCard c={me.baseline.labsCompare} />}
         <Q title="Data recoltării" hint={l.data && labsExpired(l.data, me.today) ? 'Mai vechi de 12 luni: se salvează, dar nu se folosesc în plan. Fă analize noi.' : 'Analizele sunt valabile 12 luni de la recoltare.'}>
           <input className="date" type="date" value={l.data} onChange={(e) => setL({ ...l, data: e.target.value })} />
         </Q>
@@ -218,7 +219,7 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
       title: 'Analize de sânge',
       done: !!b.labs && !b.labs.expirat,
       value: b.labs ? `${b.labs.expirat ? 'expirate, ' : ''}din ${b.labs.data.split('-').reverse().join('.')}` : 'lipsesc',
-      unlock: b.labs?.expirat ? 'mai vechi de 12 luni: nu se mai folosesc; urcă unele noi' : 'suplimentele și fierul vin doar din ele; valabile 12 luni',
+      unlock: b.labs?.expirat ? 'mai vechi de 12 luni: nu se mai folosesc; urcă unele noi' : b.labs ? 'apasă ca să urci un buletin nou: se compară cu cel vechi și planul se ajustează' : 'suplimentele și fierul vin doar din ele; valabile 12 luni',
       screen: 'analize',
     },
     { k: 'teste', title: 'Test de efort / zone', done: !!b.tests, value: b.tests ? `${b.tests.tip.toUpperCase()}, ${b.tests.data.split('-').reverse().join('.')}` : 'lipsesc', unlock: 'fără ele planul rămâne pe Z1–Z2 și pe testul vorbirii', screen: 'teste' },
@@ -355,6 +356,28 @@ function OtherValues({ values }: { values: NonNullable<LabsForm['alte']> }) {
               {v.valoare ?? v.valoare_text ?? '–'} {v.unitate ?? ''}
               {v.in_afara === 'sub' ? ' ↓' : v.in_afara === 'peste' ? ' ↑' : ''}
             </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LabsCompareCard({ c }: { c: NonNullable<ReturnType<typeof useMe>['baseline']['labsCompare']> }) {
+  const fmt = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 2 });
+  const label = { mai_bine: 'mai bine', mai_rau: 'mai rău', stabil: 'stabil' } as const;
+  return (
+    <section className="q">
+      <h3>Față de analizele din {c.data_anterioare.split('-').reverse().join('.')}</h3>
+      <p className="hint">Planul se reface singur cu valorile noi: crește dacă s-au îmbunătățit, scade dacă s-au înrăutățit, rămâne la fel dacă nu contează pentru antrenament.</p>
+      <div className="labs-cmp">
+        {c.schimbari.map((x) => (
+          <div key={x.nume} className="lc-row">
+            <span className="lc-n">{x.nume}</span>
+            <span className="lc-v">
+              {fmt(x.inainte)} → <b>{fmt(x.acum)}</b> {x.unitate ?? ''}
+            </span>
+            <span className={`lc-d ${x.directie ?? ''}`}>{x.directie ? label[x.directie] : `${x.schimbare_pct > 0 ? '+' : ''}${fmt(x.schimbare_pct)}%`}</span>
           </div>
         ))}
       </div>

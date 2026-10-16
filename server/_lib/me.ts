@@ -6,6 +6,8 @@ import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
+import { compareLabs } from '../../src/collector/labs-compare.js';
+import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
@@ -14,7 +16,7 @@ import { addDays, labsExpired, weekStart } from '../../src/util/dates.js';
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
   const from = addDays(today, -42);
-  const [{ workouts }, acts, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRow, lastSyncRows, planRow] = await Promise.all([
+  const [{ workouts }, acts, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRows, lastSyncRows, planRow] = await Promise.all([
     loadPlan(userId, addDays(today, -28), user.race_date ?? addDays(today, 400)),
     loadActivities(userId, from),
     loadForms(userId, today),
@@ -26,7 +28,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
     select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
-    one<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' }),
+    select<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
@@ -83,6 +85,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   (planRow ? have : missing).push('program săptămânal');
   for (const p of PROVIDERS) if (providerConfigured(p)) (tokens.some((t) => t.provider === p) ? have : missing).push({ whoop: 'Whoop', strava: 'Garmin / ceas (prin Strava)', oura: 'Oura' }[p]);
   (zonesRow && zonesRow.source !== 'provizoriu' ? have : missing).push('zone testate (CPET / test de teren)');
+  const labsRow = labsRows[0] ?? null;
   const labsOld = !!labsRow && labsExpired(labsRow.drawn_at, today);
   (labsRow && !labsOld ? have : missing).push(labsOld ? 'analize de sânge (mai vechi de 12 luni)' : 'analize de sânge');
   const clearance = await one<{ cardiology: boolean }>('clearances', { user_id: `eq.${userId}` });
@@ -102,6 +105,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const aviz = (intake as { sanatate?: { avizCardiolog?: 'da' | 'nu' | 'programat' } } | null)?.sanatate?.avizCardiolog ?? null;
   const baseline: Me['baseline'] = {
     labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
+    labsCompare: labsRow ? compareLabs(labSnapshot(labsRow), labsRows[1] ? labSnapshot(labsRows[1]) : null) : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
     cardiolog: clearance?.cardiology ? 'da' : aviz === 'da' ? 'da' : aviz ? 'nu' : null,

@@ -8,6 +8,7 @@ import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
 import type { LabsForm } from '../../src/api-types.js';
 type LabsFormOther = LabsForm['alte'];
+import { compareLabs, type LabSnapshot } from '../../src/collector/labs-compare.js';
 
 export interface UserRow {
   id: string;
@@ -177,13 +178,41 @@ export async function loadZones(userId: string): Promise<ZonesInput | null> {
   };
 }
 
-export async function loadLabs(userId: string): Promise<LabsInput | null> {
-  const l = await one<{ feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; drawn_at: string; other: { valori?: NonNullable<LabsFormOther> } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' });
-  // Mai vechi de 12 luni: nu mai sunt valabile, agenții lucrează ca și cum n-ar exista.
-  if (!l || labsExpired(l.drawn_at, new Date().toISOString().slice(0, 10))) return null;
+type LabRow = { feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; drawn_at: string; uploaded_at?: string | null; other: { valori?: NonNullable<LabsFormOther> } | null };
+
+export function labSnapshot(l: LabRow): LabSnapshot {
   const n = (v: unknown) => (v == null || v === '' ? null : Number(v));
+  return {
+    data: l.drawn_at,
+    feritina: n(l.feritina),
+    vitamina_d: n(l.vitamina_d),
+    hemoglobina: n(l.hemoglobina),
+    ck: n(l.ck),
+    crp: n(l.crp),
+    alte: (l.other?.valori ?? []).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, ref_min: v.ref_min ?? null, ref_max: v.ref_max ?? null })),
+  };
+}
+
+export async function loadLabs(userId: string): Promise<LabsInput | null> {
+  const rows = await select<LabRow>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 });
+  const l = rows[0];
+  const today = new Date().toISOString().slice(0, 10);
+  // Mai vechi de 12 luni: nu mai sunt valabile, agenții lucrează ca și cum n-ar exista.
+  if (!l || labsExpired(l.drawn_at, today)) return null;
+  const now = labSnapshot(l);
   const out = (l.other?.valori ?? []).filter((v) => v.in_afara).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, interval: v.ref_text, directie: v.in_afara! }));
-  return { feritina: n(l.feritina), vitamina_d: n(l.vitamina_d), hemoglobina: n(l.hemoglobina), ck: n(l.ck), crp: n(l.crp), data_analize: l.drawn_at, in_afara_intervalului: out };
+  const uploaded = l.uploaded_at ? l.uploaded_at.slice(0, 10) : null;
+  return {
+    feritina: now.feritina,
+    vitamina_d: now.vitamina_d,
+    hemoglobina: now.hemoglobina,
+    ck: now.ck,
+    crp: now.crp,
+    data_analize: l.drawn_at,
+    in_afara_intervalului: out,
+    noi: uploaded != null && uploaded >= addDays(today, -3),
+    comparatie: compareLabs(now, rows[1] ? labSnapshot(rows[1]) : null),
+  };
 }
 
 export async function loadClearance(userId: string): Promise<{ cardiolog: string; intensitate_permisa: IntensityAllowed }> {

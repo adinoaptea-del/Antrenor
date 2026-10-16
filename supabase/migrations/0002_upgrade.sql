@@ -19,3 +19,6 @@ create table if not exists public.app_settings (
 );
 alter table public.app_settings enable row level security;
 revoke all on public.app_settings from anon, authenticated;
+
+-- Analize: când a fost urcat buletinul (pentru „analize noi” și comparația cu cele vechi).
+alter table public.labs add column if not exists uploaded_at timestamptz not null default now();

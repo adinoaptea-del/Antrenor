@@ -1,3 +1,4 @@
+import type { LabsComparison } from './labs-compare.js';
 // Tipurile colectorului: ce intră de la brățări și formulare, în formă normalizată, independentă de producător.
 // Adaptorii (whoop.ts, strava.ts, oura.ts) produc aceste structuri; packet.ts le transformă în pachetul agenților.
 
@@ -69,6 +70,10 @@ export interface LabsInput {
   data_analize: string | null;
   /** Valorile din buletin aflate în afara intervalului de referință al laboratorului (calculat de cod). */
   in_afara_intervalului?: { nume: string; valoare: number | null; unitate: string | null; interval: string | null; directie: 'sub' | 'peste' }[];
+  /** Buletinul a fost urcat în ultimele 3 zile: head coach-ul îl comentează (o singură dată, în prima dimineață). */
+  noi?: boolean;
+  /** Comparația cu buletinul anterior (calculată de cod). null = e primul buletin. */
+  comparatie?: LabsComparison | null;
 }
 
 export interface NutritionDay {
