@@ -1,3 +1,4 @@
+import { recordUsage } from './usage.js';
 // Rularea agenților pentru un sportiv: pachet → piramidă → mesaje, jurnal, fișiere, calendar viu, readiness.
 import { ENV } from './env.js';
 import { insert, one, select, upsert } from './db.js';
@@ -54,8 +55,11 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   const packetId = packetRow!.id;
 
   const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
-  const client = anthropicClient(ENV.modelKey());
+  const usageWrites: Promise<void>[] = [];
+  const client = anthropicClient(ENV.modelKey(), fetch, (model, u) => usageWrites.push(recordUsage(userId, `agenti:${event}`, model, u)));
   const result = await runPyramid({ packet, files, journal, prompts: PROMPTS, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } }, client);
+
+  await Promise.all(usageWrites);
 
   // Răspunsurile, cu starea fiecărui rând.
   await insert(

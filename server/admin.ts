@@ -4,6 +4,7 @@ import type { Req, Res } from './_lib/http.js';
 import { one, select } from './_lib/db.js';
 import { ENV, supabaseKeyHeaders } from './_lib/env.js';
 import { syncUser } from './_lib/sync.js';
+import { costUsd } from './_lib/usage.js';
 import { generateAndStore, type IntakeLike } from './_lib/plan.js';
 
 /**
@@ -18,15 +19,22 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (me?.role !== 'admin') throw new HttpError(403, 'doar adminul');
 
     if (req.method === 'GET') {
-      const [users, tokens, logs, intakes, plans, msgs] = await Promise.all([
+      const monthStart = `${todayIn('Europe/Bucharest').slice(0, 7)}-01`;
+      const [users, tokens, logs, intakes, plans, msgs, usage] = await Promise.all([
         select<{ id: string; email: string; name: string; created_at: string; tz: string }>('users', {}, { select: 'id,email,name,created_at,tz', order: 'created_at.asc' }),
         select<{ user_id: string; provider: string }>('oauth_tokens', {}, { select: 'user_id,provider' }),
         select<{ user_id: string; provider: string; ok: boolean; detail: string | null; ran_at: string }>('sync_log', {}, { order: 'ran_at.desc', limit: 300 }),
         select<{ user_id: string }>('questionnaires', { kind: 'eq.intrare' }, { select: 'user_id' }),
         select<{ user_id: string; start_date: string }>('plans', { active: 'eq.true' }, { select: 'user_id,start_date' }),
         select<{ user_id: string; created_at: string; kind: string }>('messages', {}, { select: 'user_id,created_at,kind', order: 'created_at.desc', limit: 300 }),
+        select<{ user_id: string | null; input_tokens: number; output_tokens: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: 'user_id,input_tokens,output_tokens,created_at', limit: 20000 }).catch(() => []),
       ]);
+      const today = todayIn('Europe/Bucharest');
+      const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens), 0) * 100) / 100;
       json(res, 200, {
+        costMonth: cost(usage),
+        costToday: cost(usage.filter((r) => r.created_at.slice(0, 10) === today)),
+        tracking: usage.length > 0,
         users: users.map((x) => {
           const last = logs.filter((l) => l.user_id === x.id);
           const byProvider = [...new Set(tokens.filter((t) => t.user_id === x.id).map((t) => t.provider))].map((p) => {
@@ -42,6 +50,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
             planStart: plans.find((p) => p.user_id === x.id)?.start_date ?? null,
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== 'memento')?.created_at ?? null,
+            costMonth: cost(usage.filter((r) => r.user_id === x.id)),
           };
         }),
       });

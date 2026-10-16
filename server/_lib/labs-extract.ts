@@ -1,3 +1,4 @@
+import { recordUsage } from './usage.js';
 // Citirea buletinului de analize (PDF sau poză) cu modelul: doar transcriere, fără interpretare.
 // Ce e în afara intervalului și conversia unităților le calculează codul, nu modelul.
 import { ENV } from './env.js';
@@ -115,7 +116,7 @@ export function finalize(raw: { lizibil: boolean; data_recoltarii: string | null
   return { lizibil: raw.lizibil, data_recoltarii: date, laborator: raw.laborator, valori, cele5, note };
 }
 
-export async function readLabs(base64: string, mediaType: string): Promise<LabsReading> {
+export async function readLabs(base64: string, mediaType: string, userId: string | null = null): Promise<LabsReading> {
   const block =
     mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
@@ -132,7 +133,8 @@ export async function readLabs(base64: string, mediaType: string): Promise<LabsR
     }),
   });
   if (!res.ok) throw new Error(`citirea analizelor a eșuat (${res.status}): ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+  const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  await recordUsage(userId, 'analize', ENV.modelSpecialist(), data.usage);
   const text = data.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
   if (data.stop_reason === 'max_tokens') throw new Error('buletinul e prea lung pentru o singură citire; încarcă-l pe pagini (poze separate)');
   if (!text) throw new Error('modelul nu a întors nimic');

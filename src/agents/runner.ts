@@ -61,7 +61,8 @@ export interface RunResult {
 
 // ---------- clientul Anthropic (Messages API, răspuns structurat) ----------
 
-export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch): ModelClient {
+/** onUsage: tokenii consumați de fiecare apel (pentru costul real). */
+export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch, onUsage?: (model: string, usage: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }) => void): ModelClient {
   return {
     async json<T>(req: ModelRequest): Promise<T> {
       const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
@@ -77,7 +78,8 @@ export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch)
         }),
       });
       if (!res.ok) throw new Error(`model ${res.status}: ${await res.text()}`);
-      const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+      const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+      if (data.usage) onUsage?.(req.model, data.usage);
       const text = data.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
       if (!text) throw new Error(`model: răspuns fără text (${data.stop_reason ?? 'necunoscut'})`);
       try {

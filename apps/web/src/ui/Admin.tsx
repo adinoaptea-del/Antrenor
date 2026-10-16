@@ -9,9 +9,17 @@ const NAME: Record<string, string> = { whoop: 'Whoop', strava: 'Strava', oura: '
 export function Admin({ onBack }: { onBack: () => void }) {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [cost, setCost] = useState<{ month: number; today: number; tracking: boolean } | null>(null);
   const [out, setOut] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const load = () => server.adminList().then((r) => setUsers(r.users), (e: Error) => setErr(e.message));
+  const load = () =>
+    server.adminList().then(
+      (r) => {
+        setUsers(r.users);
+        setCost({ month: r.costMonth ?? 0, today: r.costToday ?? 0, tracking: !!r.tracking });
+      },
+      (e: Error) => setErr(e.message),
+    );
   useEffect(() => {
     void load();
   }, []);
@@ -44,12 +52,30 @@ export function Admin({ onBack }: { onBack: () => void }) {
             Dacă cuiva i se blochează aplicația: întâi îi spui să apese în Profil „Repornește aplicația”. Dacă nu ajunge, de aici: citești din nou brățările, refaci planul din chestionarul lui sau îi dai o parolă temporară.
           </div>
         </Card>
+        {cost && (
+          <Card tight>
+            <Label>Cost AI (Anthropic)</Label>
+            <div className="grid-2">
+              <div>
+                <span className="num md">{usd(cost.today)}</span>
+                <div className="tiny muted">azi</div>
+              </div>
+              <div>
+                <span className="num md">{usd(cost.month)}</span>
+                <div className="tiny muted">luna asta</div>
+              </div>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 8 }}>
+              {cost.tracking ? 'Din tokenii raportați de Anthropic la fiecare apel, la prețul Sonnet 5.5 (2 $ / 10 $ pe milion). Factura exactă: console.anthropic.com → Usage.' : 'Se numără de acum: primul cost apare după următorul mesaj al antrenorului.'}
+            </div>
+          </Card>
+        )}
         {err && <Card tight><div className="small" style={{ color: 'var(--c-rosu)' }}>{err}</div></Card>}
         {!users && !err && <Card tight><div className="small muted">Citesc…</div></Card>}
         {users?.map((u) => (
           <Card key={u.id}>
             <div style={{ fontWeight: 700 }}>{u.name || u.email}</div>
-            <div className="tiny muted">{u.email} · din {u.since.split('-').reverse().join('.')}</div>
+            <div className="tiny muted">{u.email} · din {u.since.split('-').reverse().join('.')}{u.costMonth != null ? ` · ${usd(u.costMonth)} luna asta` : ''}</div>
             <div className="kv" style={{ marginTop: 8 }}>
               <div className="k">Chestionar</div>
               {u.intake ? <span className="ok">{Icons.check}</span> : <div className="no">necompletat</div>}
@@ -84,4 +110,8 @@ export function Admin({ onBack }: { onBack: () => void }) {
       </div>
     </>
   );
+}
+
+function usd(x: number): string {
+  return `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 }

@@ -202,7 +202,7 @@ export const server = {
   form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force: true }) }),
-  adminList: () => api<{ users: AdminUser[] }>('/api/admin'),
+  adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean }>('/api/admin'),
   adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
   regeneratePlan: () => api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number }>('/api/plan/generate', { method: 'POST' }),
 };
@@ -216,6 +216,7 @@ export interface AdminUser {
   planStart: string | null;
   devices: { provider: string; lastSync: string | null; ok: boolean | null; detail: string | null }[];
   lastMessage: string | null;
+  costMonth?: number;
 }
 
 /** Repornire curată: șterge cache-ul aplicației (nu datele) și reîncarcă. Prima reparație pentru orice blocaj. */

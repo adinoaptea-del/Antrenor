@@ -1,3 +1,4 @@
+import { recordUsage } from './usage.js';
 // Citirea raportului de test de efort (CPET, lactat, teren) cu modelul: doar transcriere.
 // Zonele le pune codul: din tabelul de zone al clinicii, dacă există; altfel doar ce se leagă direct de praguri.
 import { ENV } from './env.js';
@@ -91,7 +92,7 @@ export function toTestForm(r: TestReading): TestResult {
   return { reading: r, form: { tip: r.tip, data: date, fcmax: r.fc_max, alergare_z: run, pace_prag: pace, ftp: r.ftp_w, bicicleta_z: bike }, note };
 }
 
-export async function readTest(base64: string, mediaType: string): Promise<TestResult> {
+export async function readTest(base64: string, mediaType: string, userId: string | null = null): Promise<TestResult> {
   const block =
     mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
@@ -108,7 +109,8 @@ export async function readTest(base64: string, mediaType: string): Promise<TestR
     }),
   });
   if (!res.ok) throw new Error(`citirea raportului a eșuat (${res.status}): ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+  const data = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  await recordUsage(userId, 'test', ENV.modelSpecialist(), data.usage);
   const text = data.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
   if (data.stop_reason === 'max_tokens') throw new Error('raportul e prea lung pentru o singură citire; încarcă doar paginile cu pragurile și zonele');
   if (!text) throw new Error('modelul nu a întors nimic');

@@ -63,3 +63,16 @@ alter table public.users add column if not exists height_cm smallint;
 
 -- Sugestia mai ușoară din zilele galbene/portocalii (sportivul alege).
 alter table public.workouts_planned add column if not exists suggestion jsonb;
+
+-- Consumul AI real, pe apel: tokeni de la Anthropic, pentru costul afișat adminului.
+create table if not exists public.ai_usage (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete cascade,
+  kind text not null,               -- agenti:dimineata, analize, test …
+  model text not null,
+  input_tokens int not null default 0,
+  output_tokens int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);
+alter table public.ai_usage enable row level security;

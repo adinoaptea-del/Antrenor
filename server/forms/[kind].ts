@@ -112,7 +112,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const mediaType = typeof body.mediaType === 'string' ? body.mediaType : '';
       if (!file) throw new HttpError(400, 'lipsește fișierul');
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
-      json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
+      json(res, 200, { ok: true, citire: await readLabs(file, mediaType, u.id) });
       return;
     }
     if (kind === 'teste-citire') {
@@ -121,7 +121,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const mediaType = typeof body.mediaType === 'string' ? body.mediaType : '';
       if (!file) throw new HttpError(400, 'lipsește fișierul');
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
-      json(res, 200, { ok: true, citire: await readTest(file, mediaType) });
+      json(res, 200, { ok: true, citire: await readTest(file, mediaType, u.id) });
       return;
     }
     if (kind === 'sugestie') {
