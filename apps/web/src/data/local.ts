@@ -7,7 +7,7 @@ import { computeBar } from '@core/bar/bar.js';
 import { generatePlan } from '@core/calendar/generate.js';
 import { weeklyBudget } from '@core/calendar/budget.js';
 import type { PlannedWorkout } from '@core/types.js';
-import { addDays, weekStart } from '@core/util/dates.js';
+import { addDays, labsExpired, weekStart } from '@core/util/dates.js';
 import type { EveningForm, IntakeAnswers, MorningForm, WeeklyForm } from '../forms/types';
 
 interface LocalState {
@@ -78,7 +78,7 @@ function buildMe(): Me {
     profile: { city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
-    baseline: { labs: state.labs, tests: state.tests, body: state.body, cardiolog: i?.sanatate.avizCardiolog ?? null },
+    baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.avizCardiolog ?? null },
     user: { id: 'local', email: '', name: i?.nume ?? '', goal: i?.obiectiv ?? null, raceName: raceName(i?.obiectiv), raceDate: i?.dataCursa ?? null, tz: 'Europe/Bucharest' },
     consent: !!i?.consimtamant,
     intakeComplete: !!i?.consimtamant,

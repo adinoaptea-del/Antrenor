@@ -9,7 +9,7 @@ import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
-import { addDays, weekStart } from '../../src/util/dates.js';
+import { addDays, labsExpired, weekStart } from '../../src/util/dates.js';
 
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
@@ -83,7 +83,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   (planRow ? have : missing).push('program săptămânal');
   for (const p of PROVIDERS) if (providerConfigured(p)) (tokens.some((t) => t.provider === p) ? have : missing).push({ whoop: 'Whoop', strava: 'Garmin / ceas (prin Strava)', oura: 'Oura' }[p]);
   (zonesRow && zonesRow.source !== 'provizoriu' ? have : missing).push('zone testate (CPET / test de teren)');
-  (labsRow ? have : missing).push('analize de sânge');
+  const labsOld = !!labsRow && labsExpired(labsRow.drawn_at, today);
+  (labsRow && !labsOld ? have : missing).push(labsOld ? 'analize de sânge (mai vechi de 12 luni)' : 'analize de sânge');
   const clearance = await one<{ cardiology: boolean }>('clearances', { user_id: `eq.${userId}` });
   (clearance?.cardiology ? have : missing).push('aviz cardiologic');
   (activities.length ? have : missing).push('istoric de activități');
@@ -100,7 +101,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
   const aviz = (intake as { sanatate?: { avizCardiolog?: 'da' | 'nu' | 'programat' } } | null)?.sanatate?.avizCardiolog ?? null;
   const baseline: Me['baseline'] = {
-    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null } : null,
+    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
     cardiolog: clearance?.cardiology ? 'da' : aviz === 'da' ? 'da' : aviz ? 'nu' : null,

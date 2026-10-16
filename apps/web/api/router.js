@@ -216,6 +216,10 @@ function weekday(iso) {
 function weekStart(iso) {
   return addDays(iso, -weekday(iso));
 }
+var LABS_VALID_DAYS = 365;
+function labsExpired(drawn, today) {
+  return diffDays(drawn, today) > LABS_VALID_DAYS;
+}
 
 // src/calendar/phases.ts
 var PHASE_HOURS = {
@@ -700,7 +704,7 @@ async function loadZones(userId) {
 }
 async function loadLabs(userId) {
   const l = await one("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc" });
-  if (!l) return null;
+  if (!l || labsExpired(l.drawn_at, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10))) return null;
   const n2 = (v) => v == null || v === "" ? null : Number(v);
   const out = (l.other?.valori ?? []).filter((v) => v.in_afara).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, interval: v.ref_text, directie: v.in_afara }));
   return { feritina: n2(l.feritina), vitamina_d: n2(l.vitamina_d), hemoglobina: n2(l.hemoglobina), ck: n2(l.ck), crp: n2(l.crp), data_analize: l.drawn_at, in_afara_intervalului: out };
@@ -3065,7 +3069,8 @@ async function buildMe(userId, today) {
   (planRow ? have : missing).push("program s\u0103pt\u0103m\xE2nal");
   for (const p of PROVIDERS) if (providerConfigured(p)) (tokens.some((t) => t.provider === p) ? have : missing).push({ whoop: "Whoop", strava: "Garmin / ceas (prin Strava)", oura: "Oura" }[p]);
   (zonesRow && zonesRow.source !== "provizoriu" ? have : missing).push("zone testate (CPET / test de teren)");
-  (labsRow ? have : missing).push("analize de s\xE2nge");
+  const labsOld = !!labsRow && labsExpired(labsRow.drawn_at, today);
+  (labsRow && !labsOld ? have : missing).push(labsOld ? "analize de s\xE2nge (mai vechi de 12 luni)" : "analize de s\xE2nge");
   const clearance = await one("clearances", { user_id: `eq.${userId}` });
   (clearance?.cardiology ? have : missing).push("aviz cardiologic");
   (activities.length ? have : missing).push("istoric de activit\u0103\u021Bi");
@@ -3080,7 +3085,7 @@ async function buildMe(userId, today) {
   const bodyRow = await one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.manual", weight_kg: "not.is.null" }, { order: "date.desc" });
   const aviz = intake?.sanatate?.avizCardiolog ?? null;
   const baseline = {
-    labs: labsRow ? { data: labsRow.drawn_at, feritina: num2(labsRow.feritina), vitamina_d: num2(labsRow.vitamina_d), hemoglobina: num2(labsRow.hemoglobina), ck: num2(labsRow.ck), crp: num2(labsRow.crp), alte: labsRow.other?.valori ?? void 0, laborator: labsRow.other?.laborator ?? null } : null,
+    labs: labsRow ? { data: labsRow.drawn_at, feritina: num2(labsRow.feritina), vitamina_d: num2(labsRow.vitamina_d), hemoglobina: num2(labsRow.hemoglobina), ck: num2(labsRow.ck), crp: num2(labsRow.crp), alte: labsRow.other?.valori ?? void 0, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num2(bodyRow.weight_kg), grasime_pct: num2(bodyRow.body_fat_pct) } : null,
     cardiolog: clearance?.cardiology ? "da" : aviz === "da" ? "da" : aviz ? "nu" : null

@@ -2,7 +2,7 @@
 import { select, one } from './db.js';
 import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
-import { addDays } from '../../src/util/dates.js';
+import { addDays, labsExpired } from '../../src/util/dates.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
@@ -179,7 +179,8 @@ export async function loadZones(userId: string): Promise<ZonesInput | null> {
 
 export async function loadLabs(userId: string): Promise<LabsInput | null> {
   const l = await one<{ feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; drawn_at: string; other: { valori?: NonNullable<LabsFormOther> } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' });
-  if (!l) return null;
+  // Mai vechi de 12 luni: nu mai sunt valabile, agenții lucrează ca și cum n-ar exista.
+  if (!l || labsExpired(l.drawn_at, new Date().toISOString().slice(0, 10))) return null;
   const n = (v: unknown) => (v == null || v === '' ? null : Number(v));
   const out = (l.other?.valori ?? []).filter((v) => v.in_afara).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, interval: v.ref_text, directie: v.in_afara! }));
   return { feritina: n(l.feritina), vitamina_d: n(l.vitamina_d), hemoglobina: n(l.hemoglobina), ck: n(l.ck), crp: n(l.crp), data_analize: l.drawn_at, in_afara_intervalului: out };

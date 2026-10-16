@@ -141,3 +141,11 @@ describe('progresStatus', () => {
     assert.equal(progresStatus(inp(null), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, false);
   });
 });
+
+describe('analize: valabile 12 luni', () => {
+  it('expiră după 365 de zile', async () => {
+    const { labsExpired } = await import('../src/util/dates.js');
+    assert.equal(labsExpired('2025-10-16', '2026-10-16'), false);
+    assert.equal(labsExpired('2025-10-15', '2026-10-16'), true);
+  });
+});

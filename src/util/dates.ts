@@ -35,3 +35,9 @@ export function weekStart(iso: string): string {
 export function isBetween(iso: string, from: string, to: string): boolean {
   return diffDays(from, iso) >= 0 && diffDays(iso, to) >= 0;
 }
+
+/** Analizele de sânge sunt valabile 12 luni de la recoltare; după aceea nu se mai folosesc. */
+export const LABS_VALID_DAYS = 365;
+export function labsExpired(drawn: string, today: string): boolean {
+  return diffDays(drawn, today) > LABS_VALID_DAYS;
+}

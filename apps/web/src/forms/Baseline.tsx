@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { labsExpired } from '@core/util/dates.js';
 import type { BodyForm, LabsForm, TestsForm } from '@core/api-types.js';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Q } from './controls';
@@ -38,7 +39,7 @@ export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => voi
           Cinci valori din buletinul de analize, cu unitățile de pe el. Nutriționistul recomandă suplimente doar din ele; fără ele nu recomandă nimic. Celelalte valori (lipide, hormoni, markeri cardiaci) le discuți cu medicul, nu cu aplicația.
         </p>
         {!local && <LabsUpload onRead={(r) => setL(r)} current={l} />}
-        <Q title="Data recoltării">
+        <Q title="Data recoltării" hint={l.data && labsExpired(l.data, me.today) ? 'Mai vechi de 12 luni: se salvează, dar nu se folosesc în plan. Fă analize noi.' : 'Analizele sunt valabile 12 luni de la recoltare.'}>
           <input className="date" type="date" value={l.data} onChange={(e) => setL({ ...l, data: e.target.value })} />
         </Q>
         <Q title="Feritină" hint="Sub 30 µg/L: de discutat cu nutriționistul și medicul.">
@@ -212,7 +213,14 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
   const me = useMe();
   const b = me.baseline;
   const items: { k: string; title: string; done: boolean; value: string; unlock: string; screen: string | null }[] = [
-    { k: 'analize', title: 'Analize de sânge', done: !!b.labs, value: b.labs ? `din ${b.labs.data.split('-').reverse().join('.')}` : 'lipsesc', unlock: 'suplimentele și fierul vin doar din ele', screen: 'analize' },
+    {
+      k: 'analize',
+      title: 'Analize de sânge',
+      done: !!b.labs && !b.labs.expirat,
+      value: b.labs ? `${b.labs.expirat ? 'expirate, ' : ''}din ${b.labs.data.split('-').reverse().join('.')}` : 'lipsesc',
+      unlock: b.labs?.expirat ? 'mai vechi de 12 luni: nu se mai folosesc; urcă unele noi' : 'suplimentele și fierul vin doar din ele; valabile 12 luni',
+      screen: 'analize',
+    },
     { k: 'teste', title: 'Test de efort / zone', done: !!b.tests, value: b.tests ? `${b.tests.tip.toUpperCase()}, ${b.tests.data.split('-').reverse().join('.')}` : 'lipsesc', unlock: 'fără ele planul rămâne pe Z1–Z2 și pe testul vorbirii', screen: 'teste' },
     { k: 'corp', title: 'Greutate și grăsime', done: !!b.body, value: b.body ? `${b.body.greutate?.toLocaleString('ro-RO')} kg${b.body.grasime_pct != null ? ` · ${b.body.grasime_pct}%` : ''}` : 'lipsesc', unlock: 'gramele de carbohidrați și proteine se calculează pe kg', screen: 'corp' },
   ];

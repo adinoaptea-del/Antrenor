@@ -57,6 +57,8 @@ export interface LabsForm {
   /** Toate valorile citite din buletin (PDF/poză), cu intervalul laboratorului; confirmate de sportiv. */
   alte?: { nume: string; valoare: number | null; valoare_text: string | null; unitate: string | null; ref_text: string | null; in_afara: 'sub' | 'peste' | null }[];
   laborator?: string | null;
+  /** Mai vechi de 12 luni: nu se mai folosesc în plan; trebuie analize noi. */
+  expirat?: boolean;
 }
 
 export interface TestsForm {
