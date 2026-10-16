@@ -896,16 +896,16 @@ function sameSession(a, b) {
 }
 function pickRecording(a, b) {
   const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
-  const [S, L] = a.minutes <= b.minutes ? [a, b] : [b, a];
-  const extraMin = L.minutes - S.minutes;
+  const [S, L2] = a.minutes <= b.minutes ? [a, b] : [b, a];
+  const extraMin = L2.minutes - S.minutes;
   if (extraMin < 2) return fields2(a) >= fields2(b) ? a : b;
   const sKm = S.distanceKm ?? null;
-  const lKm = L.distanceKm ?? null;
-  if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L;
-  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L;
-  if (S.avgHr != null && L.avgHr != null) {
-    const extraHr = (L.avgHr * L.minutes - S.avgHr * S.minutes) / extraMin;
-    if (extraHr >= 0.85 * S.avgHr) return L;
+  const lKm = L2.distanceKm ?? null;
+  if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L2;
+  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L2;
+  if (S.avgHr != null && L2.avgHr != null) {
+    const extraHr = (L2.avgHr * L2.minutes - S.avgHr * S.minutes) / extraMin;
+    if (extraHr >= 0.85 * S.avgHr) return L2;
   }
   return S;
 }
@@ -1925,7 +1925,7 @@ var PROMPTS = {
   antrenor_inot: "Esti profesorul de inot pentru adulti: de la incredere si respiratie la inot eficient in ape deschise, pentru proba de inot a obiectivului (la 70.3: 1,9 km).\n- Nivelul din date si chestionar (nivel, timp pe 400 m, CSS). Incepatorul: frecventa inaintea distantei (3 sedinte scurte), pauze suficiente, fara distante mari si fara teste.\n- Maximum doua prioritati tehnice pe sedinta (respiratie, pozitia corpului, prindere, rotatie), fiecare cu exercitiul si criteriul de reusita.\n- Intai distanta continua, apoi ritmul (CSS in build, ritm de cursa in peak). Fara css: distante si pauze, nu paceuri; CSS se testeaza abia la 400 m continuu.\n- Fara filmare formulezi ipoteze, nu diagnostice. Urmaresti umarul in legatura cu inotul si forta.\n- Orientarea, neoprenul si startul in grup abia dupa competentele de baza.\nSiguranta: fara apnee/hiperventilatie; ape deschise niciodata singur, nu sub 16 grade fara neopren; la panica, ameteala sau durere opresti si semnalezi.\n",
   antrenor_bicicleta: 'Esti antrenorul de ciclism: sportivul pedaleaza sigur, constant si ajunge la alergare cu picioare bune (la 70.3: 90 km).\n- La incepator intai controlul: franare, viraje, viteze, coborari, baut din mers.\n- Wati doar cu senzor (zone.bicicleta.ftp); altfel efort perceput si puls de bicicleta, niciodata zonele de alergare. Un efort scurt nu devine automat FTP.\n- Cadenta se individualizeaza (85-95 e reper); daca e sub 80 in Z2, indiciul tehnic e cadenta.\n- Pozitia aero doar dupa control; durere sau amorteala -> "bike fit" la PENTRU_VIITOR si Fizio, fara reglaje din presupuneri.\n- Pe cursa ritm constant, fara varfuri (la 70.3 in jur de 70-80% din FTP); alimentarea se exerseaza pe turele de peste 90 min.\n- Pe drum public nimic care ia atentia de pe trafic; iarna sau pe vreme rea, trainer.\n',
   antrenor_alergare: "Esti antrenorul de alergare: progres sustenabil spre alergarea din obiectiv (la 70.3: semimaratonul de dupa 90 km de bicicleta).\n- La triatlon separi ritmul de semimaraton simplu de ce poate sportivul dupa bicicleta; nu copiezi ritmul de concurs.\n- Ritmul doar cand datele si conditiile permit; pe caldura, vant, urcari sau oboseala conteaza efortul. Zonele de alergare din zone.alergare.*, nu din ciclism.\n- Nu cresti in aceeasi saptamana si durata, si intensitatea. Alergarea cu pauze de mers e legitima.\n- Tehnica: un singur reper simplu, doar din ce se vede in date; nu impui cadenta 180.\n- Dupa o tura lunga sau un brick, urmatoarea alergare e Z1-Z2. O alergare ratata nu se dubleaza.\nSiguranta: durere noua sau progresiva (durere.scor >= 3 la gamba, tibie, ahile, genunchi) -> inlocuire cu bicicleta sau inot la aceeasi durata; nu diagnostichezi.\n",
-  antrenor_forta: "Esti antrenorul de forta: forta care ajuta celelalte sporturi, fara sa le consume energia.\n- Putine exercitii, alese dupa nevoie: genuflexiune, extensie de sold, unilateral, gambe, impins/tras, umeri (control scapular), trunchi.\n- Executia inaintea greutatii; serii, repetari si efort pe RPE sau repetari in rezerva; kilograme doar cu repere reale.\n- Fara esec muscular sau maximale; pliometria doar cand toleranta o permite.\n- Picioarele nu se lucreaza greu in ziua dinaintea unei sedinte-cheie; umerii se coordoneaza cu inotul. In taper: usor, fara exercitii noi.\n- O indicatie tehnica pe exercitiu si o varianta mai usoara cand e nevoie. Durerea ingrijoratoare opreste exercitiul si merge la Fizio.\n",
+  antrenor_forta: "Esti antrenorul de forta: forta care ajuta celelalte sporturi, fara sa le consume energia.\n- Putine exercitii, alese dupa nevoie: genuflexiune, extensie de sold, unilateral, gambe, impins/tras, umeri (control scapular), trunchi.\n- Executia inaintea greutatii; serii, repetari si efort pe RPE sau repetari in rezerva; kilograme doar cu repere reale.\n- Fara esec muscular sau maximale; pliometria doar cand toleranta o permite.\n- Picioarele nu se lucreaza greu in ziua dinaintea unei sedinte-cheie; umerii se coordoneaza cu inotul. In taper: usor, fara exercitii noi.\n- O indicatie tehnica pe exercitiu si o varianta mai usoara cand e nevoie. Durerea ingrijoratoare opreste exercitiul si merge la Fizio.\n\nPROGRAMUL DE FOR\u021A\u0102 (obligatoriu, acela\u0219i pentru to\u021Bi): Push / Pull / Legs \u2014 Push 1, Pull 1, Picioare, Push 2, Bra\u021Be (doar la 3+ \u0219edin\u021Be pe s\u0103pt\u0103m\xE2n\u0103), Pull 2. Ziua \u0219i doza fazei sunt \xEEn plan_azi.structura (ex. \u201EPull 1 \xB7 programul complet\u201D). Nu inventezi alte exerci\u021Bii \u0219i nu schimbi seturile (greu 5\u20139, redus 10\u201315, rest-pause unde e scris). Po\u021Bi doar s\u0103 reduci, cu motivul din date: f\u0103r\u0103 rest-pause sau doar setul greu c\xE2nd recuperarea e galben\u0103; Picioarele mutate dac\u0103 a doua zi e ie\u0219irea lung\u0103 sau o \u0219edin\u021B\u0103-cheie. Progresia: aceea\u0219i zi se compar\u0103 cu ea \xEEns\u0103\u0219i (Pull 1 cu Pull 1).\n",
   nutritionist: 'Esti NUTRITIONISTUL echipei. Primesti pachetul de date JSON si fisierul nutritie.md (tintele pe tip de zi din protocol: carbohidrati 3-5 / 5-7 / 6-10 / 10-12 g pe kg, proteine 1,8-2 g pe kg, fueling 30-60-90 g pe ora dupa durata, sodiul din testul de transpiratie, lista de alimente pe care sportivul le mananca si nu le mananca).\n\nDimineata scrii in CE: tipul de zi (din plan_azi.tip si durata_planificata), carbohidratii si proteinele zilei in grame (greutate = corp.greutate_media7), ce se mananca inainte de sedinta si ce se ia in timpul ei (grame de carbohidrati pe ora si lichid), si 3 exemple concrete de mese, un rand fiecare.\nDupa antrenament raspunzi doar daca urmeaza o sedinta in sub 24 h: un rand cu ce se mananca in prima ora (1-1,2 g/kg carbohidrati + 0,4 g/kg proteine).\nSexul si varsta sunt in meta.sportiv: la femei pragul de atentie pentru feritina si nevoia de fier sunt mai mari (pierderi menstruale); necesarul il raportezi pe kg, nu pe varsta. Camp null = nu presupui.\n\nInaltimea e in meta.sportiv.inaltime_cm, iar corp.imc e calculat de cod (greutatea medie pe 7 zile / inaltimea la patrat). IMC-ul e doar un reper: la sportivi masa musculara il urca; nu recomanzi slabit din IMC, ci din obiectivul sportivului si din grasime_pct daca exista.\n\nLa analize noi (analize.noi = true): te uiti si la analize.comparatie (inainte -> acum). Daca o valoare a revenit in interval, spui ca suplimentul se poate opri sau reduce (decizia o ia medicul); daca a scazut, il propui. Compari analize.* cu pragurile din nutritie.md (feritina sub 30, vitamina D sub pragul laboratorului) si spui ce supliment e justificat, in ce doza, si ca decizia o ia medicul. Suplimente de performanta doar cafeina, nitrati, creatina, si doar testate in antrenament.\n\nVremea: daca vreme.azi.resimtita_max e peste 28 si urmeaza o sedinta afara, adaugi un rand cu lichid si sare in plus pentru efort; cantitatea de sodiu vine din testul de transpiratie, iar fara el spui ca e provizorie.\n\nReguli:\n- Fiecare cifra cu campul ei. Fara corp.greutate_media7 nu dai grame, dai g/kg si "lipseste: corp.greutate_media7".\n- Nu propui deficit caloric in build sau peak; in baza, maximum 300 kcal pe zi si doar daca corp.greutate_media7 e stabila sau in crestere. Scadere peste 0,7 kg pe saptamana in build -> cresti carbohidratii, nu comentezi antrenamentul.\n- Nu recomanzi un supliment fara un camp din analize.* sau fara una dintre cele trei exceptii. Nu interpretezi lipide, hormoni sau markeri cardiaci: ii semnalezi medicului.\n- Fara retete lungi, fara branduri; alimente simple pe care sportivul le are deja in nutritie.md.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce", plus cele 3 exemple de mese dimineata, in "mese".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
   fizioterapeut: 'Esti FIZIOTERAPEUTUL echipei. Primesti pachetul de date JSON si fisierul fizio.md (istoricul de dureri cu locul si data, rezultatul evaluarii initiale, cele 2 exercitii de preventie curente).\n\nRaspunzi doar cand esti rutat: antrenament_ultim.durere.scor >= 3, sau comentariul contine durere, sau review-ul de duminica.\nDupa antrenament scrii in CE: locul si scorul (din campuri), daca e prima aparitie sau o revenire (din fizio.md), si ce se schimba in incarcare: fara impact 5 zile (alergarea devine bicicleta sau inot), sau doar reducere, sau nimic.\nVERDICT: stop cand durere.scor >= 5, sau durere in repaus / noaptea / umflatura in comentariu, sau acelasi loc a doua oara in 14 zile -> fizioterapeut uman in aceeasi zi.\nDuminica: confirmi sau schimbi cele 2 exercitii de preventie, in functie de ore_7z.* si de locurile aparute in saptamana.\n\nReguli:\n- Nu pui diagnostic si nu numesti o structura (tendon, menisc, fascie): scrii locul asa cum l-a dat sportivul.\n- Nu propui exercitii "pentru durere" si nu propui tratamente; doar incarcare si cele 2 exercitii de preventie.\n- Fiecare cifra cu campul ei. Raspunzi doar in formatul JSON din format.md, maximum 3 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n',
   minte: `Esti agentul MINTE al echipei: te ocupi de motivatie, asteptari si rutina, nu de sanatate mintala.
@@ -3577,6 +3577,119 @@ function newAppleToken() {
   return randomBytes(24).toString("base64url");
 }
 
+// src/strength/ppl.ts
+var H = (r2 = "5-9") => ({ kind: "heavy", reps: r2 });
+var L = (r2 = "10-15") => ({ kind: "lowered", reps: r2 });
+var RP = (r2 = "12-15") => ({ kind: "restpause", reps: r2 });
+var F = (r2) => ({ kind: "fix", reps: r2 });
+var MAX = { kind: "max", reps: "max" };
+var ABS = { group: "Abdomen", name: "\xCEndoirea genunchilor din at\xE2rnat / abdomene clasice", sets: [F("4-6 serii")], note: "focus pe contrac\u021Bie" };
+var PPL = [
+  {
+    id: "push1",
+    name: "Push 1",
+    exercises: [
+      { group: "Piept", name: "\xCEmpins din \xEEnclinat cu gantere", sets: [H(), L()] },
+      { group: "Piept", name: "\xCEmpins din orizontal la aparat", sets: [H(), L()] },
+      { group: "Umeri", name: "Pres\u0103 militar\u0103 umeri", sets: [H(), L()] },
+      { group: "Umeri", name: "Ramat cu bara vertical", sets: [H(), L(), RP()] },
+      { group: "Piept", name: "Flutur\u0103ri la cabluri din \xEEnclinat", sets: [H(), L()] },
+      { group: "Umeri", name: "Flutur\u0103ri laterale cu gantere", sets: [H(), L()] },
+      { group: "Piept", name: "Flot\u0103ri la paralele (dips), cu greutatea corpului", sets: [MAX, MAX] },
+      { group: "Triceps", name: "Extensia tricepsului la aparat", sets: [H(), L()] },
+      { group: "Triceps", name: "Extensie cu gantera deasupra capului", sets: [H(), L()] },
+      ABS
+    ]
+  },
+  {
+    id: "pull1",
+    name: "Pull 1",
+    exercises: [
+      { group: "Spate", name: "Ramat la aparat de sus", sets: [H(), L(), RP()] },
+      { group: "Spate", name: "Ramat cu sprijin pe piept la aparat", sets: [H(), L()] },
+      { group: "Spate", name: "Ramat din aplecat cu bara", sets: [H(), L()] },
+      { group: "Spate", name: "Trac\u021Biuni (priz\u0103 supina\u021Bie)", sets: [MAX, MAX] },
+      { group: "Spate", name: "Pullover la scripete", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Deltoid posterior", name: "Flutur\u0103ri \xEEnapoi la aparat", sets: [H(), L()] },
+      { group: "Biceps", name: "Flexii cu bara Z", sets: [H("8-12"), L()] },
+      { group: "Biceps", name: "Flexii la aparat", sets: [RP("10-15")] },
+      { group: "Trapez", name: "Ridic\u0103ri de umeri", sets: [H(), L()] }
+    ]
+  },
+  {
+    id: "legs",
+    name: "Picioare",
+    exercises: [
+      { group: "Cvadriceps", name: "Pres\u0103", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Cvadriceps", name: "Genuflexiuni hack (hack squat)", sets: [F("8-12"), L()] },
+      { group: "Cvadriceps", name: "Extensii", sets: [H(), L(), RP()] },
+      { group: "Femural", name: "RDL (\xEEndrept\u0103ri)", sets: [H(), L()] },
+      { group: "Femural", name: "Flexii din \u0219ezut la aparat", sets: [H(), L()] },
+      { group: "Femural", name: "Flexii unilaterale la aparat (din picioare)", sets: [F("8-12"), F("8-12"), RP()] },
+      { group: "Adductor", name: "Adductor la aparat", sets: [H(), L()] },
+      { group: "Abductor", name: "Abductor la aparat", sets: [H(), L()] },
+      { group: "Gambe", name: "Ridic\u0103ri pe v\xE2rfuri din picioare la aparat", sets: [H("8-12"), L("15-18"), RP("15-20")] }
+    ]
+  },
+  {
+    id: "push2",
+    name: "Push 2",
+    exercises: [
+      { group: "Piept", name: "\xCEmpins la pres\u0103 din \xEEnclinat la aparat", sets: [H(), L()] },
+      { group: "Piept", name: "\xCEmpins din orizontal la aparat", sets: [H(), L(), RP()] },
+      { group: "Piept", name: "\xCEmpins din declinat cu gantere", sets: [H(), L()] },
+      { group: "Piept", name: "Flutur\u0103ri la cabluri", sets: [H(), L()] },
+      { group: "Piept", name: "Flutur\u0103ri la aparat (peck deck)", sets: [RP()] },
+      { group: "Umeri", name: "\xCEmpins pentru umeri la aparat", sets: [H(), L()] },
+      { group: "Umeri", name: "Extensii laterale la aparat", sets: [H(), L()] },
+      { group: "Triceps", name: "Extensii triceps la cabluri \xEEncruci\u0219ate", sets: [F("10-15"), F("10-15")] },
+      { group: "Triceps", name: "Extensii triceps la cabluri sau gantere din aplecat", sets: [H(), L()] }
+    ]
+  },
+  {
+    id: "arms",
+    name: "Bra\u021Be",
+    exercises: [
+      { group: "Triceps", name: "\xCEmpins din orizontal cu bara (priz\u0103 \xEEngust\u0103)", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Triceps", name: "Extensii deasupra capului cu gantera, cu ambele m\xE2ini", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Triceps", name: "Extensii la cablu pe fiecare m\xE2n\u0103 (priz\u0103 invers\u0103)", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Biceps", name: "Flexii la aparat", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Biceps", name: "Flexii la cablu (ciocan)", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      { group: "Biceps", name: "Flexii concentrate cu gantera", sets: [F("8-12"), F("8-12"), F("8-12")] },
+      ABS
+    ]
+  },
+  {
+    id: "pull2",
+    name: "Pull 2",
+    exercises: [
+      { group: "Spate", name: "Trac\u021Biuni la helcometru (priz\u0103 supina\u021Bie)", sets: [H(), L(), RP()] },
+      { group: "Spate", name: "Trac\u021Biuni la helcometru (priz\u0103 larg\u0103)", sets: [H(), L()] },
+      { group: "Spate", name: "Ramat T cu bara", sets: [H(), L()] },
+      { group: "Spate", name: "Ramat la cablu", sets: [H(), L()] },
+      { group: "Deltoid posterior", name: "Flutur\u0103ri laterale din aplecat", sets: [H("8-12"), L("8-12")] },
+      { group: "Lombar", name: "Hiperextensii", sets: [MAX, MAX, MAX] },
+      { group: "Trapez", name: "Ridic\u0103ri de umeri", sets: [H(), L()] },
+      ABS
+    ]
+  }
+];
+function rotation(sessionsPerWeek) {
+  return sessionsPerWeek >= 3 ? ["push1", "pull1", "legs", "push2", "arms", "pull2"] : ["push1", "pull1", "legs", "push2", "pull2"];
+}
+function doseFor(phase) {
+  return phase === "evaluare" ? "invatare" : phase === "build" ? "anduranta" : phase === "peak" || phase === "taper" ? "mentinere" : "complet";
+}
+var DOSE_TEXT = {
+  invatare: "\xEEnv\u0103\u021Bare: f\u0103r\u0103 rest-pause, opre\u0219te-te cu 1\u20132 repet\u0103ri \xEEnainte de cedare; prioritate execu\u021Bia",
+  complet: "programul complet, cum e scris",
+  anduranta: "f\u0103r\u0103 rest-pause la picioare: oboseala ar strica alergarea \u0219i bicicleta din zilele urm\u0103toare",
+  mentinere: "men\u021Binere: doar setul greu, f\u0103r\u0103 set redus \u0219i f\u0103r\u0103 rest-pause"
+};
+function dayById(id) {
+  return PPL.find((d) => d.id === id);
+}
+
 // src/calendar/budget.ts
 var MIN_BLOCK_MIN = 45;
 var REALITY_FACTOR = 0.8;
@@ -3649,7 +3762,37 @@ function generatePlan(input) {
       notes: [...fitted.notes, ...placed.notes]
     });
   }
+  assignStrengthDays(out);
   return { ok: true, weeks: out, budgetHours: budget.hours };
+}
+function strengthMinutes(p) {
+  return p === "taper" ? 35 : p === "peak" ? 40 : p === "build" ? 50 : 55;
+}
+function assignStrengthDays(weeks) {
+  const all = weeks.flatMap((w) => w.workouts.map((x) => ({ x, phase: w.phase })));
+  const keyDates = new Set(all.filter((o) => o.x.key).map((o) => o.x.date));
+  const strength = all.filter((o) => o.x.type === "forta").sort((a, b) => a.x.date < b.x.date ? -1 : 1);
+  const perWeek = Math.max(...weeks.map((w) => w.workouts.filter((x) => x.type === "forta").length), 0);
+  const rot = rotation(perWeek);
+  let i = 0;
+  let deferredLegs = false;
+  for (const o of strength) {
+    const legsBlocked = keyDates.has(addDays(o.x.date, 1)) || o.phase === "taper";
+    let id;
+    if (deferredLegs && !legsBlocked) {
+      id = "legs";
+      deferredLegs = false;
+    } else {
+      id = rot[i++ % rot.length];
+      if (id === "legs" && legsBlocked) {
+        if (o.phase !== "taper") deferredLegs = true;
+        id = rot[i++ % rot.length];
+      }
+    }
+    const day2 = dayById(id);
+    const dose = doseFor(o.phase);
+    o.x.structure = `${day2.name} \xB7 ${DOSE_TEXT[dose]}`;
+  }
 }
 function advanceProgression(prog, pw) {
   if (pw.recovery) return;
@@ -3725,7 +3868,7 @@ function runWeekTemplate(pw, input, prog) {
   }
   const fortaCount = p === "taper" ? 1 : 2;
   for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: "forta", type: "forta", minutes: early ? 40 : p === "taper" ? 30 : 35, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === "taper" ? "u\u0219or, f\u0103r\u0103 \xEEnc\u0103rc\u0103ri noi" : "picioare, core, gambe + pliometrie u\u0219oar\u0103" });
+    s.push({ sport: "forta", type: "forta", minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: "for\u021B\u0103 (Push / Pull / Legs)" });
   }
   if (pw.recovery) {
     for (const x of s) {
@@ -3782,9 +3925,8 @@ function weekTemplate(pw, input, prog) {
     else s.push(t);
   }
   const fortaCount = p === "taper" ? 1 : 2;
-  const fortaMin = p === "baza1" || p === "evaluare" ? 45 : p === "taper" ? 30 : 40;
   for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: "forta", type: "forta", minutes: fortaMin, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === "taper" ? "u\u0219or, f\u0103r\u0103 \xEEnc\u0103rc\u0103ri noi" : "\xEEnc\u0103rc\u0103ri mari + pliometrie" });
+    s.push({ sport: "forta", type: "forta", minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: "for\u021B\u0103 (Push / Pull / Legs)" });
   }
   if (pw.recovery) {
     for (const x of s) {

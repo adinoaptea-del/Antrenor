@@ -1,3 +1,4 @@
+import { DOSE_TEXT, dayById, doseFor, rotation } from '../strength/ppl.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
@@ -124,7 +125,46 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     });
   }
 
+  assignStrengthDays(out);
   return { ok: true, weeks: out, budgetHours: budget.hours };
+}
+
+/** Durata ședinței de forță: programul complet cere ~55–60 min (2–5 min pauză între seturi); menținerea mai puțin. */
+function strengthMinutes(p: Phase): number {
+  return p === 'taper' ? 35 : p === 'peak' ? 40 : p === 'build' ? 50 : 55;
+}
+
+/**
+ * Ședințele de forță primesc pe rând zilele programului Push / Pull / Legs, în ordinea din program, pe tot planul
+ * (Pull 1 se compară cu Pull 1-ul de data trecută). Doza ține de fază (doseFor).
+ * Picioarele: nu în ziua dinaintea unei ședințe-cheie (ieșirea/tura lungă, calitate) — trec la următoarea ședință de forță;
+ * în taper nu se fac deloc.
+ */
+export function assignStrengthDays(weeks: WeekPlan[]): void {
+  const all = weeks.flatMap((w) => w.workouts.map((x) => ({ x, phase: w.phase })));
+  const keyDates = new Set(all.filter((o) => o.x.key).map((o) => o.x.date));
+  const strength = all.filter((o) => o.x.type === 'forta').sort((a, b) => (a.x.date < b.x.date ? -1 : 1));
+  const perWeek = Math.max(...weeks.map((w) => w.workouts.filter((x) => x.type === 'forta').length), 0);
+  const rot = rotation(perWeek);
+  let i = 0;
+  let deferredLegs = false;
+  for (const o of strength) {
+    const legsBlocked = keyDates.has(addDays(o.x.date, 1)) || o.phase === 'taper';
+    let id: string;
+    if (deferredLegs && !legsBlocked) {
+      id = 'legs';
+      deferredLegs = false;
+    } else {
+      id = rot[i++ % rot.length]!;
+      if (id === 'legs' && legsBlocked) {
+        if (o.phase !== 'taper') deferredLegs = true; // în taper picioarele nu se mai recuperează
+        id = rot[i++ % rot.length]!;
+      }
+    }
+    const day = dayById(id)!;
+    const dose = doseFor(o.phase);
+    o.x.structure = `${day.name} · ${DOSE_TEXT[dose]}`;
+  }
 }
 
 /** Progresia ședințelor lungi: +15 min la două săptămâni pe bicicletă, +10 pe alergare, cu plafoane pe fază. */
@@ -213,7 +253,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
 
   const fortaCount = p === 'taper' ? 1 : 2;
   for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: 'forta', type: 'forta', minutes: early ? 40 : p === 'taper' ? 30 : 35, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === 'taper' ? 'ușor, fără încărcări noi' : 'picioare, core, gambe + pliometrie ușoară' });
+    s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
   }
 
   if (pw.recovery) {
@@ -280,11 +320,10 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
     else s.push(t);
   }
 
-  // Forță: 2 ședințe, încărcări mari + pliometrie; în taper una scurtă.
+  // Forță: programul Push / Pull / Legs, 2 ședințe pe săptămână (una în taper); ziua din rotație se pune după plasare.
   const fortaCount = p === 'taper' ? 1 : 2;
-  const fortaMin = p === 'baza1' || p === 'evaluare' ? 45 : p === 'taper' ? 30 : 40;
   for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: 'forta', type: 'forta', minutes: fortaMin, zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: p === 'taper' ? 'ușor, fără încărcări noi' : 'încărcări mari + pliometrie' });
+    s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
   }
 
   if (pw.recovery) {

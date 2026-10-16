@@ -75,7 +75,7 @@ function buildMe(): Me {
 
   const z = state.tests;
   return {
-    profile: { city: null, appleConnected: false, appleLastSync: null },
+    profile: { sex: null, birthYear: null, heightCm: null, city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
     baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.avizCardiolog ?? null },
