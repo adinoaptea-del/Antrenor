@@ -205,9 +205,10 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         <Card tight style={{ marginTop: 12 }}>
           <div className="row between" style={{ marginBottom: 6 }}>
             <div className="title">Date de bază</div>
-            <span className="small muted">{[me.baseline.labs && !me.baseline.labs.expirat, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4</span>
+            <span className="small muted">{[me.baseline.labs && !me.baseline.labs.expirat, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4 completate</span>
           </div>
-          <BaselineList onOpen={(s) => onOpen(s)} />
+          <BaselineList onlyMissing onOpen={(s) => onOpen(s)} />
+          <div className="tiny muted" style={{ marginTop: 8 }}>Ce ai completat găsești în Profil.</div>
         </Card>
       )}
 

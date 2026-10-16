@@ -211,7 +211,8 @@ export function Body({ onBack, onDone }: { onBack: () => void; onDone: () => voi
 }
 
 /** Lista datelor de bază, cu ce deblochează fiecare. Pe Acasă și în Profil. */
-export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
+/** onlyMissing: pe Acasă apare doar ce lipsește; ce e completat se vede în Profil. */
+export function BaselineList({ onOpen, onlyMissing = false }: { onOpen: (screen: string) => void; onlyMissing?: boolean }) {
   const me = useMe();
   const b = me.baseline;
   const items: { k: string; title: string; done: boolean; value: string; unlock: string; screen: string | null }[] = [
@@ -228,7 +229,7 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
   ];
   return (
     <div className="baseline">
-      {items.map((it) => (
+      {items.filter((it) => !onlyMissing || !it.done).map((it) => (
         <button key={it.k} className={`base-row ${it.done ? 'done' : ''}`} onClick={() => it.screen && onOpen(it.screen)}>
           <span className="ic">{it.done ? Icons.check : Icons.arrowRight}</span>
           <span className="tx">
@@ -239,7 +240,7 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
           </span>
         </button>
       ))}
-      <AvizRow />
+      {(!onlyMissing || me.baseline.cardiolog !== 'da') && <AvizRow />}
     </div>
   );
 }
