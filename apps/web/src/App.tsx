@@ -71,6 +71,10 @@ function Shell() {
     let el: HTMLElement | null = null;
     const W = () => window.innerWidth || 390;
     const start = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        active = false; // două degete nu sunt gestul de înapoi
+        return;
+      }
       const t = e.touches[0];
       active = !!t && t.clientX <= 24 && !!swipeBack.current;
       if (!active || !t) return;
@@ -84,6 +88,10 @@ function Shell() {
       }
     };
     const move = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault(); // fără pinch-zoom și fără deplasarea paginii cu două degete
+        return;
+      }
       if (!active || !el) return;
       const t = e.touches[0];
       if (!t) return;
@@ -125,12 +133,27 @@ function Shell() {
       }
     };
     window.addEventListener('touchstart', start, { passive: true });
-    window.addEventListener('touchmove', move, { passive: true });
+    window.addEventListener('touchmove', move, { passive: false });
+    // Safari pe iPhone ignoră uneori user-scalable=no: oprim gestul de zoom direct.
+    const noGesture = (e: Event) => e.preventDefault();
+    document.addEventListener('gesturestart', noGesture, { passive: false } as AddEventListenerOptions);
+    document.addEventListener('gesturechange', noGesture, { passive: false } as AddEventListenerOptions);
+    // Dublu-tap pe text nu mai face zoom.
+    let lastTap = 0;
+    const noDoubleTapZoom = (e: TouchEvent) => {
+      const now = Date.now();
+      if (now - lastTap < 300 && e.touches.length === 0 && !(e.target as HTMLElement | null)?.closest('input, textarea, select, button, a')) e.preventDefault();
+      lastTap = now;
+    };
+    document.addEventListener('touchend', noDoubleTapZoom, { passive: false });
     window.addEventListener('touchend', end, { passive: true });
     window.addEventListener('touchcancel', end, { passive: true });
     return () => {
       window.removeEventListener('touchstart', start);
       window.removeEventListener('touchmove', move);
+      document.removeEventListener('gesturestart', noGesture);
+      document.removeEventListener('gesturechange', noGesture);
+      document.removeEventListener('touchend', noDoubleTapZoom);
       window.removeEventListener('touchend', end);
       window.removeEventListener('touchcancel', end);
     };
