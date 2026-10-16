@@ -1,7 +1,7 @@
 {
-  "name": "Antrenor",
-  "short_name": "Antrenor",
-  "description": "Pregătirea pentru Ironman 70.3: chestionar, plan, date de bază",
+  "name": "AIRON",
+  "short_name": "AIRON",
+  "description": "Antrenorul AI pentru triatlon: plan, brățări, head coach și specialiști",
   "id": "./",
   "start_url": "./",
   "scope": "./",

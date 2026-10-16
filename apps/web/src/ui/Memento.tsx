@@ -24,7 +24,7 @@ export function Memento({ onClose }: { onClose: () => void }) {
   return (
     <button className={`memento ${out ? 'out' : ''}`} onClick={close} aria-label="Intră în aplicație">
       <div className="inner">
-        <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'Antrenor'}</div>
+        <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'AIRON'}</div>
         <div className="txt">{greeting(me).replace(/^Ziua \d+ din \d+\.\s*/, '')}</div>
         {pct != null && (
           <div className="bar" aria-hidden="true">

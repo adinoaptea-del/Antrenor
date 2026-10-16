@@ -1,6 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0a0a0b"/>
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#2a1311" stroke-width="34"/>
-  <path d="M256 106 a150 150 0 1 1 -142.7 103.6" fill="none" stroke="#dc2a1e" stroke-width="34" stroke-linecap="round"/>
-  <text x="256" y="292" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="108" fill="#ffffff">70.3</text>
+  <rect width="512" height="512" fill="#dc2a1e"/>
+  <g fill="#fff" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- punctul lui „i” = capul -->
+    <circle cx="256" cy="140" r="38" stroke="none"/>
+    <!-- corpul lui „i” -->
+    <rect x="230" y="206" width="52" height="222" rx="26" stroke="none"/>
+    <!-- brațele: „dublu biceps” -->
+    <path d="M240 266 L168 266 L160 184" fill="none" stroke-width="30"/>
+    <path d="M272 266 L344 266 L352 184" fill="none" stroke-width="30"/>
+    <!-- bicepșii -->
+    <ellipse cx="204" cy="250" rx="24" ry="19" stroke="none"/>
+    <ellipse cx="308" cy="250" rx="24" ry="19" stroke="none"/>
+    <!-- pumnii -->
+    <circle cx="159" cy="174" r="22" stroke="none"/>
+    <circle cx="353" cy="174" r="22" stroke="none"/>
+  </g>
 </svg>

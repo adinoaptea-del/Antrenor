@@ -29,8 +29,8 @@ export function Login() {
   return (
     <div className="login">
       <div className="hub-name" style={{ paddingTop: 48 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 52, lineHeight: 1 }}>Antrenor</div>
-        <div className="sub">Ironman 70.3 · pregătire pe date, nu pe impresii</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 52, lineHeight: 1 }} className="brand">AIRON</div>
+        <div className="sub">antrenorul AI pentru triatlon</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>
         <div className="seg" role="tablist">
@@ -67,7 +67,7 @@ export function Unconfigured({ reason }: { reason?: string | null }) {
   return (
     <div className="login">
       <div className="hub-name" style={{ paddingTop: 48 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 44, lineHeight: 1 }}>Antrenor</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 44, lineHeight: 1 }} className="brand">AIRON</div>
         <div className="sub">serverul nu e gata încă</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>
@@ -101,7 +101,7 @@ export function Setup() {
   return (
     <div className="login">
       <div className="hub-name" style={{ paddingTop: 48 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 52, lineHeight: 1 }}>Antrenor</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 52, lineHeight: 1 }} className="brand">AIRON</div>
         <div className="sub">prima pornire</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>
