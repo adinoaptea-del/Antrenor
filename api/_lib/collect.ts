@@ -1,0 +1,221 @@
+// Din baza de date în CollectorInput: tot ce intră în pachet pentru un sportiv, la o dată.
+import { select, one } from './db.js';
+import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
+import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
+import { addDays } from '../../src/util/dates.js';
+import { phaseWeeks } from '../../src/calendar/phases.js';
+
+export interface UserRow {
+  id: string;
+  email: string;
+  name: string;
+  tz: string;
+  goal: '70.3' | 'olimpic' | 'sprint' | 'full' | null;
+  race_name: string | null;
+  race_date: string | null;
+}
+
+export interface WorkoutRow {
+  id: string;
+  plan_id: string;
+  date: string;
+  sport: Sport;
+  type: PlannedWorkout['type'];
+  planned_minutes: number;
+  target_zones: number[];
+  is_key: boolean;
+  step: number | null;
+  structure: string | null;
+  intervals: PlannedWorkout['intervals'] | null;
+  status: PlannedWorkout['status'];
+  note: string | null;
+}
+
+export function toPlanned(r: WorkoutRow): PlannedWorkout {
+  return {
+    id: r.id,
+    date: r.date,
+    sport: r.sport,
+    type: r.type,
+    plannedMinutes: r.planned_minutes,
+    targetZones: r.target_zones as Zone[],
+    key: r.is_key,
+    step: r.step ?? undefined,
+    structure: r.structure ?? undefined,
+    intervals: r.intervals ?? undefined,
+    status: r.status,
+    note: r.note ?? undefined,
+  };
+}
+
+export function toWorkoutRow(w: PlannedWorkout, userId: string, planId: string): Record<string, unknown> {
+  return {
+    id: w.id,
+    plan_id: planId,
+    user_id: userId,
+    date: w.date,
+    sport: w.sport,
+    type: w.type,
+    planned_minutes: w.plannedMinutes,
+    target_zones: w.targetZones,
+    is_key: w.key,
+    step: w.step ?? null,
+    structure: w.structure ?? null,
+    intervals: w.intervals ?? null,
+    status: w.status,
+    note: w.note ?? null,
+  };
+}
+
+interface ActivityRow {
+  id: string;
+  source: SourceActivity['source'];
+  external_id: string;
+  date: string;
+  start_local: string | null;
+  sport: Sport;
+  minutes: number;
+  distance_km: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_pace_min_km: number | null;
+  avg_cadence: number | null;
+  avg_watts: number | null;
+  time_in_zones_min: Record<string, number> | null;
+  name: string | null;
+}
+
+export function toSourceActivity(r: ActivityRow): SourceActivity {
+  return {
+    id: r.id,
+    externalId: r.external_id,
+    source: r.source,
+    date: r.date,
+    startLocal: r.start_local,
+    sport: r.sport,
+    minutes: r.minutes,
+    distanceKm: r.distance_km,
+    avgHr: r.avg_hr,
+    maxHr: r.max_hr,
+    avgPaceMinKm: r.avg_pace_min_km,
+    avgCadence: r.avg_cadence,
+    avgWatts: r.avg_watts,
+    timeInZonesMin: (r.time_in_zones_min as SourceActivity['timeInZonesMin']) ?? null,
+    name: r.name,
+  };
+}
+
+interface WellnessRow {
+  date: string;
+  source: SourceDaily['source'];
+  hrv: number | null;
+  rhr: number | null;
+  sleep_min: number | null;
+  bedtime: string | null;
+  wake_time: string | null;
+  sleep_score: number | null;
+  recovery_score: number | null;
+  respiratory_rate: number | null;
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+}
+
+export function toSourceDaily(r: WellnessRow): SourceDaily {
+  return { date: r.date, source: r.source, hrv: r.hrv, rhr: r.rhr, sleepMin: r.sleep_min, bedtime: r.bedtime, wakeTime: r.wake_time, sleepScore: r.sleep_score, recoveryScore: r.recovery_score, respiratoryRate: r.respiratory_rate, weightKg: r.weight_kg, bodyFatPct: r.body_fat_pct };
+}
+
+export async function loadUser(userId: string): Promise<UserRow> {
+  const u = await one<UserRow>('users', { id: `eq.${userId}` });
+  if (!u) throw new Error('utilizator inexistent');
+  return u;
+}
+
+export async function loadPlan(userId: string, from: string, to: string): Promise<{ planId: string | null; workouts: PlannedWorkout[] }> {
+  const plan = await one<{ id: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'version.desc' });
+  if (!plan) return { planId: null, workouts: [] };
+  const rows = await select<WorkoutRow>('workouts_planned', { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: 'date.asc', limit: 500 });
+  const workouts = rows.map(toPlanned);
+  return { planId: plan.id, workouts };
+}
+
+export async function loadActivities(userId: string, from: string): Promise<SourceActivity[]> {
+  const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 500 });
+  return rows.map(toSourceActivity);
+}
+
+export async function loadWellness(userId: string, from: string): Promise<SourceDaily[]> {
+  const rows = await select<WellnessRow>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 500 });
+  return rows.map(toSourceDaily);
+}
+
+export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; evenings: EveningForm[]; intake: Record<string, unknown> | null }> {
+  const morningRow = await one<{ answers: MorningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `eq.${today}` }, { order: 'created_at.desc' });
+  const eveningRows = await select<{ answers: EveningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -14)}` }, { order: 'created_at.desc', limit: 50 });
+  const intakeRow = await one<{ answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+  return { morning: morningRow?.answers ?? null, evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null };
+}
+
+export async function loadZones(userId: string): Promise<ZonesInput | null> {
+  const z = await one<{ run_hr_zones: number[] | null; run_threshold_pace_sec_km: number | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; hr_max_test: number | null; tested_at: string | null; source: string | null }>('zones', { user_id: `eq.${userId}` });
+  if (!z || z.source === 'provizoriu') return null; // zonele provizorii nu intră în pachet: „estimările ceasului nu intră”
+  const five = (a: number[] | null) => (a && a.length === 5 ? (a as [number, number, number, number, number]) : null);
+  return {
+    alergare: { fc_z1_z5: five(z.run_hr_zones), pace_prag: z.run_threshold_pace_sec_km ? `${Math.floor(z.run_threshold_pace_sec_km / 60)}:${String(z.run_threshold_pace_sec_km % 60).padStart(2, '0')}` : null },
+    bicicleta: { ftp: z.bike_ftp_w, fc_z1_z5: five(z.bike_hr_zones) },
+    inot: { css: z.swim_css_sec_100m },
+    fcmax_test: z.hr_max_test,
+    data_test: z.tested_at,
+  };
+}
+
+export async function loadLabs(userId: string): Promise<LabsInput | null> {
+  const l = await one<{ feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; drawn_at: string }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' });
+  return l ? { feritina: l.feritina, vitamina_d: l.vitamina_d, hemoglobina: l.hemoglobina, ck: l.ck, crp: l.crp, data_analize: l.drawn_at } : null;
+}
+
+export async function loadClearance(userId: string): Promise<{ cardiolog: string; intensitate_permisa: IntensityAllowed }> {
+  const c = await one<{ cardiology: boolean; cleared_at: string | null; intensity_allowed: IntensityAllowed }>('clearances', { user_id: `eq.${userId}` });
+  if (!c) return { cardiolog: 'nu', intensitate_permisa: 'Z2' };
+  return { cardiolog: c.cardiology ? (c.cleared_at ?? 'da') : 'nu', intensitate_permisa: c.intensity_allowed };
+}
+
+export function phaseAt(startDate: string, raceDate: string, today: string): Phase | null {
+  try {
+    const weeks = phaseWeeks(startDate, raceDate);
+    const w = [...weeks].reverse().find((x) => x.weekStart <= today);
+    return w?.phase ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tot ce intră în pachet, pentru evenimentul dat. */
+export async function collect(userId: string, today: string, event: CollectorInput['event']): Promise<{ input: CollectorInput; user: UserRow; planId: string | null }> {
+  const user = await loadUser(userId);
+  const [planRes, activities, wellness, forms, zones, labs, aviz] = await Promise.all([
+    loadPlan(userId, addDays(today, -35), addDays(today, 14)),
+    loadActivities(userId, addDays(today, -70)),
+    loadWellness(userId, addDays(today, -70)),
+    loadForms(userId, today),
+    loadZones(userId),
+    loadLabs(userId),
+    loadClearance(userId),
+  ]);
+  const planRow = planRes.planId ? await one<{ start_date: string; race_date: string }>('plans', { id: `eq.${planRes.planId}` }) : null;
+  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today) ?? 'evaluare') : 'evaluare';
+  const input: CollectorInput = {
+    today,
+    event,
+    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}`, raceDate: user.race_date ?? addDays(today, 365), phase },
+    wellness,
+    activities,
+    plan: planRes.workouts,
+    zones,
+    morning: forms.morning,
+    evenings: forms.evenings,
+    labs,
+    load: null,
+    aviz,
+  };
+  return { input, user, planId: planRes.planId };
+}

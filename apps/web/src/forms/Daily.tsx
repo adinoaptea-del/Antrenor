@@ -3,14 +3,17 @@ import type { PlannedWorkout } from '@core/types.js';
 import { CircleBtn, DAY_NAMES, Icons, LiveTitle, fmtDayMonth, fmtMinutes } from '../ui/common';
 import { weekday } from '@core/util/dates.js';
 import { Chips, Q, Scale, TextBox, Toggle } from './controls';
-import { forms, useForms } from './store';
+import { useData, useMe } from '../data/store';
 import { emptyEvening, emptyMorning, type EveningForm, type MorningForm, type WeeklyForm } from './types';
-import { SPORT_LABEL, TYPE_LABEL } from '../data/demo';
+import { SPORT_LABEL, TYPE_LABEL } from '../data/model';
 
 // Dimineața: 4 note Hooper (1 = foarte bine, 7 = foarte rău) + 4 semnale. Ținta: 20 de secunde.
 export function Morning({ date, onBack, onDone }: { date: string; onBack: () => void; onDone: () => void }) {
-  const saved = useForms().morning[date];
-  const [m, setM] = useState<MorningForm>(saved ?? emptyMorning(date));
+  const me = useMe();
+  const { submitForm } = useData();
+  const saved = me.forms.morning as MorningForm | null;
+  const [m, setM] = useState<MorningForm>(saved && saved.date === date ? saved : emptyMorning(date));
+  const [busy, setBusy] = useState(false);
   const setH = (k: keyof MorningForm['hooper'], v: number) => setM({ ...m, hooper: { ...m.hooper, [k]: v } });
   const setS = (k: keyof MorningForm['semnale'], v: boolean) => setM({ ...m, semnale: { ...m.semnale, [k]: v } });
   const complete = Object.values(m.hooper).every((v) => v != null);
@@ -60,13 +63,15 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
         <div className="small muted">{suma == null ? 'Hooper: –' : `Hooper: ${suma} · ${suma >= 24 ? 'roșu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
         <button
           className="btn"
-          disabled={!complete}
+          disabled={!complete || busy}
           onClick={() => {
-            forms.saveMorning(m);
-            onDone();
+            setBusy(true);
+            submitForm('dimineata', m)
+              .then(() => onDone())
+              .finally(() => setBusy(false));
           }}
         >
-          Gata {Icons.check}
+          {busy ? 'Trimit…' : 'Gata'} {Icons.check}
         </button>
       </div>
     </>
@@ -78,8 +83,11 @@ const PAIN_LOC = ['gambă', 'tibie', 'tendon ahilean', 'genunchi', 'șold', 'spa
 // Seara / după antrenament: 7 câmpuri, toate de atins; comentariul e opțional.
 export function Evening({ workout, activityId, unplanned, onBack, onDone }: { workout: PlannedWorkout | null; activityId: string; unplanned?: { date: string; sport: string; minutes: number; distanceKm?: number | null } | null; onBack: () => void; onDone: () => void }) {
   const date = workout?.date ?? unplanned?.date ?? new Date().toISOString().slice(0, 10);
-  const saved = useForms().evening[activityId];
+  const me = useMe();
+  const { submitForm } = useData();
+  const saved = me.forms.evening[activityId];
   const [e, setE] = useState<EveningForm>(saved ?? emptyEvening(date, activityId));
+  const [busy, setBusy] = useState(false);
   const complete = e.rpe != null && e.fata_de_asteptari != null && e.durere.scor != null && (!unplanned || e.tip_neplanificat != null);
   const title = workout ? `${SPORT_LABEL[workout.sport]}${workout.type === 'forta' ? '' : ` ${TYPE_LABEL[workout.type]}`} · ${fmtMinutes(workout.plannedMinutes)}` : unplanned ? `${unplanned.sport} · ${fmtMinutes(unplanned.minutes)}${unplanned.distanceKm ? ` · ${unplanned.distanceKm.toLocaleString('ro-RO')} km` : ''}` : 'Antrenament';
 
@@ -135,14 +143,15 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
         <div className="small muted">{complete ? 'Intră în pachet diseară' : 'RPE, așteptări și durere sunt necesare'}</div>
         <button
           className="btn"
-          disabled={!complete}
+          disabled={!complete || busy}
           onClick={() => {
-            forms.saveEvening(e);
-            if (unplanned && e.tip_neplanificat) forms.saveUnplanned(activityId, e.tip_neplanificat);
-            onDone();
+            setBusy(true);
+            submitForm('seara', e)
+              .then(() => onDone())
+              .finally(() => setBusy(false));
           }}
         >
-          Trimite {Icons.check}
+          {busy ? 'Trimit…' : 'Trimite'} {Icons.check}
         </button>
       </div>
     </>
@@ -151,8 +160,9 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
 
 // Duminica: trei întrebări pentru review-ul săptămânal.
 export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBack: () => void; onDone: () => void }) {
-  const saved = useForms().weekly[weekStart];
-  const [w, setW] = useState<WeeklyForm>(saved ?? { weekStart, energie: null, aMers: '', aOprit: null });
+  const { submitForm } = useData();
+  const [w, setW] = useState<WeeklyForm>({ weekStart, energie: null, aMers: '', aOprit: null });
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="top">
@@ -181,13 +191,15 @@ export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBac
         <div />
         <button
           className="btn"
-          disabled={w.energie == null || w.aOprit == null}
+          disabled={w.energie == null || w.aOprit == null || busy}
           onClick={() => {
-            forms.saveWeekly(w);
-            onDone();
+            setBusy(true);
+            submitForm('saptamanal', w)
+              .then(() => onDone())
+              .finally(() => setBusy(false));
           }}
         >
-          Gata {Icons.check}
+          {busy ? 'Trimit…' : 'Gata'} {Icons.check}
         </button>
       </div>
     </>

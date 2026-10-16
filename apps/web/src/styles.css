@@ -478,9 +478,9 @@ ul.plain b { color: var(--fg); }
 /* Rândul de formulare de pe Acasă */
 .forms-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin: 0 0 12px; }
 .form-tile { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 16px; padding: 10px 12px; text-align: left; cursor: pointer; display: grid; gap: 4px; min-height: 64px; min-width: 0; }
-.form-tile .k { font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; }
+.form-tile .k { font: 700 9.5px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .form-tile .k .i { width: 14px; height: 14px; color: var(--c-verde); }
-.form-tile .v { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.form-tile .v { font-size: 12px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .form-tile.todo { border-color: var(--accent); }
 .form-tile.todo .v { color: var(--accent-2); }
 
@@ -510,3 +510,8 @@ ul.plain b { color: var(--fg); }
 .memento .bar { width: 120px; height: 4px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
 .memento .bar i { display: block; height: 100%; background: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .memento { transition: none; } }
+
+/* ---------- Intrare / ecrane de stare ---------- */
+.login { max-width: 430px; margin: 0 auto; padding: 8px 0 40px; }
+.login .q h3 { font-size: 18px; }
+.login code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }

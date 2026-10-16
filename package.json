@@ -4,15 +4,23 @@
   "private": true,
   "description": "Nucleul determinist al aplicației Antrenor: scor pe culori, potrivire activități, calendar viu, bara de pregătire.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "demo": "tsx scripts/demo.ts"
+    "test": "tsx scripts/bundle-prompts.ts && tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p api/tsconfig.json",
+    "demo": "tsx scripts/demo.ts",
+    "prompts": "tsx scripts/bundle-prompts.ts",
+    "build": "npm run prompts && npm run build -w apps/web"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
-  }
+  },
+  "workspaces": [
+    "apps/web"
+  ],
+  "dependencies": {}
 }

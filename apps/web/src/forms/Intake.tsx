@@ -2,24 +2,39 @@ import { useState } from 'react';
 import { weeklyBudget } from '@core/calendar/budget.js';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
-import { forms, useForms } from './store';
+import { useData, useMe } from '../data/store';
 import { EMPTY_INTAKE, type IntakeAnswers } from './types';
 
 // Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
 const STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
 
 export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
-  const saved = useForms().intake;
-  const [a, setA] = useState<IntakeAnswers>(saved ?? EMPTY_INTAKE);
+  const me = useMe();
+  const { submitForm } = useData();
+  const saved = me.forms.intake as IntakeAnswers | null;
+  const [a, setA] = useState<IntakeAnswers>(saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa });
   const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const set = (patch: Partial<IntakeAnswers>) => setA((prev) => ({ ...prev, ...patch }));
-  const next = () => {
-    forms.saveIntake(a);
-    if (step < STEPS.length - 1) setStep(step + 1);
-    else onDone();
+  const next = async () => {
+    if (step < STEPS.length - 1) {
+      setStep(step + 1);
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await submitForm('intrare', a);
+      if (r.ok) onDone();
+      else setInfo(r.info ?? 'planul nu a putut fi generat');
+    } catch (e) {
+      setInfo(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
   const back = () => (step === 0 ? onBack() : setStep(step - 1));
-  const budget = weeklyBudget(a.program);
+  const budget = weeklyBudget(a.program).hours;
 
   const canContinue = (() => {
     switch (STEPS[step]) {
@@ -195,12 +210,17 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         )}
       </div>
 
+      {info && (
+        <div className="q" style={{ marginTop: 12 }}>
+          <p className="hint" style={{ color: 'var(--c-rosu)' }}>{info}</p>
+        </div>
+      )}
       <div className="wizard-nav">
         <button className="btn dark" onClick={back}>
           {step === 0 ? 'Renunț' : 'Înapoi'}
         </button>
-        <button className="btn" onClick={next} disabled={!canContinue}>
-          {step === STEPS.length - 1 ? 'Generează planul' : 'Continuă'} {Icons.arrowRight}
+        <button className="btn" onClick={() => void next()} disabled={!canContinue || busy}>
+          {busy ? 'Generez…' : step === STEPS.length - 1 ? 'Generează planul' : 'Continuă'} {Icons.arrowRight}
         </button>
       </div>
     </>

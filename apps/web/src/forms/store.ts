@@ -56,6 +56,7 @@ export function useForms(): FormsState {
 }
 
 export const forms = {
+  read: (): FormsState => state,
   saveIntake: (intake: IntakeAnswers) => update((s) => ({ ...s, intake })),
   saveMorning: (m: MorningForm) => update((s) => ({ ...s, morning: { ...s.morning, [m.date]: m } })),
   saveEvening: (e: EveningForm) => update((s) => ({ ...s, evening: { ...s.evening, [e.activityId ?? e.date]: e } })),

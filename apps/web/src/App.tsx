@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Sport } from '@core/types.js';
 import { Home } from './ui/Home';
 import { Train } from './ui/Train';
 import { Stats } from './ui/Stats';
@@ -6,13 +7,13 @@ import { Calendar } from './ui/Calendar';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
+import { ErrorScreen, Loading, Login, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
 import { Evening, Morning, Weekly } from './forms/Daily';
-import { useForms } from './forms/store';
+import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
-import { TODAY, allWorkouts, thisWeekDates, unplannedActivity } from './data/demo';
-import type { Sport } from '@core/types.js';
+import { SPORT_LABEL, thisWeekDates } from './data/model';
 
 // Trei ecrane principale în bara de jos (Acasă la mijloc); restul se deschid din butoane și se închid cu săgeata.
 type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'intake' | 'dimineata' | 'seara' | 'saptamanal';
@@ -22,10 +23,10 @@ const MAIN: { id: Screen; label: string; icon: keyof typeof Icons }[] = [
   { id: 'recuperare', label: 'Recuperare', icon: 'pulse' },
 ];
 const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'intake', 'dimineata', 'seara', 'saptamanal'];
-const RETURN_AFTER_MS = 30 * 60 * 1000; // mementoul revine dacă aplicația a stat închisă/ascunsă peste 30 min
+const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
-  const h = location.hash.replace('#', '');
+  const h = location.hash.replace('#', '').split('?')[0] ?? '';
   return (ALL.includes(h as Screen) ? h : 'acasa') as Screen;
 }
 
@@ -35,13 +36,21 @@ export interface GoOpts {
 }
 
 export function App() {
+  return (
+    <DataProvider>
+      <Shell />
+    </DataProvider>
+  );
+}
+
+function Shell() {
+  const { status, me, error, refresh, demo, sync } = useData();
   const [screen, setScreen] = useState<Screen>(readScreen);
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>('inot');
   const [eveningFor, setEveningFor] = useState<string | null>(null);
   const [memento, setMemento] = useState(true);
   const hiddenAt = useRef<number | null>(null);
-  const f = useForms();
 
   useEffect(() => {
     const onHash = () => setScreen(readScreen());
@@ -50,15 +59,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    startAutoSync(f.lastSync);
+    if (status !== 'ready') return;
+    const stop = startAutoSync(sync);
     const onVis = () => {
       if (document.visibilityState === 'hidden') hiddenAt.current = Date.now();
       else if (hiddenAt.current && Date.now() - hiddenAt.current > RETURN_AFTER_MS) setMemento(true);
     };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [status, sync]);
+
+  if (status === 'boot' || status === 'loading') return <Loading />;
+  if (status === 'unconfigured') return <Unconfigured />;
+  if (status === 'anon') return <Login />;
+  if (status === 'error' || !me) return <ErrorScreen error={error ?? 'fără date'} retry={() => void refresh()} />;
 
   const go = (s: string, opts?: GoOpts) => {
     const t = (ALL.includes(s as Screen) ? s : 'acasa') as Screen;
@@ -77,36 +94,46 @@ export function App() {
   const isMain = MAIN.some((m) => m.id === screen);
   const isForm = screen === 'intake' || screen === 'dimineata' || screen === 'seara' || screen === 'saptamanal';
 
-  const eveningWorkout = eveningFor && eveningFor !== unplannedActivity.id ? (allWorkouts.find((w) => `demo-${w.id}` === eveningFor) ?? null) : null;
-  const eveningUnplanned = eveningFor === unplannedActivity.id ? { date: unplannedActivity.date, sport: 'Alergare', minutes: unplannedActivity.minutes, distanceKm: unplannedActivity.distanceKm } : null;
+  // Primul pas: fără chestionar de intrare nu există plan. Intri direct în el.
+  const gateIntake = !me.intakeComplete && screen !== 'intake' && screen !== 'profil';
+
+  const act = eveningFor ? me.activities.find((a) => a.id === eveningFor) : null;
+  const eveningWorkout = eveningFor?.startsWith('plan-') ? (me.plan.find((w) => `plan-${w.id}` === eveningFor) ?? null) : act ? (me.plan.find((w) => w.sport === act.sport && (w.date === act.date || w.date === act.date) && !act.unplanned) ?? null) : null;
+  const eveningUnplanned = act?.unplanned ? { date: act.date, sport: SPORT_LABEL[act.sport], minutes: act.minutes, distanceKm: act.distanceKm } : null;
 
   return (
     <div className="app">
-      {memento && <Memento onClose={() => setMemento(false)} />}
-      {screen !== 'acasa' && !isForm && (
+      {memento && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
+      {demo && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
           <i /> date demo
         </div>
       )}
-      {screen === 'acasa' && <Home onOpen={go} />}
-      {screen === 'antrenament' && <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
-      {screen === 'recuperare' && <Stats onOpen={go} />}
-      {screen === 'calendar' && <Calendar onBack={back} onOpen={go} />}
-      {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
-      {screen === 'profil' && <Profile onBack={back} onOpen={go} />}
-      {screen === 'intake' && <Intake onBack={back} onDone={() => go('acasa')} />}
-      {screen === 'dimineata' && <Morning date={TODAY} onBack={back} onDone={() => go('acasa')} />}
-      {screen === 'seara' && eveningFor && <Evening workout={eveningWorkout} activityId={eveningFor} unplanned={eveningUnplanned} onBack={back} onDone={() => go('acasa')} />}
-      {screen === 'saptamanal' && <Weekly weekStart={thisWeekDates()[0]!} onBack={back} onDone={() => go('acasa')} />}
+      {gateIntake ? (
+        <Intake onBack={() => go('profil')} onDone={() => go('acasa')} />
+      ) : (
+        <>
+          {screen === 'acasa' && <Home onOpen={go} />}
+          {screen === 'antrenament' && <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
+          {screen === 'recuperare' && <Stats onOpen={go} />}
+          {screen === 'calendar' && <Calendar onBack={back} onOpen={go} />}
+          {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
+          {screen === 'profil' && <Profile onBack={back} onOpen={go} />}
+          {screen === 'intake' && <Intake onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'dimineata' && <Morning date={me.today} onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'seara' && eveningFor && <Evening workout={eveningWorkout} activityId={eveningFor} unplanned={eveningUnplanned} onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'saptamanal' && <Weekly weekStart={thisWeekDates(me)[0]!} onBack={back} onDone={() => go('acasa')} />}
+        </>
+      )}
 
-      {isMain && (
+      {isMain && !gateIntake && (
         <button className="fab" onClick={() => go('antrenor')} aria-label="Antrenor">
           <span className="circle">{Icons.chat}</span>
           <span className="lbl">Antrenor</span>
         </button>
       )}
 
-      {!isForm && (
+      {!isForm && !gateIntake && (
         <nav className="nav" aria-label="Navigare">
           {MAIN.map((t) => (
             <button key={t.id} className={screen === t.id ? 'on' : ''} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>

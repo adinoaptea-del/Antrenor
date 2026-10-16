@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { bar, dayIndex, greeting, totalDays } from '../data/demo';
+import { useMe } from '../data/store';
+import { dayIndex, greeting } from '../data/model';
 
 // Mementoul de la deschidere: un fapt din datele tale, pe tot ecranul. Atingi → dispare în fade și intri în aplicație.
 export function Memento({ onClose }: { onClose: () => void }) {
+  const me = useMe();
   const [out, setOut] = useState(false);
   const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const close = () => {
@@ -17,14 +19,13 @@ export function Memento({ onClose }: { onClose: () => void }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
-  const pct = bar.total == null ? null : Math.round(bar.total);
+  const d = dayIndex(me);
+  const pct = me.bar?.total == null ? null : Math.round(me.bar.total);
   return (
     <button className={`memento ${out ? 'out' : ''}`} onClick={close} aria-label="Intră în aplicație">
       <div className="inner">
-        <div className="day">
-          Ziua {dayIndex} din {totalDays}
-        </div>
-        <div className="txt">{greeting().replace(/^Ziua \d+ din \d+\.\s*/, '')}</div>
+        <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'Antrenor'}</div>
+        <div className="txt">{greeting(me).replace(/^Ziua \d+ din \d+\.\s*/, '')}</div>
         {pct != null && (
           <div className="bar" aria-hidden="true">
             <i style={{ width: `${pct}%` }} />

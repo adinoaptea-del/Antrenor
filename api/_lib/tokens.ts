@@ -1,0 +1,93 @@
+// Token-urile OAuth ale fiecărui sportiv: citire cu reîmprospătare automată, scriere, state semnat pentru redirect.
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { ENV } from './env.js';
+import { one, remove, select, upsert } from './db.js';
+import { refresh, type OAuthConfig, type TokenSet } from '../../src/collector/providers/oauth.js';
+import { whoopConfig } from '../../src/collector/providers/whoop.js';
+import { stravaConfig } from '../../src/collector/providers/strava.js';
+import { ouraConfig } from '../../src/collector/providers/oura.js';
+
+export type Provider = 'whoop' | 'strava' | 'oura';
+export const PROVIDERS: Provider[] = ['whoop', 'strava', 'oura'];
+
+export function providerConfig(p: Provider): OAuthConfig {
+  const redirect = `${ENV.appUrl()}/api/oauth/${p}/callback`;
+  switch (p) {
+    case 'whoop':
+      return whoopConfig({ WHOOP_CLIENT_ID: process.env.WHOOP_CLIENT_ID!, WHOOP_CLIENT_SECRET: process.env.WHOOP_CLIENT_SECRET!, WHOOP_REDIRECT_URI: redirect });
+    case 'strava':
+      return stravaConfig({ STRAVA_CLIENT_ID: process.env.STRAVA_CLIENT_ID!, STRAVA_CLIENT_SECRET: process.env.STRAVA_CLIENT_SECRET!, STRAVA_REDIRECT_URI: redirect });
+    case 'oura':
+      return ouraConfig({ OURA_CLIENT_ID: process.env.OURA_CLIENT_ID!, OURA_CLIENT_SECRET: process.env.OURA_CLIENT_SECRET!, OURA_REDIRECT_URI: redirect });
+  }
+}
+
+export function providerConfigured(p: Provider): boolean {
+  const k = { whoop: 'WHOOP_CLIENT_ID', strava: 'STRAVA_CLIENT_ID', oura: 'OURA_CLIENT_ID' }[p];
+  return !!process.env[k];
+}
+
+interface TokenRow {
+  user_id: string;
+  provider: Provider;
+  access_token: string;
+  refresh_token: string | null;
+  expires_at: string;
+  scope: string | null;
+  external_user_id: string | null;
+  connected_at: string;
+}
+
+export async function saveTokens(userId: string, provider: Provider, t: TokenSet): Promise<void> {
+  await upsert(
+    'oauth_tokens',
+    {
+      user_id: userId,
+      provider,
+      access_token: t.accessToken,
+      refresh_token: t.refreshToken,
+      expires_at: new Date(t.expiresAt).toISOString(),
+      scope: t.scope ?? null,
+      external_user_id: t.externalUserId ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    'user_id,provider',
+  );
+}
+
+/** Token valid pentru o cerere: reîmprospătat dacă expiră în sub 5 minute. null = neconectat. */
+export async function accessToken(userId: string, provider: Provider): Promise<string | null> {
+  const row = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+  if (!row) return null;
+  const expiresAt = new Date(row.expires_at).getTime();
+  if (expiresAt - Date.now() > 5 * 60_000) return row.access_token;
+  if (!row.refresh_token) return row.access_token;
+  const t = await refresh(providerConfig(provider), row.refresh_token);
+  await saveTokens(userId, provider, { ...t, refreshToken: t.refreshToken ?? row.refresh_token, externalUserId: t.externalUserId ?? row.external_user_id ?? undefined });
+  return t.accessToken;
+}
+
+export async function connectedProviders(userId: string): Promise<TokenRow[]> {
+  return select<TokenRow>('oauth_tokens', { user_id: `eq.${userId}` });
+}
+
+export async function disconnect(userId: string, provider: Provider): Promise<void> {
+  await remove('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+}
+
+/** Un stare semnat pentru OAuth: cine e sportivul și când a pornit; valabil 15 minute. */
+export function signState(userId: string): string {
+  const payload = `${userId}.${Date.now()}`;
+  const sig = createHmac('sha256', ENV.stateSecret()).update(payload).digest('base64url');
+  return Buffer.from(`${payload}.${sig}`).toString('base64url');
+}
+
+export function verifyState(state: string): string {
+  const raw = Buffer.from(state, 'base64url').toString('utf8');
+  const [userId, ts, sig] = raw.split('.');
+  if (!userId || !ts || !sig) throw new Error('state invalid');
+  const expected = createHmac('sha256', ENV.stateSecret()).update(`${userId}.${ts}`).digest('base64url');
+  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error('state falsificat');
+  if (Date.now() - Number(ts) > 15 * 60_000) throw new Error('state expirat');
+  return userId;
+}

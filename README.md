@@ -1,6 +1,16 @@
-# Antrenor — nucleul aplicației (v0.1)
+# Antrenor
 
-Codul determinist din spatele aplicației descrise în documentul „Antrenor v2 — Protocol Ironman 70.3” (tab-urile **Agenți** și **Aplicația**): scorul pe culori, potrivirea activităților, generatorul de calendar, regulile calendarului viu și bara de pregătire. Nimic de aici nu apelează un model; agenții primesc rezultatele acestor funcții în pachetul de date.
+Aplicația de pregătire pentru Ironman 70.3 a lui Cuza și a prietenilor lui: un plan din datele reale (brățări + chestionare), un calendar viu care se rescrie după execuție, o bară de pregătire care nu se umple fără date, și o echipă de agenți (fiziolog, antrenori, nutriționist, fizio, minte) condusă de un head coach care decide și e singurul care scrie sportivului. Fiecare cifră pe care o spune un agent e verificată de cod față de pachetul de date.
+
+**Pornirea de la zero, cu conturi și chei: `docs/pornire.md`. Integrarea brățărilor: `docs/integrari.md`.**
+
+```
+src/            nucleul determinist + colectorul + agenții (TypeScript, 68 de teste)
+api/            serverul: funcții Vercel (Node) — /api/me, formulare, OAuth, webhook-uri, sync, agenți, cron
+apps/web/       aplicația (PWA, Vite + React), în culorile Ironman, Acasă după desenul lui Cuza
+supabase/       schema Postgres + RLS (migrations/0001_init.sql)
+docs/           pornire.md, integrari.md
+```
 
 ## Rulare
 
@@ -8,7 +18,7 @@ Cerințe: Node 20+.
 
 ```bash
 npm install
-npm test        # 61 de teste (node:test prin tsx)
+npm test        # 68 de teste (node:test prin tsx); regenerează și src/prompts/bundle.ts
 npm run demo    # un calendar de două săptămâni, un scor, o adaptare, bara
 npm run typecheck
 ```

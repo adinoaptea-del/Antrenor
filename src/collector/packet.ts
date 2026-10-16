@@ -56,7 +56,11 @@ export interface Packet {
     tip_neplanificat: EveningForm['tip_neplanificat'];
   } | null;
   plan_azi: { sport: Sport; tip: string; durata_planificata: number; zone_tinta: number[]; structura: string | null; cheie: boolean } | null;
+  /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
+  plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
+  /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
+  verdict_fiziolog: 'verde' | 'galben' | 'rosu' | 'stop' | null;
   zone: CollectorInput['zones'];
   corp: { greutate_azi: number | null; greutate_media7: number | null; cantariri_7z: number; grasime_pct: number | null; data_masurare: string | null };
   nutritie_ieri: { kcal: number | null; carbohidrati_g: number | null; proteine_g: number | null; apa_l: number | null } | null;
@@ -248,6 +252,8 @@ export function buildPacket(input: CollectorInput): Packet {
   const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && Math.abs(diffDays(w.date, lastAct.date)) <= 1 && w.status !== 'sters') : false;
 
   const planToday = input.plan.filter((w) => w.date === today && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
+  const tomorrow = addDays(today, 1);
+  const planTomorrow = input.plan.filter((w) => w.date === tomorrow && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
   const monday = addDays(today, -weekday(today));
   const zile: Record<string, string> = {};
   for (let i = 0; i < 7; i++) {
@@ -327,7 +333,9 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_azi: planToday
       ? { sport: planToday.sport, tip: planToday.type === 'z2' ? 'Z2' : planToday.type, durata_planificata: planToday.plannedMinutes, zone_tinta: planToday.targetZones, structura: planToday.structure ?? null, cheie: planToday.key }
       : null,
+    plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
+    verdict_fiziolog: null,
     zone: input.zones,
     corp: {
       greutate_azi: todayRow?.weightKg ?? null,
