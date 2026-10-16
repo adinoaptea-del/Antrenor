@@ -161,6 +161,7 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
 
         {!local && <AppleCard />}
 
+        {!local && <AboutCard />}
         {!local && <CityCard />}
 
         <Card>
@@ -222,6 +223,47 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
 }
 
 /** Orașul pentru prognoză: căldura, vântul și ploaia intră în decizia zilei. */
+function AboutCard() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [sex, setSex] = useState<'m' | 'f' | null>(me.profile.sex);
+  const [year, setYear] = useState<string>(me.profile.birthYear ? String(me.profile.birthYear) : '');
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await submitForm('profil', { sex, anNastere: Number(year) });
+      setMsg('salvat');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <Label>Despre tine</Label>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className={`pill ${sex === 'm' ? 'on' : ''}`} onClick={() => setSex('m')}>
+          Bărbat
+        </button>
+        <button className={`pill ${sex === 'f' ? 'on' : ''}`} onClick={() => setSex('f')}>
+          Femeie
+        </button>
+        <input className="date" style={{ flex: 1, minWidth: 110 }} type="number" inputMode="numeric" placeholder="anul nașterii" value={year} onChange={(e) => setYear(e.target.value)} />
+        <button className="pill on" disabled={busy || !sex || !year} onClick={() => void save()}>
+          {busy ? '…' : 'Salvează'}
+        </button>
+      </div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>
+        {msg ?? 'Contează pentru intervalele analizelor (fier, hemoglobină), nutriție și recuperare.'}
+      </div>
+    </Card>
+  );
+}
+
 function CityCard() {
   const me = useMe();
   const { submitForm } = useData();

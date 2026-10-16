@@ -4,7 +4,7 @@ import { generatePlan } from '../src/calendar/generate.js';
 import { paceFromResult, parseDuration } from '../src/util/run.js';
 import { computeBar } from '../src/bar/bar.js';
 
-const blocks = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, startMin: 6 * 60, endMin: day >= 5 ? 10 * 60 : 8 * 60 }));
+const blocks = ([0, 1, 2, 3, 4, 5, 6] as const).map((day) => ({ day, startMin: 6 * 60, endMin: day >= 5 ? 10 * 60 : 8 * 60 }));
 
 describe('obiective doar de alergare', () => {
   it('ritmul din timp final e calculat exact', () => {

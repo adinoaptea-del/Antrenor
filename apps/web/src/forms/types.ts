@@ -11,6 +11,8 @@ export type { EveningForm, MorningForm };
 
 export interface IntakeAnswers {
   nume: string;
+  sex?: 'm' | 'f' | null;
+  anNastere?: number | null;
   obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };
@@ -79,7 +81,7 @@ export function runResultOk(r: RunResult | null | undefined): boolean {
 export function intakeComplete(i: IntakeAnswers | undefined): boolean {
   if (i && isRunGoal(i.obiectiv)) {
     const a = i.alergare;
-    return i.consimtamant && i.nume.trim().length > 0 && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual)) && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+    return i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual)) && i.program.length > 0 && i.sanatate.avizCardiolog != null;
   }
-  return !!i && i.consimtamant && i.nume.trim().length > 0 && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  return !!i && i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
 }

@@ -150,6 +150,13 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         })}
       </div>
 
+      {me.intakeComplete && (!me.profile.sex || !me.profile.birthYear) && (
+        <button className="labs-alert" onClick={() => onOpen('profil')}>
+          <b>Lipsesc sexul și vârsta</b>
+          <span>Contează pentru analize, nutriție și recuperare. Completează-le în Profil → Despre tine.</span>
+        </button>
+      )}
+
       {me.intakeComplete && (!me.baseline.labs || me.baseline.labs.expirat) && (
         <button className="labs-alert" onClick={() => onOpen('analize')}>
           <b>Planul nu e 100% pe corpul tău</b>

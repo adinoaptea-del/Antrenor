@@ -36,7 +36,10 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const me = useMe();
   const { submitForm } = useData();
   const saved = me.forms.intake as IntakeAnswers | null;
-  const [a, setA] = useState<IntakeAnswers>(saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa });
+  const [a, setA] = useState<IntakeAnswers>(() => {
+    const base = saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa };
+    return { ...base, sex: base.sex ?? me.profile.sex, anNastere: base.anNastere ?? me.profile.birthYear };
+  });
   const [step, setStep] = useState(0);
   const runGoal = isRunGoal(a.obiectiv);
   const STEPS: readonly Step[] = runGoal ? RUN_STEPS : TRI_STEPS;
@@ -67,7 +70,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const canContinue = (() => {
     switch (STEPS[step]) {
       case 'Obiectiv':
-        return a.nume.trim().length > 0 && !!a.dataCursa;
+        return a.nume.trim().length > 0 && !!a.dataCursa && !!a.sex && !!a.anNastere && a.anNastere >= 1930 && a.anNastere <= new Date().getFullYear() - 18;
       case 'Înot':
         return a.inot.nivel != null && a.inot.apeDeschise != null && a.inot.bazin != null;
       case 'Bicicletă':
@@ -113,6 +116,12 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
           <>
             <Q title="Cum te cheamă?" hint="Așa îți spune head coach-ul.">
               <input className="date" type="text" autoComplete="given-name" placeholder="prenumele" value={a.nume} onChange={(e) => set({ nume: e.target.value })} />
+            </Q>
+            <Q title="Sex" hint="Contează pentru intervalele analizelor (fier, hemoglobină), nutriție și recuperare.">
+              <Chips value={a.sex ?? null} options={[{ id: 'm', label: 'Bărbat' }, { id: 'f', label: 'Femeie' }]} onChange={(sex) => set({ sex })} />
+            </Q>
+            <Q title="Anul nașterii">
+              <input className="date" type="number" inputMode="numeric" placeholder="ex. 1988" value={a.anNastere ?? ''} onChange={(e) => set({ anNastere: e.target.value ? Number(e.target.value) : null })} />
             </Q>
             <Q title="Pentru ce te pregătești?" hint="Obiectivul decide fazele, orele și ce înseamnă „gata”.">
               <Chips

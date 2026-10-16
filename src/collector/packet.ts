@@ -19,6 +19,8 @@ export interface Packet {
     /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
     bilant_lunar: boolean;
     surse: Record<string, string | null>;
+    /** Sexul și vârsta (din profil). null = necompletate. */
+    sportiv: { sex: 'barbat' | 'femeie' | null; varsta: number | null };
     /** Când sunt 2+ brățări: valorile fiecăreia azi și dezacordurile mari. null = o singură sursă. */
     dispozitive: { azi: MergedDaily['perDevice']; dezacord: string[] } | null;
   };
@@ -367,6 +369,7 @@ export function buildPacket(input: CollectorInput): Packet {
       data: today,
       zi_saptamana: DAY_NAMES[weekday(today)]!,
       eveniment: input.event,
+      sportiv: { sex: input.athlete.sex === 'm' ? 'barbat' : input.athlete.sex === 'f' ? 'femeie' : null, varsta: input.athlete.varsta ?? null },
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),

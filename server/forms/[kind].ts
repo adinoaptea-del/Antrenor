@@ -152,6 +152,16 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, plan });
       return;
     }
+    if (kind === 'profil' && ('sex' in body || 'anNastere' in body)) {
+      const sex = body.sex === 'm' || body.sex === 'f' ? body.sex : null;
+      const year = Number(body.anNastere);
+      const maxYear = Number(today.slice(0, 4)) - 18;
+      if (!sex) throw new HttpError(400, 'alege sexul');
+      if (!Number.isInteger(year) || year < 1930 || year > maxYear) throw new HttpError(400, `anul nașterii între 1930 și ${maxYear}`);
+      await update('users', { id: `eq.${u.id}` }, { sex, birth_year: year });
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === 'profil') {
       const city = typeof body.oras === 'string' ? body.oras.trim() : '';
       if (!city) {

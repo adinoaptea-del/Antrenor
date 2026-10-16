@@ -30,3 +30,7 @@ alter table public.plans drop constraint if exists plans_goal_check;
 alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));
 -- Marcaj de versiune a schemei (aplicația cere singură actualizarea când lipsește).
 alter table public.users add column if not exists schema_v smallint not null default 3;
+
+-- Sex și anul nașterii: contează pentru intervalele analizelor, nutriție și recuperare.
+alter table public.users add column if not exists sex text check (sex in ('m', 'f'));
+alter table public.users add column if not exists birth_year smallint;
