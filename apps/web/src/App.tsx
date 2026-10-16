@@ -7,6 +7,7 @@ import { Calendar } from './ui/Calendar';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
+import { Countdown } from './ui/Countdown';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
@@ -14,7 +15,7 @@ import { Evening, Morning, Weekly } from './forms/Daily';
 import { Body, Labs, Tests } from './forms/Baseline';
 import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
-import { SPORT_LABEL, thisWeekDates } from './data/model';
+import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
 // Trei ecrane principale în bara de jos (Acasă la mijloc); restul se deschid din butoane și se închid cu săgeata.
 type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
@@ -51,6 +52,7 @@ function Shell() {
   const [trainSport, setTrainSport] = useState<Sport>('inot');
   const [eveningFor, setEveningFor] = useState<string | null>(null);
   const [memento, setMemento] = useState(true);
+  const [countdown, setCountdown] = useState(false);
   const hiddenAt = useRef<number | null>(null);
 
   useEffect(() => {
@@ -99,20 +101,27 @@ function Shell() {
   // Primul pas: fără chestionar de intrare nu există plan. Intri direct în el.
   const gateIntake = !me.intakeComplete && screen !== 'intake' && screen !== 'profil';
 
+  const level = dayLevel(me);
   const act = eveningFor ? me.activities.find((a) => a.id === eveningFor) : null;
   const eveningWorkout = eveningFor?.startsWith('plan-') ? (me.plan.find((w) => `plan-${w.id}` === eveningFor) ?? null) : act ? (me.plan.find((w) => w.sport === act.sport && (w.date === act.date || w.date === act.date) && !act.unplanned) ?? null) : null;
   const eveningUnplanned = act?.unplanned ? { date: act.date, sport: SPORT_LABEL[act.sport], minutes: act.minutes, distanceKm: act.distanceKm } : null;
 
   return (
     <div className="app">
-      {memento && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
+      {countdown && <Countdown onDone={() => setCountdown(false)} />}
+      {memento && !countdown && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
+      {level && <div className={`edge edge-${level}`} aria-hidden="true" />}
       {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
           <i /> previzualizare fără server · datele rămân în telefon
         </div>
       )}
       {gateIntake ? (
-        <Intake onBack={() => go('profil')} onDone={() => go('acasa')} />
+        <Intake onBack={() => go('profil')} onDone={() => {
+          setMemento(false);
+          setCountdown(true);
+          go('acasa');
+        }} />
       ) : (
         <>
           {screen === 'acasa' && <Home onOpen={go} />}
@@ -121,7 +130,18 @@ function Shell() {
           {screen === 'calendar' && <Calendar onBack={back} onOpen={go} />}
           {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
           {screen === 'profil' && <Profile onBack={back} onOpen={go} />}
-          {screen === 'intake' && <Intake onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'intake' && (
+            <Intake
+              onBack={back}
+              onDone={() => {
+                if (!me.intakeComplete) {
+                  setMemento(false);
+                  setCountdown(true);
+                }
+                go('acasa');
+              }}
+            />
+          )}
           {screen === 'dimineata' && <Morning date={me.today} onBack={back} onDone={() => go('acasa')} />}
           {screen === 'seara' && eveningFor && <Evening workout={eveningWorkout} activityId={eveningFor} unplanned={eveningUnplanned} onBack={back} onDone={() => go('acasa')} />}
           {screen === 'saptamanal' && <Weekly weekStart={thisWeekDates(me)[0]!} onBack={back} onDone={() => go('acasa')} />}

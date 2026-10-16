@@ -180,3 +180,19 @@ function fmtDM(iso: string): string {
   const [, m, d] = iso.split('-');
   return `${Number(d)} ${['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'][Number(m) - 1]}`;
 }
+
+export type Level = 'verde' | 'galben' | 'portocaliu' | 'rosu';
+
+/**
+ * Nivelul zilei pentru marginea ecranului, din verdictul de dimineață al echipei:
+ * verde → verde; galben → galben; galben cu încărcare peste 1,3 sau Hooper ≥ 20 → portocaliu; roșu sau stop → roșu.
+ * Fără verdict azi (înainte de 05:30 sau fără date): fără culoare.
+ */
+export function dayLevel(me: Me): Level | null {
+  const r = me.readiness;
+  if (!r) return null;
+  if (r.verdict === 'rosu' || r.verdict === 'stop') return 'rosu';
+  const loaded = (r.acwr != null && r.acwr > 1.3) || (r.hooperSum != null && r.hooperSum >= 20);
+  if (r.verdict === 'galben') return loaded ? 'portocaliu' : 'galben';
+  return loaded ? 'galben' : 'verde';
+}
