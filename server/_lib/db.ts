@@ -1,12 +1,11 @@
 // Acces la Postgres prin PostgREST (Supabase), cu cheia service role: trece peste RLS, deci fiecare interogare
 // filtrează explicit pe user_id. Fără dependențe: doar fetch.
-import { ENV } from './env.js';
+import { ENV, supabaseKeyHeaders } from './env.js';
 
 type Row = Record<string, unknown>;
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
-  const key = ENV.supabaseService();
-  return { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extra };
+  return { ...supabaseKeyHeaders(ENV.supabaseService()), 'content-type': 'application/json', ...extra };
 }
 
 async function call<T>(method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<T> {

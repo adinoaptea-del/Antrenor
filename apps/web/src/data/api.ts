@@ -11,6 +11,37 @@ export const CONFIG = {
 
 export const configured = () => !!CONFIG.supabaseUrl && !!CONFIG.anonKey;
 
+/** Ce spune serverul despre el însuși (GET /api/config): fără secrete. */
+export interface ServerConfig {
+  configured: boolean;
+  reason?: string;
+  supabaseUrl?: string;
+  publishableKey?: string;
+  ready?: boolean;
+  signupOpen?: boolean;
+  firstUser?: boolean;
+  agents?: boolean;
+  providers?: Record<'whoop' | 'strava' | 'oura', boolean>;
+}
+
+export let SERVER: ServerConfig | null = null;
+
+/** Cheile Supabase vin de la server la pornire, nu din build: un singur deploy, fără variabile VITE_. */
+export async function loadServerConfig(): Promise<ServerConfig> {
+  const res = await fetch('/api/config', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`serverul nu răspunde (${res.status})`);
+  const c = (await res.json()) as ServerConfig;
+  SERVER = c;
+  if (c.supabaseUrl && c.publishableKey) {
+    CONFIG.supabaseUrl = c.supabaseUrl;
+    CONFIG.anonKey = c.publishableKey;
+  }
+  return c;
+}
+
+/** Cheia publică merge în `apikey` (atât cheile noi sb_publishable_…, cât și cele vechi JWT). */
+const keyHeaders = (): Record<string, string> => ({ apikey: CONFIG.anonKey });
+
 interface Session {
   access_token: string;
   refresh_token: string;
@@ -63,7 +94,7 @@ export function captureSessionFromUrl(): boolean {
 async function refreshSession(s: Session): Promise<Session | null> {
   const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
     method: 'POST',
-    headers: { apikey: CONFIG.anonKey, 'content-type': 'application/json' },
+    headers: { ...keyHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ refresh_token: s.refresh_token }),
   });
   if (!res.ok) {
@@ -83,19 +114,41 @@ export async function getSession(): Promise<Session | null> {
   return refreshSession(s);
 }
 
-export async function signInWithEmail(email: string): Promise<void> {
-  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/otp`, {
+function saveTokenResponse(j: { access_token: string; refresh_token: string; expires_in: number; user: { id: string; email: string } }): void {
+  writeSession({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Math.floor(Date.now() / 1000) + j.expires_in, user: { id: j.user.id, email: j.user.email } });
+}
+
+export async function signInWithPassword(email: string, password: string): Promise<void> {
+  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=password`, {
     method: 'POST',
-    headers: { apikey: CONFIG.anonKey, 'content-type': 'application/json' },
-    body: JSON.stringify({ email, create_user: true, options: { email_redirect_to: location.origin } }),
+    headers: { ...keyHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
-  if (!res.ok) throw new Error(`nu am putut trimite linkul (${res.status})`);
+  if (res.status === 400) throw new Error('e-mail sau parolă greșită');
+  if (!res.ok) throw new Error(`nu am putut intra (${res.status})`);
+  saveTokenResponse(await res.json());
+}
+
+/** Contul se creează pe serverul nostru (deja confirmat), apoi intrăm cu parola. */
+export async function signUp(email: string, password: string): Promise<void> {
+  const res = await fetch('/api/account/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const j = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(j.error ?? `nu am putut crea contul (${res.status})`);
+  await signInWithPassword(email, password);
+}
+
+export async function runSetup(): Promise<{ ok: boolean; steps: { step: string; ok: boolean; detail?: string }[] }> {
+  const s = await getSession().catch(() => null);
+  const res = await fetch('/api/setup', { method: 'POST', headers: s ? { authorization: `Bearer ${s.access_token}` } : {} });
+  const j = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean; steps?: { step: string; ok: boolean; detail?: string }[] };
+  if (!res.ok) throw new Error(j.error ?? `eroare ${res.status}`);
+  return { ok: !!j.ok, steps: j.steps ?? [] };
 }
 
 export async function signOut(): Promise<void> {
   const s = memorySession;
   writeSession(null);
-  if (s) await fetch(`${CONFIG.supabaseUrl}/auth/v1/logout`, { method: 'POST', headers: { apikey: CONFIG.anonKey, authorization: `Bearer ${s.access_token}` } }).catch(() => undefined);
+  if (s) await fetch(`${CONFIG.supabaseUrl}/auth/v1/logout`, { method: 'POST', headers: { ...keyHeaders(), authorization: `Bearer ${s.access_token}` } }).catch(() => undefined);
 }
 
 export class ApiError extends Error {

@@ -3,6 +3,7 @@ import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common'
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
+import { SERVER } from '../data/api';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -116,6 +117,8 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
                   </div>
                   {c ? (
                     <span className="ok">{Icons.check} conectat</span>
+                  ) : SERVER?.providers && !SERVER.providers[d.provider] ? (
+                    <span className="tiny muted">încă neactivat</span>
                   ) : (
                     <button
                       className="pill on"

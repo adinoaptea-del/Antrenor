@@ -7,7 +7,7 @@ import { Calendar } from './ui/Calendar';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
-import { ErrorScreen, Loading, Login, Unconfigured } from './ui/Login';
+import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
 import { Evening, Morning, Weekly } from './forms/Daily';
@@ -74,7 +74,8 @@ function Shell() {
   }, [status, sync]);
 
   if (status === 'boot' || status === 'loading') return <Loading />;
-  if (status === 'unconfigured') return <Unconfigured />;
+  if (status === 'unconfigured') return <Unconfigured reason={error} />;
+  if (status === 'setup') return <Setup />;
   if (status === 'anon') return <Login />;
   if (status === 'error' || !me) return <ErrorScreen error={error ?? 'fără date'} retry={() => void refresh()} />;
 

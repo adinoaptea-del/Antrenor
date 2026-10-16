@@ -1,10 +1,10 @@
 // Starea aplicației: sesiunea, obiectul `Me` de la server, reîncărcarea după formulare și sincronizare.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Me } from '@core/api-types.js';
-import { CONFIG, captureSessionFromUrl, configured, getSession, server, signOut } from './api';
+import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, server, signOut } from './api';
 import { localServer } from './local';
 
-export type Status = 'boot' | 'unconfigured' | 'anon' | 'loading' | 'ready' | 'error';
+export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
 export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
 
 export interface Data {
@@ -37,9 +37,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setStatus('ready');
       return;
     }
-    if (!configured()) {
-      setStatus('unconfigured');
-      return;
+    if (!SERVER?.ready) {
+      try {
+        const c = await loadServerConfig();
+        if (!c.configured) {
+          setError(c.reason ?? null);
+          setStatus('unconfigured');
+          return;
+        }
+        if (!c.ready) {
+          setStatus('setup');
+          return;
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setStatus('unconfigured');
+        return;
+      }
     }
     const s = await getSession();
     if (!s) {
