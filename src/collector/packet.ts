@@ -19,6 +19,8 @@ export interface Packet {
     /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
     bilant_lunar: boolean;
     surse: Record<string, string | null>;
+    /** Când sunt 2+ brățări: valorile fiecăreia azi și dezacordurile mari. null = o singură sursă. */
+    dispozitive: { azi: MergedDaily['perDevice']; dezacord: string[] } | null;
   };
   somn: { durata: string | null; durata_min: number | null; ora_culcare: string | null; scor: number | null; media7_durata: string | null; media7_durata_min: number | null };
   hrv: { azi: number | null; media7: number | null; baseline60: number | null; sd60: number | null; zile_sub_prag: number };
@@ -81,7 +83,7 @@ export interface Packet {
 
 // ---------- arbitraj între surse ----------
 
-/** O zi, cu valorile din toate sursele combinate: somn = media, HRV/puls = Whoop > Oura > Garmin (cu offset pentru Garmin). */
+/** O zi, cu valorile din toate sursele combinate: somn, HRV și puls = media brățărilor (aduse la aceeași scală); scorurile producătorilor = cea mai bună sursă. */
 export interface MergedDaily {
   date: string;
   hrv: number | null;
@@ -93,6 +95,10 @@ export interface MergedDaily {
   weightKg: number | null;
   bodyFatPct: number | null;
   sources: Record<string, string | null>;
+  /** Valorile brute ale fiecărei brățări, doar în zilele cu 2+ surse. */
+  perDevice: Record<string, { hrv: number | null; puls_repaus: number | null; somn_min: number | null; recuperare: number | null }>;
+  /** Dezacorduri mari între brățări în ziua respectivă. */
+  disagreements: string[];
 }
 
 // Apple dă HRV ca SDNN (alt calcul decât rMSSD-ul Whoop/Oura/Garmin): ultima opțiune pentru HRV.
@@ -115,41 +121,109 @@ function round(x: number | null, d = 1): number | null {
 
 /** Offsetul HRV Garmin → Whoop pe zilele în care există amândouă (medie a diferențelor). */
 export function garminHrvOffset(rows: SourceDaily[]): number | null {
-  const byDate = new Map<string, { whoop?: number; garmin?: number }>();
+  return sourceOffsets(rows, 'hrv').get('garmin') ?? null;
+}
+
+type Metric = 'hrv' | 'rhr';
+// Pentru HRV, Apple dă SDNN (alt calcul): nu intră în medie decât dacă e singura sursă.
+const HRV_EXCLUDED = new Set(['apple', 'manual', 'strava']);
+const RHR_EXCLUDED = new Set(['manual', 'strava']);
+const MIN_OVERLAP = 7;
+
+/** Sursa de referință = cea mai bună sursă care are date pe metrica respectivă. */
+function referenceSource(rows: SourceDaily[], metric: Metric): string | null {
+  const excluded = metric === 'hrv' ? HRV_EXCLUDED : RHR_EXCLUDED;
+  const srcs = [...new Set(rows.filter((r) => r[metric] != null && !excluded.has(r.source)).map((r) => r.source))];
+  srcs.sort((a, b) => (PRIORITY[a] ?? 5) - (PRIORITY[b] ?? 5));
+  return srcs[0] ?? null;
+}
+
+/**
+ * Fiecare brățară măsoară puțin altfel (ex. Garmin dă HRV sistematic mai mare decât Whoop).
+ * Offsetul unei surse = media diferențelor față de referință pe zilele comune (minim 7 zile).
+ */
+export function sourceOffsets(rows: SourceDaily[], metric: Metric): Map<string, number> {
+  const ref = referenceSource(rows, metric);
+  const out = new Map<string, number>();
+  if (!ref) return out;
+  out.set(ref, 0);
+  const refByDate = new Map(rows.filter((r) => r.source === ref && r[metric] != null).map((r) => [r.date, r[metric]!]));
+  const diffs = new Map<string, number[]>();
   for (const r of rows) {
-    if (r.hrv == null) continue;
-    const e = byDate.get(r.date) ?? {};
-    if (r.source === 'whoop') e.whoop = r.hrv;
-    if (r.source === 'garmin') e.garmin = r.hrv;
-    byDate.set(r.date, e);
+    if (r.source === ref || r[metric] == null) continue;
+    const rv = refByDate.get(r.date);
+    if (rv == null) continue;
+    diffs.set(r.source, [...(diffs.get(r.source) ?? []), rv - r[metric]!]);
   }
-  const diffs = [...byDate.values()].filter((e) => e.whoop != null && e.garmin != null).map((e) => e.whoop! - e.garmin!);
-  return diffs.length >= 7 ? mean(diffs) : null;
+  for (const [src, d] of diffs) if (d.length >= MIN_OVERLAP) out.set(src, mean(d)!);
+  return out;
+}
+
+/**
+ * Media între brățări pentru o metrică, pe o zi. Valorile sunt aduse la scala referinței (offset) înainte de medie,
+ * ca să nu sară cifra în zilele în care o brățară lipsește. O sursă fără offset calibrat intră doar dacă referința lipsește.
+ */
+function averaged(list: SourceDaily[], metric: Metric, offsets: Map<string, number>): { v: number | null; src: string | null } {
+  const excluded = metric === 'hrv' ? HRV_EXCLUDED : RHR_EXCLUDED;
+  const withVal = list.filter((r) => r[metric] != null);
+  const usable = withVal.filter((r) => !excluded.has(r.source));
+  if (usable.length === 0) {
+    // Doar Apple / manual: ultima variantă, nemediată.
+    const r = [...withVal].sort((a, b) => (PRIORITY[a.source] ?? 5) - (PRIORITY[b.source] ?? 5))[0];
+    return r ? { v: r[metric]!, src: r.source } : { v: null, src: null };
+  }
+  const calibrated = usable.filter((r) => offsets.has(r.source));
+  const chosen = calibrated.length > 0 ? calibrated : [usable.sort((a, b) => (PRIORITY[a.source] ?? 5) - (PRIORITY[b.source] ?? 5))[0]!];
+  const vals = chosen.map((r) => r[metric]! + (offsets.get(r.source) ?? 0));
+  return { v: mean(vals), src: chosen.map((r) => r.source).join('+') };
+}
+
+/** Dezacord mare între brățări în aceeași zi (valori brute): îl vede fiziologul, nu îl ascunde media. */
+function disagreements(list: SourceDaily[], offsets: { hrv: Map<string, number>; rhr: Map<string, number> }): string[] {
+  const out: string[] = [];
+  const spread = (xs: number[]) => (xs.length < 2 ? 0 : Math.max(...xs) - Math.min(...xs));
+  const fmt = (k: 'hrv' | 'rhr' | 'sleepMin') => list.filter((r) => r[k] != null).map((r) => `${r.source} ${Math.round(r[k]!)}`).join(', ');
+  const hrv = list.filter((r) => r.hrv != null && !HRV_EXCLUDED.has(r.source)).map((r) => r.hrv! + (offsets.hrv.get(r.source) ?? 0));
+  const m = mean(hrv);
+  if (m != null && hrv.length >= 2 && spread(hrv) / m > 0.2) out.push(`HRV diferă cu peste 20% între brățări (${fmt('hrv')})`);
+  const rhr = list.filter((r) => r.rhr != null && !RHR_EXCLUDED.has(r.source)).map((r) => r.rhr! + (offsets.rhr.get(r.source) ?? 0));
+  if (spread(rhr) > 5) out.push(`pulsul de repaus diferă cu peste 5 bpm (${fmt('rhr')})`);
+  const sl = list.filter((r) => r.sleepMin != null).map((r) => r.sleepMin!);
+  if (spread(sl) > 60) out.push(`somnul diferă cu peste o oră (${fmt('sleepMin')} min)`);
+  return out;
 }
 
 export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
-  const offset = garminHrvOffset(rows);
+  // O singură valoare pe sursă și zi (dacă un furnizor a trimis aceeași zi de două ori, ultima câștigă).
+  const unique = new Map<string, SourceDaily>();
+  for (const r of rows) unique.set(`${r.date}|${r.source}`, { ...unique.get(`${r.date}|${r.source}`), ...Object.fromEntries(Object.entries(r).filter(([, v]) => v != null)) } as SourceDaily);
+  const clean = [...unique.values()];
+  const offsets = { hrv: sourceOffsets(clean, 'hrv'), rhr: sourceOffsets(clean, 'rhr') };
   const byDate = new Map<string, SourceDaily[]>();
-  for (const r of rows) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
+  for (const r of clean) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
   const out: MergedDaily[] = [];
   for (const [date, list] of byDate) {
     const sorted = [...list].sort((a, b) => (PRIORITY[a.source] ?? 5) - (PRIORITY[b.source] ?? 5));
-    const pick = <K extends keyof SourceDaily>(k: K, transform?: (r: SourceDaily) => number | null) => {
+    const pick = <K extends keyof SourceDaily>(k: K) => {
       for (const r of sorted) {
-        const v = transform ? transform(r) : (r[k] as number | null | undefined);
+        const v = r[k] as number | null | undefined;
         if (v != null) return { v, src: r.source };
       }
       return { v: null, src: null };
     };
-    const hrv = pick('hrv', (r) => (r.hrv == null ? null : r.source === 'garmin' && offset != null ? r.hrv + offset : r.hrv));
-    const rhr = pick('rhr');
+    const hrv = averaged(sorted, 'hrv', offsets.hrv);
+    const rhr = averaged(sorted, 'rhr', offsets.rhr);
     const sleeps = sorted.filter((r) => r.sleepMin != null).map((r) => r.sleepMin!);
     const sleepSources = sorted.filter((r) => r.sleepMin != null).map((r) => r.source);
     const bedtime = sorted.find((r) => r.bedtime)?.bedtime ?? null;
+    // Scorurile de somn/recuperare sunt scale proprii fiecărui producător: nu se mediază, se ia cea mai bună sursă.
     const sleepScore = pick('sleepScore');
     const recovery = pick('recoveryScore');
     const weight = pick('weightKg');
     const fat = pick('bodyFatPct');
+    const perDevice: MergedDaily['perDevice'] = {};
+    if (sorted.length > 1)
+      for (const r of sorted) perDevice[r.source] = { hrv: r.hrv ?? null, puls_repaus: r.rhr ?? null, somn_min: r.sleepMin ?? null, recuperare: r.recoveryScore ?? null };
     out.push({
       date,
       hrv: round(hrv.v, 1),
@@ -161,6 +235,8 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       weightKg: weight.v,
       bodyFatPct: fat.v,
       sources: { hrv: hrv.src, puls_repaus: rhr.src, somn: sleepSources.length ? sleepSources.join('+') : null, recuperare: recovery.src },
+      perDevice,
+      disagreements: sorted.length > 1 ? disagreements(sorted, offsets) : [],
     });
   }
   // Cea mai nouă zi prima.
@@ -296,6 +372,7 @@ export function buildPacket(input: CollectorInput): Packet {
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
       bilant_lunar: input.event === 'saptamanal' && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
       surse: { ...(todayRow?.sources ?? { hrv: null, puls_repaus: null, somn: null, recuperare: null }), activitati: [...new Set(acts.map((a) => a.source))].join('+') || null, incarcare: input.load?.source ?? null },
+      dispozitive: todayRow && Object.keys(todayRow.perDevice).length > 1 ? { azi: todayRow.perDevice, dezacord: todayRow.disagreements } : null,
     },
     somn: {
       durata: minutesToHm(todayRow?.sleepMin ?? null),

@@ -102,6 +102,57 @@ describe('colector · pachet', () => {
     assert.equal(m.hrv, 28);
     assert.equal(m.sources.somn, 'whoop+garmin');
   });
+
+  it('media între brățări: după 7 zile comune Garmin e adus la scala Whoop și intră în medie', () => {
+    const rows: SourceDaily[] = [];
+    for (let i = 1; i <= 8; i++) {
+      const d = addDays('2026-10-08', i);
+      rows.push({ date: d, source: 'whoop', hrv: 30 + i, rhr: 60, sleepMin: 420 });
+      rows.push({ date: d, source: 'garmin', hrv: 40 + i, rhr: 56, sleepMin: 430 });
+    }
+    // Ultima zi: Garmin arată mai prost decât de obicei.
+    rows.push({ date: '2026-10-17', source: 'whoop', hrv: 40, rhr: 60, sleepMin: 400 });
+    rows.push({ date: '2026-10-17', source: 'garmin', hrv: 44, rhr: 58, sleepMin: 400 });
+    const m = mergeWellness(rows)[0]!;
+    assert.equal(m.date, '2026-10-17');
+    // Offset Garmin ≈ -9,3 (9 zile comune); 44 - 9,3 = 34,7; media cu Whoop 40 = 37,3.
+    assert.equal(m.hrv, 37.3);
+    // Puls: Garmin 58 + 4 = 62; media cu 60 = 61.
+    assert.equal(m.rhr, 61);
+    assert.equal(m.sources.hrv, 'whoop+garmin');
+    assert.equal(m.perDevice.garmin?.hrv, 44);
+  });
+
+  it('o zi fără Whoop nu sare: Garmin singur e adus la scala Whoop', () => {
+    const rows: SourceDaily[] = [];
+    for (let i = 1; i <= 8; i++) {
+      const d = addDays('2026-10-08', i);
+      rows.push({ date: d, source: 'whoop', hrv: 30, rhr: 60 });
+      rows.push({ date: d, source: 'garmin', hrv: 40, rhr: 60 });
+    }
+    rows.push({ date: '2026-10-17', source: 'garmin', hrv: 41, rhr: 60 });
+    assert.equal(mergeWellness(rows)[0]!.hrv, 31);
+  });
+
+  it('dezacordul mare între brățări e semnalat, nu ascuns în medie', () => {
+    const rows: SourceDaily[] = [
+      { date: '2026-10-16', source: 'whoop', hrv: 30, rhr: 55, sleepMin: 300 },
+      { date: '2026-10-16', source: 'oura', hrv: 50, rhr: 63, sleepMin: 420 },
+    ];
+    const m = mergeWellness(rows)[0]!;
+    assert.equal(m.disagreements.length, 3);
+  });
+
+  it('aceeași zi trimisă de două ori de aceeași brățară nu se dublează', () => {
+    const rows: SourceDaily[] = [
+      { date: '2026-10-16', source: 'whoop', hrv: 30, sleepMin: 400 },
+      { date: '2026-10-16', source: 'whoop', hrv: 32, sleepMin: 400 },
+      { date: '2026-10-16', source: 'garmin', sleepMin: 420 },
+    ];
+    const m = mergeWellness(rows)[0]!;
+    assert.equal(m.hrv, 32);
+    assert.equal(m.sleepMin, 410);
+  });
 });
 
 function addDays(iso: string, n: number): string {
