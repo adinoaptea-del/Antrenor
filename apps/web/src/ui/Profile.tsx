@@ -3,7 +3,7 @@ import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common'
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
-import { SERVER, hardReload } from '../data/api';
+import { SERVER, hardReload, server } from '../data/api';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -194,6 +194,7 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
           <div className="tiny muted" style={{ marginTop: 6 }}>
             Din ferestrele libere de minimum 45 de minute, × 0,8. Se schimbă din chestionar.
           </div>
+          {!local && me.intakeComplete && <RegenPlan />}
         </Card>
 
         <Card tight>
@@ -505,5 +506,33 @@ function AdminKeys() {
         ))}
       </div>
     </Card>
+  );
+}
+
+/** Reface planul din chestionar: ședințele viitoare se regenerează (ex. forța pe programul Push / Pull / Legs); istoricul rămâne. */
+function RegenPlan() {
+  const { refresh } = useData();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await server.regeneratePlan();
+      setMsg(r.ok ? 'Planul a fost refăcut.' : r.reason ?? 'Nu s-a putut reface planul.');
+      await refresh();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button className="pill" disabled={busy} onClick={() => void run()}>
+        {busy ? 'Refac planul…' : 'Refă planul'}
+      </button>
+      <div className="tiny muted" style={{ marginTop: 6 }}>{msg ?? 'Regenerează ședințele viitoare cu regulile de acum; ce ai făcut deja rămâne.'}</div>
+    </div>
   );
 }
