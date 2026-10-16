@@ -1,6 +1,6 @@
 import type { Sport } from '@core/types.js';
 import { weekday } from '@core/util/dates.js';
-import { BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
+import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
 import { DAY_NAMES, DAY_SHORT, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, unplannedActivities, workoutsOn } from '../data/model';
@@ -38,7 +38,10 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   return (
     <>
       <div className="topline">
-        <span className="small muted">{local ? 'previzualizare fără server' : (me.user.raceName ?? 'fără cursă setată')}</span>
+        <button className="profile-btn" onClick={() => onOpen('profil')} aria-label="Profil">
+          <Avatar name={me.user.name || 'S'} />
+          <span>Profil</span>
+        </button>
         <SyncButton />
       </div>
       <div className="hub-name">

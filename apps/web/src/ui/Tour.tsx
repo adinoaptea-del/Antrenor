@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 export const TOUR_KEY = 'airon.ghid.v1';
 
 const STEPS: { sel: string | null; title: string; text: string }[] = [
-  { sel: '.hub-name', title: 'Profilul tău', text: 'Atingi numele: brățări, analize, oraș, aviz, chestionare și setări.' },
+  { sel: '.profile-btn', title: 'Profilul tău', text: 'Brățări, analize, oraș, aviz, chestionare și setări. Tot aici, ca admin, activezi brățările pentru toată lumea.' },
   { sel: '.progress', title: 'Bara de pregătire', text: 'Cât de pregătit ești pentru cursă, din 5 componente reale. Ce nu se poate măsura rămâne „fără date”, nu se estimează.' },
   { sel: '.sync', title: 'Citește datele', text: 'Apeși după un antrenament ca aplicația să-l vadă imediat. Altfel citește singură la 15 minute.' },
   { sel: '.forms-row', title: 'Formularele', text: 'Dimineața (20 de secunde), după antrenament și duminica. Cu cât răspunzi, cu atât antrenorii știu mai bine.' },

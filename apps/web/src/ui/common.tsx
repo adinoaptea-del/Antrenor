@@ -66,6 +66,12 @@ export function CircleBtn({ icon, label, onClick }: { icon: ReactNode; label: st
 }
 
 export function Avatar({ name, onClick }: { name: string; onClick?: () => void }) {
+  if (!onClick)
+    return (
+      <span className="avatar" aria-hidden="true">
+        <span>{name.slice(0, 1)}</span>
+      </span>
+    );
   return (
     <button className="avatar" onClick={onClick} aria-label="Profil" title="Profil">
       <span>{name.slice(0, 1)}</span>

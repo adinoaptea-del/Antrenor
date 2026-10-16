@@ -576,3 +576,7 @@ ul.plain b { color: var(--fg); }
 .tour .tip p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .tour .tip .row { justify-content: space-between; }
 .tour .tip .count { font-size: 11px; color: var(--muted); }
+
+/* butonul de profil, sus pe Acasă */
+.profile-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 14px 4px 4px; color: var(--fg); font: 700 13px var(--font-ui); cursor: pointer; }
+.profile-btn .avatar { width: 32px; height: 32px; font-size: 14px; }
