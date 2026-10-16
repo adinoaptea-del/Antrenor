@@ -585,3 +585,12 @@ ul.plain b { color: var(--fg); }
 .keys-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 12px; }
 .keys-box > * { min-width: 0; }
 .keys-box input { width: 100%; box-sizing: border-box; }
+
+/* explicația barei de pregătire */
+.bar-info { display: grid; gap: 8px; margin-top: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.bar-info .bi-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+.bar-info .bi-k { font-weight: 700; font-size: 13px; }
+.bar-info .bi-k small { color: var(--muted); font-weight: 600; margin-left: 4px; }
+.bar-info .bi-v { font-weight: 700; font-size: 13px; text-align: right; }
+.bar-info .bi-v.none { color: var(--muted); font-weight: 600; }
+.bar-info .bi-d { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }

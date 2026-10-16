@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { weekday } from '@core/util/dates.js';
 import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
@@ -16,10 +17,19 @@ const SPORTS: { id: Sport; art: JSX.Element }[] = [
   { id: 'alergare', art: <RunArt /> },
 ];
 
+const BAR_PARTS = [
+  { name: 'inot', label: 'Înot', weight: 0.2, how: 'cea mai lungă distanță înotată în 6 săptămâni, față de 1.900 m (și ritmul, după test)' },
+  { name: 'bicicleta', label: 'Bicicletă', weight: 0.25, how: 'cea mai lungă tură în 6 săptămâni, față de 90 km' },
+  { name: 'alergare', label: 'Alergare', weight: 0.25, how: 'cea mai lungă alergare în 6 săptămâni, față de 18 km (plus alergarea după bicicletă)' },
+  { name: 'consistenta', label: 'Consecvență', weight: 0.15, how: 'câte ședințe din plan ai făcut în ultimele 4 săptămâni' },
+  { name: 'forma', label: 'Formă', weight: 0.15, how: 'încărcarea de antrenament acumulată față de ce cere faza în care ești' },
+] as const;
+
 export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
   const me = useMe();
   const { local } = useData();
   const bar = me.bar;
+  const [barInfo, setBarInfo] = useState(false);
   const total = !bar || bar.blocked || bar.total == null ? null : Math.round(bar.total);
   const known = bar?.components.filter((c) => c.value != null).length ?? 0;
   const morning = me.forms.morning as MorningForm | null;
@@ -64,10 +74,27 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           <span>
             <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> pregătit pentru {me.user.goal ?? 'cursă'}
           </span>
-          <button className="pill" onClick={() => onOpen('recuperare')} style={{ height: 28 }}>
-            {bar ? `${known} din ${bar.components.length} componente` : 'cum se calculează'} {Icons.chevronRight}
+          <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
+            {bar ? `măsurat ${known}/${bar.components.length}` : 'cum se calculează'} {Icons.chevronRight}
           </button>
         </div>
+        {barInfo && (
+          <div className="bar-info">
+            {BAR_PARTS.map((p) => {
+              const c = bar?.components.find((x) => x.name === p.name);
+              return (
+                <div key={p.name} className="bi-row">
+                  <span className="bi-k">
+                    {p.label} <small>{Math.round(p.weight * 100)}%</small>
+                  </span>
+                  <span className={`bi-v ${c?.value == null ? 'none' : ''}`}>{c?.value == null ? 'fără date' : `${Math.round(c.value)}%`}</span>
+                  <span className="bi-d">{c?.value == null ? p.how : c.detail}</span>
+                </div>
+              );
+            })}
+            <div className="tiny muted">Bara se calculează doar din ce s-a măsurat. Fără date de la brățări în ultimele 6 săptămâni, rămâne goală; nu ghicește.</div>
+          </div>
+        )}
       </div>
 
       <p className="daymsg">{greeting(me)}</p>
