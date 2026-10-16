@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p server/tsconfig.json",
     "demo": "tsx scripts/demo.ts",
     "prompts": "tsx scripts/bundle-prompts.ts",
-    "build": "npm run prompts && npm run build -w apps/web && node scripts/build-vercel.mjs"
+    "build": "npm run build -w apps/web",
+    "bundle-api": "npm run prompts && node scripts/bundle-api.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
