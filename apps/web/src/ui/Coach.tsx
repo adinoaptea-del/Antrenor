@@ -76,7 +76,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
         {me.messages.map((m) => (
           <Card key={m.id}>
             <Label lime icon={Icons.sparkle}>
-              {KIND_LABEL[m.kind]} · {fmtDayMonth(m.createdAt.slice(0, 10))} {m.createdAt.slice(11, 16)}
+              {KIND_LABEL[m.kind]} · {localStamp(m.createdAt)}
               {m.decision ? ` · ${{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[m.decision]}` : ''}
             </Label>
             <div className="msg">
@@ -96,4 +96,12 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
       </div>
     </>
   );
+}
+
+/** Ora mesajului în fusul telefonului (serverul o salvează în UTC). */
+function localStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
+  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${fmtDayMonth(local)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
