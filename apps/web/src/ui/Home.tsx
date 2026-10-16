@@ -4,7 +4,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, unplannedActivities, workoutsOn } from '../data/model';
+import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -37,12 +37,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && (a.date === lastDone.date || a.date > lastDone.date) && !a.unplanned) : null;
   const lastDoneId = lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null);
   const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
-  const hooperSum = morningComplete(morning ?? undefined) ? Object.values(morning!.hooper).reduce((x, y) => (x ?? 0) + (y ?? 0), 0) : null;
   const isSunday = weekday(me.today) === 6;
   const strength = nextWorkout(me, 'forta');
   const todayCount = workoutsOn(me, me.today).length;
-  const unplanned = unplannedActivities(me);
-  const pendingUnplanned = unplanned.filter((a) => !a.tipNeplanificat);
   const yesterday = addDays(me.today, -1);
   const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}, ${fmtDayMonth(d)}`);
   const days = daysToRace(me);
@@ -108,22 +105,16 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             <span className="v">3 minute</span>
           </button>
         )}
-        {pendingUnplanned.map((a) => (
-          <button key={a.id} className="form-tile todo" onClick={() => onOpen('seara', { activityId: a.id })}>
-            <span className="k">Neplanificat · ce a fost?</span>
-            <span className="v">
-              {SPORT_LABEL[a.sport]} · {dayLabel(a.date)}
-            </span>
+        {!morningComplete(morning ?? undefined) && (
+          <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
+            <span className="k">Dimineața</span>
+            <span className="v">Cum te simți azi? · 20 de secunde</span>
           </button>
-        ))}
-        <button className={`form-tile ${morningComplete(morning ?? undefined) ? '' : 'todo'}`} onClick={() => onOpen('dimineata')}>
-          <span className="k">Dimineața {morningComplete(morning ?? undefined) && Icons.check}</span>
-          <span className="v">{morningComplete(morning ?? undefined) ? `Hooper ${hooperSum}${(hooperSum ?? 0) >= 24 ? ' · roșu' : (hooperSum ?? 0) >= 20 ? ' · galben' : ''}` : 'Cum te simți azi? · 20 de secunde'}</span>
-        </button>
-        {lastDone && lastDoneId && (
-          <button className={`form-tile ${eveningComplete(evening) ? '' : 'todo'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
-            <span className="k">Cum a fost {eveningComplete(evening) && Icons.check}</span>
-            <span className="v">{eveningComplete(evening) ? `RPE ${evening!.rpe}` : `${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
+        )}
+        {lastDone && lastDoneId && !eveningComplete(evening) && (
+          <button className="form-tile todo" onClick={() => onOpen('seara', { activityId: lastDoneId })}>
+            <span className="k">Cum a fost</span>
+            <span className="v">{`${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
           </button>
         )}
         {isSunday && !me.forms.weeklyDone && (
@@ -200,18 +191,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </button>
       </div>
 
-      {unplanned
-        .filter((a) => a.tipNeplanificat)
-        .map((a) => (
-          <Card key={a.id} className="blue" tight style={{ marginTop: 12 }}>
-            <div className="title">În afara planului: {a.name ?? SPORT_LABEL[a.sport]}</div>
-            <div className="small" style={{ marginTop: 4 }}>
-              {DAY_NAMES[weekday(a.date)]}, {fmtDayMonth(a.date)} · {fmtMinutes(a.minutes)}
-              {a.distanceKm ? ` · ${a.distanceKm.toLocaleString('ro-RO')} km` : ''}
-              {a.avgHr ? ` · FC medie ${a.avgHr}` : ''}. Ai spus: <b>{a.tipNeplanificat === 'cursa' ? 'cursă' : a.tipNeplanificat === 'antrenament' ? 'antrenament liber' : 'altceva'}</b>. Planul ține cont de ea; schimbările apar în Calendar și în jurnal.
-            </div>
-          </Card>
-        ))}
 
       {me.warnings.map((w) => (
         <Card key={w.title} className="warn" tight style={{ marginTop: 12 }}>
