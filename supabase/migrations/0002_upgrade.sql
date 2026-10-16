@@ -9,3 +9,13 @@ create unique index if not exists users_apple_token_idx on public.users (apple_t
 alter table public.wellness_daily drop constraint if exists wellness_daily_source_check;
 alter table public.wellness_daily add constraint wellness_daily_source_check
   check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));
+
+-- Setările aplicației introduse de admin din aplicație (cheile aplicațiilor WHOOP / Strava / Oura).
+-- Fără nicio politică RLS: le citește doar serverul (service role).
+create table if not exists public.app_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon, authenticated;

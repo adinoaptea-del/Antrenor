@@ -94,6 +94,8 @@ export interface Me {
   baseline: MeBaseline;
   /** Oraș (pentru vreme) și Apple Watch prin Health Auto Export. */
   profile: { city: string | null; appleConnected: boolean; appleLastSync: string | null };
+  /** Doar pentru admin (primul cont): ce producători au cheile puse și adresele de copiat la ei. */
+  admin: { providers: Record<'whoop' | 'strava' | 'oura', boolean>; appUrl: string } | null;
   /** Totaluri de la începutul pregătirii (data planului). null fără plan. */
   totals: { since: string; bySport: Record<Sport, SportTotal> } | null;
   user: MeUser;

@@ -35,6 +35,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
 /** Actualizarea (0002) e idempotentă și nu atinge date: o poate declanșa oricine când lipsește. */
 async function hasUpgrade(): Promise<boolean> {
-  const r = await fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
-  return r.ok;
+  const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
+  const [r, t] = await Promise.all([fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, h), fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h)]);
+  return r.ok && t.ok;
 }

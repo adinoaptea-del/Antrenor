@@ -3,6 +3,7 @@ import { q, type Req, type Res } from '../_lib/http.js';
 import { insert, one, remove, update, upsert } from '../_lib/db.js';
 import { geocode } from '../_lib/weather.js';
 import { readLabs } from '../_lib/labs-extract.js';
+import { saveSettings } from '../_lib/settings.js';
 import { newAppleToken } from '../webhooks/apple.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
@@ -108,6 +109,19 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!file) throw new HttpError(400, 'lipsește fișierul');
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
       json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
+      return;
+    }
+    if (kind === 'admin-chei') {
+      // Doar adminul (primul cont): cheile aplicațiilor de la producători, ca să nu fie nevoie de Vercel.
+      const me = await one<{ role: string }>('users', { id: `eq.${u.id}` });
+      if (me?.role !== 'admin') throw new HttpError(403, 'doar adminul poate pune cheile');
+      const p = String(body.provider ?? '').toUpperCase();
+      if (!['WHOOP', 'STRAVA', 'OURA'].includes(p)) throw new HttpError(400, 'producător necunoscut');
+      const id = String(body.clientId ?? '').trim();
+      const secret = String(body.clientSecret ?? '').trim();
+      if (!id || !secret) throw new HttpError(400, 'lipsește Client ID sau Client Secret');
+      await saveSettings({ [`${p}_CLIENT_ID`]: id, [`${p}_CLIENT_SECRET`]: secret } as never);
+      json(res, 200, { ok: true });
       return;
     }
     if (kind === 'aviz') {

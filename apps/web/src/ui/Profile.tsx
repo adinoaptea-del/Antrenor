@@ -144,6 +144,8 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
           </div>
         </Card>
 
+        {!local && me.admin && <AdminKeys />}
+
         {!local && <AppleCard />}
 
         {!local && <CityCard />}
@@ -289,6 +291,120 @@ function AppleCard() {
           {err}
         </div>
       )}
+    </Card>
+  );
+}
+
+const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: string; steps: (u: string) => { label: string; value: string }[] }[] = [
+  {
+    id: 'whoop',
+    name: 'WHOOP',
+    site: 'https://developer-dashboard.whoop.com',
+    steps: (u) => [
+      { label: 'Redirect URI', value: `${u}/api/oauth/whoop/callback` },
+      { label: 'Privacy Policy', value: `${u}/confidentialitate.html` },
+      { label: 'Webhook URL (dacă cere)', value: `${u}/api/webhooks/whoop` },
+    ],
+  },
+  {
+    id: 'strava',
+    name: 'Strava (pentru Garmin și Apple Watch)',
+    site: 'https://www.strava.com/settings/api',
+    steps: (u) => [
+      { label: 'Website', value: u },
+      { label: 'Authorization Callback Domain', value: u.replace(/^https?:\/\//, '') },
+    ],
+  },
+  {
+    id: 'oura',
+    name: 'Oura',
+    site: 'https://cloud.ouraring.com/oauth/applications',
+    steps: (u) => [
+      { label: 'Redirect URI', value: `${u}/api/oauth/oura/callback` },
+      { label: 'Website', value: u },
+      { label: 'Privacy Policy / Terms', value: `${u}/confidentialitate.html` },
+    ],
+  },
+];
+
+function CopyLine({ label, value }: { label: string; value: string }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <div className="tiny muted">{label}</div>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <div className="tiny" style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', userSelect: 'all' }}>
+          {value}
+        </div>
+        <button
+          className="pill"
+          onClick={() => {
+            navigator.clipboard.writeText(value).then(
+              () => setOk(true),
+              () => setOk(false),
+            );
+          }}
+        >
+          {ok ? 'Copiat' : 'Copiază'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Doar adminul: cheile aplicațiilor de la producători, puse din telefon (fără Vercel). */
+function AdminKeys() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [open, setOpen] = useState<string | null>(null);
+  const [vals, setVals] = useState<Record<string, { id: string; secret: string }>>({});
+  const [msg, setMsg] = useState<Record<string, string>>({});
+  const a = me.admin!;
+  const save = async (p: 'whoop' | 'strava' | 'oura') => {
+    const v = vals[p] ?? { id: '', secret: '' };
+    setMsg({ ...msg, [p]: 'Salvez…' });
+    try {
+      await submitForm('admin-chei', { provider: p, clientId: v.id, clientSecret: v.secret });
+      setMsg({ ...msg, [p]: 'Salvat. Acum apasă „Conectează” la brățara asta, mai sus.' });
+      setVals({ ...vals, [p]: { id: '', secret: '' } });
+    } catch (e) {
+      setMsg({ ...msg, [p]: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  return (
+    <Card>
+      <Label icon={Icons.watch}>Activează brățările (doar tu, o singură dată)</Label>
+      <div className="tiny muted" style={{ marginBottom: 10 }}>
+        La fiecare producător faci o aplicație, copiezi acolo adresele de mai jos, apoi lipești aici Client ID și Client Secret. După asta, tu și prietenii vă conectați cu „Conectează”.
+      </div>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {PROVIDER_SETUP.map((p) => (
+          <div key={p.id} className="base-row" style={{ cursor: 'default', display: 'grid', gap: 10 }}>
+            <button className="row between" style={{ background: 'none', border: 0, color: 'inherit', padding: 0, font: 'inherit', cursor: 'pointer', width: '100%' }} onClick={() => setOpen(open === p.id ? null : p.id)}>
+              <span style={{ fontWeight: 700 }}>{p.name}</span>
+              {a.providers[p.id] ? <span className="ok">{Icons.check} activ</span> : <span className="tiny muted">{open === p.id ? 'închide' : 'configurează'}</span>}
+            </button>
+            {open === p.id && (
+              <>
+                <a className="tiny" href={p.site} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-2)' }}>
+                  1. Deschide {p.site.replace('https://', '')} și fă o aplicație nouă
+                </a>
+                <div className="tiny muted">2. Copiază în formularul lor:</div>
+                {p.steps(a.appUrl).map((s) => (
+                  <CopyLine key={s.label} label={s.label} value={s.value} />
+                ))}
+                <div className="tiny muted">3. Lipește aici ce îți dau ei:</div>
+                <input className="date" placeholder="Client ID" autoComplete="off" value={vals[p.id]?.id ?? ''} onChange={(e) => setVals({ ...vals, [p.id]: { id: e.target.value, secret: vals[p.id]?.secret ?? '' } })} />
+                <input className="date" type="password" placeholder="Client Secret" autoComplete="off" value={vals[p.id]?.secret ?? ''} onChange={(e) => setVals({ ...vals, [p.id]: { id: vals[p.id]?.id ?? '', secret: e.target.value } })} />
+                <button className="btn" disabled={!vals[p.id]?.id || !vals[p.id]?.secret} onClick={() => void save(p.id)}>
+                  Salvează cheile {p.name.split(' ')[0]}
+                </button>
+                {msg[p.id] && <div className="tiny">{msg[p.id]}</div>}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

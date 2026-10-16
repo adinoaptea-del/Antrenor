@@ -1,6 +1,7 @@
 // O singură funcție Vercel pentru tot /api (planul gratuit permite maximum 12 funcții).
 // vercel.json rescrie /api/<cale> → /api/router?__p=<cale>; aici alegem handler-ul și punem parametrii în req.query.
 import { fail, HttpError } from './_lib/auth.js';
+import { hydrateSettings } from './_lib/settings.js';
 import type { Req, Res } from './_lib/http.js';
 import account_signup from './account/signup.js';
 import agents_run from './agents/run.js';
@@ -56,6 +57,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     fail(res, new HttpError(404, `nu există /api/${path}`));
     return;
   }
+  await hydrateSettings();
   const { __p: _drop, ...rest } = req.query;
   req.query = { ...rest, ...r.params };
   await r.handler(req, res);

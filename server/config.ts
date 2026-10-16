@@ -27,8 +27,9 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       users = Number(r.headers.get('content-range')?.split('/')[1] ?? 0) || 0;
       if (ready) {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
-        const c = await fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token&limit=1`, { headers: supabaseKeyHeaders(ENV.supabaseService()) });
-        upgrade = !c.ok;
+        const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
+        const [c, t] = await Promise.all([fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token&limit=1`, h), fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h)]);
+        upgrade = !c.ok || !t.ok;
       }
     } catch {
       ready = false;

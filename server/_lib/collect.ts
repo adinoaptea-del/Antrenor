@@ -21,6 +21,7 @@ export interface UserRow {
   lat?: number | null;
   lon?: number | null;
   apple_token?: string | null;
+  role?: string;
 }
 
 export interface WorkoutRow {

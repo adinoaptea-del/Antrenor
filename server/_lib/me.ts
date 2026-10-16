@@ -1,5 +1,6 @@
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select } from './db.js';
+import { ENV } from './env.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
@@ -116,6 +117,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 
   return {
     baseline,
+    admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
     profile: { city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
     totals,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
