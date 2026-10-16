@@ -52,3 +52,13 @@ describe('pregătit pentru proba de cursă', () => {
     assert.equal(isBrickRun(acts[1]!, acts), false);
   });
 });
+
+import { overallReady } from '../src/bar/sport-readiness.js';
+describe('bara de pe Acasă', () => {
+  it('media probelor; o probă fără ședințe trage în jos cu 0', () => {
+    assert.equal(overallReady([{ sport: 'inot', leg: '', value: null, parts: [] }, { sport: 'bicicleta', leg: '', value: 40, parts: [] }, { sport: 'alergare', leg: '', value: 80, parts: [] }]), 40);
+  });
+  it('nicio ședință: 0%, nu „fără date”', () => {
+    assert.equal(overallReady([{ sport: 'alergare', leg: '', value: null, parts: [] }]), 0);
+  });
+});

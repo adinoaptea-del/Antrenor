@@ -740,3 +740,7 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .rp-v b { color: var(--fg); }
 .rp-bar { margin-top: 5px; height: 5px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
 .rp-bar i { display: block; height: 100%; background: var(--muted); border-radius: 4px; opacity: 0.8; }
+
+.ready-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; text-align: center; text-wrap: balance; }
+.ready-title b { font-weight: 800; color: var(--fg); }
+.bar-info .bi-btn { background: none; border: 0; padding: 0; text-align: left; color: var(--fg); font-family: var(--font-ui); cursor: pointer; }

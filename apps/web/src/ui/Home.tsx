@@ -1,3 +1,5 @@
+import { GOAL_NAME, overallReady } from '@core/bar/sport-readiness.js';
+import type { Goal } from '@core/calendar/phases.js';
 import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
@@ -51,6 +53,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const yesterday = addDays(me.today, -1);
   const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}, ${fmtDayMonth(d)}`);
   const days = daysToRace(me);
+  const overall = me.sportReady ? overallReady(me.sportReady) : null;
+  const goalName = me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă';
 
   return (
     <>
@@ -65,41 +69,75 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         <div className="sub">{me.user.raceDate ? `${fmtDayMonth(me.user.raceDate)} ${me.user.raceDate.slice(0, 4)}` : 'completează chestionarul ca să pornească planul'}</div>
       </div>
 
-      <div className="progress" role="img" aria-label={total == null ? 'Bara de pregătire: fără date' : `Pregătit ${total}% pentru cursă`}>
-        <div className="track">
-          {total == null ? <div className="fill empty" /> : <div className="fill" style={{ width: `${Math.max(3, total)}%` }} />}
-          <div className="ticks" aria-hidden="true">
-            {(bar?.components ?? [1, 1, 1, 1, 1].map((_, i) => ({ name: String(i), weight: 0.2 }))).map((c) => (
-              <i key={c.name} style={{ flexGrow: c.weight * 100 }} />
-            ))}
+      {me.sportReady && me.sportReady.length > 0 ? (
+        <div className="progress" role="img" aria-label={`Ești pregătit pentru ${goalName}: ${overall}%`}>
+          <div className="ready-title">
+            Ești pregătit pentru {goalName}: <b>{overall}%</b>
           </div>
-        </div>
-        <div className="meta">
-          <span>
-            <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> pregătit pentru {me.user.goal ?? 'cursă'}
-          </span>
-          <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
-            {bar && bar.components.length ? `măsurat ${known}/${bar.components.length}` : 'detalii'} {Icons.chevronRight}
-          </button>
-        </div>
-        {barInfo && (
-          <div className="bar-info">
-            {(isRunGoal(me.user.goal) ? RUN_BAR_PARTS(me.user.goal) : BAR_PARTS).map((p) => {
-              const c = bar?.components.find((x) => x.name === p.name);
-              return (
-                <div key={p.name} className="bi-row">
-                  <span className="bi-k">
-                    {p.label} <small>{Math.round(p.weight * 100)}%</small>
-                  </span>
-                  <span className={`bi-v ${c?.value == null ? 'none' : ''}`}>{c?.value == null ? 'fără date' : `${Math.round(c.value)}%`}</span>
-                  <span className="bi-d">{c?.value == null ? p.how : c.detail}</span>
-                </div>
-              );
-            })}
-            <div className="tiny muted">Bara se calculează doar din ce s-a măsurat. Fără date de la brățări în ultimele 6 săptămâni, rămâne goală; nu ghicește.</div>
+          <div className="track">
+            <div className={`fill ${overall ? '' : 'empty'}`} style={overall ? { width: `${Math.max(3, overall ?? 0)}%` } : undefined} />
+            <div className="ticks" aria-hidden="true">
+              {me.sportReady.map((r) => (
+                <i key={r.sport} style={{ flexGrow: 1 }} />
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+          <div className="meta">
+            <span className="tiny muted">{me.sportReady.map((r) => `${SPORT_LABEL[r.sport]} ${r.value ?? 0}%`).join('  ·  ')}</span>
+            <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
+              detalii {Icons.chevronRight}
+            </button>
+          </div>
+          {barInfo && (
+            <div className="bar-info">
+              {me.sportReady.map((r) => (
+                <button key={r.sport} className="bi-row bi-btn" onClick={() => onOpen('antrenament', { sport: r.sport })}>
+                  <span className="bi-k">{SPORT_LABEL[r.sport]}</span>
+                  <span className={`bi-v ${r.value == null ? 'none' : ''}`}>{r.value == null ? '0%' : `${r.value}%`}</span>
+                  <span className="bi-d">{r.value == null ? `nicio ședință cu distanță în 6 săptămâni; proba: ${r.leg}` : r.parts.map((p) => `${p.label.toLowerCase()}: ${p.have} din ${p.target}`).join('; ')}</span>
+                </button>
+              ))}
+              <div className="tiny muted">Media probelor, din tot ce au înregistrat brățările în ultimele 6 săptămâni. O probă fără nicio ședință contează 0. Apasă pe un sport pentru detalii.</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="progress" role="img" aria-label={total == null ? 'Bara de pregătire: fără date' : `Pregătit ${total}% pentru cursă`}>
+          <div className="track">
+            {total == null ? <div className="fill empty" /> : <div className="fill" style={{ width: `${Math.max(3, total)}%` }} />}
+            <div className="ticks" aria-hidden="true">
+              {(bar?.components ?? [1, 1, 1, 1, 1].map((_, i) => ({ name: String(i), weight: 0.2 }))).map((c) => (
+                <i key={c.name} style={{ flexGrow: c.weight * 100 }} />
+              ))}
+            </div>
+          </div>
+          <div className="meta">
+            <span>
+              <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> pregătit pentru {me.user.goal ?? 'cursă'}
+            </span>
+            <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
+              {bar && bar.components.length ? `măsurat ${known}/${bar.components.length}` : 'detalii'} {Icons.chevronRight}
+            </button>
+          </div>
+          {barInfo && (
+            <div className="bar-info">
+              {(isRunGoal(me.user.goal) ? RUN_BAR_PARTS(me.user.goal) : BAR_PARTS).map((p) => {
+                const c = bar?.components.find((x) => x.name === p.name);
+                return (
+                  <div key={p.name} className="bi-row">
+                    <span className="bi-k">
+                      {p.label} <small>{Math.round(p.weight * 100)}%</small>
+                    </span>
+                    <span className={`bi-v ${c?.value == null ? 'none' : ''}`}>{c?.value == null ? 'fără date' : `${Math.round(c.value)}%`}</span>
+                    <span className="bi-d">{c?.value == null ? p.how : c.detail}</span>
+                  </div>
+                );
+              })}
+              <div className="tiny muted">Bara se calculează doar din ce s-a măsurat. Fără date de la brățări în ultimele 6 săptămâni, rămâne goală; nu ghicește.</div>
+            </div>
+          )}
+        </div>
+      )}
 
       <p className="daymsg">{greeting(me)}</p>
 

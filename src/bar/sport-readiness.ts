@@ -117,3 +117,11 @@ function fmtPace(sec: number): string {
   const s = Math.round(sec);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** Pregătirea pentru toată cursa: media probelor, cu pondere egală. O probă fără nicio ședință contează 0 (nedemonstrată). */
+export function overallReady(rs: SportReady[]): number | null {
+  if (!rs.length || rs.every((r) => r.value == null)) return rs.length ? 0 : null;
+  return Math.round(rs.reduce((s, r) => s + (r.value ?? 0), 0) / rs.length);
+}
+
+export const GOAL_NAME: Record<Goal, string> = { '70.3': 'Ironman 70.3', olimpic: 'triatlon olimpic', sprint: 'triatlon sprint', semimaraton: 'semimaraton', maraton: 'maraton' };
