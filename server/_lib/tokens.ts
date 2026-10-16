@@ -75,19 +75,19 @@ export async function disconnect(userId: string, provider: Provider): Promise<vo
   await remove('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
 }
 
-/** Un stare semnat pentru OAuth: cine e sportivul și când a pornit; valabil 15 minute. */
+/** Un state semnat pentru OAuth: cine e sportivul și când a pornit; valabil 15 minute. Scurt și doar cu caractere sigure în URL. */
 export function signState(userId: string): string {
-  const payload = `${userId}.${Date.now()}`;
-  const sig = createHmac('sha256', ENV.stateSecret()).update(payload).digest('base64url');
-  return Buffer.from(`${payload}.${sig}`).toString('base64url');
+  const payload = `${userId.replace(/-/g, '')}.${Date.now().toString(36)}`;
+  const sig = createHmac('sha256', ENV.stateSecret()).update(payload).digest('base64url').slice(0, 22);
+  return `${payload}.${sig}`;
 }
 
 export function verifyState(state: string): string {
-  const raw = Buffer.from(state, 'base64url').toString('utf8');
-  const [userId, ts, sig] = raw.split('.');
-  if (!userId || !ts || !sig) throw new Error('state invalid');
-  const expected = createHmac('sha256', ENV.stateSecret()).update(`${userId}.${ts}`).digest('base64url');
-  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error('state falsificat');
-  if (Date.now() - Number(ts) > 15 * 60_000) throw new Error('state expirat');
-  return userId;
+  if (!state) throw new Error('conectarea nu a primit înapoi codul de siguranță (state); apasă din nou Conectează');
+  const [id, ts, sig] = state.split('.');
+  if (!id || !ts || !sig || id.length !== 32) throw new Error('codul de siguranță (state) primit înapoi e modificat; apasă din nou Conectează');
+  const expected = createHmac('sha256', ENV.stateSecret()).update(`${id}.${ts}`).digest('base64url').slice(0, 22);
+  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error('codul de siguranță (state) nu se potrivește; apasă din nou Conectează');
+  if (Date.now() - parseInt(ts, 36) > 15 * 60_000) throw new Error('au trecut peste 15 minute de la Conectează; apasă din nou');
+  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }

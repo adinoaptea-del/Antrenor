@@ -594,3 +594,4 @@ ul.plain b { color: var(--fg); }
 .bar-info .bi-v { font-weight: 700; font-size: 13px; text-align: right; }
 .bar-info .bi-v.none { color: var(--muted); font-weight: 600; }
 .bar-info .bi-d { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
+.ok-alert { background: rgba(48, 209, 88, 0.12); border-color: rgba(48, 209, 88, 0.55); }

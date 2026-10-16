@@ -1,5 +1,5 @@
 import { ENV } from '../../_lib/env.js';
-import { fail, HttpError } from '../../_lib/auth.js';
+import { HttpError } from '../../_lib/auth.js';
 import { q, redirect, type Req, type Res } from '../../_lib/http.js';
 import { providerConfig, PROVIDERS, saveTokens, verifyState, type Provider } from '../../_lib/tokens.js';
 import { exchangeCode } from '../../../src/collector/providers/oauth.js';
@@ -20,6 +20,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     await syncUser(userId, 35).catch(() => undefined); // prima citire: ultimele 5 săptămâni, pentru medii și ACWR
     redirect(res, `${ENV.appUrl()}/#profil?conectat=${provider}`);
   } catch (e) {
-    fail(res, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('oauth callback', q(req, 'provider'), msg, 'parametri primiți:', Object.keys(req.query).join(','), 'url:', (req.url ?? '').split('?')[0]);
+    redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(msg)}`);
   }
 }

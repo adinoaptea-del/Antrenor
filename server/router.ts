@@ -60,7 +60,16 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     return;
   }
   await hydrateSettings();
+  // Parametrii originali pot ajunge doar în req.url după rescriere: îi luăm și de acolo.
+  const fromUrl: Record<string, string> = {};
+  try {
+    new URL(req.url ?? '/', 'http://x').searchParams.forEach((v, k) => {
+      if (k !== '__p') fromUrl[k] = v;
+    });
+  } catch {
+    /* url neparsabil */
+  }
   const { __p: _drop, ...rest } = req.query;
-  req.query = { ...rest, ...r.params };
+  req.query = { ...fromUrl, ...rest, ...r.params };
   await r.handler(req, res);
 }

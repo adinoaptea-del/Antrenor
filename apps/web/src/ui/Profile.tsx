@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
@@ -22,6 +22,16 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
   const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
   const morning = me.forms.morning as MorningForm | null;
   const connected = (p: string) => me.devices.find((d) => d.provider === p);
+  // Revenirea de la producător: #profil?conectat=whoop sau #profil?eroare=...
+  const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(() => {
+    const qs = new URLSearchParams(location.hash.split('?')[1] ?? '');
+    if (qs.get('conectat')) return { ok: true, text: `${qs.get('conectat')} conectat. Primele date apar după o citire (câteva secunde).` };
+    if (qs.get('eroare')) return { ok: false, text: `Conectarea n-a mers: ${qs.get('eroare')}` };
+    return null;
+  });
+  useEffect(() => {
+    if (oauthMsg) history.replaceState(null, '', '#profil');
+  }, [oauthMsg]);
 
   return (
     <>
@@ -40,6 +50,12 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
       </header>
 
       <div className="stack">
+        {oauthMsg && (
+          <button type="button" className={oauthMsg.ok ? 'labs-alert ok-alert' : 'labs-alert'} onClick={() => setOauthMsg(null)}>
+            <b>{oauthMsg.text}</b>
+            <span>Atinge ca să închizi.</span>
+          </button>
+        )}
         <Card tight>
           <div className="row" style={{ gap: 12 }}>
             <span className="avatar" style={{ width: 56, height: 56, fontSize: 20 }} aria-hidden="true">

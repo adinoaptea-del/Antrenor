@@ -1847,18 +1847,18 @@ async function connectedProviders(userId) {
   return select("oauth_tokens", { user_id: `eq.${userId}` });
 }
 function signState(userId) {
-  const payload = `${userId}.${Date.now()}`;
-  const sig = createHmac2("sha256", ENV.stateSecret()).update(payload).digest("base64url");
-  return Buffer.from(`${payload}.${sig}`).toString("base64url");
+  const payload = `${userId.replace(/-/g, "")}.${Date.now().toString(36)}`;
+  const sig = createHmac2("sha256", ENV.stateSecret()).update(payload).digest("base64url").slice(0, 22);
+  return `${payload}.${sig}`;
 }
 function verifyState(state) {
-  const raw = Buffer.from(state, "base64url").toString("utf8");
-  const [userId, ts, sig] = raw.split(".");
-  if (!userId || !ts || !sig) throw new Error("state invalid");
-  const expected = createHmac2("sha256", ENV.stateSecret()).update(`${userId}.${ts}`).digest("base64url");
-  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error("state falsificat");
-  if (Date.now() - Number(ts) > 15 * 6e4) throw new Error("state expirat");
-  return userId;
+  if (!state) throw new Error("conectarea nu a primit \xEEnapoi codul de siguran\u021B\u0103 (state); apas\u0103 din nou Conecteaz\u0103");
+  const [id, ts, sig] = state.split(".");
+  if (!id || !ts || !sig || id.length !== 32) throw new Error("codul de siguran\u021B\u0103 (state) primit \xEEnapoi e modificat; apas\u0103 din nou Conecteaz\u0103");
+  const expected = createHmac2("sha256", ENV.stateSecret()).update(`${id}.${ts}`).digest("base64url").slice(0, 22);
+  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error("codul de siguran\u021B\u0103 (state) nu se potrive\u0219te; apas\u0103 din nou Conecteaz\u0103");
+  if (Date.now() - parseInt(ts, 36) > 15 * 6e4) throw new Error("au trecut peste 15 minute de la Conecteaz\u0103; apas\u0103 din nou");
+  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }
 
 // server/config.ts
@@ -3254,7 +3254,9 @@ async function handler10(req, res) {
     await syncUser(userId, 35).catch(() => void 0);
     redirect(res, `${ENV.appUrl()}/#profil?conectat=${provider}`);
   } catch (e) {
-    fail(res, e);
+    const msg2 = e instanceof Error ? e.message : String(e);
+    console.error("oauth callback", q(req, "provider"), msg2, "parametri primi\u021Bi:", Object.keys(req.query).join(","), "url:", (req.url ?? "").split("?")[0]);
+    redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(msg2)}`);
   }
 }
 
@@ -3771,8 +3773,15 @@ async function handler18(req, res) {
     return;
   }
   await hydrateSettings();
+  const fromUrl = {};
+  try {
+    new URL(req.url ?? "/", "http://x").searchParams.forEach((v, k) => {
+      if (k !== "__p") fromUrl[k] = v;
+    });
+  } catch {
+  }
   const { __p: _drop, ...rest } = req.query;
-  req.query = { ...rest, ...r2.params };
+  req.query = { ...fromUrl, ...rest, ...r2.params };
   await r2.handler(req, res);
 }
 export {
