@@ -1,6 +1,6 @@
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
-import { insert, remove, update, upsert } from '../_lib/db.js';
+import { insert, one, remove, update, upsert } from '../_lib/db.js';
 import { geocode } from '../_lib/weather.js';
 import { readLabs } from '../_lib/labs-extract.js';
 import { newAppleToken } from '../webhooks/apple.js';
@@ -108,6 +108,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!file) throw new HttpError(400, 'lipsește fișierul');
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
       json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
+      return;
+    }
+    if (kind === 'aviz') {
+      // O bifă: ai aviz cardiologic sau nu. Schimbă intensitatea permisă și chestionarul de intrare.
+      const da = body.aviz === 'da';
+      await upsert('clearances', { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: da ? 'toate' : 'Z2' }, 'user_id');
+      const intake = await one<{ id: string; answers: { sanatate?: Record<string, unknown> } }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      let plan = null;
+      if (intake) {
+        const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: da ? 'da' : 'nu' } };
+        await update('questionnaires', { id: `eq.${intake.id}` }, { answers });
+        // Intensitatea permisă schimbă planul: îl refacem de la lunea următoare, păstrând restul răspunsurilor.
+        plan = await generateAndStore(u.id, today, answers as unknown as IntakeLike);
+      }
+      json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === 'profil') {

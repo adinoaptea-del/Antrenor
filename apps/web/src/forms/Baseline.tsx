@@ -215,7 +215,6 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
     { k: 'analize', title: 'Analize de sânge', done: !!b.labs, value: b.labs ? `din ${b.labs.data.split('-').reverse().join('.')}` : 'lipsesc', unlock: 'suplimentele și fierul vin doar din ele', screen: 'analize' },
     { k: 'teste', title: 'Test de efort / zone', done: !!b.tests, value: b.tests ? `${b.tests.tip.toUpperCase()}, ${b.tests.data.split('-').reverse().join('.')}` : 'lipsesc', unlock: 'fără ele planul rămâne pe Z1–Z2 și pe testul vorbirii', screen: 'teste' },
     { k: 'corp', title: 'Greutate și grăsime', done: !!b.body, value: b.body ? `${b.body.greutate?.toLocaleString('ro-RO')} kg${b.body.grasime_pct != null ? ` · ${b.body.grasime_pct}%` : ''}` : 'lipsesc', unlock: 'gramele de carbohidrați și proteine se calculează pe kg', screen: 'corp' },
-    { k: 'aviz', title: 'Aviz cardiologic', done: b.cardiolog === 'da', value: b.cardiolog === 'da' ? 'da' : b.cardiolog === 'programat' ? 'programat' : 'lipsește', unlock: 'fără el nu există intensitate peste Z2, oricât de bine ai sta', screen: 'intake' },
   ];
   return (
     <div className="baseline">
@@ -230,7 +229,35 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
           </span>
         </button>
       ))}
+      <AvizRow />
     </div>
+  );
+}
+
+/** Avizul cardiologic: o bifă. Ai aviz sau nu ai; fără el, planul rămâne la Z1–Z2. */
+function AvizRow() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [busy, setBusy] = useState(false);
+  const has = me.baseline.cardiolog === 'da';
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await submitForm('aviz', { aviz: has ? 'nu' : 'da' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button className={`base-row ${has ? 'done' : ''}`} role="switch" aria-checked={has} disabled={busy} onClick={() => void toggle()}>
+      <span className="ic">{has ? Icons.check : null}</span>
+      <span className="tx">
+        <span className="t">
+          Aviz cardiologic <small>· {has ? 'am aviz' : 'nu am aviz'}</small>
+        </span>
+        <span className="s">{has ? 'intensitatea peste Z2 e permisă, după zonele testate' : 'atinge dacă ai avizul; fără el planul rămâne la Z1–Z2'}</span>
+      </span>
+    </button>
   );
 }
 

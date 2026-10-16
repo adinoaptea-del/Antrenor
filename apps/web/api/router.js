@@ -2921,6 +2921,19 @@ async function handler8(req, res) {
       json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
       return;
     }
+    if (kind === "aviz") {
+      const da = body.aviz === "da";
+      await upsert("clearances", { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: da ? "toate" : "Z2" }, "user_id");
+      const intake = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      let plan = null;
+      if (intake) {
+        const answers = { ...intake.answers, sanatate: { ...intake.answers.sanatate ?? {}, avizCardiolog: da ? "da" : "nu" } };
+        await update("questionnaires", { id: `eq.${intake.id}` }, { answers });
+        plan = await generateAndStore(u.id, today, answers);
+      }
+      json(res, 200, { ok: true, plan });
+      return;
+    }
     if (kind === "profil") {
       const city = typeof body.oras === "string" ? body.oras.trim() : "";
       if (!city) {
@@ -3037,7 +3050,7 @@ async function buildMe(userId, today) {
     labs: labsRow ? { data: labsRow.drawn_at, feritina: num2(labsRow.feritina), vitamina_d: num2(labsRow.vitamina_d), hemoglobina: num2(labsRow.hemoglobina), ck: num2(labsRow.ck), crp: num2(labsRow.crp), alte: labsRow.other?.valori ?? void 0, laborator: labsRow.other?.laborator ?? null } : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num2(bodyRow.weight_kg), grasime_pct: num2(bodyRow.body_fat_pct) } : null,
-    cardiolog: clearance?.cardiology ? "da" : aviz
+    cardiolog: clearance?.cardiology ? "da" : aviz === "da" ? "da" : aviz ? "nu" : null
   };
   const u2 = user;
   const [totals, appleRow] = await Promise.all([

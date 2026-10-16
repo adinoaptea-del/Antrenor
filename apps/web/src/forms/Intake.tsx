@@ -179,7 +179,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         {STEPS[step] === 'Sănătate' && (
           <>
             <Q title="Aviz cardiologic pentru efort?" hint="Fără aviz, planul rămâne la Z1–Z2: fără intensitate, oricât de bine ai sta.">
-              <Chips value={a.sanatate.avizCardiolog} options={[{ id: 'da', label: 'Da, am' }, { id: 'programat', label: 'Programat' }, { id: 'nu', label: 'Nu încă' }]} onChange={(avizCardiolog) => set({ sanatate: { ...a.sanatate, avizCardiolog } })} />
+              <Chips value={a.sanatate.avizCardiolog === 'programat' ? 'nu' : a.sanatate.avizCardiolog} options={[{ id: 'da', label: 'Am aviz' }, { id: 'nu', label: 'Nu am aviz' }]} onChange={(avizCardiolog) => set({ sanatate: { ...a.sanatate, avizCardiolog } })} />
             </Q>
             <Q title="Accidentări sau dureri în ultimul an" hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
               <TextBox value={a.sanatate.accidentari} onChange={(accidentari) => set({ sanatate: { ...a.sanatate, accidentari } })} placeholder="ex. genunchi drept, primăvară; tendon ahilean stâng" />

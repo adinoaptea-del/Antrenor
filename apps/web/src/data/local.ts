@@ -158,6 +158,13 @@ export const localServer = {
       state = { ...state, tests: body as TestsForm };
     } else if (kind === 'corp') {
       state = { ...state, body: body as BodyForm };
+    } else if (kind === 'aviz') {
+      const aviz = (body as { aviz: 'da' | 'nu' }).aviz;
+      if (state.intake) {
+        state = { ...state, intake: { ...state.intake, sanatate: { ...state.intake.sanatate, avizCardiolog: aviz } } };
+        save(state);
+        return localServer.form('intrare', state.intake);
+      }
     } else {
       throw new Error(`formular necunoscut: ${kind}`);
     }
