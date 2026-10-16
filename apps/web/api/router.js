@@ -3122,6 +3122,16 @@ async function buildMe(userId, today) {
     cardiolog: clearance?.cardiology ? "da" : aviz === "da" ? "da" : aviz ? "nu" : null
   };
   const u2 = user;
+  if (u2.role !== "admin") {
+    const admins = await select("users", { role: "eq.admin" }, { select: "id", limit: 1 });
+    if (!admins.length) {
+      const first2 = await select("users", {}, { select: "id", order: "created_at.asc", limit: 1 });
+      if (first2[0]?.id === userId) {
+        await update("users", { id: `eq.${userId}` }, { role: "admin" });
+        u2.role = "admin";
+      }
+    }
+  }
   const [totals, appleRow] = await Promise.all([
     planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
     one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.apple" }, { order: "synced_at.desc" }).catch(() => null)

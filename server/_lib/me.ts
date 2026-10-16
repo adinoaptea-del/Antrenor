@@ -1,5 +1,5 @@
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
-import { one, select } from './db.js';
+import { one, select, update } from './db.js';
 import { ENV } from './env.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
@@ -108,6 +108,17 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   };
 
   const u2 = user as UserRow;
+  // Reparație: dacă nimeni nu e admin (setarea n-a prins la creare), primul cont creat devine admin.
+  if (u2.role !== 'admin') {
+    const admins = await select<{ id: string }>('users', { role: 'eq.admin' }, { select: 'id', limit: 1 });
+    if (!admins.length) {
+      const first = await select<{ id: string }>('users', {}, { select: 'id', order: 'created_at.asc', limit: 1 });
+      if (first[0]?.id === userId) {
+        await update('users', { id: `eq.${userId}` }, { role: 'admin' });
+        u2.role = 'admin';
+      }
+    }
+  }
   const [totals, appleRow] = await Promise.all([
     planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
     one<{ synced_at: string }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.apple' }, { order: 'synced_at.desc' }).catch(() => null),
