@@ -709,3 +709,15 @@ ul.plain b { color: var(--fg); }
 .split .st { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .split.fast .st { color: var(--c-verde); }
 .det-efforts { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.route { position: relative; margin-bottom: 12px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.route svg { display: block; width: 100%; height: auto; }
+.route-line { fill: none; stroke: var(--accent-2); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.route-glow { fill: none; stroke: var(--glow); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: 0.35; }
+circle.route-start { fill: var(--c-verde); stroke: var(--bg); stroke-width: 2; }
+circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
+.route-legend { position: absolute; top: 8px; right: 10px; display: flex; gap: 10px; font-size: 10.5px; color: var(--muted); }
+.route-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.route-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.route-legend i.route-start { background: var(--c-verde); }
+.route-legend i.route-end { background: var(--fg); }

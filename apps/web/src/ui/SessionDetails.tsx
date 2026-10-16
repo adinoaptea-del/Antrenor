@@ -127,6 +127,8 @@ export function SessionDetails({ sport }: { sport: Sport }) {
         ))}
       </div>
 
+      {sel.details?.polyline && <Route polyline={sel.details.polyline} />}
+
       <div className="det-grid">
         {shown.map((m) => {
           const v = m.get(sel)!;
@@ -212,6 +214,57 @@ function Splits({ splits }: { splits: number[] }) {
             <span className="st">{mmss(s)}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Polyline Google („encoded polyline algorithm”) → [lat, lng]. */
+function decode(str: string): [number, number][] {
+  const out: [number, number][] = [];
+  let i = 0, lat = 0, lng = 0;
+  while (i < str.length) {
+    for (const k of [0, 1]) {
+      let shift = 0, result = 0, b: number;
+      do {
+        b = str.charCodeAt(i++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20 && i < str.length);
+      const d = result & 1 ? ~(result >> 1) : result >> 1;
+      if (k === 0) lat += d;
+      else lng += d;
+    }
+    out.push([lat / 1e5, lng / 1e5]);
+  }
+  return out;
+}
+
+/** Traseul real al ședinței, din GPS; nordul e sus. */
+function Route({ polyline }: { polyline: string }) {
+  const pts = decode(polyline);
+  if (pts.length < 2) return null;
+  const k = Math.cos((pts.reduce((a, p) => a + p[0], 0) / pts.length) * (Math.PI / 180));
+  const xs = pts.map((p) => p[1] * k);
+  const ys = pts.map((p) => -p[0]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const W = 320, H = 170, pad = 14;
+  const s = Math.min((W - 2 * pad) / (x1 - x0 || 1e-9), (H - 2 * pad) / (y1 - y0 || 1e-9));
+  const ox = (W - (x1 - x0) * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+  const P = pts.map((_, i) => [ox + (xs[i]! - x0) * s, oy + (ys[i]! - y0) * s] as const);
+  const d = P.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
+  const a = P[0]!, b = P[P.length - 1]!;
+  return (
+    <div className="route">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Traseul ședinței">
+        <path d={d} className="route-glow" />
+        <path d={d} className="route-line" />
+        <circle cx={a[0]} cy={a[1]} r="5" className="route-start" />
+        <circle cx={b[0]} cy={b[1]} r="5" className="route-end" />
+      </svg>
+      <div className="route-legend">
+        <span><i className="route-start" /> start</span>
+        <span><i className="route-end" /> final</span>
       </div>
     </div>
   );

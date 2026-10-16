@@ -32,6 +32,8 @@ export interface ActivityDetails {
   strain?: number | null;
   /** Minute în zonele de FC ale brățării (1–5), nu ale sportivului. */
   deviceZonesMin?: number[] | null;
+  /** Traseul GPS (polyline codat Google, de la Strava). */
+  polyline?: string | null;
   /** Strava: s-au citit și splits/best efforts (ca să nu cerem detaliile de două ori). */
   detailed?: boolean;
 }
@@ -62,6 +64,7 @@ export interface StravaSummaryExtra {
   max_watts?: number;
   kilojoules?: number;
   calories?: number;
+  map?: { summary_polyline?: string | null; polyline?: string | null } | null;
 }
 
 export interface StravaDetailed extends StravaSummaryExtra {
@@ -84,6 +87,7 @@ export function stravaDetails(a: StravaSummaryExtra | StravaDetailed, sport: str
     avgWatts: ok(a.average_watts) ? Math.round(a.average_watts) : null,
     npWatts: ok(a.weighted_average_watts) ? Math.round(a.weighted_average_watts) : null,
     maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null,
+    polyline: a.map?.summary_polyline || null,
   };
   if (sport === 'alergare') {
     d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence * 2) : null;

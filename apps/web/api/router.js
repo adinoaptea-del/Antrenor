@@ -375,7 +375,8 @@ function stravaDetails(a, sport) {
     kcal: ok(a.calories) ? Math.round(a.calories) : null,
     avgWatts: ok(a.average_watts) ? Math.round(a.average_watts) : null,
     npWatts: ok(a.weighted_average_watts) ? Math.round(a.weighted_average_watts) : null,
-    maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null
+    maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null,
+    polyline: a.map?.summary_polyline || null
   };
   if (sport === "alergare") {
     d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence * 2) : null;

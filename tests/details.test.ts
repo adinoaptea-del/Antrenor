@@ -35,3 +35,10 @@ describe('detaliile ședinței', () => {
     assert.deepEqual(mergeDetails({ fastestKmSec: 300, kcal: null }, { kcal: 500, fastestKmSec: 320, strain: 11 }), { fastestKmSec: 300, kcal: 500, strain: 11 });
   });
 });
+
+describe('traseu', () => {
+  it('ia polyline-ul din rezumatul Strava', () => {
+    const d = stravaDetails({ sport_type: 'Run', distance: 5000, moving_time: 1800, elapsed_time: 1800, map: { summary_polyline: '_p~iF~ps|U_ulLnnqC' } }, 'alergare');
+    assert.equal(d.polyline, '_p~iF~ps|U_ulLnnqC');
+  });
+});

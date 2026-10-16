@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { diffDays, weekday } from '@core/util/dates.js';
-import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle, MiniMap, PoolMap, Stat } from './common';
+import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle, Stat } from './common';
 import { useMe } from '../data/store';
 import { SessionDetails } from './SessionDetails';
 import { DAY_NAMES, SPORT_LABEL, TYPE_LABEL, barComponent, colorOf, fmtMinutes, longest, thisWeekDates, workoutsOn } from '../data/model';
@@ -72,9 +72,8 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
         <SessionDetails key={sport} sport={sport} />
         {sport === 'inot' && (
           <>
-            <div className="map-wrap">
-              <PoolMap open={swimMode === 'ape'} />
-              <button className={`pill tr ${swimMode === 'ape' ? 'on' : ''}`} onClick={() => setSwimMode(swimMode === 'ape' ? 'bazin' : 'ape')} aria-pressed={swimMode === 'ape'}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className={`pill ${swimMode === 'ape' ? 'on' : ''}`} onClick={() => setSwimMode(swimMode === 'ape' ? 'bazin' : 'ape')} aria-pressed={swimMode === 'ape'}>
                 {swimMode === 'ape' ? Icons.gps : Icons.waves}
                 {swimMode === 'ape' ? 'Ape deschise' : 'Bazin'}
               </button>
@@ -102,7 +101,6 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
 
         {sport === 'bicicleta' && (
           <>
-            <OutdoorMap />
             <div className="grid-3">
               <Stat icon={Icons.pulse} label="FTP" value={me.zones?.bike?.startsWith('FTP') ? me.zones.bike.replace('FTP ', '').replace(' W', '') : '–'} unit={me.zones?.bike?.startsWith('FTP') ? 'W' : undefined}>
                 <div className="sub">{me.zones?.bike ?? 'fără test: zone pe FC când există'}</div>
@@ -119,7 +117,6 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
 
         {sport === 'alergare' && (
           <>
-            <OutdoorMap />
             <div className="grid-3">
               <Stat icon={Icons.heart} label="Z2" value={me.zones?.run ? me.zones.run.replace('Z2 ', '').replace(' bpm', '') : '–'} unit={me.zones?.run ? 'bpm' : undefined}>
                 <div className="sub">{me.zones?.source === 'provizoriu' ? 'provizoriu, până la test' : me.zones?.run ? me.zones.source ?? '' : 'fără test de teren sau CPET'}</div>
@@ -181,18 +178,6 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
 
       </div>
     </>
-  );
-}
-
-function OutdoorMap() {
-  return (
-    <div className="map-wrap">
-      <MiniMap height={130} />
-      <span className="pill tr">
-        {Icons.gps}
-        afară
-      </span>
-    </div>
   );
 }
 

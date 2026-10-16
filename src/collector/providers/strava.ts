@@ -43,6 +43,7 @@ export interface StravaActivity {
   max_watts?: number;
   kilojoules?: number;
   calories?: number;
+  map?: { summary_polyline?: string | null } | null;
 }
 
 const STRAVA_SPORT: Record<string, Sport | null> = {
