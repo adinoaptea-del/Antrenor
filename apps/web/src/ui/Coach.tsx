@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
 import { useData, useMe } from '../data/store';
+import { cleanRefs } from '../data/model';
 
 const KIND_LABEL = { dimineata: 'dimineața', dupa_antrenament: 'după antrenament', saptamanal: 'săptămânal', memento: 'memento', avertisment: 'avertisment', uman: 'antrenorul uman' } as const;
 
@@ -80,7 +81,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
               {m.decision ? ` · ${{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[m.decision]}` : ''}
             </Label>
             <div className="msg">
-              {m.body.split('\n').map((l, i) => (
+              {cleanRefs(m.body).split('\n').map((l, i) => (
                 <div key={i}>{l}</div>
               ))}
             </div>
