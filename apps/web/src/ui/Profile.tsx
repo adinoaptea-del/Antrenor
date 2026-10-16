@@ -286,13 +286,13 @@ function AppleCard() {
   };
   return (
     <Card>
-      <Label icon={Icons.watch}>Apple Watch</Label>
+      <Label icon={Icons.watch}>Apple Health · Garmin · Apple Watch</Label>
       <div className="small">
         {me.profile.appleConnected
           ? me.profile.appleLastSync
             ? `primește date · ultima trimitere ${fmtTime(me.profile.appleLastSync)}`
             : 'adresă creată · încă n-a venit nimic de pe iPhone'
-          : 'Antrenamentele vin prin Strava (Conectează mai sus). Somnul, HRV-ul și pulsul de repaus vin prin aplicația iPhone „Health Auto Export”.'}
+          : 'Antrenamentele, somnul și pulsul din Apple Health (unde Garmin Connect și Apple Watch scriu singure) vin prin aplicația iPhone „Health Auto Export”.'}
       </div>
       {url ? (
         <>
@@ -305,13 +305,13 @@ function AppleCard() {
           <ol className="tiny muted" style={{ marginTop: 10, paddingLeft: 18 }}>
             <li>Instalează „Health Auto Export” din App Store; exportul automat e în versiunea plătită.</li>
             <li>Automations → New → REST API. URL: adresa de mai sus. Format: JSON.</li>
-            <li>Health Metrics: Heart Rate Variability, Resting Heart Rate, Sleep Analysis.</li>
+            <li>Data Type: Health Metrics → Heart Rate Variability, Resting Heart Rate, Sleep Analysis. Fă încă o automatizare la fel cu Data Type: Workouts.</li>
             <li>Sync cadence: la o oră. Salvează și apasă „Manual Export” o dată.</li>
           </ol>
         </>
       ) : (
         <button className="pill" style={{ marginTop: 10 }} onClick={() => void make()}>
-          {me.profile.appleConnected ? 'Fă o adresă nouă' : 'Conectează Apple Watch'}
+          {me.profile.appleConnected ? 'Fă o adresă nouă' : 'Conectează Apple Health'}
         </button>
       )}
       {err && (

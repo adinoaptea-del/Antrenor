@@ -1,5 +1,6 @@
 // Apple Watch prin aplicația iPhone „Health Auto Export” (REST API automation, format JSON).
-// Luăm doar somnul, HRV-ul și pulsul de repaus; antrenamentele vin prin Strava (altfel s-ar dubla).
+// Luăm somnul, HRV-ul, pulsul de repaus și antrenamentele (inclusiv cele de pe Garmin, trimise de Garmin Connect în Apple Health).
+// Dublurile cu alte surse (Whoop, Strava) le scoate dedupeActivities.
 // Atenție: Apple dă HRV ca SDNN, nu rMSSD — de aceea are prioritate mică la combinarea surselor.
 
 export interface AppleDay {
@@ -59,4 +60,74 @@ export function parseHealthExport(body: unknown): AppleDay[] {
     }
   }
   return [...out.values()];
+}
+
+export interface AppleWorkout {
+  id: string;
+  date: string;
+  start_local: string | null;
+  sport: 'inot' | 'bicicleta' | 'alergare' | 'forta';
+  minutes: number;
+  distance_km: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_pace_min_km: number | null;
+  name: string;
+}
+
+function sportOf(name: string): AppleWorkout['sport'] | null {
+  const n = name.toLowerCase();
+  if (/swim|înot|inot/.test(n)) return 'inot';
+  if (/cycl|bike|biking|ciclism|bicicl/.test(n)) return 'bicicleta';
+  if (/run|alerg/.test(n)) return 'alergare';
+  if (/strength|weight|forță|forta|functional|core|hiit|cross/.test(n)) return 'forta';
+  return null;
+}
+
+const qty = (v: unknown): number | null => (v && typeof v === 'object' ? num((v as { qty?: unknown }).qty) : num(v));
+
+function km(v: unknown): number | null {
+  if (!v || typeof v !== 'object') return num(v);
+  const q = num((v as { qty?: unknown }).qty);
+  const u = String((v as { units?: unknown }).units ?? 'km').toLowerCase();
+  if (q == null) return null;
+  if (u === 'km') return q;
+  if (u === 'mi') return q * 1.609344;
+  if (u === 'm') return q / 1000;
+  if (u === 'yd') return q * 0.0009144;
+  return null;
+}
+
+/** Antrenamentele din exportul Health Auto Export (data.workouts), formatul v1 și v2. */
+export function parseHealthWorkouts(body: unknown): AppleWorkout[] {
+  const list = ((body as { data?: { workouts?: Record<string, unknown>[] } })?.data?.workouts ?? []) as Record<string, unknown>[];
+  const out: AppleWorkout[] = [];
+  for (const w of list) {
+    const name = String(w.name ?? '');
+    const sport = sportOf(name);
+    const start = typeof w.start === 'string' ? w.start : null;
+    if (!sport || !start) continue;
+    let sec = num(w.duration);
+    if (sec == null && typeof w.end === 'string') sec = (Date.parse(w.end.replace(' ', 'T').replace(' ', '')) - Date.parse(start.replace(' ', 'T').replace(' ', ''))) / 1000;
+    if (sec == null || !Number.isFinite(sec) || sec < 60) continue;
+    const minutes = Math.round(sec / 60);
+    const dist = km(w.distance);
+    const hr = (w.heartRate ?? {}) as { avg?: unknown; max?: unknown };
+    const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
+    const max = qty(w.maxHeartRate) ?? qty(hr.max);
+    const r1 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100);
+    out.push({
+      id: `apple-${typeof w.id === 'string' ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, '')}`,
+      date: start.slice(0, 10),
+      start_local: hm(start),
+      sport,
+      minutes,
+      distance_km: dist == null || dist <= 0 ? null : r1(dist),
+      avg_hr: avg == null ? null : Math.round(avg),
+      max_hr: max == null ? null : Math.round(max),
+      avg_pace_min_km: sport === 'alergare' && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
+      name,
+    });
+  }
+  return out;
 }

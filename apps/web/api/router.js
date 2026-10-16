@@ -1745,7 +1745,7 @@ function normalizeStravaActivity(a) {
   const sport = STRAVA_SPORT[a.sport_type];
   if (!sport) return null;
   const minutes = Math.round(a.moving_time / 60);
-  const km = a.distance > 0 ? Math.round(a.distance / 1e3 * 10) / 10 : null;
+  const km2 = a.distance > 0 ? Math.round(a.distance / 1e3 * 10) / 10 : null;
   return {
     id: `strava-${a.id}`,
     externalId: String(a.id),
@@ -1754,10 +1754,10 @@ function normalizeStravaActivity(a) {
     startLocal: a.start_date_local.slice(11, 16),
     sport,
     minutes,
-    distanceKm: km,
+    distanceKm: km2,
     avgHr: a.average_heartrate != null ? Math.round(a.average_heartrate) : null,
     maxHr: a.max_heartrate != null ? Math.round(a.max_heartrate) : null,
-    avgPaceMinKm: km && sport === "alergare" ? Math.round(minutes / km * 100) / 100 : null,
+    avgPaceMinKm: km2 && sport === "alergare" ? Math.round(minutes / km2 * 100) / 100 : null,
     avgCadence: a.average_cadence != null ? Math.round(sport === "alergare" ? a.average_cadence * 2 : a.average_cadence) : null,
     avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
     timeInZonesMin: null,
@@ -2579,6 +2579,58 @@ function parseHealthExport(body) {
   }
   return [...out.values()];
 }
+function sportOf(name) {
+  const n2 = name.toLowerCase();
+  if (/swim|înot|inot/.test(n2)) return "inot";
+  if (/cycl|bike|biking|ciclism|bicicl/.test(n2)) return "bicicleta";
+  if (/run|alerg/.test(n2)) return "alergare";
+  if (/strength|weight|forță|forta|functional|core|hiit|cross/.test(n2)) return "forta";
+  return null;
+}
+var qty = (v) => v && typeof v === "object" ? num(v.qty) : num(v);
+function km(v) {
+  if (!v || typeof v !== "object") return num(v);
+  const q2 = num(v.qty);
+  const u = String(v.units ?? "km").toLowerCase();
+  if (q2 == null) return null;
+  if (u === "km") return q2;
+  if (u === "mi") return q2 * 1.609344;
+  if (u === "m") return q2 / 1e3;
+  if (u === "yd") return q2 * 9144e-7;
+  return null;
+}
+function parseHealthWorkouts(body) {
+  const list = body?.data?.workouts ?? [];
+  const out = [];
+  for (const w of list) {
+    const name = String(w.name ?? "");
+    const sport = sportOf(name);
+    const start = typeof w.start === "string" ? w.start : null;
+    if (!sport || !start) continue;
+    let sec = num(w.duration);
+    if (sec == null && typeof w.end === "string") sec = (Date.parse(w.end.replace(" ", "T").replace(" ", "")) - Date.parse(start.replace(" ", "T").replace(" ", ""))) / 1e3;
+    if (sec == null || !Number.isFinite(sec) || sec < 60) continue;
+    const minutes = Math.round(sec / 60);
+    const dist = km(w.distance);
+    const hr = w.heartRate ?? {};
+    const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
+    const max = qty(w.maxHeartRate) ?? qty(hr.max);
+    const r1 = (x) => x == null ? null : Math.round(x * 100) / 100;
+    out.push({
+      id: `apple-${typeof w.id === "string" ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, "")}`,
+      date: start.slice(0, 10),
+      start_local: hm(start),
+      sport,
+      minutes,
+      distance_km: dist == null || dist <= 0 ? null : r1(dist),
+      avg_hr: avg == null ? null : Math.round(avg),
+      max_hr: max == null ? null : Math.round(max),
+      avg_pace_min_km: sport === "alergare" && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
+      name
+    });
+  }
+  return out;
+}
 
 // server/webhooks/apple.ts
 async function handler7(req, res) {
@@ -2588,7 +2640,9 @@ async function handler7(req, res) {
     if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
     const user = await one("users", { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, "token necunoscut");
-    const days = parseHealthExport(await readJson(req));
+    const body = await readJson(req);
+    const days = parseHealthExport(body);
+    const workouts = parseHealthWorkouts(body);
     if (days.length) {
       await upsert(
         "wellness_daily",
@@ -2596,7 +2650,29 @@ async function handler7(req, res) {
         "user_id,date,source"
       );
     }
-    json(res, 200, { ok: true, zile: days.length });
+    if (workouts.length) {
+      await upsert(
+        "activities",
+        workouts.map((w) => ({
+          id: w.id,
+          user_id: user.id,
+          source: "apple",
+          external_id: w.id.slice(6),
+          date: w.date,
+          start_local: w.start_local,
+          sport: w.sport,
+          minutes: w.minutes,
+          distance_km: w.distance_km,
+          avg_hr: w.avg_hr,
+          max_hr: w.max_hr,
+          avg_pace_min_km: w.avg_pace_min_km,
+          name: w.name,
+          synced_at: (/* @__PURE__ */ new Date()).toISOString()
+        })),
+        "id"
+      );
+    }
+    json(res, 200, { ok: true, zile: days.length, antrenamente: workouts.length });
   } catch (e) {
     fail(res, e);
   }

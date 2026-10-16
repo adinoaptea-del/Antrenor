@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { fail, HttpError, json, readJson } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
 import { one, upsert } from '../_lib/db.js';
-import { parseHealthExport } from '../_lib/apple.js';
+import { parseHealthExport, parseHealthWorkouts } from '../_lib/apple.js';
 
 /** POST /api/webhooks/apple?t=<token personal> — trimis de Health Auto Export de pe iPhone-ul sportivului. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -12,7 +12,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (!token || token.length < 20) throw new HttpError(401, 'lipsește tokenul');
     const user = await one<{ id: string }>('users', { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, 'token necunoscut');
-    const days = parseHealthExport(await readJson(req));
+    const body = await readJson(req);
+    const days = parseHealthExport(body);
+    const workouts = parseHealthWorkouts(body);
     if (days.length) {
       await upsert(
         'wellness_daily',
@@ -20,7 +22,29 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         'user_id,date,source',
       );
     }
-    json(res, 200, { ok: true, zile: days.length });
+    if (workouts.length) {
+      await upsert(
+        'activities',
+        workouts.map((w) => ({
+          id: w.id,
+          user_id: user.id,
+          source: 'apple',
+          external_id: w.id.slice(6),
+          date: w.date,
+          start_local: w.start_local,
+          sport: w.sport,
+          minutes: w.minutes,
+          distance_km: w.distance_km,
+          avg_hr: w.avg_hr,
+          max_hr: w.max_hr,
+          avg_pace_min_km: w.avg_pace_min_km,
+          name: w.name,
+          synced_at: new Date().toISOString(),
+        })),
+        'id',
+      );
+    }
+    json(res, 200, { ok: true, zile: days.length, antrenamente: workouts.length });
   } catch (e) {
     fail(res, e);
   }
