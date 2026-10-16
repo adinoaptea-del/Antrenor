@@ -12,6 +12,9 @@ export interface AppleDay {
   sleep_min: number | null;
   bedtime: string | null;
   wake_time: string | null;
+  respiratory_rate?: number | null;
+  weight_kg?: number | null;
+  body_fat_pct?: number | null;
 }
 
 interface Metric {
@@ -47,6 +50,20 @@ export function parseHealthExport(body: unknown): AppleDay[] {
         const d = day(p.date);
         const q = num(p.qty);
         if (d && q != null) get(d).rhr = Math.round(q);
+      }
+    } else if (m.name === 'respiratory_rate' || m.name === 'body_mass' || m.name === 'body_fat_percentage') {
+      // Respirația: media zilei (noaptea o măsoară ceasul); greutatea și grăsimea: ultima valoare a zilei.
+      const byDay = new Map<string, number[]>();
+      for (const p of m.data) {
+        const d = day(p.date);
+        const q = num(p.qty);
+        if (d && q != null) byDay.set(d, [...(byDay.get(d) ?? []), q]);
+      }
+      for (const [d, v] of byDay) {
+        const r = get(d);
+        if (m.name === 'respiratory_rate') r.respiratory_rate = Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10;
+        else if (m.name === 'body_mass') r.weight_kg = Math.round((String(m.units ?? 'kg').toLowerCase().startsWith('lb') ? v[v.length - 1]! * 0.4536 : v[v.length - 1]!) * 10) / 10;
+        else r.body_fat_pct = Math.round((v[v.length - 1]! <= 1 ? v[v.length - 1]! * 100 : v[v.length - 1]!) * 10) / 10;
       }
     } else if (m.name === 'sleep_analysis') {
       for (const p of m.data) {

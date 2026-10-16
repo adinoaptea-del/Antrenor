@@ -3345,6 +3345,19 @@ function parseHealthExport(body) {
         const q2 = num(p.qty);
         if (d && q2 != null) get(d).rhr = Math.round(q2);
       }
+    } else if (m.name === "respiratory_rate" || m.name === "body_mass" || m.name === "body_fat_percentage") {
+      const byDay = /* @__PURE__ */ new Map();
+      for (const p of m.data) {
+        const d = day(p.date);
+        const q2 = num(p.qty);
+        if (d && q2 != null) byDay.set(d, [...byDay.get(d) ?? [], q2]);
+      }
+      for (const [d, v] of byDay) {
+        const r2 = get(d);
+        if (m.name === "respiratory_rate") r2.respiratory_rate = Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10;
+        else if (m.name === "body_mass") r2.weight_kg = Math.round((String(m.units ?? "kg").toLowerCase().startsWith("lb") ? v[v.length - 1] * 0.4536 : v[v.length - 1]) * 10) / 10;
+        else r2.body_fat_pct = Math.round((v[v.length - 1] <= 1 ? v[v.length - 1] * 100 : v[v.length - 1]) * 10) / 10;
+      }
     } else if (m.name === "sleep_analysis") {
       for (const p of m.data) {
         const d = day(p.sleepEnd ?? p.inBedEnd ?? p.date);
@@ -3477,7 +3490,7 @@ async function handler7(req, res) {
     if (days.length) {
       await upsert(
         "wellness_daily",
-        days.map((d) => ({ user_id: user.id, date: d.date, source: "apple", hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, synced_at: (/* @__PURE__ */ new Date()).toISOString() })),
+        days.map((d) => ({ user_id: user.id, date: d.date, source: "apple", hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, respiratory_rate: d.respiratory_rate ?? null, weight_kg: d.weight_kg ?? null, body_fat_pct: d.body_fat_pct ?? null, synced_at: (/* @__PURE__ */ new Date()).toISOString() })),
         "user_id,date,source"
       );
     }

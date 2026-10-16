@@ -351,12 +351,29 @@ function AppleCard() {
           <button className="pill on" style={{ marginTop: 8 }} onClick={() => void copy()}>
             {copied ? 'Copiat' : 'Copiază adresa'}
           </button>
-          <ol className="tiny muted" style={{ marginTop: 10, paddingLeft: 18 }}>
-            <li>Instalează „Health Auto Export” din App Store; exportul automat e în versiunea plătită.</li>
-            <li>Automations → New → REST API. URL: adresa de mai sus. Format: JSON.</li>
-            <li>Data Type: Health Metrics → Heart Rate Variability, Resting Heart Rate, Sleep Analysis. Fă încă o automatizare la fel cu Data Type: Workouts.</li>
-            <li>Sync cadence: la o oră. Salvează și apasă „Manual Export” o dată.</li>
-          </ol>
+          <div className="apple-steps">
+            <div className="as-step">
+              <b>1. Ceasul scrie în Apple Health</b>
+              <span>Garmin: aplicația Garmin Connect → Mai multe (☰) → Setări → Aplicații conectate → Apple Health → activează tot. Apple Watch: scrie singur, nu ai nimic de făcut.</span>
+            </div>
+            <div className="as-step">
+              <b>2. Instalează „Health Auto Export”</b>
+              <span>Din App Store. Exportul automat e în versiunea cu plată. La prima deschidere, permite accesul la toate datele Health.</span>
+            </div>
+            <div className="as-step">
+              <b>3. Automatizarea pentru sănătate</b>
+              <span>Automations → + → REST API. URL: adresa copiată mai sus. Format: JSON. Data Type: Health Metrics, cu: Heart Rate Variability, Resting Heart Rate, Respiratory Rate, Sleep Analysis, Body Mass, Body Fat Percentage. Sync Cadence: la o oră. Pornește „Enabled”.</span>
+            </div>
+            <div className="as-step">
+              <b>4. Automatizarea pentru antrenamente</b>
+              <span>Încă una la fel (aceeași adresă), cu Data Type: Workouts.</span>
+            </div>
+            <div className="as-step">
+              <b>5. Prima trimitere</b>
+              <span>În fiecare automatizare apasă „Manual Export” și alege ultimele 6 săptămâni. Apoi revino aici: sus apare „primește date”.</span>
+            </div>
+            <div className="tiny muted">Ce nu vine pe calea asta: traseul GPS și timpii pe fiecare km. Restul (puls, distanță, ritm, somn, HRV, respirație, greutate) vine.</div>
+          </div>
         </>
       ) : (
         <button className="pill" style={{ marginTop: 10 }} onClick={() => void make()}>

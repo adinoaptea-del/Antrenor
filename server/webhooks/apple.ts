@@ -20,7 +20,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (days.length) {
       await upsert(
         'wellness_daily',
-        days.map((d) => ({ user_id: user.id, date: d.date, source: 'apple', hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, synced_at: new Date().toISOString() })),
+        days.map((d) => ({ user_id: user.id, date: d.date, source: 'apple', hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, respiratory_rate: d.respiratory_rate ?? null, weight_kg: d.weight_kg ?? null, body_fat_pct: d.body_fat_pct ?? null, synced_at: new Date().toISOString() })),
         'user_id,date,source',
       );
     }

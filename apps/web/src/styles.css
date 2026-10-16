@@ -879,3 +879,8 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .nav button.home.on { background: transparent; box-shadow: none; }
 .nav button.home.on .home-ic { transform: scale(1.06); box-shadow: var(--glass-red-hi), 0 8px 24px rgba(220, 42, 30, 0.6), 0 0 0 3px rgba(255, 255, 255, 0.14); }
 .nav button.home:active .home-ic { transform: scale(0.94); }
+
+.apple-steps { display: grid; gap: 10px; margin-top: 12px; }
+.as-step { display: grid; gap: 2px; font-size: 12.5px; line-height: 1.45; }
+.as-step b { font-weight: 700; }
+.as-step span { color: var(--muted); }
