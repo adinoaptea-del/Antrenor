@@ -221,6 +221,9 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   else if (v?.verdict === 'ok') out = 'verde';
   else if (v?.verdict === 'atentie') out = 'galben';
   if (missingBasics && RANK[out] < RANK.galben) out = 'galben';
+  // Verdictul din cod (date obiective mediate, apoi Hooper) e pragul: Fiziologul poate doar să fie mai strict (ex. încărcare, durere).
+  const code = p.readiness.verdict_cod?.verdict;
+  if (code && RANK[code] > RANK[out]) out = code;
   return out;
 }
 

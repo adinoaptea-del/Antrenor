@@ -3,6 +3,7 @@
 
 import type { Activity, PlannedWorkout, Sport } from '../types.js';
 import { scoreWorkout, zoneDirection } from '../scoring/score.js';
+import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
@@ -44,6 +45,10 @@ export interface Packet {
   hrv: { azi: number | null; media7: number | null; baseline60: number | null; sd60: number | null; zile_sub_prag: number };
   puls_repaus: { azi: number | null; media7: number | null; baseline60: number | null };
   readiness: {
+    /** Datele obiective (inimă, respirație, recuperare, somn) față de baseline-ul personal, 0–100 fiecare, mediate. */
+    obiectiv: ObjectiveReadiness;
+    /** Verdictul calculat de cod: datele obiective, apoi cum s-a simțit (Hooper doar coboară). */
+    verdict_cod: { verdict: Verdict; motiv: string };
     scor_producator: number | null;
     hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null };
   };
@@ -112,6 +117,8 @@ export interface MergedDaily {
   bedtime: string | null;
   sleepScore: number | null;
   recoveryScore: number | null;
+  /** Respirații pe minut în somn, media brățărilor. */
+  respiratoryRate: number | null;
   weightKg: number | null;
   bodyFatPct: number | null;
   sources: Record<string, string | null>;
@@ -238,7 +245,10 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
     const bedtime = sorted.find((r) => r.bedtime)?.bedtime ?? null;
     // Scorurile de somn/recuperare sunt scale proprii fiecărui producător: nu se mediază, se ia cea mai bună sursă.
     const sleepScore = pick('sleepScore');
-    const recovery = pick('recoveryScore');
+    // Recuperarea / readiness-ul brățărilor (Whoop recovery, Oura readiness; ambele 0–100): media lor.
+    const recs = sorted.filter((r) => r.recoveryScore != null);
+    const recovery = { v: recs.length ? Math.round(mean(recs.map((r) => r.recoveryScore!))!) : null, src: recs.length ? recs.map((r) => r.source).join('+') : null };
+    const resps = sorted.filter((r) => r.respiratoryRate != null).map((r) => r.respiratoryRate!);
     const weight = pick('weightKg');
     const fat = pick('bodyFatPct');
     const perDevice: MergedDaily['perDevice'] = {};
@@ -252,6 +262,7 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       bedtime,
       sleepScore: sleepScore.v,
       recoveryScore: recovery.v,
+      respiratoryRate: resps.length ? round(mean(resps), 1) : null,
       weightKg: weight.v,
       bodyFatPct: fat.v,
       sources: { hrv: hrv.src, puls_repaus: rhr.src, somn: sleepSources.length ? sleepSources.join('+') : null, recuperare: recovery.src },
@@ -330,6 +341,7 @@ export function buildPacket(input: CollectorInput): Packet {
   const rhr7 = prev7.map((r) => r.rhr).filter((x): x is number => x != null);
   const rhr60 = prev60.map((r) => r.rhr).filter((x): x is number => x != null);
   const sleep7 = prev7.map((r) => r.sleepMin).filter((x): x is number => x != null);
+  const resp60 = prev60.map((r) => r.respiratoryRate).filter((x): x is number => x != null);
   const baseline60 = hrv60.length >= 14 ? round(mean(hrv60), 1) : null;
   const sd60 = hrv60.length >= 14 ? round(sd(hrv60), 2) : null;
 
@@ -388,6 +400,20 @@ export function buildPacket(input: CollectorInput): Packet {
     };
   };
 
+  const rhrBase = rhr60.length >= 14 ? round(mean(rhr60), 1) : null;
+  const objective = objectiveReadiness({
+    hrv: todayRow?.hrv ?? null,
+    hrvBaseline: baseline60,
+    rhr: todayRow?.rhr ?? null,
+    rhrBaseline: rhrBase,
+    resp: todayRow?.respiratoryRate ?? null,
+    respBaseline: resp60.length >= 14 ? round(mean(resp60), 1) : null,
+    recovery: todayRow?.recoveryScore ?? null,
+    sleepMin: todayRow?.sleepMin ?? null,
+  });
+  const h = input.morning?.hooper;
+  const hooperSum = h && [h.somn, h.oboseala, h.stres, h.dureri].every((x) => x != null) ? h.somn! + h.oboseala! + h.stres! + h.dureri! : null;
+
   const planToday = input.plan.filter((w) => w.date === today && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
   const tomorrow = addDays(today, 1);
   const planTomorrow = input.plan.filter((w) => w.date === tomorrow && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
@@ -436,6 +462,8 @@ export function buildPacket(input: CollectorInput): Packet {
     hrv: { azi: todayRow?.hrv ?? null, media7: round(mean(hrv7), 1), baseline60, sd60, zile_sub_prag: zileSubPrag },
     puls_repaus: { azi: todayRow?.rhr ?? null, media7: round(mean(rhr7), 0), baseline60: rhr60.length >= 14 ? round(mean(rhr60), 1) : null },
     readiness: {
+      obiectiv: objective,
+      verdict_cod: dayVerdict(objective, hooperSum),
       scor_producator: todayRow?.recoveryScore ?? null,
       hooper: {
         somn: input.morning?.hooper.somn ?? null,
