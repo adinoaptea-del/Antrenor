@@ -80,10 +80,10 @@ describe('runner · piramida', () => {
 
   it('head coach-ul nu poate fi mai permisiv decât Fiziologul: roșu rămâne roșu și produce evenimentul de readiness', async () => {
     const { client } = fakeModel({
-      fiziolog: () => ({ agent: 'fiziolog', verdict: 'rosu', ce: [{ text: 'ACWR 1,68 peste 1,5', cifre: [{ valoare: 1.68, camp: 'incarcare.acwr' }, { valoare: 1.5, camp: 'regula' }] }], pentru_viitor: '-', lipseste: [] }),
+      fiziolog: () => ({ agent: 'fiziolog', verdict: 'rosu', ce: [{ text: 'ACWR 1,92 peste 1,8', cifre: [{ valoare: 1.92, camp: 'incarcare.acwr' }, { valoare: 1.8, camp: 'regula' }] }], pentru_viitor: '-', lipseste: [] }),
       head: () => ({ decizie: 'verde', mesaj: 'Decizia: verde.', memento: 'Ziua 1.', jurnal: [], intrebare: null }),
     });
-    const packet = { ...buildPacket(input), incarcare: { ...buildPacket(input).incarcare, acwr: 1.68 } };
+    const packet = { ...buildPacket(input), incarcare: { ...buildPacket(input).incarcare, acwr: 1.92 } };
     const r = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
     assert.equal(r.decision, 'rosu');
     assert.equal(r.head.decizie, 'rosu');
@@ -123,5 +123,17 @@ describe('runner · piramida', () => {
     });
     const ev = eventsFrom(p, 'rosu');
     assert.deepEqual(ev.map((e) => e.kind).sort(), ['durere', 'febra', 'neplanificat', 'readiness']);
+  });
+});
+
+describe('roșu doar când e cu adevărat rău', () => {
+  it('ACWR 1,5 + culcare târzie cu date bune = galben, nu roșu', async () => {
+    const { client } = fakeModel({
+      fiziolog: () => ({ agent: 'fiziolog', verdict: 'rosu', ce: [{ text: 'ACWR 1,5', cifre: [{ valoare: 1.5, camp: 'regula' }] }], pentru_viitor: '-', lipseste: [] }),
+      head: () => ({ decizie: 'galben', mesaj: 'Decizia: galben.', memento: 'Ziua 1.', jurnal: [], intrebare: null }),
+    });
+    const packet = { ...buildPacket(input), incarcare: { ...buildPacket(input).incarcare, acwr: 1.5 } };
+    const r = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
+    assert.equal(r.decision, 'galben');
   });
 });

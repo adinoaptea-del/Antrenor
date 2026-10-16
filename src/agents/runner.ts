@@ -226,6 +226,18 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   // Verdictul din cod (date obiective mediate, apoi Hooper) e pragul: Fiziologul poate doar să fie mai strict (ex. încărcare, durere).
   const code = p.readiness.verdict_cod?.verdict;
   if (code && RANK[code] > RANK[out]) out = code;
+  // Roșu doar când e cu adevărat rău: date de sănătate roșii, boală, somn foarte scurt, încărcare extremă, Hooper mare, durere mare.
+  if (out === 'rosu') {
+    const really =
+      code === 'rosu' ||
+      p.semnale.boala === true ||
+      (p.somn.durata_min != null && p.somn.durata_min < 270) ||
+      (p.incarcare.acwr != null && p.incarcare.acwr > 1.8) ||
+      (p.incarcare.tsb != null && p.incarcare.tsb < -40) ||
+      (p.readiness.hooper.suma ?? 0) >= 24 ||
+      (p.antrenament_ultim?.durere.scor ?? 0) >= 5;
+    if (!really) out = 'galben';
+  }
   return out;
 }
 
