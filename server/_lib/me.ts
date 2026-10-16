@@ -24,7 +24,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     connectedProviders(userId),
     select<{ workout_id: string; color: Color; reasons: string[]; is_final: boolean }>('scores', { user_id: `eq.${userId}` }, { limit: 400 }),
     one<BarResult & { date: string }>('bar_daily', { user_id: `eq.${userId}` }, { order: 'date.desc' }),
-    one<{ verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; date: string; acwr: number | string | null; hooper_sum: number | null }>('readiness_daily', { user_id: `eq.${userId}`, date: `eq.${today}` }),
+    one<{ verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; date: string; acwr: number | string | null; hooper_sum: number | null; sleep_min: number | null; hrv: number | string | null; hrv_baseline: number | string | null; tsb: number | string | null }>('readiness_daily', { user_id: `eq.${userId}`, date: `eq.${today}` }),
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
     select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
@@ -147,7 +147,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: readinessRow ? { verdict: readinessRow.verdict, reason: readinessRow.reason, acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    readiness: readinessRow ? { ...softenRed(readinessRow), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
@@ -177,4 +177,19 @@ function num(v: number | string | null | undefined): number | null {
   if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Roșu doar când e cu adevărat rău (aceeași regulă ca la rulare): o decizie salvată înainte de regulă, fără motiv grav,
+ * se arată galben până la rularea următoare.
+ */
+function softenRed(r: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; acwr: number | string | null; hooper_sum: number | null; sleep_min: number | null; hrv: number | string | null; hrv_baseline: number | string | null; tsb: number | string | null }): { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null } {
+  if (r.verdict !== 'rosu') return { verdict: r.verdict, reason: r.reason };
+  const n = (v: unknown) => (v == null || v === '' ? null : Number(v));
+  const acwr = n(r.acwr);
+  const tsb = n(r.tsb);
+  const hrv = n(r.hrv);
+  const base = n(r.hrv_baseline);
+  const really = (r.sleep_min != null && r.sleep_min < 270) || (acwr != null && acwr > 1.8) || (tsb != null && tsb < -40) || (r.hooper_sum ?? 0) >= 24 || (hrv != null && base != null && hrv < base * 0.8);
+  return really ? { verdict: 'rosu', reason: r.reason } : { verdict: 'galben', reason: 'Galben: încărcare sau somn de urmărit, dar datele de sănătate sunt bune. Roșu rămâne doar pentru zilele cu adevărat rele.' };
 }

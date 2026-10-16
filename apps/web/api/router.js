@@ -3975,7 +3975,7 @@ async function buildMe(userId, today) {
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: readinessRow ? { verdict: readinessRow.verdict, reason: readinessRow.reason, acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    readiness: readinessRow ? { ...softenRed(readinessRow), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
@@ -4000,6 +4000,16 @@ function num2(v) {
   if (v == null || v === "") return null;
   const n2 = Number(v);
   return Number.isFinite(n2) ? n2 : null;
+}
+function softenRed(r2) {
+  if (r2.verdict !== "rosu") return { verdict: r2.verdict, reason: r2.reason };
+  const n2 = (v) => v == null || v === "" ? null : Number(v);
+  const acwr2 = n2(r2.acwr);
+  const tsb = n2(r2.tsb);
+  const hrv = n2(r2.hrv);
+  const base = n2(r2.hrv_baseline);
+  const really = r2.sleep_min != null && r2.sleep_min < 270 || acwr2 != null && acwr2 > 1.8 || tsb != null && tsb < -40 || (r2.hooper_sum ?? 0) >= 24 || hrv != null && base != null && hrv < base * 0.8;
+  return really ? { verdict: "rosu", reason: r2.reason } : { verdict: "galben", reason: "Galben: \xEEnc\u0103rcare sau somn de urm\u0103rit, dar datele de s\u0103n\u0103tate sunt bune. Ro\u0219u r\u0103m\xE2ne doar pentru zilele cu adev\u0103rat rele." };
 }
 
 // server/me.ts
