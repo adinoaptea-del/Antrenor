@@ -343,6 +343,11 @@ function AppleCard() {
             : 'adresă creată · încă n-a venit nimic de pe iPhone'
           : 'Antrenamentele, somnul și pulsul din Apple Health (unde Garmin Connect și Apple Watch scriu singure) vin prin aplicația iPhone „Health Auto Export”.'}
       </div>
+      {me.profile.appleLast && (
+        <div className="tiny" style={{ marginTop: 6, color: me.profile.appleLast.ok ? 'var(--muted)' : 'var(--c-rosu)' }}>
+          Ultima trimitere ({fmtTime(me.profile.appleLast.at)}): {me.profile.appleLast.ok ? `primită · ${me.profile.appleLast.detail ?? ''}` : `eșuată · ${me.profile.appleLast.detail ?? 'eroare necunoscută'}`}
+        </div>
+      )}
       {url ? (
         <>
           <div className="tiny" style={{ marginTop: 10, wordBreak: 'break-all', userSelect: 'all' }}>

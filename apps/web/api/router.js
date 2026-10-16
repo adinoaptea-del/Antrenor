@@ -3477,15 +3477,17 @@ function appleDetails(w, sport, sec, dist) {
 
 // server/webhooks/apple.ts
 async function handler7(req, res) {
+  let userId = null;
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const token = q(req, "t");
     if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
     const user = await one("users", { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, "token necunoscut");
+    userId = user.id;
     const body = await readJson(req);
     const days = parseHealthExport(body);
-    const workouts = parseHealthWorkouts(body);
+    const workouts = [...new Map(parseHealthWorkouts(body).map((w) => [w.id, w])).values()];
     await saveOthers(user.id, parseHealthOther(body));
     if (days.length) {
       await upsert(
@@ -3517,8 +3519,10 @@ async function handler7(req, res) {
         "id"
       );
     }
+    await insert("sync_log", { user_id: user.id, provider: "apple", ok: true, rows: days.length + workouts.length, detail: `${days.length} zile, ${workouts.length} antrenamente` }).catch(() => void 0);
     json(res, 200, { ok: true, zile: days.length, antrenamente: workouts.length });
   } catch (e) {
+    if (userId) await insert("sync_log", { user_id: userId, provider: "apple", ok: false, rows: 0, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => void 0);
     fail(res, e);
   }
 }
@@ -4315,7 +4319,10 @@ async function buildMe(userId, today) {
   return {
     baseline,
     admin: u2.role === "admin" ? { providers: { whoop: providerConfigured("whoop"), strava: providerConfigured("strava"), oura: providerConfigured("oura") }, appUrl: ENV.appUrl() } : null,
-    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null },
+    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => {
+      const l = lastSyncRows.find((r2) => r2.provider === "apple");
+      return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null;
+    })() },
     totals,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
