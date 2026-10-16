@@ -1,4 +1,4 @@
-// Împachetează fiecare funcție din server/ într-un singur fișier api/**/*.js (ESM, fără dependențe),
+// Împachetează fiecare funcție din server/ într-un singur fișier apps/web/api/**/*.js (ESM, fără dependențe),
 // în structura standard Vercel (api/forms/[kind].js → /api/forms/:kind). Fișierele generate se urcă în git.
 // Rulează după orice schimbare în server/ sau src/: `npm run bundle-api`.
 import { createRequire } from 'node:module';
@@ -10,7 +10,8 @@ const require = createRequire(import.meta.url);
 const esbuild = require('esbuild');
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'server');
-const OUT = join(ROOT, 'api');
+// Proiectul Vercel pornește din apps/web (Root Directory), deci funcțiile stau în apps/web/api.
+const OUT = join(ROOT, 'apps', 'web', 'api');
 
 const walk = (dir) =>
   readdirSync(dir).flatMap((f) => {
