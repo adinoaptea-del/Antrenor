@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { isRunGoal } from '@core/calendar/phases.js';
-import { BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
+import { BikeArt, Card, CircleBtn, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
 import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, workoutsOn } from '../data/model';
@@ -55,7 +55,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   return (
     <>
       <div className="topline">
-        <span />
+        <CircleBtn icon={Icons.calendar} label="Calendar" onClick={() => onOpen('calendar')} />
         <SyncButton />
       </div>
       <div className="hub-name">
