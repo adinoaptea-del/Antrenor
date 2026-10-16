@@ -28,6 +28,10 @@ export interface ActivityDetails {
   /** Înot: cea mai rapidă tură (≥ 50 m), pe 100 m. */
   fastestLap100mSec?: number | null;
   laps?: number | null;
+  /** Înot: cea mai lungă porțiune fără oprire (ture consecutive fără pauză), în metri. Măsura reală a capacității pe proba de înot. */
+  continuousM?: number | null;
+  /** Ritmul pe 100 m în porțiunea aceea continuă. */
+  continuousPace100mSec?: number | null;
   /** WHOOP: efortul zilei pentru ședință (0–21). */
   strain?: number | null;
   /** Minute în zonele de FC ale brățării (1–5), nu ale sportivului. */
@@ -36,6 +40,37 @@ export interface ActivityDetails {
   polyline?: string | null;
   /** Strava: s-au citit și splits/best efforts (ca să nu cerem detaliile de două ori). */
   detailed?: boolean;
+  /** Versiunea calculului din activitatea detaliată; la o versiune nouă, detaliile se recitesc. */
+  v?: number;
+}
+
+export const DETAILS_V = 2;
+
+/** Viteza sub care o tură e o detectare greșită a ceasului (atingere de perete), nu înot: 100 m sub 45 s. */
+const MIN_SWIM_SEC_100 = 45;
+
+/**
+ * Cea mai lungă porțiune înotată fără oprire: ture consecutive cu distanță; o tură de pauză (fără distanță)
+ * sau o tură imposibil de rapidă (detectare greșită) întrerupe șirul.
+ */
+export function longestContinuousSwim(laps: { distance: number; moving_time: number; elapsed_time: number }[]): { m: number; pace100: number | null } | null {
+  if (!laps.length) return null;
+  let best = { m: 0, sec: 0 };
+  let cur = { m: 0, sec: 0 };
+  for (const l of laps) {
+    const t = l.elapsed_time || l.moving_time;
+    const valid = l.distance > 0 && t > 0 && t / (l.distance / 100) >= MIN_SWIM_SEC_100;
+    if (!valid) {
+      cur = { m: 0, sec: 0 };
+      continue;
+    }
+    // O tură cu pauză în interior (timp scurs mult peste timpul în mișcare) nu se leagă de vecinele ei.
+    const paused = l.elapsed_time - l.moving_time > 10;
+    cur = paused ? { m: l.distance, sec: t } : { m: cur.m + l.distance, sec: cur.sec + t };
+    if (cur.m > best.m) best = { ...cur };
+    if (paused) cur = { m: 0, sec: 0 };
+  }
+  return { m: Math.round(best.m), pace100: best.m > 0 ? Math.round(best.sec / (best.m / 100)) : null };
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -103,6 +138,7 @@ export function stravaDetails(a: StravaSummaryExtra | StravaDetailed, sport: str
   const det = a as StravaDetailed;
   if (det.splits_metric || det.best_efforts || det.laps) {
     d.detailed = true;
+    d.v = DETAILS_V;
     if (sport === 'alergare') {
       const splits = (det.splits_metric ?? []).filter((s) => s.distance >= 950 && ok(s.moving_time)).map((s) => Math.round(s.moving_time / (s.distance / 1000)));
       d.splitsSecPerKm = splits.length ? splits : null;
@@ -117,6 +153,9 @@ export function stravaDetails(a: StravaSummaryExtra | StravaDetailed, sport: str
     if (sport === 'inot') {
       const laps = (det.laps ?? []).filter((l) => l.distance >= 50 && ok(l.moving_time));
       d.laps = det.laps?.length ?? null;
+      const c = longestContinuousSwim(det.laps ?? []);
+      d.continuousM = c ? c.m : null;
+      d.continuousPace100mSec = c?.pace100 ?? null;
       d.fastestLap100mSec = laps.length ? Math.min(...laps.map((l) => Math.round(l.moving_time / (l.distance / 100)))) : null;
     }
   }

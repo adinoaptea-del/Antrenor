@@ -1,6 +1,6 @@
 // Sincronizarea: trage ultimele zile de la fiecare brățară conectată, normalizează, scrie în wellness_daily și activities.
 import { insert, select, upsert } from './db.js';
-import { mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
+import { DETAILS_V, mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
 import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
 import { normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
@@ -106,10 +106,8 @@ async function enrichStrava(userId: string, token: string, acts: SourceActivity[
   let budget = 15;
   for (const a of acts) {
     const old = prev.get(a.id);
-    if (old?.detailed) {
-      a.details = mergeDetails(a.details, old);
-      continue;
-    }
+    if (old) a.details = mergeDetails(a.details, old); // nu pierdem ce s-a citit deja
+    if (old?.detailed && (old.v ?? 1) >= DETAILS_V) continue;
     if (budget <= 0 || (a.sport !== 'alergare' && a.sport !== 'inot')) continue;
     budget--;
     try {

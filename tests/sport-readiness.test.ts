@@ -17,25 +17,32 @@ describe('pregătit pentru proba de cursă', () => {
   ];
   const r = sportReadiness('70.3', acts, today);
 
-  it('alergare: distanța probei acoperită, constanță 3 din 8, brick 4 din 5 km', () => {
+  it('alergare: 70% cea mai lungă (21,4 din 21,1), 30% după bicicletă (4 din 8 km)', () => {
     const run = r.find((x) => x.sport === 'alergare')!;
     assert.equal(run.parts[0]!.pct, 100);
-    assert.equal(run.parts[1]!.pct, 38);
-    assert.equal(run.parts[2]!.pct, 80);
-    assert.equal(run.value, Math.round(100 * 0.6 + 38 * 0.2 + 80 * 0.2));
+    assert.equal(run.parts[1]!.pct, 50);
+    assert.equal(run.value, 85);
   });
 
-  it('bicicletă: tura de acum 2 luni nu contează; 45 din 90 km', () => {
+  it('bicicletă: tura de acum 2 luni nu contează; 45 din 90 km = 50%, frecvența nu dă puncte', () => {
     const bike = r.find((x) => x.sport === 'bicicleta')!;
-    assert.equal(bike.parts[0]!.pct, 50);
-    assert.equal(bike.value, Math.round(50 * 0.6 + 13 * 0.4));
+    assert.equal(bike.value, 50);
   });
 
-  it('înot: distanță și ritm față de timpul-limită de 70 min', () => {
+  it('înot fără ture măsurate: 0%, „nemăsurat” — totalul ședinței cu pauze NU contează', () => {
     const swim = r.find((x) => x.sport === 'inot')!;
-    assert.equal(swim.parts[0]!.pct, 50);
-    assert.equal(swim.parts[2]!.label, 'Ritm față de timpul-limită');
-    assert.equal(swim.parts[2]!.pct, 100); // 3:09/100 m e sub 3:41/100 m
+    assert.equal(swim.value, 0);
+    assert.equal(swim.parts[0]!.have, 'nemăsurat');
+  });
+
+  it('înot: doar porțiunea fără oprire (75 m din 650 m totali) → 4%', () => {
+    const s = sportReadiness('70.3', [a({ id: 'sw', date: '2026-10-14', sport: 'inot', minutes: 30, distanceKm: 0.65, details: { continuousM: 75, continuousPace100mSec: 82 } })], today);
+    assert.equal(s.find((x) => x.sport === 'inot')!.value, 4);
+  });
+
+  it('înot: distanța acoperită dar peste timpul-limită → cel mult 90%', () => {
+    const s = sportReadiness('70.3', [a({ id: 'sw', date: '2026-10-14', sport: 'inot', minutes: 80, distanceKm: 2, details: { continuousM: 2000, continuousPace100mSec: 240 } })], today);
+    assert.equal(s.find((x) => x.sport === 'inot')!.value, 90);
   });
 
   it('fără ședințe cu distanță: null, nu 0', () => {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeDetails, stepsFromCadence, stravaDetails } from '../src/collector/details.js';
+import { longestContinuousSwim, mergeDetails, stepsFromCadence, stravaDetails } from '../src/collector/details.js';
 
 describe('detaliile ședinței', () => {
   it('pași pe km = cadență × ritm; lungimea pasului din ei', () => {
@@ -40,5 +40,21 @@ describe('traseu', () => {
   it('ia polyline-ul din rezumatul Strava', () => {
     const d = stravaDetails({ sport_type: 'Run', distance: 5000, moving_time: 1800, elapsed_time: 1800, map: { summary_polyline: '_p~iF~ps|U_ulLnnqC' } }, 'alergare');
     assert.equal(d.polyline, '_p~iF~ps|U_ulLnnqC');
+  });
+});
+
+describe('înot fără oprire', () => {
+  const L = (distance: number, sec: number, paused = 0) => ({ distance, moving_time: sec, elapsed_time: sec + paused });
+  it('pauzele (ture fără distanță) întrerup șirul; se ia cel mai lung', () => {
+    // ca la ședința reală din 14 oct: 25 m, pauză, 50 m, pauză, 75 m, pauză, 50 m
+    const r = longestContinuousSwim([L(25, 14), L(0, 82), L(50, 41), L(0, 20), L(75, 61), L(0, 79), L(50, 30)]);
+    assert.equal(r?.m, 75);
+    assert.equal(r?.pace100, 81);
+  });
+  it('o tură imposibil de rapidă (atingere de perete) nu se numără și rupe șirul', () => {
+    assert.equal(longestContinuousSwim([L(25, 30), L(75, 16), L(25, 30)])?.m, 25);
+  });
+  it('o tură cu pauză în interior nu se leagă de vecine', () => {
+    assert.equal(longestContinuousSwim([L(50, 60), L(100, 120, 40), L(50, 60)])?.m, 100);
   });
 });

@@ -41,6 +41,7 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
   const next = weekWorkouts.find((w) => diffDays(me.today, w.date) >= 0 && colorOf(me, w) === 'asteptare');
   const dayName = (iso: string) => (iso === me.today ? 'azi' : DAY_NAMES[weekday(iso)]!);
   const best = longest(me, sport);
+  const swimBest = me.sportReady?.find((r) => r.sport === 'inot')?.best ?? null;
   const bestLabel = best?.distanceKm == null ? '–' : sport === 'inot' ? String(Math.round(best.distanceKm * 1000)) : best.distanceKm.toLocaleString('ro-RO');
   const target = { inot: 'din 1.900', bicicleta: 'din 90', alergare: 'din 18', forta: '' }[sport];
 
@@ -148,7 +149,7 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
           ) : (
             <div className="list">
               {weekWorkouts.map((w) => {
-                const struct = sport === 'inot' ? (swimMode === 'ape' ? 'continuu, orientare la 6 brațe, doar cu antrenorul' : '200 m încălzire · 400–600 m tehnică · set scurt · 100 m revenire') : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
+                const struct = sport === 'inot' ? swimStructure(w.type, w.structure ?? null, swimBest, swimMode) : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
                 return (
                   <div key={w.id} className="item">
                     <Dot color={colorOf(me, w)} />
@@ -241,9 +242,27 @@ function ReadyCard({ sport }: { sport: Sport }) {
               </div>
             </div>
           ))}
-          <div className="tiny muted">Din ultimele 6 săptămâni, toate ședințele de pe brățări. Nu e o predicție de timp.</div>
+          <div className="tiny muted">
+            {sport === 'inot'
+              ? 'Contează doar cea mai lungă porțiune înotată fără oprire, din turele ceasului; totalul cu pauze nu. '
+              : sport === 'alergare' && r.parts.length > 1
+                ? 'La triatlon, alergarea vine după 90 km de bicicletă: de aceea contează și alergarea imediat după tură. '
+                : ''}
+            Din ultimele 6 săptămâni, doar ce au măsurat brățările. Nu e o predicție de timp.
+          </div>
         </div>
       )}
     </Card>
   );
+}
+
+/**
+ * Structura ședinței de înot pornește de la ce ai demonstrat fără oprire, nu de la un set generic.
+ * Sub 400 m continuu: seturi de lungimea pe care o ții acum, pauză până respiri liniștit, și ținta de a lega încă o lungime de bazin.
+ */
+function swimStructure(type: string, planned: string | null, bestM: number | null, mode: 'bazin' | 'ape'): string {
+  if (mode === 'ape') return 'doar însoțit; continuu, orientare la 6 brațe';
+  if (type !== 'tehnica' || bestM == null || bestM >= 400) return planned ?? '';
+  const set = Math.max(25, Math.floor(bestM / 25) * 25);
+  return `seturi de ${set} m fără oprire (cât ai demonstrat), pauză până respiri liniștit; încearcă să legi ${set + 25} m`;
 }

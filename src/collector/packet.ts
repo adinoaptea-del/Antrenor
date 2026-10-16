@@ -1,3 +1,4 @@
+import { sportReadiness } from '../bar/sport-readiness.js';
 import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
@@ -97,6 +98,11 @@ export interface Packet {
   progres: { zile_verzi_la_rand: number | null; ultima_crestere: string | null; eligibil: boolean; motiv: string };
   totaluri_de_la_start: CollectorInput['totals'] | null;
   /** Recuperarea (saună, baie rece, yoga, stretching, masaj) și mișcarea în plus din ultimele 7 zile, de pe brățări. */
+  /**
+   * Cât din fiecare probă a cursei a DEMONSTRAT sportivul în ultimele 6 săptămâni (cod, nu estimare).
+   * Înotul = cea mai lungă porțiune fără oprire. Ședințele pornesc de aici, nu de la nivelul presupus.
+   */
+  pregatire_proba: { proba: string; procent: number | null; demonstrat: string[] }[];
   alte_activitati: { recuperare_7z_min: number; activ_extra_7z_min: number; lista: { data: string; ora: string | null; tip: 'recuperare' | 'activ'; nume: string; minute: number; fc_medie: number | null }[] };
   aderenta_14z: { planificate: number; facute: number; sarite: { data: string; sport: Sport; cheie: boolean }[] } | null;
   /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
@@ -533,6 +539,7 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
     vreme: input.weather ?? null,
     progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
+    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today).map((r) => ({ proba: r.leg, procent: r.value, demonstrat: r.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
     alte_activitati: (() => {
       const recent = (input.others ?? []).filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) <= 7);
       return {

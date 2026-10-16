@@ -1,3 +1,4 @@
+import type { Goal } from '../calendar/phases.js';
 import type { ActivityDetails } from './details.js';
 import type { OtherActivity } from './other.js';
 import type { LabsComparison } from './labs-compare.js';
@@ -99,7 +100,7 @@ export interface LoadInput {
 export interface CollectorInput {
   today: string;
   event: 'dimineata' | 'dupa_antrenament' | 'saptamanal';
-  athlete: { obiectiv: string; raceDate: string; phase: Phase; weekLabel?: string; sex?: 'm' | 'f' | null; varsta?: number | null; inaltimeCm?: number | null };
+  athlete: { obiectiv: string; goal?: Goal | null; raceDate: string; phase: Phase; weekLabel?: string; sex?: 'm' | 'f' | null; varsta?: number | null; inaltimeCm?: number | null };
   wellness: SourceDaily[];
   activities: SourceActivity[];
   plan: PlannedWorkout[];
