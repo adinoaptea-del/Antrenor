@@ -672,7 +672,7 @@ async function loadUser(userId) {
 async function loadPlan(userId, from, to) {
   const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "version.desc" });
   if (!plan) return { planId: null, workouts: [] };
-  const rows = await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: "date.asc", limit: 500 });
+  const rows = await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: "date.asc", limit: 1e3 });
   const workouts = rows.map(toPlanned);
   return { planId: plan.id, workouts };
 }
@@ -3007,7 +3007,7 @@ async function buildMe(userId, today) {
   const user = await loadUser(userId);
   const from = addDays(today, -42);
   const [{ workouts }, acts, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRow, lastSyncRows, planRow] = await Promise.all([
-    loadPlan(userId, addDays(today, -28), addDays(today, 56)),
+    loadPlan(userId, addDays(today, -28), user.race_date ?? addDays(today, 400)),
     loadActivities(userId, from),
     loadForms(userId, today),
     one("consents", { user_id: `eq.${userId}` }),
@@ -3514,8 +3514,78 @@ async function hasUpgrade() {
   return r2.ok && t.ok;
 }
 
-// server/sync.ts
+// server/admin.ts
+import { randomBytes as randomBytes3 } from "node:crypto";
 async function handler14(req, res) {
+  try {
+    const u = await requireUser(req);
+    const me = await one("users", { id: `eq.${u.id}` });
+    if (me?.role !== "admin") throw new HttpError(403, "doar adminul");
+    if (req.method === "GET") {
+      const [users, tokens, logs, intakes, plans, msgs] = await Promise.all([
+        select("users", {}, { select: "id,email,name,created_at,tz", order: "created_at.asc" }),
+        select("oauth_tokens", {}, { select: "user_id,provider" }),
+        select("sync_log", {}, { order: "ran_at.desc", limit: 300 }),
+        select("questionnaires", { kind: "eq.intrare" }, { select: "user_id" }),
+        select("plans", { active: "eq.true" }, { select: "user_id,start_date" }),
+        select("messages", {}, { select: "user_id,created_at,kind", order: "created_at.desc", limit: 300 })
+      ]);
+      json(res, 200, {
+        users: users.map((x) => {
+          const last = logs.filter((l) => l.user_id === x.id);
+          const byProvider = [...new Set(tokens.filter((t) => t.user_id === x.id).map((t) => t.provider))].map((p) => {
+            const l = last.find((r2) => r2.provider === p);
+            return { provider: p, lastSync: l?.ran_at ?? null, ok: l?.ok ?? null, detail: l?.detail ?? null };
+          });
+          return {
+            id: x.id,
+            email: x.email,
+            name: x.name,
+            since: x.created_at.slice(0, 10),
+            intake: intakes.some((i) => i.user_id === x.id),
+            planStart: plans.find((p) => p.user_id === x.id)?.start_date ?? null,
+            devices: byProvider,
+            lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== "memento")?.created_at ?? null
+          };
+        })
+      });
+      return;
+    }
+    if (req.method !== "POST") throw new HttpError(405, "GET sau POST");
+    const body = await readJson(req);
+    const target = await one("users", { id: `eq.${body.userId ?? ""}` });
+    if (!target) throw new HttpError(404, "sportiv inexistent");
+    if (body.action === "sync") {
+      const r2 = await syncUser(target.id, 7);
+      json(res, 200, { ok: true, text: r2.length ? r2.map((x) => `${x.provider}: ${x.ok ? `${x.rows} r\xE2nduri` : `eroare: ${x.detail ?? ""}`}`).join(" \xB7 ") : "nicio br\u0103\u021Bar\u0103 conectat\u0103" });
+      return;
+    }
+    if (body.action === "plan") {
+      const intake = await one("questionnaires", { user_id: `eq.${target.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      if (!intake) throw new HttpError(400, "nu are chestionarul de intrare");
+      const r2 = await generateAndStore(target.id, todayIn(target.tz), intake.answers);
+      json(res, 200, { ok: r2.ok, text: r2.ok ? `plan nou: ${r2.weeks} s\u0103pt\u0103m\xE2ni, ${r2.budgetHours} h/s\u0103pt.` : r2.reason ?? "nu s-a putut" });
+      return;
+    }
+    if (body.action === "parola") {
+      const password = randomBytes3(6).toString("base64url");
+      const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${target.id}`, {
+        method: "PUT",
+        headers: { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      if (!r2.ok) throw new HttpError(500, `nu am putut schimba parola (${r2.status})`);
+      json(res, 200, { ok: true, text: `parol\u0103 temporar\u0103 pentru ${target.email}: ${password}` });
+      return;
+    }
+    throw new HttpError(400, "ac\u021Biune necunoscut\u0103");
+  } catch (e) {
+    fail(res, e);
+  }
+}
+
+// server/sync.ts
+async function handler15(req, res) {
   try {
     if (req.method !== "POST") throw Object.assign(new Error("POST"), { status: 405 });
     const u = await requireUser(req);
@@ -3531,7 +3601,7 @@ async function handler14(req, res) {
 }
 
 // server/webhooks/strava.ts
-async function handler15(req, res) {
+async function handler16(req, res) {
   try {
     if (req.method === "GET") {
       if (q(req, "hub.verify_token") !== (process.env.STRAVA_VERIFY_TOKEN ?? "")) {
@@ -3554,7 +3624,7 @@ async function handler15(req, res) {
 
 // server/webhooks/whoop.ts
 import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-async function handler16(req, res) {
+async function handler17(req, res) {
   try {
     const chunks = [];
     for await (const c of req) chunks.push(typeof c === "string" ? Buffer.from(c) : c);
@@ -3587,9 +3657,10 @@ var STATIC = {
   me: handler9,
   "plan/generate": handler12,
   setup: handler13,
-  sync: handler14,
-  "webhooks/strava": handler15,
-  "webhooks/whoop": handler16,
+  admin: handler14,
+  sync: handler15,
+  "webhooks/strava": handler16,
+  "webhooks/whoop": handler17,
   "webhooks/apple": handler7
 };
 function resolve(path) {
@@ -3601,7 +3672,7 @@ function resolve(path) {
   if (m) return { handler: m[2] === "start" ? handler11 : handler10, params: { provider: m[1] } };
   return null;
 }
-async function handler17(req, res) {
+async function handler18(req, res) {
   const raw = req.query.__p;
   const fromQuery = Array.isArray(raw) ? raw.join("/") : raw;
   const path = fromQuery ?? new URL(req.url ?? "/", "http://x").pathname;
@@ -3616,6 +3687,6 @@ async function handler17(req, res) {
   await r2.handler(req, res);
 }
 export {
-  handler17 as default,
+  handler18 as default,
   resolve
 };

@@ -8,6 +8,7 @@ import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
 import { Countdown } from './ui/Countdown';
+import { Admin } from './ui/Admin';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
@@ -18,13 +19,13 @@ import { startAutoSync } from './ui/sync';
 import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
 // Trei ecrane principale în bara de jos (Acasă la mijloc); restul se deschid din butoane și se închid cu săgeata.
-type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
+type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
 const MAIN: { id: Screen; label: string; icon: keyof typeof Icons }[] = [
   { id: 'antrenament', label: 'Antrenament', icon: 'target' },
   { id: 'acasa', label: 'Acasă', icon: 'home' },
   { id: 'recuperare', label: 'Recuperare', icon: 'pulse' },
 ];
-const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'];
+const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -130,6 +131,7 @@ function Shell() {
           {screen === 'calendar' && <Calendar onBack={back} onOpen={go} />}
           {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
           {screen === 'profil' && <Profile onBack={back} onOpen={go} />}
+          {screen === 'prieteni' && me.admin && <Admin onBack={() => go('profil')} />}
           {screen === 'intake' && (
             <Intake
               onBack={back}

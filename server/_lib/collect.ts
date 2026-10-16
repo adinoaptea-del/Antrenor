@@ -142,7 +142,7 @@ export async function loadUser(userId: string): Promise<UserRow> {
 export async function loadPlan(userId: string, from: string, to: string): Promise<{ planId: string | null; workouts: PlannedWorkout[] }> {
   const plan = await one<{ id: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'version.desc' });
   if (!plan) return { planId: null, workouts: [] };
-  const rows = await select<WorkoutRow>('workouts_planned', { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: 'date.asc', limit: 500 });
+  const rows = await select<WorkoutRow>('workouts_planned', { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lte.${to}`] }, { order: 'date.asc', limit: 1000 });
   const workouts = rows.map(toPlanned);
   return { planId: plan.id, workouts };
 }

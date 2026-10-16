@@ -15,7 +15,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
   const from = addDays(today, -42);
   const [{ workouts }, acts, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRow, lastSyncRows, planRow] = await Promise.all([
-    loadPlan(userId, addDays(today, -28), addDays(today, 56)),
+    loadPlan(userId, addDays(today, -28), user.race_date ?? addDays(today, 400)),
     loadActivities(userId, from),
     loadForms(userId, today),
     one<{ health_data: boolean; withdrawn_at: string | null }>('consents', { user_id: `eq.${userId}` }),

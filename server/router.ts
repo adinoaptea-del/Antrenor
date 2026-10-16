@@ -15,6 +15,7 @@ import oauth_callback from './oauth/[provider]/callback.js';
 import oauth_start from './oauth/[provider]/start.js';
 import plan_generate from './plan/generate.js';
 import setup from './setup.js';
+import admin from './admin.js';
 import sync from './sync.js';
 import webhooks_strava from './webhooks/strava.js';
 import webhooks_whoop from './webhooks/whoop.js';
@@ -32,6 +33,7 @@ const STATIC: Record<string, Handler> = {
   me,
   'plan/generate': plan_generate,
   setup,
+  admin,
   sync,
   'webhooks/strava': webhooks_strava,
   'webhooks/whoop': webhooks_whoop,

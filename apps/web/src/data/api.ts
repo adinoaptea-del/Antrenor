@@ -175,5 +175,31 @@ export const server = {
   form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force: true }) }),
+  adminList: () => api<{ users: AdminUser[] }>('/api/admin'),
+  adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
   regeneratePlan: () => api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number }>('/api/plan/generate', { method: 'POST' }),
 };
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  since: string;
+  intake: boolean;
+  planStart: string | null;
+  devices: { provider: string; lastSync: string | null; ok: boolean | null; detail: string | null }[];
+  lastMessage: string | null;
+}
+
+/** Repornire curată: șterge cache-ul aplicației (nu datele) și reîncarcă. Prima reparație pentru orice blocaj. */
+export async function hardReload(): Promise<void> {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    const keys = (await caches?.keys?.()) ?? [];
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch {
+    /* fără service worker / cache: doar reîncărcăm */
+  }
+  location.reload();
+}

@@ -3,7 +3,7 @@ import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common'
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
-import { SERVER } from '../data/api';
+import { SERVER, hardReload } from '../data/api';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -185,7 +185,16 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
         <Card tight>
           <Label>Cont și consimțământ</Label>
           <div className="small">18+ · date de sănătate · nu e serviciu medical · ștergerea contului la cerere</div>
+          <div className="tiny muted" style={{ marginTop: 6 }}>Dacă ceva nu merge: „Repornește aplicația” șterge doar fișierele din telefon, nu datele tale.</div>
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+            <button className="pill" onClick={() => void hardReload()}>
+              Repornește aplicația
+            </button>
+            {me.admin && (
+              <button className="pill on" onClick={() => onOpen('prieteni')}>
+                Prieteni (admin)
+              </button>
+            )}
             <button className="pill" onClick={() => void logout()}>
               {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
             </button>
