@@ -1,3 +1,4 @@
+import { stepsFromCadence, type ActivityDetails } from '../../src/collector/details.js';
 import { classifyOther, type OtherActivity } from '../../src/collector/other.js';
 // Apple Watch prin aplicația iPhone „Health Auto Export” (REST API automation, format JSON).
 // Luăm somnul, HRV-ul, pulsul de repaus și antrenamentele (inclusiv cele de pe Garmin, trimise de Garmin Connect în Apple Health).
@@ -74,6 +75,7 @@ export interface AppleWorkout {
   max_hr: number | null;
   avg_pace_min_km: number | null;
   name: string;
+  details: ActivityDetails;
 }
 
 function sportOf(name: string): AppleWorkout['sport'] | null {
@@ -128,6 +130,7 @@ export function parseHealthWorkouts(body: unknown): AppleWorkout[] {
       max_hr: max == null ? null : Math.round(max),
       avg_pace_min_km: sport === 'alergare' && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
       name,
+      details: appleDetails(w, sport, sec, dist),
     });
   }
   return out;
@@ -152,4 +155,36 @@ export function parseHealthOther(body: unknown): OtherActivity[] {
     out.push({ id: `apple-o-${id}`, source: 'apple', externalId: id, date: start.slice(0, 10), startLocal: hm(start), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
   }
   return out;
+}
+
+/** Ce mai trimite Health Auto Export pe un antrenament: energie, urcare, pași; suma eșantioanelor când vin ca listă. */
+function appleDetails(w: Record<string, unknown>, sport: AppleWorkout['sport'], sec: number, dist: number | null): ActivityDetails {
+  const total = (v: unknown): number | null => {
+    if (Array.isArray(v)) {
+      const xs = v.map((x) => qty(x)).filter((x): x is number => x != null);
+      return xs.length ? xs.reduce((a, b) => a + b, 0) : null;
+    }
+    return qty(v);
+  };
+  const kcalRaw = total(w.activeEnergyBurned ?? w.activeEnergy);
+  const unit = String(((w.activeEnergyBurned ?? w.activeEnergy) as { units?: unknown } | undefined)?.units ?? 'kcal').toLowerCase();
+  const kcal = kcalRaw == null ? null : Math.round(unit === 'kj' ? kcalRaw / 4.184 : kcalRaw);
+  const elev = qty(w.elevationUp);
+  const elevUnit = String((w.elevationUp as { units?: unknown } | undefined)?.units ?? 'm').toLowerCase();
+  const d: ActivityDetails = {
+    movingMin: Math.round(sec / 60),
+    kcal: kcal && kcal > 0 ? kcal : null,
+    elevGainM: elev != null && elev > 0 ? Math.round(elevUnit === 'ft' ? elev * 0.3048 : elev) : null,
+    avgSpeedKmh: dist && dist > 0.2 ? Math.round((dist / (sec / 3600)) * 10) / 10 : null,
+  };
+  if (sport === 'alergare' && dist && dist > 0.2) {
+    const steps = total(w.stepCount);
+    const spm = steps && steps > 0 ? steps / (sec / 60) : qty(w.stepCadence);
+    if (spm && spm > 0) {
+      d.cadence = Math.round(spm);
+      Object.assign(d, stepsFromCadence(spm, sec / 60 / dist));
+    }
+  }
+  if (sport === 'inot' && dist && dist >= 0.05) d.pace100mSec = Math.round(sec / (dist * 10));
+  return d;
 }

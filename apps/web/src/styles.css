@@ -673,3 +673,39 @@ ul.plain b { color: var(--fg); }
 .suggest .sg-s b { color: var(--fg); font-weight: 600; }
 .suggest .sg-b { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 6px; }
 .suggest .sg-b .btn { min-width: 0; font-size: 13px; padding-inline: 8px; }
+
+/* Detalii antrenament (pe sport) */
+.det-pills { display: flex; gap: 6px; overflow-x: auto; margin: 0 -2px 12px; padding: 2px; scrollbar-width: none; }
+.det-pills::-webkit-scrollbar { display: none; }
+.det-pill { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line-2); color: var(--fg); font: 600 12px var(--font-ui); cursor: pointer; }
+.det-pill b { font-weight: 700; white-space: nowrap; }
+.det-pill small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.det-pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.det-pill.on small { color: rgba(255, 255, 255, 0.8); }
+.det-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.det-tile { min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 11px 12px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); font-family: var(--font-ui); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.det-tile.on { border-color: var(--accent); background: var(--accent-soft); }
+.det-l { font-size: 11.5px; color: var(--muted); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.det-v { font: 400 26px/1 var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.det-v small { font: 600 11px var(--font-ui); color: var(--muted); margin-left: 4px; }
+.det-best { font-size: 10.5px; color: var(--c-verde); font-weight: 600; }
+.det-sec { margin-top: 14px; }
+.det-h { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.det-trend { display: flex; align-items: flex-end; gap: 6px; height: 132px; }
+.det-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; background: none; border: 0; padding: 0; color: var(--muted); font-family: var(--font-ui); cursor: pointer; }
+.det-cv { font-size: 10px; font-weight: 700; white-space: nowrap; color: var(--muted); }
+.det-bar { width: 100%; max-width: 30px; border-radius: 8px 8px 4px 4px; background: var(--line-2); }
+.det-cd { font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.det-col.on .det-bar { background: var(--accent); }
+.det-col.on .det-cv, .det-col.on .det-cd { color: var(--fg); }
+.det-trend { height: 150px; }
+.det-trend .det-col > .det-bar { flex: 0 0 auto; }
+.splits { display: grid; gap: 5px; }
+.split { display: grid; grid-template-columns: 22px minmax(0, 1fr) 44px; align-items: center; gap: 8px; font-size: 12px; }
+.split .sk { color: var(--muted); font-weight: 700; text-align: right; }
+.split .sb { height: 8px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.split .sb i { display: block; height: 100%; border-radius: 6px; background: var(--line-2); }
+.split.fast .sb i { background: var(--c-verde); }
+.split .st { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.split.fast .st { color: var(--c-verde); }
+.det-efforts { display: flex; flex-wrap: wrap; gap: 6px; }

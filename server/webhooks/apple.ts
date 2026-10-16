@@ -41,6 +41,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
           max_hr: w.max_hr,
           avg_pace_min_km: w.avg_pace_min_km,
           name: w.name,
+          raw: w.details,
           synced_at: new Date().toISOString(),
         })),
         'id',

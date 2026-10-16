@@ -5,6 +5,7 @@ import { classifyOther, type OtherActivity } from '../other.js';
 // Documentație: https://developers.strava.com/docs/reference/
 
 import type { SourceActivity } from '../types.js';
+import { stravaDetails, type StravaDetailed } from '../details.js';
 import type { Sport } from '../../types.js';
 import { getJson, type OAuthConfig } from './oauth.js';
 
@@ -35,6 +36,13 @@ export interface StravaActivity {
   average_watts?: number;
   device_name?: string;
   external_id?: string;
+  total_elevation_gain?: number;
+  average_speed?: number;
+  max_speed?: number;
+  weighted_average_watts?: number;
+  max_watts?: number;
+  kilojoules?: number;
+  calories?: number;
 }
 
 const STRAVA_SPORT: Record<string, Sport | null> = {
@@ -68,6 +76,11 @@ export async function listActivities(token: string, afterEpochSec: number, befor
   return out;
 }
 
+/** Activitatea detaliată (splits pe km, best efforts, ture): o cerere pe activitate. */
+export async function getActivity(token: string, id: string): Promise<StravaDetailed> {
+  return getJson<StravaDetailed>(`https://www.strava.com/api/v3/activities/${id}?include_all_efforts=false`, token);
+}
+
 export function normalizeStravaOther(a: StravaActivity): OtherActivity | null {
   if (STRAVA_SPORT[a.sport_type]) return null;
   const c = classifyOther(a.sport_type);
@@ -98,6 +111,7 @@ export function normalizeStravaActivity(a: StravaActivity): SourceActivity | nul
     avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
     timeInZonesMin: null, // se calculează din stream-ul de FC cu zonele sportivului, nu din Strava
     name: `${a.name}${a.device_name ? ` · ${a.device_name}` : ''}`,
+    details: stravaDetails(a, sport),
   };
 }
 

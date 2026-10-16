@@ -1,3 +1,4 @@
+import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
@@ -287,7 +288,8 @@ export function dedupeActivities(acts: SourceActivity[]): SourceActivity[] {
       continue;
     }
     const fields = (x: SourceActivity) => Object.values(x).filter((v) => v != null).length;
-    if (fields(a) > fields(dup)) kept[kept.indexOf(dup)] = a;
+    const details = mergeDetails(fields(a) > fields(dup) ? a.details : dup.details, fields(a) > fields(dup) ? dup.details : a.details);
+    kept[kept.indexOf(dup)] = { ...(fields(a) > fields(dup) ? a : dup), details };
   }
   return kept;
 }

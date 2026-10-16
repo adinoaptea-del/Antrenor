@@ -3,6 +3,7 @@ import type { Sport } from '@core/types.js';
 import { diffDays, weekday } from '@core/util/dates.js';
 import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle, MiniMap, PoolMap, Stat } from './common';
 import { useMe } from '../data/store';
+import { SessionDetails } from './SessionDetails';
 import { DAY_NAMES, SPORT_LABEL, TYPE_LABEL, barComponent, colorOf, fmtMinutes, longest, thisWeekDates, workoutsOn } from '../data/model';
 
 const SPORTS: { id: Sport; icon: keyof typeof Icons }[] = [
@@ -68,6 +69,7 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
 
       <div className="stack">
         <TotalsCard sport={sport} />
+        <SessionDetails key={sport} sport={sport} />
         {sport === 'inot' && (
           <>
             <div className="map-wrap">

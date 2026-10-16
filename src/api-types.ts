@@ -1,3 +1,4 @@
+import type { ActivityDetails } from './collector/details.js';
 import type { LabsComparison } from './collector/labs-compare.js';
 // Contractul dintre server (api/) și aplicație (apps/web): ce primește aplicația la /api/me.
 // Un singur obiect, calculat pe server; aplicația nu estimează nimic. null = „fără date”.
@@ -26,6 +27,11 @@ export interface MeActivity {
   avgHr: number | null;
   maxHr: number | null;
   name: string | null;
+  paceMinKm?: number | null;
+  cadence?: number | null;
+  watts?: number | null;
+  /** Detaliile măsurate de brățări. */
+  details?: ActivityDetails | null;
   /** Fără pereche în plan: apare albastru și cere „ce a fost?”. */
   unplanned: boolean;
   tipNeplanificat: 'cursa' | 'antrenament' | 'altceva' | null;

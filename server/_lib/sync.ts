@@ -1,9 +1,10 @@
 // Sincronizarea: trage ultimele zile de la fiecare brățară conectată, normalizează, scrie în wellness_daily și activities.
-import { insert, upsert } from './db.js';
+import { insert, select, upsert } from './db.js';
+import { mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
 import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
 import { normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
-import { listActivities, normalizeStravaActivity, normalizeStravaOther } from '../../src/collector/providers/strava.js';
+import { getActivity, listActivities, normalizeStravaActivity, normalizeStravaOther } from '../../src/collector/providers/strava.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { normalizeOuraNight, ouraApi } from '../../src/collector/providers/oura.js';
 
@@ -36,7 +37,7 @@ async function pullWhoop(userId: string, token: string, days: number): Promise<{
 
 async function pullStrava(token: string, days: number): Promise<{ activities: SourceActivity[]; others: OtherActivity[] }> {
   const now = Math.floor(Date.now() / 1000);
-  const rows = await listActivities(token, now - days * 86_400, now + 3600);
+  const rows = await listActivities(token, now - Math.max(days, 42) * 86_400, now + 3600);
   return { activities: rows.map(normalizeStravaActivity).filter((a): a is SourceActivity => a != null), others: rows.map(normalizeStravaOther).filter((a): a is OtherActivity => a != null) };
 }
 
@@ -89,8 +90,35 @@ function activityRow(userId: string, a: SourceActivity) {
     avg_watts: a.avgWatts ?? null,
     time_in_zones_min: a.timeInZonesMin ?? null,
     name: a.name ?? null,
+    ...(a.details ? { raw: a.details } : {}),
     synced_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Strava: lista dă rezumatul; splits pe km, best efforts și turele vin doar din activitatea detaliată.
+ * Păstrăm detaliile deja citite și cerem cel mult 15 activități noi pe sincronizare (limita Strava: 100 de cereri / 15 min).
+ */
+async function enrichStrava(userId: string, token: string, acts: SourceActivity[]): Promise<void> {
+  if (!acts.length) return;
+  const existing = await select<{ id: string; raw: ActivityDetails | null }>('activities', { user_id: `eq.${userId}`, id: `in.(${acts.map((a) => `"${a.id}"`).join(',')})` }, { select: 'id,raw' }).catch(() => []);
+  const prev = new Map(existing.map((r) => [r.id, r.raw]));
+  let budget = 15;
+  for (const a of acts) {
+    const old = prev.get(a.id);
+    if (old?.detailed) {
+      a.details = mergeDetails(a.details, old);
+      continue;
+    }
+    if (budget <= 0 || (a.sport !== 'alergare' && a.sport !== 'inot')) continue;
+    budget--;
+    try {
+      const det = await getActivity(token, a.externalId);
+      a.details = mergeDetails(stravaDetails(det, a.sport), a.details);
+    } catch {
+      budget = 0; // limită sau eroare: încercăm la sincronizarea următoare
+    }
+  }
 }
 
 /** Sincronizează toate brățările conectate ale unui sportiv. days = câte zile înapoi (3 la apăsare, 35 la conectare). */
@@ -112,6 +140,7 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
       } else if (provider === 'strava') {
         const { activities, others } = await pullStrava(token, days);
         await saveOthers(userId, others);
+        await enrichStrava(userId, token, activities);
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');
         rows = activities.length;
       } else if (provider === 'oura') {

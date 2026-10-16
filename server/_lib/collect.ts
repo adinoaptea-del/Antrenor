@@ -103,6 +103,7 @@ interface ActivityRow {
   avg_watts: number | null;
   time_in_zones_min: Record<string, number> | null;
   name: string | null;
+  raw?: unknown;
 }
 
 export function toSourceActivity(r: ActivityRow): SourceActivity {
@@ -122,6 +123,7 @@ export function toSourceActivity(r: ActivityRow): SourceActivity {
     avgWatts: r.avg_watts,
     timeInZonesMin: (r.time_in_zones_min as SourceActivity['timeInZonesMin']) ?? null,
     name: r.name,
+    details: r.raw && typeof r.raw === 'object' ? (r.raw as SourceActivity['details']) : null,
   };
 }
 

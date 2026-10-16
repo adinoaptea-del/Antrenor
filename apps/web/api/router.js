@@ -355,6 +355,79 @@ function paceFromResult(r2, distanceKm) {
   return t ? t / distanceKm : null;
 }
 
+// src/collector/details.ts
+var r1 = (x) => Math.round(x * 10) / 10;
+var ok = (x) => typeof x === "number" && Number.isFinite(x) && x > 0;
+function stepsFromCadence(spm, minPerKm) {
+  if (!ok(spm) || !ok(minPerKm)) return { stepsPerKm: null, strideM: null };
+  const s = Math.round(spm * minPerKm);
+  return { stepsPerKm: s, strideM: Math.round(1e3 / s * 100) / 100 };
+}
+var EFFORT_NAMES = { "400m": "400 m", "1k": "1 km", "1 mile": "1 mil\u0103", "5k": "5 km", "10k": "10 km", "Half-Marathon": "21,1 km", Marathon: "42,2 km" };
+function stravaDetails(a, sport) {
+  const d = {
+    movingMin: ok(a.moving_time) ? Math.round(a.moving_time / 60) : null,
+    elapsedMin: ok(a.elapsed_time) ? Math.round(a.elapsed_time / 60) : null,
+    elevGainM: ok(a.total_elevation_gain) ? Math.round(a.total_elevation_gain) : null,
+    avgSpeedKmh: ok(a.average_speed) ? r1(a.average_speed * 3.6) : null,
+    maxSpeedKmh: ok(a.max_speed) ? r1(a.max_speed * 3.6) : null,
+    kj: ok(a.kilojoules) ? Math.round(a.kilojoules) : null,
+    kcal: ok(a.calories) ? Math.round(a.calories) : null,
+    avgWatts: ok(a.average_watts) ? Math.round(a.average_watts) : null,
+    npWatts: ok(a.weighted_average_watts) ? Math.round(a.weighted_average_watts) : null,
+    maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null
+  };
+  if (sport === "alergare") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence * 2) : null;
+    const km2 = a.distance / 1e3;
+    const minPerKm = km2 > 0.2 && ok(a.moving_time) ? a.moving_time / 60 / km2 : null;
+    Object.assign(d, stepsFromCadence(d.cadence, minPerKm));
+  } else if (sport === "bicicleta") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
+  } else if (sport === "inot") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
+    d.pace100mSec = a.distance >= 50 && ok(a.moving_time) ? Math.round(a.moving_time / (a.distance / 100)) : null;
+  }
+  const det = a;
+  if (det.splits_metric || det.best_efforts || det.laps) {
+    d.detailed = true;
+    if (sport === "alergare") {
+      const splits = (det.splits_metric ?? []).filter((s) => s.distance >= 950 && ok(s.moving_time)).map((s) => Math.round(s.moving_time / (s.distance / 1e3)));
+      d.splitsSecPerKm = splits.length ? splits : null;
+      const efforts = {};
+      for (const e of det.best_efforts ?? []) {
+        const n2 = EFFORT_NAMES[e.name];
+        if (n2 && ok(e.moving_time)) efforts[n2] = e.moving_time;
+      }
+      d.bestEfforts = Object.keys(efforts).length ? efforts : null;
+      d.fastestKmSec = efforts["1 km"] ?? (splits.length ? Math.min(...splits) : null);
+    }
+    if (sport === "inot") {
+      const laps = (det.laps ?? []).filter((l) => l.distance >= 50 && ok(l.moving_time));
+      d.laps = det.laps?.length ?? null;
+      d.fastestLap100mSec = laps.length ? Math.min(...laps.map((l) => Math.round(l.moving_time / (l.distance / 100)))) : null;
+    }
+  }
+  return d;
+}
+function whoopDetails(score2) {
+  const z = score2.zone_durations;
+  return {
+    strain: ok(score2.strain) ? r1(score2.strain) : null,
+    kj: ok(score2.kilojoule) ? Math.round(score2.kilojoule) : null,
+    kcal: ok(score2.kilojoule) ? Math.round(score2.kilojoule / 4.184) : null,
+    elevGainM: ok(score2.altitude_gain_meter) ? Math.round(score2.altitude_gain_meter) : null,
+    deviceZonesMin: z ? [z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 6e4)) : null
+  };
+}
+function mergeDetails(a, b) {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  const out = { ...b };
+  for (const [k, v] of Object.entries(a)) if (v != null) out[k] = v;
+  return out;
+}
+
 // src/scoring/score.ts
 var EXPECTED_RPE = {
   odihna: 0,
@@ -678,7 +751,8 @@ function dedupeActivities(acts) {
       continue;
     }
     const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
-    if (fields2(a) > fields2(dup)) kept[kept.indexOf(dup)] = a;
+    const details = mergeDetails(fields2(a) > fields2(dup) ? a.details : dup.details, fields2(a) > fields2(dup) ? dup.details : a.details);
+    kept[kept.indexOf(dup)] = { ...fields2(a) > fields2(dup) ? a : dup, details };
   }
   return kept;
 }
@@ -990,7 +1064,7 @@ var key = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replac
 function compareLabs(now, before) {
   if (!before || before.data >= now.data) return null;
   const out = [];
-  const r1 = (x) => Math.round(x * 10) / 10;
+  const r12 = (x) => Math.round(x * 10) / 10;
   for (const k of ["feritina", "vitamina_d", "hemoglobina", "ck", "crp"]) {
     const a = before[k];
     const b = now[k];
@@ -999,7 +1073,7 @@ function compareLabs(now, before) {
     const lab = now.alte.find((x) => key(x.nume).includes(key(LABEL[k])) && (x.ref_min != null || x.ref_max != null));
     const min = lab?.ref_min ?? range.min;
     const max = lab?.ref_max ?? range.max;
-    out.push({ nume: LABEL[k], inainte: a, acum: b, unitate: range.unit, schimbare_pct: r1(a === 0 ? 0 : (b - a) / Math.abs(a) * 100), directie: direction(a, b, min, max) });
+    out.push({ nume: LABEL[k], inainte: a, acum: b, unitate: range.unit, schimbare_pct: r12(a === 0 ? 0 : (b - a) / Math.abs(a) * 100), directie: direction(a, b, min, max) });
   }
   const seen = new Set(out.map((c) => key(c.nume)));
   for (const v of now.alte) {
@@ -1012,7 +1086,7 @@ function compareLabs(now, before) {
       inainte: prev.valoare,
       acum: v.valoare,
       unitate: v.unitate,
-      schimbare_pct: r1(prev.valoare === 0 ? 0 : (v.valoare - prev.valoare) / Math.abs(prev.valoare) * 100),
+      schimbare_pct: r12(prev.valoare === 0 ? 0 : (v.valoare - prev.valoare) / Math.abs(prev.valoare) * 100),
       directie: direction(prev.valoare, v.valoare, v.ref_min, v.ref_max)
     });
   }
@@ -1073,7 +1147,8 @@ function toSourceActivity(r2) {
     avgCadence: r2.avg_cadence,
     avgWatts: r2.avg_watts,
     timeInZonesMin: r2.time_in_zones_min ?? null,
-    name: r2.name
+    name: r2.name,
+    details: r2.raw && typeof r2.raw === "object" ? r2.raw : null
   };
 }
 function toSourceDaily(r2) {
@@ -2168,7 +2243,8 @@ function normalizeWhoopWorkout(w) {
     maxHr: w.score.max_heart_rate,
     // Zonele Whoop sunt ale Whoop (% din FCmax), nu ale sportivului: le păstrăm doar ca referință brută, nu ca timeInZonesMin.
     timeInZonesMin: null,
-    name: z ? `whoop ${w.sport_name}; z1\u2013z5 (min): ${[z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 6e4)).join("/")}` : `whoop ${w.sport_name}`
+    name: z ? `whoop ${w.sport_name}; z1\u2013z5 (min): ${[z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 6e4)).join("/")}` : `whoop ${w.sport_name}`,
+    details: whoopDetails(w.score)
   };
 }
 function normalizeWhoopOther(w) {
@@ -2222,6 +2298,9 @@ async function listActivities(token, afterEpochSec, beforeEpochSec) {
   }
   return out;
 }
+async function getActivity(token, id) {
+  return getJson(`https://www.strava.com/api/v3/activities/${id}?include_all_efforts=false`, token);
+}
 function normalizeStravaOther(a) {
   if (STRAVA_SPORT[a.sport_type]) return null;
   const c = classifyOther(a.sport_type);
@@ -2251,7 +2330,8 @@ function normalizeStravaActivity(a) {
     avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
     timeInZonesMin: null,
     // se calculează din stream-ul de FC cu zonele sportivului, nu din Strava
-    name: `${a.name}${a.device_name ? ` \xB7 ${a.device_name}` : ""}`
+    name: `${a.name}${a.device_name ? ` \xB7 ${a.device_name}` : ""}`,
+    details: stravaDetails(a, sport)
   };
 }
 
@@ -2444,7 +2524,7 @@ async function pullWhoop(userId, token, days) {
 }
 async function pullStrava(token, days) {
   const now = Math.floor(Date.now() / 1e3);
-  const rows = await listActivities(token, now - days * 86400, now + 3600);
+  const rows = await listActivities(token, now - Math.max(days, 42) * 86400, now + 3600);
   return { activities: rows.map(normalizeStravaActivity).filter((a) => a != null), others: rows.map(normalizeStravaOther).filter((a) => a != null) };
 }
 async function pullOura(token, days) {
@@ -2494,8 +2574,30 @@ function activityRow(userId, a) {
     avg_watts: a.avgWatts ?? null,
     time_in_zones_min: a.timeInZonesMin ?? null,
     name: a.name ?? null,
+    ...a.details ? { raw: a.details } : {},
     synced_at: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+async function enrichStrava(userId, token, acts) {
+  if (!acts.length) return;
+  const existing = await select("activities", { user_id: `eq.${userId}`, id: `in.(${acts.map((a) => `"${a.id}"`).join(",")})` }, { select: "id,raw" }).catch(() => []);
+  const prev = new Map(existing.map((r2) => [r2.id, r2.raw]));
+  let budget = 15;
+  for (const a of acts) {
+    const old = prev.get(a.id);
+    if (old?.detailed) {
+      a.details = mergeDetails(a.details, old);
+      continue;
+    }
+    if (budget <= 0 || a.sport !== "alergare" && a.sport !== "inot") continue;
+    budget--;
+    try {
+      const det = await getActivity(token, a.externalId);
+      a.details = mergeDetails(stravaDetails(det, a.sport), a.details);
+    } catch {
+      budget = 0;
+    }
+  }
 }
 async function syncUser(userId, days = 3) {
   const connected = await connectedProviders(userId);
@@ -2515,6 +2617,7 @@ async function syncUser(userId, days = 3) {
       } else if (provider === "strava") {
         const { activities, others } = await pullStrava(token, days);
         await saveOthers(userId, others);
+        await enrichStrava(userId, token, activities);
         if (activities.length) await upsert("activities", activities.map((a) => activityRow(userId, a)), "id");
         rows = activities.length;
       } else if (provider === "oura") {
@@ -3117,18 +3220,19 @@ function parseHealthWorkouts(body) {
     const hr = w.heartRate ?? {};
     const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
     const max = qty(w.maxHeartRate) ?? qty(hr.max);
-    const r1 = (x) => x == null ? null : Math.round(x * 100) / 100;
+    const r12 = (x) => x == null ? null : Math.round(x * 100) / 100;
     out.push({
       id: `apple-${typeof w.id === "string" ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, "")}`,
       date: start.slice(0, 10),
       start_local: hm(start),
       sport,
       minutes,
-      distance_km: dist == null || dist <= 0 ? null : r1(dist),
+      distance_km: dist == null || dist <= 0 ? null : r12(dist),
       avg_hr: avg == null ? null : Math.round(avg),
       max_hr: max == null ? null : Math.round(max),
-      avg_pace_min_km: sport === "alergare" && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
-      name
+      avg_pace_min_km: sport === "alergare" && dist && dist > 0.2 ? r12(sec / 60 / dist) : null,
+      name,
+      details: appleDetails(w, sport, sec, dist)
     });
   }
   return out;
@@ -3151,6 +3255,36 @@ function parseHealthOther(body) {
     out.push({ id: `apple-o-${id}`, source: "apple", externalId: id, date: start.slice(0, 10), startLocal: hm(start), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
   }
   return out;
+}
+function appleDetails(w, sport, sec, dist) {
+  const total = (v) => {
+    if (Array.isArray(v)) {
+      const xs = v.map((x) => qty(x)).filter((x) => x != null);
+      return xs.length ? xs.reduce((a, b) => a + b, 0) : null;
+    }
+    return qty(v);
+  };
+  const kcalRaw = total(w.activeEnergyBurned ?? w.activeEnergy);
+  const unit = String((w.activeEnergyBurned ?? w.activeEnergy)?.units ?? "kcal").toLowerCase();
+  const kcal = kcalRaw == null ? null : Math.round(unit === "kj" ? kcalRaw / 4.184 : kcalRaw);
+  const elev = qty(w.elevationUp);
+  const elevUnit = String(w.elevationUp?.units ?? "m").toLowerCase();
+  const d = {
+    movingMin: Math.round(sec / 60),
+    kcal: kcal && kcal > 0 ? kcal : null,
+    elevGainM: elev != null && elev > 0 ? Math.round(elevUnit === "ft" ? elev * 0.3048 : elev) : null,
+    avgSpeedKmh: dist && dist > 0.2 ? Math.round(dist / (sec / 3600) * 10) / 10 : null
+  };
+  if (sport === "alergare" && dist && dist > 0.2) {
+    const steps = total(w.stepCount);
+    const spm = steps && steps > 0 ? steps / (sec / 60) : qty(w.stepCadence);
+    if (spm && spm > 0) {
+      d.cadence = Math.round(spm);
+      Object.assign(d, stepsFromCadence(spm, sec / 60 / dist));
+    }
+  }
+  if (sport === "inot" && dist && dist >= 0.05) d.pace100mSec = Math.round(sec / (dist * 10));
+  return d;
 }
 
 // server/webhooks/apple.ts
@@ -3189,6 +3323,7 @@ async function handler7(req, res) {
           max_hr: w.max_hr,
           avg_pace_min_km: w.avg_pace_min_km,
           name: w.name,
+          raw: w.details,
           synced_at: (/* @__PURE__ */ new Date()).toISOString()
         })),
         "id"
@@ -3904,6 +4039,10 @@ async function buildMe(userId, today) {
     avgHr: a.avgHr ?? null,
     maxHr: a.maxHr ?? null,
     name: a.name ?? null,
+    paceMinKm: a.avgPaceMinKm ?? null,
+    cadence: a.avgCadence ?? null,
+    watts: a.avgWatts ?? null,
+    details: a.details ?? null,
     unplanned: unplannedIds.has(a.id),
     tipNeplanificat: eveningByActivity[a.id]?.tip_neplanificat ?? eveningByActivity[a.externalId]?.tip_neplanificat ?? null
   }));
@@ -4191,23 +4330,23 @@ async function connect(url, timeoutMs = 15e3) {
   const reader = new Reader();
   let sock = net.connect({ host: c.host, port: c.port });
   sock.setTimeout(timeoutMs, () => sock.destroy(new Error("postgres: timeout")));
-  await new Promise((ok, ko) => {
-    sock.once("connect", ok);
+  await new Promise((ok2, ko) => {
+    sock.once("connect", ok2);
     sock.once("error", ko);
   });
   if (c.ssl) {
     const req = Buffer.alloc(8);
     req.writeInt32BE(8, 0);
     req.writeInt32BE(80877103, 4);
-    const answer = await new Promise((ok, ko) => {
-      sock.once("data", (d) => ok(String.fromCharCode(d[0])));
+    const answer = await new Promise((ok2, ko) => {
+      sock.once("data", (d) => ok2(String.fromCharCode(d[0])));
       sock.once("error", ko);
       sock.write(req);
     });
     if (answer !== "S") throw new Error("postgres: serverul nu accept\u0103 TLS");
     sock = tls.connect({ socket: sock, servername: net.isIP(c.host) ? void 0 : c.host, rejectUnauthorized: false });
-    await new Promise((ok, ko) => {
-      sock.once("secureConnect", ok);
+    await new Promise((ok2, ko) => {
+      sock.once("secureConnect", ok2);
       sock.once("error", ko);
     });
   }

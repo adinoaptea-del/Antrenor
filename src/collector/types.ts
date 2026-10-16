@@ -1,3 +1,4 @@
+import type { ActivityDetails } from './details.js';
 import type { OtherActivity } from './other.js';
 import type { LabsComparison } from './labs-compare.js';
 // Tipurile colectorului: ce intră de la brățări și formulare, în formă normalizată, independentă de producător.
@@ -33,6 +34,8 @@ export interface SourceActivity extends Activity {
   avgCadence?: number | null;
   avgWatts?: number | null;
   name?: string | null;
+  /** Detaliile măsurate de brățări (cel mai rapid km, pași/km, putere normalizată, ritm/100 m…). */
+  details?: ActivityDetails | null;
 }
 
 export interface MorningForm {

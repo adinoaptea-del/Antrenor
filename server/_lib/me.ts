@@ -51,6 +51,10 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     avgHr: a.avgHr ?? null,
     maxHr: a.maxHr ?? null,
     name: a.name ?? null,
+    paceMinKm: a.avgPaceMinKm ?? null,
+    cadence: a.avgCadence ?? null,
+    watts: a.avgWatts ?? null,
+    details: a.details ?? null,
     unplanned: unplannedIds.has(a.id),
     tipNeplanificat: eveningByActivity[a.id]?.tip_neplanificat ?? eveningByActivity[a.externalId]?.tip_neplanificat ?? null,
   }));

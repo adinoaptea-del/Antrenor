@@ -130,6 +130,7 @@ const WHOOP_SPORT: Record<string, Sport | null> = {
   hiking: null,
 };
 
+import { whoopDetails } from '../details.js';
 export function normalizeWhoopWorkout(w: WhoopWorkout): SourceActivity | null {
   if (w.score_state !== 'SCORED' || !w.score) return null;
   const sport = WHOOP_SPORT[w.sport_name.toLowerCase()];
@@ -150,6 +151,7 @@ export function normalizeWhoopWorkout(w: WhoopWorkout): SourceActivity | null {
     // Zonele Whoop sunt ale Whoop (% din FCmax), nu ale sportivului: le păstrăm doar ca referință brută, nu ca timeInZonesMin.
     timeInZonesMin: null,
     name: z ? `whoop ${w.sport_name}; z1–z5 (min): ${[z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 60_000)).join('/')}` : `whoop ${w.sport_name}`,
+    details: whoopDetails(w.score),
   };
 }
 

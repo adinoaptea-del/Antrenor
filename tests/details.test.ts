@@ -1,0 +1,37 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { mergeDetails, stepsFromCadence, stravaDetails } from '../src/collector/details.js';
+
+describe('detaliile ședinței', () => {
+  it('pași pe km = cadență × ritm; lungimea pasului din ei', () => {
+    assert.deepEqual(stepsFromCadence(170, 6), { stepsPerKm: 1020, strideM: 0.98 });
+    assert.deepEqual(stepsFromCadence(null, 6), { stepsPerKm: null, strideM: null });
+  });
+
+  it('Strava alergare: cel mai rapid km din best efforts, splits pe km întregi, cadența ×2', () => {
+    const d = stravaDetails(
+      {
+        sport_type: 'Run', distance: 6100, moving_time: 2745, elapsed_time: 2800, average_cadence: 84, total_elevation_gain: 41.6,
+        splits_metric: [{ distance: 1000, moving_time: 460, elapsed_time: 460 }, { distance: 1001, moving_time: 452, elapsed_time: 452 }, { distance: 100, moving_time: 40, elapsed_time: 40 }],
+        best_efforts: [{ name: '1k', moving_time: 448, elapsed_time: 448 }, { name: '400m', moving_time: 170, elapsed_time: 170 }],
+      },
+      'alergare',
+    );
+    assert.equal(d.cadence, 168);
+    assert.equal(d.fastestKmSec, 448);
+    assert.deepEqual(d.splitsSecPerKm, [460, 452]);
+    assert.equal(d.elevGainM, 42);
+    assert.equal(d.bestEfforts?.['400 m'], 170);
+    assert.equal(d.detailed, true);
+  });
+
+  it('Strava înot: ritm pe 100 m și cea mai rapidă tură', () => {
+    const d = stravaDetails({ sport_type: 'Swim', distance: 1500, moving_time: 1950, elapsed_time: 2400, laps: [{ distance: 500, moving_time: 640, elapsed_time: 640 }, { distance: 25, moving_time: 20, elapsed_time: 20 }, { distance: 100, moving_time: 118, elapsed_time: 118 }] }, 'inot');
+    assert.equal(d.pace100mSec, 130);
+    assert.equal(d.fastestLap100mSec, 118);
+  });
+
+  it('aceeași ședință din două brățări: se completează, nu se suprascrie', () => {
+    assert.deepEqual(mergeDetails({ fastestKmSec: 300, kcal: null }, { kcal: 500, fastestKmSec: 320, strain: 11 }), { fastestKmSec: 300, kcal: 500, strain: 11 });
+  });
+});
