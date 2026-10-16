@@ -2,7 +2,7 @@
 import { one, select } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadUser, phaseAt } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
-import type { Me, MeActivity, MeMessage } from '../../src/api-types.js';
+import type { Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
@@ -25,7 +25,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
     select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
-    one<{ drawn_at: string }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' }),
+    one<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
@@ -95,9 +95,20 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     warnings.push({ title: 'Înot sub plan', text: `Ai înotat ${Math.round((doneSwim / plannedSwim) * 100)}% din minutele planificate în ultimele două săptămâni.`, fix: 'Săptămâna viitoare ședințele de înot se plasează primele.' });
   }
 
+  const testRow = await one<{ results: TestsForm }>('tests', { user_id: `eq.${userId}` }, { order: 'tested_at.desc' });
+  const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
+  const aviz = (intake as { sanatate?: { avizCardiolog?: 'da' | 'nu' | 'programat' } } | null)?.sanatate?.avizCardiolog ?? null;
+  const baseline: Me['baseline'] = {
+    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp) } : null,
+    tests: testRow?.results ?? null,
+    body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
+    cardiolog: clearance?.cardiology ? 'da' : aviz,
+  };
+
   const memento = messagesRows.find((m) => m.kind === 'memento' && m.created_at >= `${today}T00:00:00`)?.body ?? null;
 
   return {
+    baseline,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
@@ -131,4 +142,11 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 async function weeklyDone(userId: string, today: string): Promise<boolean> {
   const row = await one('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.saptamanal', for_date: `gte.${weekStart(today)}` });
   return !!row;
+}
+
+/** PostgREST întoarce `numeric` ca string; îl citim ca număr, fără să inventăm nimic. */
+function num(v: number | string | null | undefined): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }

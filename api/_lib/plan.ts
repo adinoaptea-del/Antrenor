@@ -6,6 +6,7 @@ import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
 
 export interface IntakeLike {
+  nume?: string;
   obiectiv: '70.3' | 'olimpic' | 'sprint' | 'full';
   dataCursa: string;
   inot: { nivel: string | null };
@@ -27,7 +28,7 @@ export async function historyHours(userId: string, today: string): Promise<numbe
 
 export async function saveIntake(userId: string, today: string, intake: IntakeLike & { consimtamant?: boolean }): Promise<void> {
   await upsert('questionnaires', { user_id: userId, kind: 'intrare', for_date: today, activity_id: null, answers: intake }, 'user_id,kind,for_date,activity_id');
-  await update('users', { id: `eq.${userId}` }, { goal: intake.obiectiv, race_date: intake.dataCursa, race_name: raceName(intake.obiectiv) });
+  await update('users', { id: `eq.${userId}` }, { ...(intake.nume ? { name: intake.nume } : {}), goal: intake.obiectiv, race_date: intake.dataCursa, race_name: raceName(intake.obiectiv) });
   await remove('schedules', { user_id: `eq.${userId}` });
   if (intake.program.length) await insert('schedules', intake.program.map((b) => ({ user_id: userId, day: b.day, start_min: b.startMin, end_min: b.endMin, valid_from: today })));
   const intensity: IntensityAllowed = intake.sanatate.avizCardiolog === 'da' ? 'toate' : 'Z2';

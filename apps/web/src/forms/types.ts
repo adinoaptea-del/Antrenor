@@ -7,6 +7,7 @@ import type { FreeBlock } from '@core/types.js';
 export type { EveningForm, MorningForm };
 
 export interface IntakeAnswers {
+  nume: string;
   obiectiv: '70.3' | 'olimpic' | 'sprint' | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };
@@ -27,6 +28,7 @@ export interface WeeklyForm {
 }
 
 export const EMPTY_INTAKE: IntakeAnswers = {
+  nume: '',
   obiectiv: '70.3',
   dataCursa: '2027-09-12',
   inot: { nivel: null, apeDeschise: null, bazin: null },
@@ -56,5 +58,5 @@ export function eveningComplete(e: EveningForm | undefined): boolean {
 }
 
 export function intakeComplete(i: IntakeAnswers | undefined): boolean {
-  return !!i && i.consimtamant && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  return !!i && i.consimtamant && i.nume.trim().length > 0 && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
 }

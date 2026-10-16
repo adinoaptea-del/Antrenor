@@ -432,8 +432,8 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
 .box .v b { color: var(--fg); font-weight: 700; }
 
 /* ---------- Formulare: controale mari, de atins ---------- */
-.wizard { display: grid; gap: 14px; padding-bottom: 8px; }
-.q { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; }
+.wizard { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-bottom: 8px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
 .q h3 { margin: 0; font: 700 16px var(--font-ui); line-height: 1.25; text-wrap: balance; }
 .hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -515,3 +515,22 @@ ul.plain b { color: var(--fg); }
 .login { max-width: 430px; margin: 0 auto; padding: 8px 0 40px; }
 .login .q h3 { font-size: 18px; }
 .login code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+
+/* ---------- Date de bază ---------- */
+.baseline { display: grid; gap: 6px; }
+.base-row { appearance: none; width: 100%; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; text-align: left; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 10px 12px; color: var(--fg); cursor: pointer; font: inherit; }
+.base-row .ic { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-2); display: grid; place-items: center; }
+.base-row .ic .i { width: 14px; height: 14px; }
+.base-row.done .ic { background: rgba(74, 222, 128, 0.15); color: var(--c-verde); }
+.base-row .tx { display: grid; gap: 2px; min-width: 0; }
+.base-row .t { font-weight: 700; font-size: 13px; }
+.base-row .t small { color: var(--muted); font-weight: 600; }
+.base-row .s { font-size: 11px; color: var(--muted); }
+.numfield { min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-2); background: var(--surface-2); border-radius: 14px; padding: 0 12px; min-height: 48px; }
+.numfield input { flex: 1; min-width: 0; width: 100%; background: transparent; border: 0; color: var(--fg); font: 600 18px var(--font-ui); outline: none; }
+.numfield input::placeholder { color: var(--muted-2); }
+.numfield .unit { margin: 0; }
+.zrow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.zrow .numfield { padding: 0 6px; min-height: 44px; flex-direction: column; gap: 0; justify-content: center; }
+.zrow .numfield input { font-size: 14px; text-align: center; width: 100%; }
+.zrow .numfield .unit { font-size: 10px; }

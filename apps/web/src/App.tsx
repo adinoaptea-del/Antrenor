@@ -11,18 +11,19 @@ import { ErrorScreen, Loading, Login, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
 import { Evening, Morning, Weekly } from './forms/Daily';
+import { Body, Labs, Tests } from './forms/Baseline';
 import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
 import { SPORT_LABEL, thisWeekDates } from './data/model';
 
 // Trei ecrane principale în bara de jos (Acasă la mijloc); restul se deschid din butoane și se închid cu săgeata.
-type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'intake' | 'dimineata' | 'seara' | 'saptamanal';
+type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp';
 const MAIN: { id: Screen; label: string; icon: keyof typeof Icons }[] = [
   { id: 'antrenament', label: 'Antrenament', icon: 'target' },
   { id: 'acasa', label: 'Acasă', icon: 'home' },
   { id: 'recuperare', label: 'Recuperare', icon: 'pulse' },
 ];
-const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'intake', 'dimineata', 'seara', 'saptamanal'];
+const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -44,7 +45,7 @@ export function App() {
 }
 
 function Shell() {
-  const { status, me, error, refresh, demo, sync } = useData();
+  const { status, me, error, refresh, local, sync } = useData();
   const [screen, setScreen] = useState<Screen>(readScreen);
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>('inot');
@@ -92,7 +93,7 @@ function Shell() {
   };
   const back = () => go(lastMain);
   const isMain = MAIN.some((m) => m.id === screen);
-  const isForm = screen === 'intake' || screen === 'dimineata' || screen === 'seara' || screen === 'saptamanal';
+  const isForm = ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'].includes(screen);
 
   // Primul pas: fără chestionar de intrare nu există plan. Intri direct în el.
   const gateIntake = !me.intakeComplete && screen !== 'intake' && screen !== 'profil';
@@ -104,9 +105,9 @@ function Shell() {
   return (
     <div className="app">
       {memento && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
-      {demo && screen !== 'acasa' && !isForm && (
+      {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
-          <i /> date demo
+          <i /> previzualizare fără server · datele rămân în telefon
         </div>
       )}
       {gateIntake ? (
@@ -123,6 +124,9 @@ function Shell() {
           {screen === 'dimineata' && <Morning date={me.today} onBack={back} onDone={() => go('acasa')} />}
           {screen === 'seara' && eveningFor && <Evening workout={eveningWorkout} activityId={eveningFor} unplanned={eveningUnplanned} onBack={back} onDone={() => go('acasa')} />}
           {screen === 'saptamanal' && <Weekly weekStart={thisWeekDates(me)[0]!} onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'analize' && <Labs onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'teste' && <Tests onBack={back} onDone={() => go('acasa')} />}
+          {screen === 'corp' && <Body onBack={back} onDone={() => go('acasa')} />}
         </>
       )}
 

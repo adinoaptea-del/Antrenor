@@ -5,7 +5,7 @@ import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
-import { forms as localForms } from '../forms/store';
+import { BaselineList } from '../forms/Baseline';
 
 const DEVICES: { provider: 'whoop' | 'strava' | 'oura'; name: string; note: string }[] = [
   { provider: 'whoop', name: 'Whoop', note: 'somn, HRV, puls, recuperare, antrenamente' },
@@ -15,7 +15,7 @@ const DEVICES: { provider: 'whoop' | 'strava' | 'oura'; name: string; note: stri
 
 export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
   const me = useMe();
-  const { connect, logout, demo } = useData();
+  const { connect, logout, local } = useData();
   const [err, setErr] = useState<string | null>(null);
   const lastDone = lastDoneWorkout(me);
   const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
@@ -93,6 +93,14 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
         </Card>
 
         <Card>
+          <Label icon={Icons.pulse}>Date de bază</Label>
+          <BaselineList onOpen={(s) => onOpen(s)} />
+          <div className="tiny muted" style={{ marginTop: 10 }}>
+            Încărcarea PDF-ului de la laborator (cu extragerea valorilor) vine după ce există serverul; până atunci introduci cele cinci valori de mână.
+          </div>
+        </Card>
+
+        <Card>
           <div className="row between" style={{ marginBottom: 8 }}>
             <Label icon={Icons.watch}>Brățări</Label>
             <SyncButton compact />
@@ -111,7 +119,6 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
                   ) : (
                     <button
                       className="pill on"
-                      disabled={demo}
                       onClick={() => {
                         setErr(null);
                         connect(d.provider).catch((e: Error) => setErr(e.message));
@@ -170,15 +177,9 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
           <Label>Cont și consimțământ</Label>
           <div className="small">18+ · date de sănătate · nu e serviciu medical · ștergerea contului la cerere</div>
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
-            {demo ? (
-              <button className="pill" onClick={() => localForms.reset()}>
-                Șterge răspunsurile din acest telefon
-              </button>
-            ) : (
-              <button className="pill" onClick={() => void logout()}>
-                Ieși din cont
-              </button>
-            )}
+            <button className="pill" onClick={() => void logout()}>
+              {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
+            </button>
           </div>
         </Card>
       </div>

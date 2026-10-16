@@ -38,6 +38,8 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
   const canContinue = (() => {
     switch (STEPS[step]) {
+      case 'Obiectiv':
+        return a.nume.trim().length > 0 && !!a.dataCursa;
       case 'Înot':
         return a.inot.nivel != null && a.inot.apeDeschise != null && a.inot.bazin != null;
       case 'Bicicletă':
@@ -77,6 +79,9 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
       <div className="wizard">
         {STEPS[step] === 'Obiectiv' && (
           <>
+            <Q title="Cum te cheamă?" hint="Așa îți spune head coach-ul.">
+              <input className="date" type="text" autoComplete="given-name" placeholder="prenumele" value={a.nume} onChange={(e) => set({ nume: e.target.value })} />
+            </Q>
             <Q title="Pentru ce te pregătești?" hint="Obiectivul decide fazele, orele și ce înseamnă „gata”.">
               <Chips
                 value={a.obiectiv}

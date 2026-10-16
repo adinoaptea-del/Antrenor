@@ -1,6 +1,7 @@
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
-import { upsert } from '../_lib/db.js';
+import { insert, remove, upsert } from '../_lib/db.js';
+import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
@@ -11,6 +12,7 @@ import { runAgents } from '../_lib/agents.js';
  * POST /api/forms/dimineata → { date, hooper, semnale }
  * POST /api/forms/seara     → { date, activityId, rpe, … , tip_neplanificat } → rescorează; dacă e în afara planului, rulează „dupa_antrenament” pentru calendar.
  * POST /api/forms/saptamanal → { weekStart, … }
+ * POST /api/forms/analize → LabsForm (cinci valori) · /teste → TestsForm (+ zonele) · /corp → greutate, grăsime (rând „manual”)
  */
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
@@ -52,8 +54,58 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === 'analize') {
+      const l = body as unknown as LabsForm;
+      const vals = { feritina: n(l.feritina), vitamina_d: n(l.vitamina_d), hemoglobina: n(l.hemoglobina), ck: n(l.ck), crp: n(l.crp) };
+      if (Object.values(vals).every((v) => v == null)) throw new HttpError(400, 'cel puțin o valoare');
+      const drawn = isDate(l.data) ? l.data : today;
+      await remove('labs', { user_id: `eq.${u.id}`, drawn_at: `eq.${drawn}` });
+      await insert('labs', { user_id: u.id, drawn_at: drawn, ...vals });
+      json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'teste') {
+      const t = body as unknown as TestsForm;
+      if (!isDate(t.data)) throw new HttpError(400, 'data testului');
+      const zones = (z: (number | null)[] | undefined) => (z && z.every((v) => typeof v === 'number' && v > 0) ? z : null);
+      await remove('tests', { user_id: `eq.${u.id}`, tested_at: `eq.${t.data}` });
+      await insert('tests', { user_id: u.id, kind: t.tip, results: t, tested_at: t.data });
+      await upsert(
+        'zones',
+        {
+          user_id: u.id,
+          run_hr_zones: zones(t.alergare_z),
+          run_threshold_pace_sec_km: paceSec(t.pace_prag),
+          bike_ftp_w: n(t.ftp),
+          bike_hr_zones: zones(t.bicicleta_z),
+          swim_css_sec_100m: n(t.css),
+          hr_max_test: n(t.fcmax),
+          source: t.tip === 'altul' ? 'teren' : t.tip,
+          tested_at: t.data,
+          updated_at: new Date().toISOString(),
+        },
+        'user_id',
+      );
+      json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'corp') {
+      const b = body as unknown as BodyForm;
+      if (n(b.greutate) == null) throw new HttpError(400, 'greutatea');
+      const date = isDate(b.data) ? b.data : today;
+      await upsert('wellness_daily', { user_id: u.id, date, source: 'manual', weight_kg: n(b.greutate), body_fat_pct: n(b.grasime_pct) }, 'user_id,date,source');
+      json(res, 200, { ok: true });
+      return;
+    }
     throw new HttpError(404, `formular necunoscut: ${kind}`);
   } catch (e) {
     fail(res, e);
   }
+}
+
+const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+function paceSec(p: string | null | undefined): number | null {
+  const m = p ? /^(\d{1,2}):(\d{2})$/.exec(p.trim()) : null;
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }

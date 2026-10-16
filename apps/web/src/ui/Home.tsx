@@ -2,10 +2,11 @@ import type { Sport } from '@core/types.js';
 import { weekday } from '@core/util/dates.js';
 import { BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
-import { useMe } from '../data/store';
+import { useData, useMe } from '../data/store';
 import { DAY_NAMES, DAY_SHORT, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, unplannedActivities, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
+import { BaselineList } from '../forms/Baseline';
 
 // Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
 // zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
@@ -17,6 +18,7 @@ const SPORTS: { id: Sport; art: JSX.Element }[] = [
 
 export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
   const me = useMe();
+  const { local } = useData();
   const bar = me.bar;
   const total = !bar || bar.blocked || bar.total == null ? null : Math.round(bar.total);
   const known = bar?.components.filter((c) => c.value != null).length ?? 0;
@@ -36,7 +38,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   return (
     <>
       <div className="topline">
-        <span className="small muted">{me.user.raceName ?? 'fără cursă setată'}</span>
+        <span className="small muted">{local ? 'previzualizare fără server' : (me.user.raceName ?? 'fără cursă setată')}</span>
         <SyncButton />
       </div>
       <div className="hub-name">
@@ -84,7 +86,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         ))}
         <button className={`form-tile ${morningComplete(morning ?? undefined) ? '' : 'todo'}`} onClick={() => onOpen('dimineata')}>
           <span className="k">Dimineața {morningComplete(morning ?? undefined) && Icons.check}</span>
-          <span className="v">{morningComplete(morning ?? undefined) ? `Hooper ${hooperSum}${(hooperSum ?? 0) >= 24 ? ' · roșu' : (hooperSum ?? 0) >= 20 ? ' · galben' : ''}` : '20 de secunde'}</span>
+          <span className="v">{morningComplete(morning ?? undefined) ? `Hooper ${hooperSum}${(hooperSum ?? 0) >= 24 ? ' · roșu' : (hooperSum ?? 0) >= 20 ? ' · galben' : ''}` : 'Cum te simți azi? · 20 de secunde'}</span>
         </button>
         {lastDone && lastDoneId && (
           <button className={`form-tile ${eveningComplete(evening) ? '' : 'todo'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
@@ -116,6 +118,16 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           );
         })}
       </div>
+
+      {(!me.baseline.labs || !me.baseline.tests || !me.baseline.body || me.baseline.cardiolog !== 'da') && (
+        <Card tight style={{ marginTop: 12 }}>
+          <div className="row between" style={{ marginBottom: 6 }}>
+            <div className="title">Date de bază</div>
+            <span className="small muted">{[me.baseline.labs, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4</span>
+          </div>
+          <BaselineList onOpen={(s) => onOpen(s)} />
+        </Card>
+      )}
 
       <div className="countdown">
         <span className="num">{days == null ? '–' : days}</span>

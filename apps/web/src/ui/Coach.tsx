@@ -6,7 +6,7 @@ const KIND_LABEL = { dimineata: 'dimineața', dupa_antrenament: 'după antrename
 
 export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string) => void }) {
   const me = useMe();
-  const { runAgents, demo } = useData();
+  const { runAgents, local } = useData();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const online = false;
@@ -51,10 +51,10 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
             </span>
           </div>
           <div className="grid-2" style={{ marginTop: 14 }}>
-            <button className="btn" disabled={busy || demo || !me.intakeComplete} onClick={() => void run('dimineata')}>
+            <button className="btn" disabled={busy || local || !me.intakeComplete} onClick={() => void run('dimineata')}>
               {busy ? 'Rulează…' : 'Rulează acum'}
             </button>
-            <button className="btn dark" disabled={busy || demo || !me.intakeComplete} onClick={() => void run('dupa_antrenament')}>
+            <button className="btn dark" disabled={busy || local || !me.intakeComplete} onClick={() => void run('dupa_antrenament')}>
               După antrenament
             </button>
           </div>

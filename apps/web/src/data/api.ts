@@ -6,7 +6,7 @@ import type { Me } from '@core/api-types.js';
 export const CONFIG = {
   supabaseUrl: (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '',
   anonKey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '',
-  demo: (import.meta.env.VITE_DEMO as string | undefined) === '1',
+  local: (import.meta.env.VITE_LOCAL as string | undefined) === '1',
 };
 
 export const configured = () => !!CONFIG.supabaseUrl && !!CONFIG.anonKey;
@@ -117,7 +117,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const server = {
   me: () => api<Me>('/api/me'),
   sync: () => api<{ lastSync: string; reports: { provider: string; ok: boolean; rows: number; detail: string | null }[] }>('/api/sync', { method: 'POST' }),
-  form: (kind: 'intrare' | 'dimineata' | 'seara' | 'saptamanal', body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
+  form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force: true }) }),
   regeneratePlan: () => api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number }>('/api/plan/generate', { method: 'POST' }),

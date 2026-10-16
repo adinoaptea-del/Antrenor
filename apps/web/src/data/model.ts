@@ -158,6 +158,8 @@ export function greeting(me: Me): string {
     const verb = best.sport === 'bicicleta' ? 'ai pedalat' : 'ai alergat';
     return `${cap(DAY_NAMES[weekday(best.date)]!)} ${verb} ${dur} fără oprire, cel mai mult din ultimele 6 săptămâni.`;
   }
+  const start = planStart(me);
+  if (start && start > me.today) return `Planul începe ${DAY_NAMES[weekday(start)]}, ${fmtDM(start)}. Până atunci: datele de bază de mai jos.`;
   const d = dayIndex(me);
   if (d) return `Ziua ${d.day} din ${d.total}.`;
   return 'Conectează o brățară și completează chestionarul: de aici încolo, faptele vin din datele tale.';
@@ -172,4 +174,9 @@ export function fmtMinutes(min: number): string {
   const m = min % 60;
   if (h === 0) return `${m} min`;
   return m ? `${h} h ${m}` : `${h} h`;
+}
+
+function fmtDM(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${Number(d)} ${['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'][Number(m) - 1]}`;
 }

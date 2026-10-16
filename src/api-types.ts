@@ -46,7 +46,43 @@ export interface MeDevice {
   detail: string | null;
 }
 
+/** Datele de bază ale protocolului, introduse de sportiv (sau încărcate mai târziu din PDF). null = încă nu există. */
+export interface LabsForm {
+  data: string; // data recoltării
+  feritina: number | null; // µg/L
+  vitamina_d: number | null; // ng/mL
+  hemoglobina: number | null; // g/dL
+  ck: number | null; // U/L
+  crp: number | null; // mg/L
+}
+
+export interface TestsForm {
+  data: string;
+  tip: 'cpet' | 'teren' | 'lactat' | 'altul';
+  fcmax: number | null;
+  /** Limitele superioare Z1..Z5 la alergare, bpm. */
+  alergare_z: [number | null, number | null, number | null, number | null, number | null];
+  pace_prag: string | null; // „5:45”
+  ftp: number | null; // W
+  bicicleta_z: [number | null, number | null, number | null, number | null, number | null];
+  css: number | null; // s/100 m
+}
+
+export interface BodyForm {
+  data: string;
+  greutate: number | null; // kg
+  grasime_pct: number | null;
+}
+
+export interface MeBaseline {
+  labs: LabsForm | null;
+  tests: TestsForm | null;
+  body: BodyForm | null;
+  cardiolog: 'da' | 'nu' | 'programat' | null;
+}
+
 export interface Me {
+  baseline: MeBaseline;
   user: MeUser;
   consent: boolean;
   intakeComplete: boolean;
