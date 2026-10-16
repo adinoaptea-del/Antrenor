@@ -103,7 +103,7 @@ export function Stat({ icon, label, value, unit, children, lime = false }: { ico
 
 // ---------- Inel ----------
 
-export function Ring({ value, size = 150, stroke = 10, children }: { value: number | null; size?: number; stroke?: number; children?: ReactNode }) {
+export function Ring({ value, size = 150, stroke = 10, level, children }: { value: number | null; size?: number; stroke?: number; level?: string | null; children?: ReactNode }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const v = value == null ? 0 : Math.max(0, Math.min(100, value));
@@ -116,7 +116,7 @@ export function Ring({ value, size = 150, stroke = 10, children }: { value: numb
             cx={size / 2}
             cy={size / 2}
             r={r}
-            className="ring-arc"
+            className={`ring-arc ${level ? `lvl-${level}` : ''}`}
             strokeWidth={stroke}
             strokeDasharray={`${(c * v) / 100} ${c}`}
             transform={`rotate(-90 ${size / 2} ${size / 2})`}

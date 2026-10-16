@@ -4,6 +4,9 @@ import { SyncButton } from './SyncButton';
 import { useMe } from '../data/store';
 import { DAY_NAMES, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm } from '../data/model';
 import { cleanRefs } from '../data/model';
+import { levelFromScore, sleepScore } from '@core/collector/readiness.js';
+
+const LEVEL_LABEL: Record<string, string> = { verde: 'verde', galben: 'galben', portocaliu: 'portocaliu', rosu: 'roșu' };
 
 const COMPONENT_LABEL: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', consistenta: 'Consistență', forma: 'Formă' };
 
@@ -45,14 +48,22 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
       </header>
 
       <div className="ring-wrap">
-        <Ring value={recovery} size={156} stroke={10}>
+        <Ring value={recovery} size={156} stroke={10} level={levelFromScore(recovery)}>
           <span className="lb">Recuperare brățară</span>
           <span className="num" style={{ fontSize: 56 }}>
             {recovery ?? '–'}
           </span>
-          <span className="st">{recovery == null ? 'fără date' : 'din 100'}</span>
+          <span className={`st lvl-txt-${levelFromScore(recovery) ?? ''}`}>{recovery == null ? 'fără date' : LEVEL_LABEL[levelFromScore(recovery)!]}</span>
           <Ecg />
         </Ring>
+        {w?.sleepMin != null && (
+          <div className="tiny" style={{ marginTop: 6, textAlign: 'center' }}>
+            Somn {fmtMinutes(w.sleepMin)} ·{' '}
+            <b className={`lvl-txt-${levelFromScore(Math.round(sleepScore(w.sleepMin)))}`}>
+              {Math.round(sleepScore(w.sleepMin))}/100 {LEVEL_LABEL[levelFromScore(Math.round(sleepScore(w.sleepMin)))!]}
+            </b>
+          </div>
+        )}
         <div className="tiny muted" style={{ marginTop: 6, textAlign: 'center' }}>
           {w ? `${w.source ?? 'brățară'}${w.hrv != null ? ` · HRV ${w.hrv} ms` : ''}${w.rhr != null ? ` · puls de repaus ${w.rhr}` : ''}${w.sleepMin != null ? ` · somn ${fmtMinutes(w.sleepMin)}` : ''}` : 'Nicio brățară nu a trimis date pentru azi.'}
         </div>
@@ -60,7 +71,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
           <div className={`day-verdict v-${me.readiness.verdict}`}>
             <b>Decizia zilei: {{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[me.readiness.verdict]}</b>
             {me.readiness.reason && <span>{cleanRefs(me.readiness.reason)}</span>}
-            <small>Cifra din cerc e recuperarea de pe brățară. Decizia zilei o ia Fiziologul din toate datele: recuperare, somn, încărcarea antrenamentelor și cum te simți.</small>
+            <small>Cercul: recuperarea de pe brățară (peste 70 verde, 50–70 galben, 30–50 portocaliu, sub 30 roșu). Decizia zilei vine din toate datele: inimă, respirație, recuperare, somn, încărcare și cum te simți.</small>
           </div>
         )}
       </div>

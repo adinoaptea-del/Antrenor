@@ -4,7 +4,7 @@
 // 2. cum s-a simțit sportivul (Hooper), care poate doar să coboare verdictul.
 // Totul determinist: aceleași cifre dau același verdict.
 
-export type Verdict = 'verde' | 'galben' | 'rosu';
+export type Verdict = 'verde' | 'galben' | 'portocaliu' | 'rosu';
 
 export interface ObjectiveInput {
   hrv: number | null;
@@ -34,7 +34,7 @@ export interface ObjectiveReadiness {
 
 const clamp = (x: number) => Math.max(0, Math.min(100, Math.round(x)));
 
-function sleepScore(m: number): number {
+export function sleepScore(m: number): number {
   if (m >= 420) return 100;
   if (m >= 360) return 70 + ((m - 360) / 60) * 30;
   if (m >= 300) return 30 + ((m - 300) / 60) * 40;
@@ -42,11 +42,12 @@ function sleepScore(m: number): number {
   return 0;
 }
 
-/** Praguri: ≥ 70 verde, 50–69 galben, sub 50 roșu. */
-export function verdictFromScore(s: number | null): Verdict | null {
+/** Praguri (recuperare, somn și media lor): peste 70 verde, 50–70 galben, 30–50 portocaliu, sub 30 roșu. */
+export function levelFromScore(s: number | null): Verdict | null {
   if (s == null) return null;
-  return s >= 70 ? 'verde' : s >= 50 ? 'galben' : 'rosu';
+  return s >= 70 ? 'verde' : s >= 50 ? 'galben' : s >= 30 ? 'portocaliu' : 'rosu';
 }
+export const verdictFromScore = levelFromScore;
 
 export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   // HRV: la baseline sau peste = 100; −10% = 70; −20% = 40; −33% sau mai jos = 0.
@@ -74,7 +75,7 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   };
 }
 
-const RANK: Record<Verdict, number> = { verde: 0, galben: 1, rosu: 2 };
+const RANK: Record<Verdict, number> = { verde: 0, galben: 1, portocaliu: 2, rosu: 3 };
 
 /**
  * Verdictul zilei din cod: întâi datele obiective, apoi cum s-a simțit (Hooper) — care doar poate coborî.
@@ -84,7 +85,7 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null): {
   let v: Verdict = obj.verdict ?? 'galben';
   let motiv = obj.verdict ? `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)` : 'fără date obiective de la brățări: cel mult galben';
   if (hooperSum != null) {
-    const felt: Verdict = hooperSum >= 24 ? 'rosu' : hooperSum >= 20 ? 'galben' : 'verde';
+    const felt: Verdict = hooperSum >= 24 ? 'rosu' : hooperSum >= 22 ? 'portocaliu' : hooperSum >= 20 ? 'galben' : 'verde';
     if (RANK[felt] > RANK[v]) {
       v = felt;
       motiv += `; cum te simți (Hooper ${hooperSum}) coboară la ${felt}`;

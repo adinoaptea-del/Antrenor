@@ -224,7 +224,9 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   else if (v?.verdict === 'atentie') out = 'galben';
   if (missingBasics && RANK[out] < RANK.galben) out = 'galben';
   // Verdictul din cod (date obiective mediate, apoi Hooper) e pragul: Fiziologul poate doar să fie mai strict (ex. încărcare, durere).
-  const code = p.readiness.verdict_cod?.verdict;
+  // Portocaliu (date între 30 și 50) e galben la decizie: intensitate jos, volum −20–30%; roșu doar sub 30.
+  const rawCode = p.readiness.verdict_cod?.verdict;
+  const code = rawCode === 'portocaliu' ? 'galben' : rawCode;
   if (code && RANK[code] > RANK[out]) out = code;
   // Roșu doar când e cu adevărat rău: date de sănătate roșii, boală, somn foarte scurt, încărcare extremă, Hooper mare, durere mare.
   if (out === 'rosu') {

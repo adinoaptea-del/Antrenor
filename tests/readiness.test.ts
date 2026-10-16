@@ -11,14 +11,16 @@ describe('starea zilei: întâi datele obiective, apoi cum s-a simțit', () => {
     assert.equal(dayVerdict(o, 12).verdict, 'verde');
   });
 
-  it('respirația crescută și pulsul mare trag media în jos', () => {
+  it('respirația crescută și pulsul mare trag media în jos: 30–50 = portocaliu, sub 30 = roșu', () => {
     const o = objectiveReadiness({ ...good, resp: 16.5, rhr: 58, hrv: 48, recovery: 35 });
-    assert.equal(o.verdict, 'rosu');
+    assert.equal(o.verdict, 'portocaliu');
+    const r = objectiveReadiness({ ...good, resp: 16.5, rhr: 60, hrv: 40, recovery: 20, sleepMin: 300 });
+    assert.equal(r.verdict, 'rosu');
   });
 
-  it('Hooper doar coboară: date verzi + Hooper 22 = galben; date roșii + Hooper bun rămân roșii', () => {
-    assert.equal(dayVerdict(objectiveReadiness(good), 22).verdict, 'galben');
-    const bad = objectiveReadiness({ ...good, hrv: 40, rhr: 60, recovery: 20 });
+  it('Hooper doar coboară: date verzi + Hooper 21 = galben; date roșii + Hooper bun rămân roșii', () => {
+    assert.equal(dayVerdict(objectiveReadiness(good), 21).verdict, 'galben');
+    const bad = objectiveReadiness({ ...good, resp: 16.5, hrv: 40, rhr: 60, recovery: 20, sleepMin: 300 });
     assert.equal(dayVerdict(bad, 8).verdict, 'rosu');
   });
 

@@ -638,3 +638,11 @@ ul.plain b { color: var(--fg); }
 .day-verdict.v-verde b { color: #30d158; }
 .day-verdict.v-galben b { color: #ffd60a; }
 .day-verdict.v-rosu b, .day-verdict.v-stop b { color: var(--c-rosu); }
+.ring-arc.lvl-verde { stroke: #30d158; filter: drop-shadow(0 0 6px rgba(48, 209, 88, 0.5)); }
+.ring-arc.lvl-galben { stroke: #ffd60a; filter: drop-shadow(0 0 6px rgba(255, 214, 10, 0.45)); }
+.ring-arc.lvl-portocaliu { stroke: #ff9f0a; filter: drop-shadow(0 0 6px rgba(255, 159, 10, 0.45)); }
+.ring-arc.lvl-rosu { stroke: var(--c-rosu); }
+.lvl-txt-verde { color: #30d158; }
+.lvl-txt-galben { color: #ffd60a; }
+.lvl-txt-portocaliu { color: #ff9f0a; }
+.lvl-txt-rosu { color: var(--c-rosu); }
