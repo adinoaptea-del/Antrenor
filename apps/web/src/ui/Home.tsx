@@ -4,7 +4,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
-import { DAY_NAMES, DAY_SHORT, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, unplannedActivities, workoutsOn } from '../data/model';
+import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, unplannedActivities, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -42,9 +42,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const strength = nextWorkout(me, 'forta');
   const todayCount = workoutsOn(me, me.today).length;
   const unplanned = unplannedActivities(me);
-  // Întrebăm doar de ședințele neplanificate de azi și ieri; istoricul tras la conectarea brățării nu cere formular.
+  const pendingUnplanned = unplanned.filter((a) => !a.tipNeplanificat);
   const yesterday = addDays(me.today, -1);
-  const pendingUnplanned = unplanned.filter((a) => !a.tipNeplanificat && a.date >= yesterday).slice(0, 2);
+  const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}, ${fmtDayMonth(d)}`);
   const days = daysToRace(me);
 
   return (
@@ -110,9 +110,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         )}
         {pendingUnplanned.map((a) => (
           <button key={a.id} className="form-tile todo" onClick={() => onOpen('seara', { activityId: a.id })}>
-            <span className="k">Neplanificat</span>
+            <span className="k">Neplanificat · ce a fost?</span>
             <span className="v">
-              {SPORT_LABEL[a.sport]} {a.date === me.today ? 'azi' : 'ieri'} · ce a fost?
+              {SPORT_LABEL[a.sport]} · {dayLabel(a.date)}
             </span>
           </button>
         ))}
@@ -123,7 +123,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         {lastDone && lastDoneId && (
           <button className={`form-tile ${eveningComplete(evening) ? '' : 'todo'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
             <span className="k">Cum a fost {eveningComplete(evening) && Icons.check}</span>
-            <span className="v">{eveningComplete(evening) ? `RPE ${evening!.rpe}` : `${SPORT_LABEL[lastDone.sport]} ${DAY_SHORT[weekday(lastDone.date)]}`}</span>
+            <span className="v">{eveningComplete(evening) ? `RPE ${evening!.rpe}` : `${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
           </button>
         )}
         {isSunday && !me.forms.weeklyDone && (
