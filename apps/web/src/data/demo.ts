@@ -185,6 +185,15 @@ export function workoutsOn(date: string): PlannedWorkout[] {
     .sort((a, b) => Number(b.key) - Number(a.key) || ORDER[a.sport] - ORDER[b.sport]);
 }
 
+// Următoarea ședință neexecutată a unui sport (azi inclusiv).
+export function nextWorkout(sport: Sport): PlannedWorkout | null {
+  return (
+    allWorkouts
+      .filter((w) => w.sport === sport && w.status !== 'sters' && diffDays(TODAY, w.date) >= 0 && colorOf(w) === 'asteptare')
+      .sort((x, y) => diffDays(y.date, x.date))[0] ?? null
+  );
+}
+
 export function thisWeekDates(): string[] {
   const start = weekStart(TODAY);
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));

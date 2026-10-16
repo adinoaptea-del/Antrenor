@@ -1,26 +1,27 @@
-/* Antrenor — un singur look, după referința de design: negru cu tentă olive, accent lime,
-   carduri rotunjite cu contur fin, cifre în serif, butoane-pastilă, navigare-pastilă jos. */
+/* Antrenor — un singur look, în culorile Ironman: negru, roșu, alb.
+   Carduri rotunjite cu contur fin, cifre în serif, butoane-pastilă, navigare-pastilă jos. */
 :root {
-  --bg: #0c0e09;
-  --bg-2: #13160e;
-  --surface: #161a11;
-  --surface-2: #1d2217;
-  --line: #262b1f;
-  --line-2: #333a29;
-  --fg: #f2f4ec;
-  --muted: #8e9381;
-  --muted-2: #676c5b;
-  --accent: #cdf53a;
-  --accent-ink: #0c0e09;
-  --accent-soft: rgba(205, 245, 58, 0.16);
-  --glow: rgba(205, 245, 58, 0.5);
+  --bg: #0a0a0b;
+  --bg-2: #121214;
+  --surface: #161618;
+  --surface-2: #1e1e21;
+  --line: #28282c;
+  --line-2: #363639;
+  --fg: #f5f4f2;
+  --muted: #8f8d8a;
+  --muted-2: #66645f;
+  --accent: #dc2a1e;
+  --accent-2: #ff4a3d;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(220, 42, 30, 0.16);
+  --glow: rgba(220, 42, 30, 0.55);
   --c-verde: #4ade80;
   --c-galben: #facc15;
   --c-portocaliu: #fb923c;
   --c-rosu: #ef4444;
   --c-gri: #6b7280;
   --c-albastru: #60a5fa;
-  --c-asteptare: #2d3224;
+  --c-asteptare: #2c2c30;
   --font-display: 'Instrument Serif', 'Lora', 'Iowan Old Style', 'Times New Roman', serif;
   --font-ui: 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 22px;
@@ -58,8 +59,8 @@ body::after {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(55% 26% at 50% -4%, rgba(205, 245, 58, 0.18), transparent 70%),
-    radial-gradient(70% 22% at 50% 104%, rgba(205, 245, 58, 0.22), transparent 70%);
+    radial-gradient(55% 26% at 50% -4%, rgba(220, 42, 30, 0.2), transparent 70%),
+    radial-gradient(70% 22% at 50% 104%, rgba(220, 42, 30, 0.22), transparent 70%);
 }
 
 #root { min-height: 100%; position: relative; z-index: 1; }
@@ -113,8 +114,8 @@ body::after {
 .hero .runner { position: absolute; right: -16px; top: 92px; width: 214px; height: auto; pointer-events: none; }
 .runner .rim circle, .runner .rim path { fill: var(--accent); stroke: var(--accent); stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .runner .rim path { fill: none; }
-.runner .body circle { fill: #0a0c07; }
-.runner .body path { fill: none; stroke: #0a0c07; stroke-linecap: round; stroke-linejoin: round; }
+.runner .body circle { fill: #0a0a0b; }
+.runner .body path { fill: none; stroke: #0a0a0b; stroke-linecap: round; stroke-linejoin: round; }
 .hero .greet { position: relative; z-index: 1; padding-top: 2px; }
 .hero .hello { color: var(--muted); font-size: 13px; }
 .hero .name { font-family: var(--font-display); font-size: 42px; line-height: 1; margin: 2px 0 6px; letter-spacing: 0.01em; }
@@ -126,7 +127,7 @@ body::after {
 /* ---------- Carduri ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; position: relative; }
 .card.tight { padding: 12px 14px; }
-.card.glass { background: rgba(22, 26, 17, 0.88); backdrop-filter: blur(8px); }
+.card.glass { background: rgba(22, 22, 24, 0.88); backdrop-filter: blur(8px); }
 .lab { display: inline-flex; align-items: center; gap: 6px; font: 700 10px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .lab.lime { color: var(--accent); }
 .lab .i { width: 13px; height: 13px; }
@@ -165,7 +166,7 @@ body::after {
 /* ---------- Inel ---------- */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
 .ring > svg { position: absolute; inset: 0; }
-.ring-track { fill: none; stroke: #232819; }
+.ring-track { fill: none; stroke: #26262a; }
 .ring-arc { fill: none; stroke: var(--accent); stroke-linecap: round; filter: drop-shadow(0 0 6px var(--glow)); }
 .ring-in { position: relative; display: grid; justify-items: center; text-align: center; gap: 2px; }
 .ring-in .num { line-height: 0.95; }
@@ -175,7 +176,7 @@ body::after {
 .ecg { display: block; margin-top: 4px; }
 .ecg path { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px var(--glow)); }
 .ring-wrap { display: grid; justify-items: center; padding: 6px 0 10px; }
-.ring-wrap .ring::before { content: ''; position: absolute; inset: 10%; border-radius: 50%; background: radial-gradient(circle, rgba(205, 245, 58, 0.18), transparent 70%); }
+.ring-wrap .ring::before { content: ''; position: absolute; inset: 10%; border-radius: 50%; background: radial-gradient(circle, rgba(220, 42, 30, 0.2), transparent 70%); }
 
 /* Cardul „Stare” (inel mic + două rânduri) */
 .status-grid { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
@@ -196,8 +197,8 @@ body::after {
 
 /* Hărți și bazin */
 .map { display: block; width: 100%; }
-.map .streets path { fill: none; stroke: #2a3022; stroke-width: 1.2; }
-.map .lanes path { fill: none; stroke: #2a3022; stroke-width: 1.2; stroke-dasharray: 6 5; }
+.map .streets path { fill: none; stroke: #303034; stroke-width: 1.2; }
+.map .lanes path { fill: none; stroke: #303034; stroke-width: 1.2; stroke-dasharray: 6 5; }
 .map .route { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 5 5; stroke-linecap: round; filter: drop-shadow(0 0 4px var(--glow)); }
 .map .start { fill: var(--accent); }
 .map .buoy { fill: none; stroke: var(--accent); stroke-width: 2; }
@@ -214,7 +215,7 @@ body::after {
   appearance: none; border: 0; border-radius: 999px; height: 56px; padding: 0 22px; white-space: nowrap;
   font: 700 16px var(--font-ui); background: var(--accent); color: var(--accent-ink); width: 100%; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  box-shadow: 0 10px 30px rgba(205, 245, 58, 0.22);
+  box-shadow: 0 10px 30px rgba(220, 42, 30, 0.3);
 }
 .btn .i { width: 18px; height: 18px; stroke-width: 2.2; }
 .btn:disabled { background: var(--surface-2); color: var(--muted); cursor: default; box-shadow: none; }
@@ -222,7 +223,7 @@ body::after {
 .btn.sm { height: 40px; font-size: 13px; width: auto; padding: 0 16px; box-shadow: none; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px;
-  background: rgba(20, 23, 15, 0.9); border: 1px solid var(--line-2); color: var(--fg); font: 600 12px var(--font-ui);
+  background: rgba(18, 18, 20, 0.9); border: 1px solid var(--line-2); color: var(--fg); font: 600 12px var(--font-ui);
   cursor: pointer; white-space: nowrap;
 }
 .pill .i { width: 14px; height: 14px; color: var(--accent); }
@@ -231,7 +232,7 @@ body::after {
 .pill b { color: var(--fg); font-weight: 700; }
 .pill.on b { color: var(--accent-ink); }
 .pill small { color: var(--muted); font-weight: 600; }
-.pill.on small { color: rgba(12, 14, 9, 0.7); }
+.pill.on small { color: rgba(255, 255, 255, 0.75); }
 :is(.btn, .circ, .avatar, .pill, .nav button, .seg button, .cal-day, .fab, .switch):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Puncte de culoare */
@@ -265,7 +266,7 @@ body::after {
 /* Grafice */
 .chart-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .area { display: block; overflow: visible; }
-.area .grid { stroke: #252a1d; stroke-width: 1; }
+.area .grid { stroke: #2a2a2e; stroke-width: 1; }
 .area .tick { fill: var(--muted); font: 600 10px var(--font-ui); }
 .area .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px var(--glow)); }
 .area .pt { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
@@ -282,7 +283,7 @@ body::after {
 .bar-track { display: flex; gap: 4px; height: 10px; margin: 12px 0 8px; }
 .bar-seg { flex: 1 1 0; height: 100%; border-radius: 999px; background: var(--c-asteptare); position: relative; overflow: hidden; }
 .bar-seg > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
-.bar-seg.empty { background: repeating-linear-gradient(135deg, #22261a 0 4px, #1a1d13 4px 8px); }
+.bar-seg.empty { background: repeating-linear-gradient(135deg, #2a2a2e 0 4px, #1c1c1f 4px 8px); }
 .bar-legend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; font-size: 10px; color: var(--muted); }
 .bar-legend span { text-align: center; }
 .bar-legend b { display: block; color: var(--fg); font-weight: 700; font-size: 12px; }
@@ -337,7 +338,7 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 30;
   bottom: calc(var(--nav-gap) + env(safe-area-inset-bottom, 0px));
   width: calc(100% - 32px); max-width: 398px; height: var(--nav-h);
-  background: rgba(19, 22, 14, 0.9); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px;
+  background: rgba(18, 18, 20, 0.9); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px;
   backdrop-filter: blur(14px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
@@ -345,13 +346,13 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
 .nav button:last-child { justify-self: end; }
 .nav button {
   height: 52px; min-width: 52px; border-radius: 999px; padding: 0;
-  background: var(--surface); border: 1px solid var(--line-2); color: #b9bda9;
+  background: var(--surface); border: 1px solid var(--line-2); color: #bdbbb7;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
   font: 700 14px var(--font-ui);
 }
 .nav button .i { width: 21px; height: 21px; }
 .nav button span { display: none; }
-.nav button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding: 0 20px; }
+.nav button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding: 0 20px; box-shadow: 0 6px 24px rgba(220, 42, 30, 0.35); }
 .nav button.on span { display: inline; }
 
 /* Buton plutitor „Antrenor” */
@@ -362,9 +363,9 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
   display: grid; justify-items: center;
 }
 @media (min-width: 470px) { .fab { right: calc(50% - 215px + 18px); } }
-.fab .circle { width: 54px; height: 54px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; box-shadow: 0 0 0 6px rgba(205, 245, 58, 0.16), 0 8px 30px rgba(205, 245, 58, 0.35); }
+.fab .circle { width: 54px; height: 54px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; box-shadow: 0 0 0 6px rgba(220, 42, 30, 0.18), 0 8px 30px rgba(220, 42, 30, 0.4); }
 .fab .circle .i { width: 24px; height: 24px; stroke-width: 2; }
-.fab .lbl { background: #171a12; border: 1px solid var(--line-2); color: var(--fg); font: 700 10px var(--font-ui); padding: 3px 9px; border-radius: 999px; margin-top: -9px; position: relative; }
+.fab .lbl { background: #161618; border: 1px solid var(--line-2); color: var(--fg); font: 700 10px var(--font-ui); padding: 3px 9px; border-radius: 999px; margin-top: -9px; position: relative; }
 
 /* Antrenor */
 .msg { border-left: 2px solid var(--accent); padding-left: 12px; display: grid; gap: 4px; font-size: 13px; }
@@ -379,3 +380,53 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
 .ok { color: var(--c-verde); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .ok .i { width: 14px; height: 14px; }
 .no { color: var(--muted); }
+
+/* ---------- Acasă (hub, după desen): nume, bară, carduri de sport, zile, pătrate ---------- */
+.hub-name { text-align: center; padding: 10px 0 6px; }
+.hub-name button { background: none; border: 0; color: var(--fg); font-family: var(--font-display); font-size: 46px; line-height: 1; letter-spacing: 0.01em; cursor: pointer; padding: 4px 10px; border-radius: 14px; }
+.hub-name .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.progress { display: grid; gap: 8px; margin: 6px 0 4px; }
+.progress .track { position: relative; height: 22px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line-2); overflow: hidden; }
+.progress .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: linear-gradient(90deg, #8e1a12, var(--accent) 70%, var(--accent-2)); box-shadow: 0 0 18px var(--glow); }
+.progress .fill.empty { background: repeating-linear-gradient(135deg, #2a2a2e 0 6px, #1c1c1f 6px 12px); box-shadow: none; width: 100%; }
+.progress .ticks { position: absolute; inset: 0; display: flex; }
+.progress .ticks i { flex: 1 1 0; border-right: 1px solid rgba(10, 10, 11, 0.55); }
+.progress .ticks i:last-child { border-right: 0; }
+.progress .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; color: var(--muted); }
+.progress .meta b { font-family: var(--font-display); font-weight: 400; font-size: 26px; color: var(--fg); }
+.progress .meta .lab { margin: 0; }
+.daymsg { text-align: center; color: var(--muted); font-size: 13px; text-wrap: balance; margin: 8px auto 14px; max-width: 34ch; }
+.daymsg b { color: var(--fg); font-weight: 600; }
+
+.sports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sport-card {
+  position: relative; display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: end; gap: 6px;
+  min-height: 210px; padding: 12px 8px 12px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line);
+  color: var(--fg); cursor: pointer; text-align: center; overflow: hidden; font: inherit;
+}
+.sport-card::before { content: ''; position: absolute; inset: auto -30% -40% -30%; height: 70%; background: radial-gradient(ellipse at 50% 100%, rgba(220, 42, 30, 0.35), transparent 70%); pointer-events: none; }
+.sport-card.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 10px 30px rgba(220, 42, 30, 0.25); }
+.sport-card .art { width: 100%; height: auto; max-height: 120px; align-self: center; }
+.sport-card .nm { font-family: var(--font-display); font-size: 23px; line-height: 1; position: relative; }
+.sport-card .nx { font-size: 11px; color: var(--muted); position: relative; min-height: 15px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sport-card > div { min-width: 0; max-width: 100%; }
+.sport-card.today .nx { color: var(--accent-2); font-weight: 700; }
+.sport-card .badge { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font: 700 9px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 8px; }
+.art .ink { fill: none; stroke: var(--fg); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+.art .ink-fill { fill: var(--fg); }
+.art .red { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.art .red-fill { fill: var(--accent); }
+.art .red-thin { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 8 7; }
+
+.countdown { text-align: center; padding: 18px 0 8px; display: grid; gap: 2px; justify-items: center; }
+.countdown .num { font-size: 72px; }
+.countdown .lb { font-family: var(--font-display); font-size: 22px; line-height: 1.1; }
+.countdown .sub { font-size: 12px; color: var(--muted); }
+
+.boxes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.box { display: grid; gap: 8px; align-content: space-between; min-height: 112px; padding: 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); color: var(--fg); cursor: pointer; text-align: left; font: inherit; min-width: 0; }
+.box .ic { width: 30px; height: 30px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--accent-2); }
+.box .ic .i { width: 16px; height: 16px; }
+.box .nm { font-family: var(--font-display); font-size: 20px; line-height: 1; }
+.box .v { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.box .v b { color: var(--fg); font-weight: 700; }

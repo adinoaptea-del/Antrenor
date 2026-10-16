@@ -49,7 +49,7 @@ Culorile și pragurile sunt cele din document; dacă le schimbi acolo, le schimb
 
 ## Aplicația web (`apps/web`)
 
-PWA în Vite + React + TypeScript, pe tokenii de design din document (dark, accent lime, cifre în serif, carduri de 24 px, butoane-pastilă). Importă nucleul prin alias-ul `@core` și, deocamdată, rulează pe date demo generate la pornire (`src/data/demo.ts`).
+PWA în Vite + React + TypeScript, în culorile Ironman (negru, roșu, alb; fără logo — doar paleta), cifre în serif, carduri rotunjite, butoane-pastilă. Importă nucleul prin alias-ul `@core` și, deocamdată, rulează pe date demo generate la pornire (`src/data/demo.ts`).
 
 ```bash
 cd apps/web
@@ -58,12 +58,12 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ — de pus pe Vercel
 ```
 
-Navigare: bara-pastilă de jos are trei butoane, cu **Acasă la mijloc** (Antrenament · Acasă · Statistici). Calendarul se deschide din butonul rotund din stânga-sus, profilul din avatarul din dreapta-sus, antrenorul din butonul plutitor „Antrenor”.
+Navigare: bara-pastilă de jos are trei butoane, cu **Acasă la mijloc** (Antrenament · Acasă · Recuperare). Calendarul se deschide din butonul rotund din stânga-sus, profilul din avatarul din dreapta-sus, antrenorul din butonul plutitor „Antrenor”.
 
 Ecrane:
-- **Acasă**: întâmpinare + mesajul din date, silueta cu lumină lime (locul pozei sportivului, vine din onboarding), cardul „Stare” (inelul barei de pregătire, somn, verdictul zilei), antrenamentul de azi cu hartă, zile până la cursă / vreme / condiții, „Trimite pe ceas”, săptămâna, avertismente, date disponibile.
+- **Acasă** (după desenul lui Cuza): numele (atins → profil), bara de pregătire pentru 70.3 cu procentul și componentele, mesajul zilei din date, trei carduri Înot / Bicicletă / Alergare cu ilustrație și următoarea ședință (cardul zilei e marcat „azi”), zilele până la cursă, trei pătrate Recuperare / Forța / Calendar, avertismentele.
 - **Antrenament**: Înot (bazin / ape deschise din pastila de pe hartă), Bicicletă, Alergare, Forță — carduri de statistică, următoarea ședință, ședințele săptămânii.
-- **Statistici**: inelul de recuperare (Whoop), ore / FC medie / ședințe cu sparkline, graficul „Ore pe săptămână”, „Execuție”, bara de pregătire cu cele 5 componente și formula, km alergare, observația zilei.
+- **Recuperare**: inelul de recuperare (Whoop), apoi statisticile: ore / FC medie / ședințe cu sparkline, graficul „Ore pe săptămână”, „Execuție”, bara de pregătire cu cele 5 componente și formula, km alergare, observația zilei.
 - **Calendar**: luna colorată + cardul zilei cu motivele. **Antrenor**: mesaje, live, programare. **Profil**: brățări cu „Conectează”, date, consimțământ.
 
-Graficele sunt SVG desenat din date (`src/ui/common.tsx`: `AreaChart`, `Spark`, `Ring`), fără bibliotecă. Următorul pas: Supabase (auth + Postgres cu `db/schema.sql`) în locul datelor demo.
+Graficele și ilustrațiile sunt SVG desenat în cod (`src/ui/common.tsx`: `AreaChart`, `Spark`, `Ring`, `SwimArt`, `BikeArt`, `RunArt`), fără bibliotecă și fără poze; pozele sportivului le înlocuiesc când există. Următorul pas: Supabase (auth + Postgres cu `db/schema.sql`) în locul datelor demo.

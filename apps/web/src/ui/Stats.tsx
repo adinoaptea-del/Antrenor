@@ -20,7 +20,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         <div className="top-l">
           <CircleBtn icon={Icons.calendar} label="Calendar" onClick={() => onOpen('calendar')} />
           <div>
-            <div className="ttl">Statistici</div>
+            <div className="ttl">Recuperare</div>
             <div className="sub">
               {fmtDate(TODAY)}, {DAY_NAMES[weekday(TODAY)]}
             </div>
@@ -47,6 +47,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
       </div>
 
       <div className="stack">
+        <div className="lab" style={{ marginBottom: -4 }}>Statistici</div>
         <div className="grid-3">
           <Stat icon={Icons.clock} label="Ore" value={lastWeek.hours.toLocaleString('ro-RO')} unit="h">
             <div className="sub">săpt. trecută</div>

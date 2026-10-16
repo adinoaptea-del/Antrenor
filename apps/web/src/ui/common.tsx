@@ -299,32 +299,48 @@ export function PoolMap({ open }: { open: boolean }) {
   );
 }
 
-// Siluetă de alergător, cu lumină lime din spate. Locul pozei sportivului (vine din onboarding).
-export function Runner({ className = '' }: { className?: string }) {
-  const limbs = 'M116 56 140 76 152 54M116 56 90 82 76 66M100 112 136 140 134 192M100 112 74 152 48 140';
-  const torso = 'M118 48 100 112';
+// Ilustrații pentru cele trei sporturi: pictograme cu linie albă groasă și accent roșu (culorile Ironman).
+export function SwimArt() {
   return (
-    <svg className={`runner ${className}`} viewBox="0 0 200 212" aria-hidden="true">
-      <defs>
-        <filter id="rim" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="2.2" />
-        </filter>
-        <radialGradient id="rg" cx="50%" cy="50%" r="50%">
-          <stop offset="0" stopColor="var(--accent)" stopOpacity="0.55" />
-          <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <circle cx="118" cy="92" r="112" fill="url(#rg)" />
-      <g className="rim" filter="url(#rim)">
-        <circle cx="122" cy="28" r="17" />
-        <path d={torso} strokeWidth="29" />
-        <path d={limbs} strokeWidth="23" />
-      </g>
-      <g className="body">
-        <circle cx="122" cy="28" r="14" />
-        <path d={torso} strokeWidth="24" />
-        <path d={limbs} strokeWidth="18" />
-      </g>
+    <svg className="art" viewBox="0 0 120 130" aria-hidden="true">
+      <path d="M0 96c10-7 20-7 30 0s20 7 30 0 20-7 30 0 20 7 30 0" className="red" />
+      <path d="M0 110c10-7 20-7 30 0s20 7 30 0 20-7 30 0 20 7 30 0" className="red" style={{ opacity: 0.45 }} />
+      <path d="M18 100 58 88" className="ink" style={{ opacity: 0.28 }} />
+      <path d="M40 86h20" className="ink" />
+      <path d="M58 84 48 58 72 46" className="ink" />
+      <circle cx="76" cy="70" r="10" className="ink-fill" />
+      <circle cx="88" cy="52" r="2.5" className="red-fill" />
+      <circle cx="96" cy="60" r="2" className="red-fill" />
+      <circle cx="84" cy="44" r="1.8" className="red-fill" />
+    </svg>
+  );
+}
+
+export function BikeArt() {
+  return (
+    <svg className="art" viewBox="0 0 120 130" aria-hidden="true">
+      <path d="M8 122h104" className="red-thin" />
+      <circle cx="32" cy="100" r="17" className="red" />
+      <circle cx="90" cy="100" r="17" className="red" />
+      <circle cx="32" cy="100" r="3" className="red-fill" />
+      <circle cx="90" cy="100" r="3" className="red-fill" />
+      <path d="M32 100 60 102 50 70 84 74 60 102M50 70 32 100M84 74 90 100M44 68h12M82 68h10" className="ink" style={{ strokeWidth: 4.5 }} />
+      <path d="M50 66 76 44M76 44 88 66" className="ink" />
+      <path d="M50 66 56 88 54 98" className="ink" style={{ opacity: 0.5 }} />
+      <path d="M50 66 70 82 66 108" className="ink" />
+      <circle cx="86" cy="35" r="8.5" className="ink-fill" />
+    </svg>
+  );
+}
+
+export function RunArt() {
+  return (
+    <svg className="art" viewBox="0 0 120 130" aria-hidden="true">
+      <path d="M6 122c30-10 70-10 108 0" className="red-thin" />
+      <path d="M22 62h12M14 72h14" className="red" style={{ opacity: 0.7 }} />
+      <circle cx="66" cy="22" r="8.5" className="ink-fill" />
+      <path d="M64 33 54 70" className="ink" style={{ strokeWidth: 13 }} />
+      <path d="M63 38 78 50 84 36M63 38 48 52 40 42M54 70 74 86 72 114M54 70 40 92 26 84" className="ink" />
     </svg>
   );
 }

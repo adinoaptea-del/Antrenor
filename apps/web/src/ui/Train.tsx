@@ -20,8 +20,8 @@ function readSwimMode(): 'bazin' | 'ape' {
   }
 }
 
-export function Train({ onOpen }: { onOpen: (screen: string) => void }) {
-  const [sport, setSport] = useState<Sport>('inot');
+export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => void; sport: Sport; onSport: (s: Sport) => void }) {
+  const setSport = onSport;
   const [swimMode, setSwimMode] = useState<'bazin' | 'ape'>(readSwimMode);
 
   useEffect(() => {
