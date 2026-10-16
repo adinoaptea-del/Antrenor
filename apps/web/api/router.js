@@ -1464,6 +1464,8 @@ function specialistSystem(agent, prompts) {
     return `${common}
 ${own}
 
+${prompts.ghid ?? ""}
+
 ${prompts.format}`;
   }
   return `${prompts[agent]}
@@ -1578,14 +1580,18 @@ async function runPyramid(input, client) {
   );
   specialists.push(...results);
   if (specialists.some((s) => s.verdict === "stop")) decision = "stop";
-  let head = await client.json({ model: models.head, system: prompts.head_coach, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2e3 });
+  let head = await client.json({ model: models.head, system: `${prompts.head_coach}
+
+${prompts.ghid ?? ""}`, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2e3 });
   let headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
   if (RANK2[head.decizie] < RANK2[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisiv\u0103 dec\xE2t a Fiziologului (${decision}); se p\u0103streaz\u0103 ${decision}`);
   let fallbackUsed = false;
   if (headWarnings.length) {
     const retry = await client.json({
       model: models.head,
-      system: prompts.head_coach,
+      system: `${prompts.head_coach}
+
+${prompts.ghid ?? ""}`,
       user: `${headUser(packetWithVerdict, specialists, input.journal)}
 
 === VERIFICAREA PRIMEI VARIANTE A RESPINS ===
@@ -1638,7 +1644,8 @@ Reguli:
 - Daca comentariile arata ca problema e in afara antrenamentului, scrii un singur rand: "de vorbit cu un om, nu cu mine" si te opresti.
 - Fara citate motivationale. Raspunzi doar in formatul JSON din format.md, maximum 2 randuri in "ce".
 - Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.
-`
+`,
+  ghid: "GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)\n\nIRONMAN 70.3 (jumatate de Ironman)\n- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.\n- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.\n- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.\n\nCUM ARATA ANUL (incepator, 40-50 de saptamani)\n1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.\n2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.\n3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.\n4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.\n5. Peak (3-4 sapt.): ritmul de cursa, simulari (o \u201Ecursa de proba\u201D sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.\n6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.\n\nCE CONTEAZA CEL MAI MULT LA UN INCEPATOR\n- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.\n- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.\n- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.\n- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.\n- Forta: picioare, core, sold; protejeaza de accidentari.\n- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.\n- Somnul si zilele usoare fac adaptarea.\n- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.\n\nGRESELI TIPICE DE EVITAT\n- Prea tare in zilele usoare, prea usor in cele tari (\u201Ezona gri\u201D).\n- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.\n- Prima iesire in ape deschise in ziua cursei.\n- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.\n- Alimentare netestata, deshidratare la caldura.\n\nSEMIMARATON / MARATON (doar alergare)\n- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.\n- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.\n- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.\n"
 };
 
 // src/calendar/adapt.ts

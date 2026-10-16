@@ -25,6 +25,8 @@ export interface ModelClient {
 export interface Prompts {
   head_coach: string;
   format: string;
+  /** Ghidul echipei: ce e cursa și cum arată anul de pregătire; îl primesc head coach-ul și antrenorii de sport. */
+  ghid?: string;
   fiziolog: string;
   antrenor_comun: string;
   antrenor_inot: string;
@@ -125,7 +127,7 @@ function specialistSystem(agent: AgentName, prompts: Prompts): string {
     const SPORT = { inot: 'ÎNOT', bicicleta: 'BICICLETĂ', alergare: 'ALERGARE' }[sport] ?? sport.toUpperCase();
     const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT).replace(/<sport>/g, sport);
     const own = prompts[agent as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare'];
-    return `${common}\n${own}\n\n${prompts.format}`;
+    return `${common}\n${own}\n\n${prompts.ghid ?? ''}\n\n${prompts.format}`;
   }
   return `${prompts[agent as Exclude<AgentName, 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare'>]}\n\n${prompts.format}`;
 }
@@ -261,14 +263,14 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
   if (specialists.some((s) => s.verdict === 'stop')) decision = 'stop';
 
   // 3. Head coach, cu rândurile deja marcate; textul lui se verifică și el, o dată cu reîncercare.
-  let head = await client.json<HeadResponse>({ model: models.head, system: prompts.head_coach, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
+  let head = await client.json<HeadResponse>({ model: models.head, system: `${prompts.head_coach}\n\n${prompts.ghid ?? ''}`, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
   let headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
   if (RANK[head.decizie] < RANK[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisivă decât a Fiziologului (${decision}); se păstrează ${decision}`);
   let fallbackUsed = false;
   if (headWarnings.length) {
     const retry = await client.json<HeadResponse>({
       model: models.head,
-      system: prompts.head_coach,
+      system: `${prompts.head_coach}\n\n${prompts.ghid ?? ''}`,
       user: `${headUser(packetWithVerdict, specialists, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`,
       schema: HEAD_SCHEMA,
       maxTokens: 2000,

@@ -1,0 +1,36 @@
+GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)
+
+IRONMAN 70.3 (jumatate de Ironman)
+- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.
+- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.
+- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.
+
+CUM ARATA ANUL (incepator, 40-50 de saptamani)
+1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.
+2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.
+3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.
+4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.
+5. Peak (3-4 sapt.): ritmul de cursa, simulari (o „cursa de proba” sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.
+6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.
+
+CE CONTEAZA CEL MAI MULT LA UN INCEPATOR
+- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.
+- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.
+- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.
+- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.
+- Forta: picioare, core, sold; protejeaza de accidentari.
+- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.
+- Somnul si zilele usoare fac adaptarea.
+- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.
+
+GRESELI TIPICE DE EVITAT
+- Prea tare in zilele usoare, prea usor in cele tari („zona gri”).
+- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.
+- Prima iesire in ape deschise in ziua cursei.
+- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.
+- Alimentare netestata, deshidratare la caldura.
+
+SEMIMARATON / MARATON (doar alergare)
+- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.
+- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.
+- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.
