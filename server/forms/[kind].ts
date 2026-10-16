@@ -2,6 +2,7 @@ import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/a
 import { q, type Req, type Res } from '../_lib/http.js';
 import { insert, remove, update, upsert } from '../_lib/db.js';
 import { geocode } from '../_lib/weather.js';
+import { readLabs } from '../_lib/labs-extract.js';
 import { newAppleToken } from '../webhooks/apple.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
@@ -60,10 +61,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'analize') {
       const l = body as unknown as LabsForm;
       const vals = { feritina: n(l.feritina), vitamina_d: n(l.vitamina_d), hemoglobina: n(l.hemoglobina), ck: n(l.ck), crp: n(l.crp) };
-      if (Object.values(vals).every((v) => v == null)) throw new HttpError(400, 'cel puțin o valoare');
+      if (Object.values(vals).every((v) => v == null) && !l.alte?.length) throw new HttpError(400, 'cel puțin o valoare');
       const drawn = isDate(l.data) ? l.data : today;
       await remove('labs', { user_id: `eq.${u.id}`, drawn_at: `eq.${drawn}` });
-      await insert('labs', { user_id: u.id, drawn_at: drawn, ...vals });
+      await insert('labs', { user_id: u.id, drawn_at: drawn, ...vals, other: l.alte?.length ? { laborator: l.laborator ?? null, valori: l.alte } : null });
       json(res, 200, { ok: true });
       return;
     }
@@ -98,6 +99,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const date = isDate(b.data) ? b.data : today;
       await upsert('wellness_daily', { user_id: u.id, date, source: 'manual', weight_kg: n(b.greutate), body_fat_pct: n(b.grasime_pct) }, 'user_id,date,source');
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'analize-citire') {
+      // Doar citire: nu salvează nimic; sportivul verifică valorile și apoi salvează prin „analize”.
+      const file = typeof body.file === 'string' ? body.file : '';
+      const mediaType = typeof body.mediaType === 'string' ? body.mediaType : '';
+      if (!file) throw new HttpError(400, 'lipsește fișierul');
+      if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mediaType)) throw new HttpError(400, 'doar PDF sau poză (JPG, PNG)');
+      json(res, 200, { ok: true, citire: await readLabs(file, mediaType) });
       return;
     }
     if (kind === 'profil') {

@@ -12,7 +12,7 @@ Vremea (vreme.azi si vreme.maine; vreme null = nu exista oras in profil, nu pres
 - vreme.azi.ploaie_mm peste 5 sau vreme.azi.tmin sub 0: bicicleta pe trainer; la alergare suprafata sigura, fara intervale pe asfalt ud.
 - ape deschise cu vreme.azi.tmax sub 16 sau vant_kmh peste 25: bazin in loc.
 
-Dupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau. O valoare iesita din tipar (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).
+Dupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau, dar in contextul zilei: sedinte_48h (alte sporturi in aceeasi zi sau in ziua dinainte, cu durata, puls si minute in Z4-Z5), somnul si hooper-ul. Puls mai mare dupa o alta sedinta in aceeasi zi sau dupa o zi grea e oboseala asteptata: o notezi ca atare, cu campul sedintei de dinainte, nu ca anomalie. Doar o valoare iesita din tipar fara explicatie in sedinte_48h (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).
 
 Reguli:
 - Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.

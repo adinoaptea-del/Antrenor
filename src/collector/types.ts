@@ -67,6 +67,8 @@ export interface LabsInput {
   ck: number | null;
   crp: number | null;
   data_analize: string | null;
+  /** Valorile din buletin aflate în afara intervalului de referință al laboratorului (calculat de cod). */
+  in_afara_intervalului?: { nume: string; valoare: number | null; unitate: string | null; interval: string | null; directie: 'sub' | 'peste' }[];
 }
 
 export interface NutritionDay {

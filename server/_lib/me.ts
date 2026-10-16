@@ -2,7 +2,7 @@
 import { one, select } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
-import type { Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
+import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
@@ -25,7 +25,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
     select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -2)}` }, { limit: 20 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
-    one<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' }),
+    one<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc' }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
@@ -99,7 +99,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
   const aviz = (intake as { sanatate?: { avizCardiolog?: 'da' | 'nu' | 'programat' } } | null)?.sanatate?.avizCardiolog ?? null;
   const baseline: Me['baseline'] = {
-    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp) } : null,
+    labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null } : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
     cardiolog: clearance?.cardiology ? 'da' : aviz,

@@ -18,10 +18,10 @@ function Num({ value, onChange, unit, placeholder }: { value: number | null; onC
 
 export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
   const me = useMe();
-  const { submitForm } = useData();
+  const { submitForm, local } = useData();
   const [l, setL] = useState<LabsForm>(me.baseline.labs ?? { data: me.today, feritina: null, vitamina_d: null, hemoglobina: null, ck: null, crp: null });
   const [busy, setBusy] = useState(false);
-  const any = [l.feritina, l.vitamina_d, l.hemoglobina, l.ck, l.crp].some((v) => v != null);
+  const any = [l.feritina, l.vitamina_d, l.hemoglobina, l.ck, l.crp].some((v) => v != null) || !!l.alte?.length;
   return (
     <>
       <header className="top">
@@ -37,6 +37,7 @@ export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => voi
         <p className="hint" style={{ marginTop: 0 }}>
           Cinci valori din buletinul de analize, cu unitățile de pe el. Nutriționistul recomandă suplimente doar din ele; fără ele nu recomandă nimic. Celelalte valori (lipide, hormoni, markeri cardiaci) le discuți cu medicul, nu cu aplicația.
         </p>
+        {!local && <LabsUpload onRead={(r) => setL(r)} current={l} />}
         <Q title="Data recoltării">
           <input className="date" type="date" value={l.data} onChange={(e) => setL({ ...l, data: e.target.value })} />
         </Q>
@@ -55,6 +56,7 @@ export function Labs({ onBack, onDone }: { onBack: () => void; onDone: () => voi
         <Q title="CRP (proteina C reactivă)">
           <Num value={l.crp} onChange={(v) => setL({ ...l, crp: v })} unit="mg/L" />
         </Q>
+        {!!l.alte?.length && <OtherValues values={l.alte} />}
         <p className="hint">Nu ai analize? Lista pentru laborator: hemoleucogramă, feritină, vitamina D, CK, CRP, glicemie, profil lipidic, TSH. Se repetă la 6 luni sau după o perioadă grea.</p>
       </div>
       <div className="wizard-nav">
@@ -229,5 +231,98 @@ export function BaselineList({ onOpen }: { onOpen: (screen: string) => void }) {
         </button>
       ))}
     </div>
+  );
+}
+
+interface Reading {
+  lizibil: boolean;
+  data_recoltarii: string | null;
+  laborator: string | null;
+  valori: NonNullable<LabsForm['alte']>;
+  cele5: { feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null };
+  note: string[];
+}
+
+/** Poza se micșorează în telefon (max 2000 px, JPEG): serverul primește cel mult ~4 MB. */
+async function fileToPayload(f: File): Promise<{ file: string; mediaType: string }> {
+  const toB64 = (buf: ArrayBuffer) => {
+    let bin = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+  if (f.type === 'application/pdf') {
+    if (f.size > 3_000_000) throw new Error('PDF-ul are peste 3 MB; fă o poză clară a paginilor cu rezultate');
+    return { file: toB64(await f.arrayBuffer()), mediaType: 'application/pdf' };
+  }
+  if (!f.type.startsWith('image/')) throw new Error('doar PDF sau poză');
+  const img = await createImageBitmap(f);
+  const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+  const blob = await new Promise<Blob>((ok, ko) => c.toBlob((b) => (b ? ok(b) : ko(new Error('nu pot citi poza'))), 'image/jpeg', 0.85));
+  return { file: toB64(await blob.arrayBuffer()), mediaType: 'image/jpeg' };
+}
+
+function LabsUpload({ onRead, current }: { onRead: (l: LabsForm) => void; current: LabsForm }) {
+  const { submitForm } = useData();
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'err'>('idle');
+  const [msg, setMsg] = useState('');
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setState('busy');
+    setMsg('');
+    try {
+      const r = await submitForm('analize-citire', await fileToPayload(f));
+      const c = r.data?.citire as Reading | undefined;
+      if (!c || !c.lizibil) throw new Error('nu pare un buletin de analize sau nu se citește; încearcă o poză mai clară');
+      onRead({ ...current, data: c.data_recoltarii ?? current.data, ...c.cele5, alte: c.valori, laborator: c.laborator });
+      setState('done');
+      setMsg(`${c.valori.length} valori citite${c.laborator ? ` · ${c.laborator}` : ''}. Verifică-le cu buletinul, apoi Salvează.${c.note.length ? ` ${c.note.join('; ')}.` : ''}`);
+    } catch (e) {
+      setState('err');
+      setMsg(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <section className="q">
+      <h3>Încarcă buletinul</h3>
+      <p className="hint">PDF sau poză. Claude transcrie valorile exact cum sunt pe buletin, cu intervalele laboratorului; nu salvează nimic până nu verifici tu.</p>
+      <label className="btn dark" style={{ textAlign: 'center' }}>
+        {state === 'busy' ? 'Citesc buletinul…' : 'Alege PDF sau poză'}
+        <input type="file" accept="application/pdf,image/*" hidden disabled={state === 'busy'} onChange={(e) => void pick(e.target.files?.[0])} />
+      </label>
+      {msg && (
+        <p className="hint" style={state === 'err' ? { color: 'var(--c-rosu)' } : undefined}>
+          {msg}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function OtherValues({ values }: { values: NonNullable<LabsForm['alte']> }) {
+  const out = values.filter((v) => v.in_afara);
+  return (
+    <section className="q">
+      <h3>Toate valorile din buletin</h3>
+      <p className="hint">{out.length ? `${out.length} în afara intervalului laboratorului: de discutat cu medicul. Aplicația nu le interpretează.` : 'Toate în intervalul laboratorului.'}</p>
+      <div className="kv">
+        {values.map((v, i) => (
+          <div key={i} style={{ display: 'contents' }}>
+            <div className="tiny" style={{ minWidth: 0 }}>
+              <b>{v.nume}</b>
+              {v.ref_text ? <span className="muted"> · ref. {v.ref_text}</span> : null}
+            </div>
+            <div className="tiny" style={{ textAlign: 'right', color: v.in_afara ? 'var(--c-rosu)' : undefined, fontWeight: v.in_afara ? 700 : 400 }}>
+              {v.valoare ?? v.valoare_text ?? '–'} {v.unitate ?? ''}
+              {v.in_afara === 'sub' ? ' ↓' : v.in_afara === 'peste' ? ' ↑' : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

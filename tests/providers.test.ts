@@ -104,3 +104,21 @@ describe('Apple Health (Health Auto Export)', () => {
     assert.deepEqual(days, [{ date: '2026-10-16', hrv: 45, rhr: 52, sleep_min: 435, bedtime: '23:40', wake_time: '07:05' }]);
   });
 });
+
+describe('citirea analizelor: calculul din cod', () => {
+  it('semnalează ce e în afara intervalului și convertește unitățile', async () => {
+    const { finalize } = await import('../server/_lib/labs-extract.js');
+    const r = finalize({
+      lizibil: true, data_recoltarii: '2026-10-10', laborator: 'Synevo',
+      valori: [
+        { nume: 'Feritina', cod: 'feritina', valoare: 22, valoare_text: null, unitate: 'ng/mL', ref_min: 30, ref_max: 400, ref_text: '30-400' },
+        { nume: '25-OH Vitamina D', cod: 'vitamina_d', valoare: 75, valoare_text: null, unitate: 'nmol/L', ref_min: 75, ref_max: 250, ref_text: '75-250' },
+        { nume: 'Hemoglobina', cod: 'hemoglobina', valoare: 152, valoare_text: null, unitate: 'g/L', ref_min: 130, ref_max: 170, ref_text: '130-170' },
+        { nume: 'CRP', cod: 'crp', valoare: 0.3, valoare_text: null, unitate: 'mg/dL', ref_min: null, ref_max: 0.5, ref_text: '<0,5' },
+        { nume: 'Glicemie', cod: 'altul', valoare: 112, valoare_text: null, unitate: 'mg/dL', ref_min: 70, ref_max: 100, ref_text: '70-100' },
+      ],
+    });
+    assert.deepEqual(r.cele5, { feritina: 22, vitamina_d: 30.05, hemoglobina: 15.2, ck: null, crp: 3 });
+    assert.deepEqual(r.valori.map((v) => v.in_afara), ['sub', null, null, null, 'peste']);
+  });
+});

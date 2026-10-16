@@ -57,6 +57,8 @@ export interface Packet {
     in_plan: boolean;
     tip_neplanificat: EveningForm['tip_neplanificat'];
   } | null;
+  /** Celelalte ședințe din ziua ultimei ședințe și din ziua dinainte: pulsul se judecă în contextul oboselii acumulate. */
+  sedinte_48h: { sport: Sport; data: string; ora: string | null; durata: number; fc_medie: number | null; z4_z5_min: number | null }[];
   plan_azi: { sport: Sport; tip: string; durata_planificata: number; zone_tinta: number[]; structura: string | null; cheie: boolean } | null;
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
@@ -349,6 +351,19 @@ export function buildPacket(input: CollectorInput): Packet {
           tip_neplanificat: inPlan ? null : (evening?.tip_neplanificat ?? null),
         }
       : null,
+    sedinte_48h: lastAct
+      ? acts
+          .filter((a) => a !== lastAct && diffDays(a.date, lastAct.date) >= 0 && diffDays(a.date, lastAct.date) <= 1)
+          .sort((a, b) => diffDays(a.date, b.date) || (b.startLocal ?? '').localeCompare(a.startLocal ?? ''))
+          .map((a) => ({
+            sport: a.sport,
+            data: a.date,
+            ora: a.startLocal ?? null,
+            durata: a.minutes,
+            fc_medie: a.avgHr ?? null,
+            z4_z5_min: a.timeInZonesMin ? (a.timeInZonesMin[4] ?? 0) + (a.timeInZonesMin[5] ?? 0) : null,
+          }))
+      : [],
     plan_azi: planToday
       ? { sport: planToday.sport, tip: planToday.type === 'z2' ? 'Z2' : planToday.type, durata_planificata: planToday.plannedMinutes, zone_tinta: planToday.targetZones, structura: planToday.structure ?? null, cheie: planToday.key }
       : null,
