@@ -10,6 +10,7 @@ import { Memento } from './ui/Memento';
 import { Countdown } from './ui/Countdown';
 import { Admin } from './ui/Admin';
 import { LabsGate } from './ui/LabsGate';
+import { Tour, tourSeen } from './ui/Tour';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
 import { Intake } from './forms/Intake';
@@ -56,6 +57,7 @@ function Shell() {
   const [memento, setMemento] = useState(true);
   const [countdown, setCountdown] = useState(false);
   const [labsGate, setLabsGate] = useState(false);
+  const [tour, setTour] = useState(false);
   const hiddenAt = useRef<number | null>(null);
 
   useEffect(() => {
@@ -85,6 +87,10 @@ function Shell() {
   if (status === 'error' || !me) return <ErrorScreen error={error ?? 'fără date'} retry={() => void refresh()} />;
 
   const go = (s: string, opts?: GoOpts) => {
+    if (s === 'ghid') {
+      setTour(true);
+      s = 'acasa';
+    }
     const t = (ALL.includes(s as Screen) ? s : 'acasa') as Screen;
     if (opts?.sport) setTrainSport(opts.sport);
     if (opts?.activityId) setEveningFor(opts.activityId);
@@ -111,7 +117,15 @@ function Shell() {
 
   return (
     <div className="app">
-      {countdown && <Countdown onDone={() => setCountdown(false)} />}
+      {countdown && (
+        <Countdown
+          onDone={() => {
+            setCountdown(false);
+            if (!tourSeen()) setTour(true);
+          }}
+        />
+      )}
+      {tour && screen === 'acasa' && <Tour onClose={() => setTour(false)} />}
       {memento && !countdown && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
       {level && <div className={`edge edge-${level}`} aria-hidden="true" />}
       {local && screen !== 'acasa' && !isForm && (

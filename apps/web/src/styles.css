@@ -562,3 +562,17 @@ ul.plain b { color: var(--fg); }
 .labs-alert { display: grid; gap: 4px; width: 100%; margin-top: 12px; text-align: left; font: inherit; color: var(--fg); background: rgba(220, 42, 30, 0.12); border: 1px solid rgba(220, 42, 30, 0.55); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; }
 .labs-alert b { font-size: 14px; }
 .labs-alert span { font-size: 12px; color: var(--muted); }
+
+/* program: bifat pe toate zilele dintr-o atingere */
+.sched-quick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.sched-row button.slot { background: transparent; border: 1px dashed var(--line-2); color: var(--muted); font-size: 11px; font-weight: 700; height: 36px; }
+.sched-row button.slot.full { border-style: solid; border-color: var(--accent); color: var(--accent-ink); background: rgba(220, 42, 30, 0.18); }
+
+/* ghidul de la prima folosire */
+.tour { position: fixed; inset: 0; z-index: 70; }
+.tour .hole { position: fixed; border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.74); transition: all 0.3s ease; pointer-events: none; outline: 2px solid var(--accent); }
+.tour .tip { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); max-width: 400px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line-2); border-radius: 18px; padding: 14px 16px; display: grid; gap: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
+.tour .tip h4 { margin: 0; font: 700 16px var(--font-ui); }
+.tour .tip p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.tour .tip .row { justify-content: space-between; }
+.tour .tip .count { font-size: 11px; color: var(--muted); }

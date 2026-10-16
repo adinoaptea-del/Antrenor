@@ -91,8 +91,25 @@ export function ScheduleGrid({ value, onChange }: { value: FreeBlock[]; onChange
     if (has(day, s)) onChange(value.filter((b) => !(b.day === day && b.startMin === s.startMin)));
     else onChange([...value, { day: day as FreeBlock['day'], startMin: s.startMin, endMin: s.endMin }]);
   };
+  const rowFull = (s: (typeof SLOTS)[number]) => DAYS.every((_, d) => has(d, s));
+  const toggleRow = (s: (typeof SLOTS)[number]) => {
+    const rest = value.filter((b) => !(b.startMin === s.startMin && b.endMin === s.endMin));
+    onChange(rowFull(s) ? rest : [...rest, ...DAYS.map((_, d) => ({ day: d as FreeBlock['day'], startMin: s.startMin, endMin: s.endMin }))]);
+  };
+  const allDaysOfSlots = SLOTS.filter((s) => value.some((b) => b.startMin === s.startMin));
   return (
     <div className="sched">
+      <div className="sched-quick">
+        <span className="tiny muted">Atingi ora din stânga ca să bifezi toate zilele pe intervalul ăla.</span>
+        {allDaysOfSlots.length > 0 && (
+          <button
+            className="pill"
+            onClick={() => onChange(allDaysOfSlots.flatMap((s) => DAYS.map((_, d) => ({ day: d as FreeBlock['day'], startMin: s.startMin, endMin: s.endMin }))))}
+          >
+            Toate zilele, pe orele bifate
+          </button>
+        )}
+      </div>
       <div className="sched-row head">
         <span />
         {DAYS.map((d) => (
@@ -101,7 +118,9 @@ export function ScheduleGrid({ value, onChange }: { value: FreeBlock[]; onChange
       </div>
       {SLOTS.map((s) => (
         <div key={s.id} className="sched-row">
-          <span className="slot">{s.label}</span>
+          <button className={`slot ${rowFull(s) ? 'full' : ''}`} onClick={() => toggleRow(s)} aria-pressed={rowFull(s)} aria-label={`toate zilele ${s.label}`}>
+            {s.label}
+          </button>
           {DAYS.map((_, day) => (
             <button key={day} className={has(day, s) ? 'on' : ''} onClick={() => toggle(day, s)} aria-pressed={has(day, s)} aria-label={`${DAYS[day]} ${s.label}`}>
               {has(day, s) ? Icons.check : ''}

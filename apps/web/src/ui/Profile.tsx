@@ -187,6 +187,9 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
           <div className="small">18+ · date de sănătate · nu e serviciu medical · ștergerea contului la cerere</div>
           <div className="tiny muted" style={{ marginTop: 6 }}>Dacă ceva nu merge: „Repornește aplicația” șterge doar fișierele din telefon, nu datele tale.</div>
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+            <button className="pill" onClick={() => onOpen('ghid')}>
+              Arată ghidul
+            </button>
             <button className="pill" onClick={() => void hardReload()}>
               Repornește aplicația
             </button>
