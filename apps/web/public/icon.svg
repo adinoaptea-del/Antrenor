@@ -1,22 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#ffffff"/>
-  <g fill="#e8331f" transform="translate(14 6)">
-    <!-- punctul lui „i” -->
-    <ellipse cx="324" cy="128" rx="37" ry="39"/>
-    <!-- „i” cu serife -->
-    <path d="M282 206 L 346 188 L 352 188 L 352 392 C 352 406 364 412 388 416 L 388 432 L 270 432 L 270 416 C 294 412 306 406 306 392 L 306 232 C 306 222 298 218 286 220 L 282 220 Z"/>
-    <!-- brațul încordat -->
-    <path d="M292 296
-             C 280 262 240 248 210 266
-             C 196 274 189 286 185 298
-             C 179 278 180 252 186 228
-             C 197 224 205 211 203 196
-             C 201 176 187 164 167 164
-             L 141 166
-             C 117 170 107 190 111 212
-             C 113 228 119 236 125 242
-             C 113 280 105 322 113 352
-             C 121 378 147 388 177 386
-             L 292 370 Z"/>
+  <defs>
+    <!-- brațul încordat (stânga), lipit de corpul lui „i” -->
+    <path id="arm" d="M218 296
+             C 206 262 166 248 136 266
+             C 122 274 115 286 111 298
+             C 105 278 106 252 112 228
+             C 123 224 131 211 129 196
+             C 127 176 113 164 93 164
+             L 67 166
+             C 43 170 33 190 37 212
+             C 39 228 45 236 51 242
+             C 39 280 31 322 39 352
+             C 47 378 73 388 103 386
+             L 218 370 Z"/>
+  </defs>
+  <g fill="#e8331f" transform="translate(256 262) scale(0.86) translate(-256 -262)">
+    <!-- punctul lui „i” = capul -->
+    <circle cx="256" cy="116" r="40"/>
+    <!-- corpul lui „i” -->
+    <rect x="226" y="180" width="60" height="244" rx="30"/>
+    <use href="#arm"/>
+    <use href="#arm" transform="translate(512 0) scale(-1 1)"/>
   </g>
 </svg>
