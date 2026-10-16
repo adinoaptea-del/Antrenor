@@ -3932,7 +3932,7 @@ async function buildMe(userId, today) {
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning;
   const hs = mf && [mf.hooper.somn, mf.hooper.oboseala, mf.hooper.stres, mf.hooper.dureri].every((x) => x != null) ? mf.hooper.somn + mf.hooper.oboseala + mf.hooper.stres + mf.hooper.dureri : null;
-  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor };
+  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
     return { provider: t.provider, connectedAt: t.connected_at, lastSync: last?.ran_at ?? null, lastOk: last ? last.ok : null, detail: last?.detail ?? null };

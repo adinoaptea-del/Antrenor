@@ -21,6 +21,18 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
   const w = me.wellnessToday;
   const recovery = w?.recoveryScore ?? null;
   const bar = me.bar;
+  const parts = me.state?.parts;
+  const sleepSc = parts?.somn ?? (w?.sleepMin != null ? Math.round(sleepScore(w.sleepMin)) : null);
+  const chips = [
+    { k: 'rec', label: 'Recuperare brățări', score: parts?.recuperare ?? recovery, show: recovery != null },
+    { k: 'somn', label: `Somn ${w?.sleepMin != null ? fmtMinutes(w.sleepMin) : ''}`, score: sleepSc, show: w?.sleepMin != null },
+    { k: 'hrv', label: `HRV ${w?.hrv != null ? String(w.hrv).replace('.', ',') : ''} ms`, score: parts?.hrv ?? null, show: w?.hrv != null },
+    { k: 'rhr', label: `Puls repaus ${w?.rhr ?? ''}`, score: parts?.puls ?? null, show: w?.rhr != null },
+    { k: 'resp', label: 'Respirație', score: parts?.respiratie ?? null, show: parts?.respiratie != null },
+  ].filter((c) => c.show);
+  const n = parts ? Object.values(parts).filter((x) => x != null).length : 0;
+  const ringValue = me.state?.score ?? recovery;
+  const ringLevel = me.state?.verdict ?? levelFromScore(recovery);
   const lastRun = me.activities.filter((a) => a.sport === 'alergare' && a.avgHr != null).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
   const hrTrend = me.activities
     .filter((a) => a.sport === 'alergare' && a.avgHr != null)
@@ -47,35 +59,29 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         </div>
       </header>
 
-      <div className={`ring-wrap lvl-${levelFromScore(recovery) ?? 'none'}`}>
-        <Ring value={recovery} size={168} stroke={10} level={levelFromScore(recovery)}>
-          <span className="lb">Recuperare</span>
+      <div className={`ring-wrap lvl-${ringLevel ?? 'none'}`}>
+        <Ring value={ringValue} size={168} stroke={10} level={ringLevel}>
+          <span className="lb">Starea ta azi</span>
           <span className="num" style={{ fontSize: 56 }}>
-            {recovery ?? '–'}
+            {ringValue ?? '–'}
           </span>
-          <span className={`st lvl-txt-${levelFromScore(recovery) ?? ''}`}>{recovery == null ? 'fără date' : LEVEL_LABEL[levelFromScore(recovery)!]}</span>
+          <span className={`st lvl-txt-${ringLevel ?? ''}`}>{ringLevel == null ? 'fără date' : LEVEL_LABEL[ringLevel]}</span>
           <Ecg />
         </Ring>
         {w ? (
           <div className="rec-line">
-            {w.sleepMin != null && (
-              <span className="rec-chip">
-                Somn {fmtMinutes(w.sleepMin)} <b className={`lvl-txt-${levelFromScore(Math.round(sleepScore(w.sleepMin)))}`}>{Math.round(sleepScore(w.sleepMin))}</b>
+            {chips.map((c) => (
+              <span key={c.k} className="rec-chip">
+                {c.label} {c.score != null && <b className={`lvl-txt-${levelFromScore(c.score)}`}>{c.score}</b>}
               </span>
-            )}
-            {w.hrv != null && <span className="rec-chip">HRV {String(w.hrv).replace('.', ',')} ms</span>}
-            {w.rhr != null && <span className="rec-chip">Puls repaus {w.rhr}</span>}
+            ))}
           </div>
         ) : (
           <div className="tiny muted" style={{ marginTop: 8, textAlign: 'center' }}>Nicio brățară nu a trimis date pentru azi.</div>
         )}
-        {me.state && (
-          <div className="tiny" style={{ marginTop: 10, textAlign: 'center' }}>
-            Starea ta azi:{' '}
-            <b className={`lvl-txt-${me.state.verdict}`}>
-              {LEVEL_LABEL[me.state.verdict]}
-              {me.state.score != null ? ` · ${me.state.score}/100` : ''}
-            </b>
+        {ringValue != null && n > 1 && (
+          <div className="tiny muted" style={{ marginTop: 10, textAlign: 'center' }}>
+            Media celor {n} scoruri de mai sus. Inima și respirația sunt comparate cu media ta din ultimele 60 de zile.
           </div>
         )}
         {me.readiness && (
