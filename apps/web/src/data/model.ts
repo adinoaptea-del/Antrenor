@@ -148,7 +148,8 @@ export function barComponent(me: Me, name: string): string {
 /** Mementoul: cel scris de head coach azi; altfel, un fapt din date calculat aici; altfel ziua din plan. */
 /** Scoate trimiterile tehnice la câmpuri („[hrv.azi]”) din textele pentru sportiv; ele rămân doar pentru verificare. */
 export function cleanRefs(t: string): string {
-  return t.replace(/\s?\[[a-z_][a-z0-9_.]*\]/gi, '').replace(/\s+([.,;:])/g, '$1');
+  // Câmpuri ca [hrv.azi] sau [alte_activitati.lista[0].minute]: doar pentru verificare, nu pentru sportiv.
+  return t.replace(/\s?\[[a-z_][\w.]*(?:\[\d+\][\w.]*)*\]/gi, '').replace(/\s+([.,;:])/g, '$1');
 }
 
 export function greeting(me: Me): string {
