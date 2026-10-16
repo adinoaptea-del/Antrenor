@@ -53,7 +53,7 @@ export function todayLocal(): string {
 
 function raceName(goal: IntakeAnswers['obiectiv'] | undefined): string | null {
   if (!goal) return null;
-  return { '70.3': 'Ironman 70.3', olimpic: 'Triatlon olimpic', sprint: 'Triatlon sprint', full: 'Ironman' }[goal];
+  return { '70.3': 'Ironman 70.3', olimpic: 'Triatlon olimpic', sprint: 'Triatlon sprint', semimaraton: 'Semimaraton', maraton: 'Maraton', full: 'Ironman' }[goal];
 }
 
 function buildMe(): Me {

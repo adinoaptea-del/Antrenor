@@ -3,10 +3,34 @@ import { weeklyBudget } from '@core/calendar/budget.js';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
 import { useData, useMe } from '../data/store';
-import { EMPTY_INTAKE, type IntakeAnswers } from './types';
+import { EMPTY_INTAKE, runResultOk, type IntakeAnswers } from './types';
+import { isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
+import { fmtDuration, fmtPaceSec, paceFromResult, parsePace, type RunResult } from '@core/util/run.js';
 
 // Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
-const STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+const TRI_STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+const RUN_STEPS = ['Obiectiv', 'Ținta', 'Nivelul acum', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+type Step = (typeof TRI_STEPS)[number] | (typeof RUN_STEPS)[number];
+
+/** Ritm sau timp final: două butoane + un câmp; arată și echivalentul calculat. */
+function RunResultInput({ value, onChange, distanceKm }: { value: RunResult | null | undefined; onChange: (r: RunResult) => void; distanceKm: number }) {
+  const mod = value?.mod ?? 'timp';
+  const pace = paceFromResult(value, distanceKm);
+  return (
+    <>
+      <Chips value={mod} options={[{ id: 'timp', label: 'Timp final' }, { id: 'ritm', label: 'Ritm pe km' }]} onChange={(m) => onChange({ mod: m, valoare: '' })} />
+      <input
+        className="date"
+        style={{ marginTop: 8 }}
+        inputMode="numeric"
+        placeholder={mod === 'timp' ? 'ex. 1:55:00 (ore:min:sec)' : 'ex. 5:30 (min:sec pe km)'}
+        value={value?.valoare ?? ''}
+        onChange={(e) => onChange({ mod, valoare: e.target.value })}
+      />
+      {pace != null && <p className="hint">{mod === 'timp' ? `adică ${fmtPaceSec(pace)} min/km` : `adică ${fmtDuration(pace * distanceKm)} timp final`}</p>}
+    </>
+  );
+}
 
 export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
   const me = useMe();
@@ -14,6 +38,10 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const saved = me.forms.intake as IntakeAnswers | null;
   const [a, setA] = useState<IntakeAnswers>(saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa });
   const [step, setStep] = useState(0);
+  const runGoal = isRunGoal(a.obiectiv);
+  const STEPS: readonly Step[] = runGoal ? RUN_STEPS : TRI_STEPS;
+  const dist = runGoal ? RUN_DISTANCE_KM[a.obiectiv as 'semimaraton' | 'maraton'] : 0;
+  const raceWord = a.obiectiv === 'maraton' ? 'un maraton' : 'un semimaraton';
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const set = (patch: Partial<IntakeAnswers>) => setA((prev) => ({ ...prev, ...patch }));
@@ -46,6 +74,10 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         return a.bicicleta.tip != null && (a.bicicleta.tip === 'nu_am' || (a.bicicleta.trainer != null && a.bicicleta.putere != null && a.bicicleta.ceaMaiLungaOre != null));
       case 'Alergare':
         return a.alergare.ceaMaiLungaKm != null && a.alergare.curseRecente != null;
+      case 'Ținta':
+        return runResultOk(a.alergare.tinta);
+      case 'Nivelul acum':
+        return parsePace(a.alergare.ritmActual) != null && a.alergare.poateDistanta != null && (!a.alergare.poateDistanta || runResultOk(a.alergare.rezultatActual)) && a.alergare.ceaMaiLungaKm != null;
       case 'Echipament':
         return a.echipament.ceas != null;
       case 'Program':
@@ -90,12 +122,39 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                   { id: 'olimpic', label: 'Olimpic', sub: '1,5 · 40 · 10' },
                   { id: 'sprint', label: 'Sprint', sub: '0,75 · 20 · 5' },
                   { id: 'full', label: 'Ironman', sub: '3,8 · 180 · 42' },
+                  { id: 'semimaraton', label: 'Semimaraton', sub: 'doar alergare · 21,1 km' },
+                  { id: 'maraton', label: 'Maraton', sub: 'doar alergare · 42,2 km' },
                 ]}
                 onChange={(obiectiv) => set({ obiectiv })}
               />
             </Q>
             <Q title="Data cursei">
               <input className="date" type="date" value={a.dataCursa} onChange={(e) => set({ dataCursa: e.target.value })} />
+            </Q>
+          </>
+        )}
+
+        {STEPS[step] === 'Ținta' && (
+          <Q title="Ce vrei să reușești?" hint={`Cu ce ritm vrei să alergi ${raceWord}, sau în cât timp. Din asta ies ritmurile de la antrenamentele specifice.`}>
+            <RunResultInput value={a.alergare.tinta} distanceKm={dist} onChange={(tinta) => set({ alergare: { ...a.alergare, tinta } })} />
+          </Q>
+        )}
+
+        {STEPS[step] === 'Nivelul acum' && (
+          <>
+            <Q title="Cu ce ritm alergi acum?" hint="Ritmul obișnuit la o alergare ușoară, în minute pe km.">
+              <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={a.alergare.ritmActual ?? ''} onChange={(e) => set({ alergare: { ...a.alergare, ritmActual: e.target.value } })} />
+            </Q>
+            <Q title={`Poți alerga acum ${raceWord}?`}>
+              <Chips value={a.alergare.poateDistanta == null ? null : a.alergare.poateDistanta ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ alergare: { ...a.alergare, poateDistanta: v === 'da', rezultatActual: v === 'da' ? a.alergare.rezultatActual ?? null : null } })} />
+            </Q>
+            {a.alergare.poateDistanta && (
+              <Q title="În cât timp sau cu ce ritm?" hint="Ca să știm de la ce nivel pleci.">
+                <RunResultInput value={a.alergare.rezultatActual} distanceKm={dist} onChange={(rezultatActual) => set({ alergare: { ...a.alergare, rezultatActual } })} />
+              </Q>
+            )}
+            <Q title="Cea mai lungă alergare din ultimele 3 luni">
+              <Stepper value={a.alergare.ceaMaiLungaKm} min={0} max={42} step={1} unit="km" fallback={5} onChange={(ceaMaiLungaKm) => set({ alergare: { ...a.alergare, ceaMaiLungaKm } })} />
             </Q>
           </>
         )}
@@ -206,7 +265,17 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                   Primul calendar pe <b>{budget.toLocaleString('ro-RO')} h</b> pe săptămână, din ferestrele tale.
                 </li>
                 <li>Intensitate: {a.sanatate.avizCardiolog === 'da' ? 'după zonele testate' : 'doar Z1–Z2 până la avizul cardiologic'}.</li>
-                <li>Înot: {a.inot.nivel === 'nu_stiu' || a.inot.nivel === 'bazin_scurt' ? 'tehnică înainte de volum, fără ritmuri până la 400 m continuu' : 'CSS se testează la prima ședință'}.</li>
+                {runGoal ? (
+                  <li>
+                    Doar alergare și forță. Ținta: {(() => {
+                      const p = paceFromResult(a.alergare.tinta, dist);
+                      return p ? `${fmtPaceSec(p)} min/km, ${fmtDuration(p * dist)}` : '–';
+                    })()}
+                    .
+                  </li>
+                ) : (
+                  <li>Înot: {a.inot.nivel === 'nu_stiu' || a.inot.nivel === 'bazin_scurt' ? 'tehnică înainte de volum, fără ritmuri până la 400 m continuu' : 'CSS se testează la prima ședință'}.</li>
+                )}
                 <li>Brățările se conectează din Profil; până atunci bara rămâne „fără date”.</li>
               </ul>
             </Q>

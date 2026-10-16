@@ -3,6 +3,8 @@ import { select, one } from './db.js';
 import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
 import { addDays, labsExpired } from '../../src/util/dates.js';
+import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
@@ -15,7 +17,7 @@ export interface UserRow {
   email: string;
   name: string;
   tz: string;
-  goal: '70.3' | 'olimpic' | 'sprint' | 'full' | null;
+  goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null;
   race_name: string | null;
   race_date: string | null;
   city?: string | null;
@@ -253,7 +255,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const input: CollectorInput = {
     today,
     event,
-    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}`, raceDate: user.race_date ?? addDays(today, 365), phase },
+    athlete: { obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase },
     wellness,
     activities,
     plan: planRes.workouts,
@@ -308,4 +310,19 @@ export async function loadTotals(userId: string, since: string): Promise<NonNull
     t.ore = Math.round(t.ore * 10) / 10;
   }
   return { since, bySport };
+}
+
+/** La semimaraton / maraton: ținta și nivelul de plecare, din chestionar (ritmurile calculate exact din timp și distanță). */
+function runGoalText(goal: string | null, intake: Record<string, unknown> | null): string {
+  if (!isRunGoal(goal) || !intake) return '';
+  const a = (intake.alergare ?? {}) as { tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
+  const d = RUN_DISTANCE_KM[goal];
+  const t = paceFromResult(a.tinta, d);
+  const now = paceFromResult(a.rezultatActual, d);
+  const parts = [
+    t ? `ținta ${fmtDuration(t * d)} (${fmtPaceSec(t)}/km)` : null,
+    a.ritmActual ? `ritm ușor acum ${a.ritmActual}/km` : null,
+    a.poateDistanta === true ? `poate distanța acum${now ? `: ${fmtDuration(now * d)} (${fmtPaceSec(now)}/km)` : ''}` : a.poateDistanta === false ? 'nu poate încă distanța' : null,
+  ].filter(Boolean);
+  return parts.length ? ` · doar alergare · ${parts.join(' · ')}` : ' · doar alergare';
 }

@@ -10,7 +10,7 @@ export interface MeUser {
   id: string;
   email: string;
   name: string;
-  goal: '70.3' | 'olimpic' | 'sprint' | 'full' | null;
+  goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null;
   raceName: string | null;
   raceDate: string | null;
   tz: string;

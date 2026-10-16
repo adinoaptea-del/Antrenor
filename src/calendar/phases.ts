@@ -3,7 +3,13 @@
 import type { Phase } from '../types.js';
 import { addDays, diffDays, weekStart } from '../util/dates.js';
 
-export type Goal = '70.3' | 'olimpic' | 'sprint';
+export type Goal = '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton';
+
+/** Obiective doar de alergare: planul are alergare + forță, fără înot și bicicletă. */
+export const RUN_GOALS: readonly Goal[] = ['semimaraton', 'maraton'];
+export const isRunGoal = (g: string | null | undefined): g is 'semimaraton' | 'maraton' => g === 'semimaraton' || g === 'maraton';
+/** Distanța cursei de alergare, km. */
+export const RUN_DISTANCE_KM = { semimaraton: 21.0975, maraton: 42.195 } as const;
 
 export interface PhaseHours {
   min: number;
@@ -36,6 +42,23 @@ export const PHASE_HOURS: Record<Goal, Record<Phase, PhaseHours>> = {
     build: { min: 4, target: 6, max: 8 },
     peak: { min: 4, target: 6, max: 8 },
     taper: { min: 2, target: 3, max: 5 },
+  },
+  // Alergare + forță; orientativ pentru un amator care vrea să termine bine (aprox. 30–50 km/săpt. la semimaraton, 40–70 la maraton).
+  semimaraton: {
+    evaluare: { min: 2.5, target: 3.5, max: 5 },
+    baza1: { min: 3, target: 4.5, max: 6 },
+    baza2: { min: 3.5, target: 5, max: 6.5 },
+    build: { min: 4, target: 5.5, max: 7 },
+    peak: { min: 4, target: 5.5, max: 7 },
+    taper: { min: 2, target: 3, max: 4 },
+  },
+  maraton: {
+    evaluare: { min: 3, target: 4, max: 5.5 },
+    baza1: { min: 3.5, target: 5, max: 7 },
+    baza2: { min: 4, target: 6, max: 8 },
+    build: { min: 4.5, target: 7, max: 9 },
+    peak: { min: 4.5, target: 7, max: 9 },
+    taper: { min: 2.5, target: 3.5, max: 5 },
   },
 };
 

@@ -22,3 +22,11 @@ revoke all on public.app_settings from anon, authenticated;
 
 -- Analize: când a fost urcat buletinul (pentru „analize noi” și comparația cu cele vechi).
 alter table public.labs add column if not exists uploaded_at timestamptz not null default now();
+
+-- Obiective noi: semimaraton și maraton (doar alergare).
+alter table public.users drop constraint if exists users_goal_check;
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));
+alter table public.plans drop constraint if exists plans_goal_check;
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));
+-- Marcaj de versiune a schemei (aplicația cere singură actualizarea când lipsește).
+alter table public.users add column if not exists schema_v smallint not null default 3;

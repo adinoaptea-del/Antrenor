@@ -4,12 +4,15 @@ import { loadLabs, toWorkoutRow } from './collect.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
+import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import { paceFromResult, type RunResult } from '../../src/util/run.js';
 
 export interface IntakeLike {
   nume?: string;
-  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'full';
+  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
   dataCursa: string;
-  inot: { nivel: string | null };
+  inot?: { nivel: string | null };
+  alergare?: { ceaMaiLungaKm?: number | null; tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
   program: FreeBlock[];
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null };
   echipament?: { ceas?: string | null; whoop?: boolean; oura?: boolean };
@@ -39,7 +42,7 @@ export async function saveIntake(userId: string, today: string, intake: IntakeLi
 }
 
 function raceName(goal: IntakeLike['obiectiv']): string {
-  return { '70.3': 'Ironman 70.3', olimpic: 'Triatlon olimpic', sprint: 'Triatlon sprint', full: 'Ironman' }[goal];
+  return { '70.3': 'Ironman 70.3', olimpic: 'Triatlon olimpic', sprint: 'Triatlon sprint', semimaraton: 'Semimaraton', maraton: 'Maraton', full: 'Ironman' }[goal];
 }
 
 export interface PlanOutcome {
@@ -83,7 +86,14 @@ export async function generateAndStore(userId: string, today: string, intake: In
     freeBlocks: intake.program,
     historyHoursPerWeek: history,
     intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
-    swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
+    swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
+    run: isRunGoal(intake.obiectiv)
+      ? {
+          goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
+          canDoDistance: intake.alergare?.poateDistanta ?? null,
+          longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
+        }
+      : undefined,
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
 

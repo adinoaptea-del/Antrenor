@@ -3,7 +3,7 @@
 
 import type { Activity, Color } from '../types.js';
 import { diffDays } from '../util/dates.js';
-import type { Goal } from '../calendar/phases.js';
+import { isRunGoal, type Goal } from '../calendar/phases.js';
 
 export interface ScoredActivity extends Activity {
   color: Color;
@@ -54,6 +54,9 @@ const TARGETS: Record<Goal, { swimM: number; rideKm: number; runKm: number; bric
   '70.3': { swimM: 1900, rideKm: 90, runKm: 18, brickRunKm: 8 },
   olimpic: { swimM: 1500, rideKm: 40, runKm: 10, brickRunKm: 4 },
   sprint: { swimM: 750, rideKm: 20, runKm: 5, brickRunKm: 2 },
+  // Ieșirea lungă de referință înainte de cursă (nu distanța întreagă): 18 km la semimaraton, 32 km la maraton.
+  semimaraton: { swimM: 0, rideKm: 0, runKm: 18, brickRunKm: 0 },
+  maraton: { swimM: 0, rideKm: 0, runKm: 32, brickRunKm: 0 },
 };
 
 export function computeBar(input: BarInput): BarResult {
@@ -63,7 +66,19 @@ export function computeBar(input: BarInput): BarResult {
   );
 
   const components: BarComponent[] = [];
+  const run = isRunGoal(input.goal);
 
+  if (run) {
+    const runs = recent.filter((a) => a.sport === 'alergare' && a.distanceKm != null && a.distanceKm > 0);
+    const best = maxBy(runs, (a) => a.distanceKm!);
+    components.push(
+      best
+        ? { name: 'alergare', weight: 0.5, value: r(100 * Math.min(1, best.distanceKm! / t.runKm)), detail: `cea mai lungă alergare: ${r(best.distanceKm!)} km din ${t.runKm}`, evidence: [{ activityId: best.id, date: best.date, label: `${r(best.distanceKm!)} km` }] }
+        : { name: 'alergare', weight: 0.5, value: null, detail: 'fără alergare cu distanță în ultimele 6 săptămâni', evidence: [] },
+    );
+  }
+
+  if (!run) {
   // Înot: distanța continuă (70%) + ritm din CSS (30%), sau doar distanța dacă nu există CSS.
   {
     const swims = recent.filter((a) => a.sport === 'inot' && a.distanceKm != null && a.distanceKm > 0);
@@ -131,16 +146,18 @@ export function computeBar(input: BarInput): BarResult {
     }
   }
 
+  }
+
   // Consistență: (verde + galben) / (planificate − gri) în ultimele 4 săptămâni.
   {
     const counted = input.plannedColorsLast4Weeks.filter((c) => c !== 'gri' && c !== 'asteptare' && c !== 'albastru');
     if (counted.length === 0) {
-      components.push({ name: 'consistenta', weight: 0.15, value: null, detail: 'fără antrenamente scorate în ultimele 4 săptămâni', evidence: [] });
+      components.push({ name: 'consistenta', weight: run ? 0.25 : 0.15, value: null, detail: 'fără antrenamente scorate în ultimele 4 săptămâni', evidence: [] });
     } else {
       const good = counted.filter((c) => c === 'verde' || c === 'galben').length;
       components.push({
         name: 'consistenta',
-        weight: 0.15,
+        weight: run ? 0.25 : 0.15,
         value: r((100 * good) / counted.length),
         detail: `${good} din ${counted.length} antrenamente planificate executate (verde sau galben)`,
         evidence: [],
@@ -151,11 +168,11 @@ export function computeBar(input: BarInput): BarResult {
   // Formă: CTL actual față de CTL-țintă al fazei.
   {
     if (input.ctl == null || input.ctlTarget == null || input.ctlTarget <= 0) {
-      components.push({ name: 'forma', weight: 0.15, value: null, detail: 'fără CTL sau fără țintă de fază', evidence: [] });
+      components.push({ name: 'forma', weight: run ? 0.25 : 0.15, value: null, detail: 'fără CTL sau fără țintă de fază', evidence: [] });
     } else {
       components.push({
         name: 'forma',
-        weight: 0.15,
+        weight: run ? 0.25 : 0.15,
         value: r(100 * Math.min(1, input.ctl / input.ctlTarget)),
         detail: `CTL ${r(input.ctl)} din ținta ${r(input.ctlTarget)}`,
         evidence: [],

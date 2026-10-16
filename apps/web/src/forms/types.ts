@@ -3,16 +3,30 @@
 
 import type { EveningForm, MorningForm } from '@core/collector/types.js';
 import type { FreeBlock } from '@core/types.js';
+import type { RunResult } from '@core/util/run.js';
+import { isRunGoal } from '@core/calendar/phases.js';
+import { parseDuration, parsePace } from '@core/util/run.js';
 
 export type { EveningForm, MorningForm };
 
 export interface IntakeAnswers {
   nume: string;
-  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'full';
+  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };
   bicicleta: { tip: 'sosea' | 'tt' | 'mtb' | 'nu_am' | null; trainer: boolean | null; putere: boolean | null; ceaMaiLungaOre: number | null };
-  alergare: { ceaMaiLungaKm: number | null; curseRecente: 'niciuna' | '5-10' | 'semimaraton' | 'maraton' | null };
+  alergare: {
+    ceaMaiLungaKm: number | null;
+    curseRecente: 'niciuna' | '5-10' | 'semimaraton' | 'maraton' | null;
+    /** Doar la semimaraton / maraton: ținta (ritm sau timp final). */
+    tinta?: RunResult | null;
+    /** Ritmul cu care aleargă acum de obicei, „m:ss” pe km. */
+    ritmActual?: string | null;
+    /** Poate alerga acum distanța cursei? */
+    poateDistanta?: boolean | null;
+    /** Dacă da: în cât timp sau cu ce ritm. */
+    rezultatActual?: RunResult | null;
+  };
   echipament: { ceas: 'garmin' | 'apple' | 'altul' | 'nu' | null; whoop: boolean; oura: boolean; cantar: boolean };
   program: FreeBlock[];
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string };
@@ -57,6 +71,15 @@ export function eveningComplete(e: EveningForm | undefined): boolean {
   return !!e && e.rpe != null && e.fata_de_asteptari != null && e.durere.scor != null;
 }
 
+/** Răspunsul de ritm sau timp e completat corect. */
+export function runResultOk(r: RunResult | null | undefined): boolean {
+  return !!r && (r.mod === 'ritm' ? parsePace(r.valoare) != null : parseDuration(r.valoare) != null);
+}
+
 export function intakeComplete(i: IntakeAnswers | undefined): boolean {
+  if (i && isRunGoal(i.obiectiv)) {
+    const a = i.alergare;
+    return i.consimtamant && i.nume.trim().length > 0 && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual)) && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  }
   return !!i && i.consimtamant && i.nume.trim().length > 0 && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
 }

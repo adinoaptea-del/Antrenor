@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
+import { isRunGoal } from '@core/calendar/phases.js';
 import { Avatar, BikeArt, Card, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
@@ -24,6 +25,13 @@ const BAR_PARTS = [
   { name: 'consistenta', label: 'Consecvență', weight: 0.15, how: 'câte ședințe din plan ai făcut în ultimele 4 săptămâni' },
   { name: 'forma', label: 'Formă', weight: 0.15, how: 'încărcarea de antrenament acumulată față de ce cere faza în care ești' },
 ] as const;
+
+const RUN_BAR_PARTS = (goal: 'semimaraton' | 'maraton') =>
+  [
+    { name: 'alergare', label: 'Alergare', weight: 0.5, how: `cea mai lungă alergare în 6 săptămâni, față de ${goal === 'maraton' ? 32 : 18} km` },
+    { name: 'consistenta', label: 'Consecvență', weight: 0.25, how: 'câte ședințe din plan ai făcut în ultimele 4 săptămâni' },
+    { name: 'forma', label: 'Formă', weight: 0.25, how: 'încărcarea de antrenament acumulată față de ce cere faza în care ești' },
+  ] as const;
 
 export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
   const me = useMe();
@@ -79,7 +87,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </div>
         {barInfo && (
           <div className="bar-info">
-            {BAR_PARTS.map((p) => {
+            {(isRunGoal(me.user.goal) ? RUN_BAR_PARTS(me.user.goal) : BAR_PARTS).map((p) => {
               const c = bar?.components.find((x) => x.name === p.name);
               return (
                 <div key={p.name} className="bi-row">
@@ -126,7 +134,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       </div>
 
       <div className="sports">
-        {SPORTS.map((s) => {
+        {SPORTS.filter((s) => !isRunGoal(me.user.goal) || s.id === 'alergare').map((s) => {
           const next = nextWorkout(me, s.id);
           const isToday = next?.date === me.today;
           return (

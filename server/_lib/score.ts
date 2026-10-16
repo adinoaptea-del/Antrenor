@@ -21,7 +21,7 @@ export interface ScoreSummary {
 }
 
 /** Potrivește activitățile cu antrenamentele propuse din ultimele 42 de zile, scrie scorurile și bara zilei. */
-export async function rescore(userId: string, today: string, goal: '70.3' | 'olimpic' | 'sprint'): Promise<ScoreSummary> {
+export async function rescore(userId: string, today: string, goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton'): Promise<ScoreSummary> {
   const from = addDays(today, -42);
   const [{ workouts }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, today), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
   const activities: Activity[] = dedupeActivities(acts);

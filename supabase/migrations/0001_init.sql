@@ -12,7 +12,7 @@ create table public.users (
   role text not null check (role in ('sportiv', 'head_coach', 'admin')) default 'sportiv',
   coach_id uuid references public.users(id),
   tz text not null default 'Europe/Bucharest',
-  goal text check (goal in ('70.3', 'olimpic', 'sprint', 'full')),
+  goal text check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),
   race_name text,
   race_date date,
   created_at timestamptz not null default now()
@@ -140,7 +140,7 @@ create index on public.sync_log (user_id, ran_at desc);
 create table public.plans (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
-  goal text not null check (goal in ('70.3', 'olimpic', 'sprint', 'full')),
+  goal text not null check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),
   race_date date not null,
   start_date date not null,
   budget_hours numeric not null,

@@ -29,7 +29,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
         const [c, t, l] = await Promise.all([
-          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
         ]);

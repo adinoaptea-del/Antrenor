@@ -10,7 +10,7 @@ import { labsReminder } from '../_lib/reminders.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     requireCron(req);
-    const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'full' | null; consents: { health_data: boolean } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data)' });
+    const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null; consents: { health_data: boolean } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data)' });
     const out: Record<string, unknown> = {};
     for (const u of users) {
       if (!u.consents?.health_data) continue;
