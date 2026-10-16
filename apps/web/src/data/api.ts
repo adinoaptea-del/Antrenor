@@ -191,6 +191,8 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, `serverul a răspuns ciudat (${res.status}): ${text.slice(0, 80)}`);
   }
   if (!res.ok) throw new ApiError(res.status, (body as { error?: string } | null)?.error ?? `eroare ${res.status}`);
+  // Răspunsurile lungi (agenții) vin cu 200 de la început; o eroare apare atunci în corp.
+  if (body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string' && Object.keys(body).length === 1) throw new ApiError(500, (body as { error: string }).error);
   return body as T;
 }
 

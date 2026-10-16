@@ -109,9 +109,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const runAgents = useCallback(
     async (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => {
-      const r = (await backend.runAgents(event)) as { skipped?: string; decision?: string; changes?: string[] };
-      await load();
-      return r.skipped ?? `Decizia: ${r.decision}. ${r.changes?.length ? `${r.changes.length} schimbări în calendar.` : ''}`;
+      const started = Date.now();
+      try {
+        const r = (await backend.runAgents(event)) as { skipped?: string; decision?: string; changes?: string[] };
+        await load();
+        return r.skipped ?? 'Gata.';
+      } catch (e) {
+        // Conexiunea s-a rupt (telefon blocat, rețea), dar serverul își termină treaba: așteptăm mesajul nou până la 4 minute.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/load failed|failed to fetch|network|nu a răspuns/i.test(msg)) throw e;
+        for (let i = 0; i < 24; i++) {
+          await new Promise((r) => setTimeout(r, 10_000));
+          const fresh = await backend.me().catch(() => null);
+          if (fresh && fresh.messages.some((m) => Date.parse(m.createdAt) >= started - 5_000)) {
+            setMe(fresh);
+            return 'Gata.';
+          }
+        }
+        throw new Error('Antrenorul n-a terminat în 4 minute. Încearcă din nou peste puțin.');
+      }
     },
     [backend, load],
   );

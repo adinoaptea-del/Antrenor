@@ -92,7 +92,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
           <button className="btn" style={{ marginTop: 14 }} disabled={busy || local || !me.intakeComplete} onClick={() => void ask()}>
             {busy ? 'Se gândește… (până la un minut)' : doneToday ? 'Cum a fost antrenamentul de azi?' : 'Ce fac azi?'}
           </button>
-          {note && <div className="tiny muted" style={{ marginTop: 8 }}>{note}</div>}
+          {note && note !== 'Gata.' && <div className="tiny muted" style={{ marginTop: 8 }}>{note}</div>}
         </Card>
 
         {older.length > 0 && (

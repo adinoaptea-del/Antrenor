@@ -2167,15 +2167,32 @@ async function runAgents(userId, today, event, force = false) {
 
 // server/agents/run.ts
 async function handler2(req, res) {
+  let beat = null;
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
     const user = await loadUser(u.id);
     const body = await readJson(req);
-    const out = await runAgents(u.id, todayIn(user.tz), body.event ?? "dimineata", body.force ?? true);
-    json(res, 200, out ?? { skipped: "exist\u0103 deja o rulare azi pentru evenimentul \u0103sta" });
+    res.statusCode = 200;
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.setHeader("x-accel-buffering", "no");
+    res.write(" ");
+    beat = setInterval(() => {
+      if (!res.writableEnded) res.write(" ");
+    }, 5e3);
+    let out;
+    try {
+      out = await runAgents(u.id, todayIn(user.tz), body.event ?? "dimineata", body.force ?? true) ?? { skipped: "exist\u0103 deja o rulare azi pentru evenimentul \u0103sta" };
+    } catch (e) {
+      out = { error: e instanceof Error ? e.message : String(e) };
+    }
+    clearInterval(beat);
+    res.end(JSON.stringify(out));
   } catch (e) {
-    fail(res, e);
+    if (beat) clearInterval(beat);
+    if (res.headersSent) res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    else fail(res, e);
   }
 }
 
