@@ -1047,8 +1047,8 @@ function distance(v, min, max) {
   return 0;
 }
 function direction(before, now, min, max) {
-  const pct = before === 0 ? now === 0 ? 0 : 100 : (now - before) / Math.abs(before) * 100;
-  if (Math.abs(pct) < 5) return "stabil";
+  const pct2 = before === 0 ? now === 0 ? 0 : 100 : (now - before) / Math.abs(before) * 100;
+  if (Math.abs(pct2) < 5) return "stabil";
   if (min == null && max == null) return null;
   const d0 = distance(before, min, max);
   const d1 = distance(now, min, max);
@@ -4004,6 +4004,85 @@ function paceSec(p) {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
+// src/bar/sport-readiness.ts
+var LEGS = {
+  "70.3": { inot: 1.9, bicicleta: 90, alergare: 21.1 },
+  olimpic: { inot: 1.5, bicicleta: 40, alergare: 10 },
+  sprint: { inot: 0.75, bicicleta: 20, alergare: 5 },
+  semimaraton: { alergare: 21.1 },
+  maraton: { alergare: 42.2 }
+};
+var SWIM_CUTOFF_MIN = { "70.3": 70 };
+var WINDOW = 42;
+var PER_WEEK = 2;
+var BRICK_GAP_MIN = 30;
+var ro = (x, d = 1) => x.toLocaleString("ro-RO", { maximumFractionDigits: d });
+var pct = (x) => Math.round(Math.max(0, Math.min(1, x)) * 100);
+var hm2 = (s) => s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null;
+function isBrickRun(run, all) {
+  const start = hm2(run.startLocal);
+  if (run.sport !== "alergare" || start == null) return false;
+  return all.some((b) => {
+    if (b.sport !== "bicicleta" || b.date !== run.date) return false;
+    const bs = hm2(b.startLocal);
+    if (bs == null) return false;
+    const gap = start - (bs + b.minutes);
+    return gap >= -5 && gap <= BRICK_GAP_MIN;
+  });
+}
+function sportReadiness(goal, activities, today) {
+  const legs = LEGS[goal];
+  const recent = activities.filter((a) => {
+    const d = diffDays(a.date, today);
+    return d >= 0 && d < WINDOW;
+  });
+  const last4w = (s) => recent.filter((a) => a.sport === s && diffDays(a.date, today) < 28).length;
+  const out = [];
+  for (const sport of ["inot", "bicicleta", "alergare"]) {
+    const leg = legs[sport];
+    if (!leg) continue;
+    const unit = sport === "inot" ? "m" : "km";
+    const fmtD = (km2) => sport === "inot" ? `${Math.round(km2 * 1e3).toLocaleString("ro-RO")} m` : `${ro(km2)} km`;
+    const withDist = recent.filter((a) => a.sport === sport && (a.distanceKm ?? 0) > 0);
+    const longest = withDist.reduce((m, a) => !m || a.distanceKm > m.distanceKm ? a : m, null);
+    const legLabel = `${fmtD(leg)} ${{ inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare" }[sport]}`;
+    void unit;
+    if (!longest) {
+      out.push({ sport, leg: legLabel, value: null, parts: [] });
+      continue;
+    }
+    const n2 = last4w(sport);
+    const parts = [
+      { label: "Cea mai lung\u0103 \u0219edin\u021B\u0103", have: fmtD(longest.distanceKm), target: fmtD(leg), pct: pct(longest.distanceKm / leg), weight: 0.6 },
+      { label: "Constan\u021B\u0103 (ultimele 4 s\u0103pt.)", have: `${n2} \u0219edin\u021Be`, target: `${PER_WEEK * 4}`, pct: pct(n2 / (PER_WEEK * 4)), weight: sport === "bicicleta" ? 0.4 : 0.2 }
+    ];
+    if (sport === "inot") {
+      const cutoff = SWIM_CUTOFF_MIN[goal];
+      const paceSec2 = longest.details?.pace100mSec ?? longest.minutes * 60 / (longest.distanceKm * 10);
+      if (cutoff) {
+        const needSec = cutoff * 60 / (leg * 10);
+        parts.push({ label: "Ritm fa\u021B\u0103 de timpul-limit\u0103", have: `${fmtPace3(paceSec2)}/100 m`, target: `${fmtPace3(needSec)}/100 m`, pct: pct(needSec / paceSec2), weight: 0.2 });
+      } else {
+        parts[0].weight = 0.8;
+      }
+    } else if (sport === "alergare" && legs.bicicleta) {
+      const bricks = recent.filter((a) => isBrickRun(a, recent) && (a.distanceKm ?? 0) > 0);
+      const best = bricks.reduce((m, a) => Math.max(m, a.distanceKm), 0);
+      const target = Math.min(5, leg / 2);
+      parts.push({ label: "Alergare dup\u0103 biciclet\u0103", have: best ? `${ro(best)} km` : "niciuna", target: `${ro(target)} km`, pct: pct(best / target), weight: 0.2 });
+    } else if (sport === "alergare") {
+      parts[0].weight = 0.8;
+    }
+    const value = Math.round(parts.reduce((s, p) => s + p.pct * p.weight, 0));
+    out.push({ sport, leg: legLabel, value, parts });
+  }
+  return out;
+}
+function fmtPace3(sec) {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 // server/_lib/me.ts
 async function buildMe(userId, today) {
   const user = await loadUser(userId);
@@ -4143,6 +4222,7 @@ async function buildMe(userId, today) {
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    sportReady: user.goal ? sportReadiness(user.goal, activities, today) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,

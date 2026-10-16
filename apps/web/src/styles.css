@@ -721,3 +721,22 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .route-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .route-legend i.route-start { background: var(--c-verde); }
 .route-legend i.route-end { background: var(--fg); }
+
+/* Pregătit pentru proba de cursă */
+.ready-head { display: flex; align-items: baseline; gap: 2px; flex-wrap: wrap; }
+.ready-head .unit { margin-left: 0; }
+.ready-num { font-size: 52px; line-height: 1; }
+.ready-leg { margin-left: 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.ready-bar { margin-top: 10px; height: 8px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.ready-bar i { display: block; height: 100%; border-radius: 6px; background: var(--muted-2); }
+.ready-bar i.lvl-bg-verde { background: var(--c-verde); }
+.ready-bar i.lvl-bg-galben { background: var(--c-galben); }
+.ready-bar i.lvl-bg-portocaliu { background: var(--c-portocaliu); }
+.ready-bar i.lvl-bg-rosu { background: var(--c-rosu); }
+.ready-parts { margin-top: 14px; display: grid; gap: 10px; }
+.rp-top { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.rp-l { color: var(--muted); font-weight: 600; min-width: 0; }
+.rp-v { white-space: nowrap; color: var(--muted); }
+.rp-v b { color: var(--fg); }
+.rp-bar { margin-top: 5px; height: 5px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.rp-bar i { display: block; height: 100%; background: var(--muted); border-radius: 4px; opacity: 0.8; }

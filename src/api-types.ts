@@ -1,3 +1,4 @@
+import type { SportReady } from './bar/sport-readiness.js';
 import type { ActivityDetails } from './collector/details.js';
 import type { LabsComparison } from './collector/labs-compare.js';
 // Contractul dintre server (api/) și aplicație (apps/web): ce primește aplicația la /api/me.
@@ -124,6 +125,8 @@ export interface Me {
   /** Starea de azi din datele de sănătate (inimă, respirație, recuperare, somn) și cum te simți; dă culoarea marginilor. */
   state?: { verdict: 'verde' | 'galben' | 'portocaliu' | 'rosu'; motiv: string; score: number | null; parts?: { recuperare: number | null; somn: number | null; hrv: number | null; puls: number | null; respiratie: number | null } } | null;
   readiness: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; acwr: number | null; hooperSum: number | null } | null;
+  /** Cât din fiecare probă a cursei ai demonstrat în ultimele 6 săptămâni (toate ședințele de pe brățări). */
+  sportReady?: SportReady[];
   bar: BarResult | null;
   messages: MeMessage[];
   memento: string | null;
