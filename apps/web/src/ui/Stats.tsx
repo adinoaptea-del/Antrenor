@@ -47,41 +47,41 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         </div>
       </header>
 
-      <div className="ring-wrap">
-        <Ring value={recovery} size={156} stroke={10} level={levelFromScore(recovery)}>
-          <span className="lb">Recuperare brățară</span>
+      <div className={`ring-wrap lvl-${levelFromScore(recovery) ?? 'none'}`}>
+        <Ring value={recovery} size={168} stroke={10} level={levelFromScore(recovery)}>
+          <span className="lb">Recuperare</span>
           <span className="num" style={{ fontSize: 56 }}>
             {recovery ?? '–'}
           </span>
           <span className={`st lvl-txt-${levelFromScore(recovery) ?? ''}`}>{recovery == null ? 'fără date' : LEVEL_LABEL[levelFromScore(recovery)!]}</span>
           <Ecg />
         </Ring>
-        {w?.sleepMin != null && (
-          <div className="tiny" style={{ marginTop: 6, textAlign: 'center' }}>
-            Somn {fmtMinutes(w.sleepMin)} ·{' '}
-            <b className={`lvl-txt-${levelFromScore(Math.round(sleepScore(w.sleepMin)))}`}>
-              {Math.round(sleepScore(w.sleepMin))}/100 {LEVEL_LABEL[levelFromScore(Math.round(sleepScore(w.sleepMin)))!]}
-            </b>
+        {w ? (
+          <div className="rec-line">
+            {w.sleepMin != null && (
+              <span className="rec-chip">
+                Somn {fmtMinutes(w.sleepMin)} <b className={`lvl-txt-${levelFromScore(Math.round(sleepScore(w.sleepMin)))}`}>{Math.round(sleepScore(w.sleepMin))}</b>
+              </span>
+            )}
+            {w.hrv != null && <span className="rec-chip">HRV {String(w.hrv).replace('.', ',')} ms</span>}
+            {w.rhr != null && <span className="rec-chip">Puls repaus {w.rhr}</span>}
           </div>
+        ) : (
+          <div className="tiny muted" style={{ marginTop: 8, textAlign: 'center' }}>Nicio brățară nu a trimis date pentru azi.</div>
         )}
-        <div className="tiny muted" style={{ marginTop: 6, textAlign: 'center' }}>
-          {w ? `${w.source ?? 'brățară'}${w.hrv != null ? ` · HRV ${w.hrv} ms` : ''}${w.rhr != null ? ` · puls de repaus ${w.rhr}` : ''}${w.sleepMin != null ? ` · somn ${fmtMinutes(w.sleepMin)}` : ''}` : 'Nicio brățară nu a trimis date pentru azi.'}
-        </div>
         {me.state && (
-          <div className="tiny" style={{ marginTop: 8, textAlign: 'center' }}>
+          <div className="tiny" style={{ marginTop: 10, textAlign: 'center' }}>
             Starea ta azi:{' '}
             <b className={`lvl-txt-${me.state.verdict}`}>
               {LEVEL_LABEL[me.state.verdict]}
               {me.state.score != null ? ` · ${me.state.score}/100` : ''}
-            </b>{' '}
-            <span className="muted">(inimă, respirație, recuperare, somn și cum te simți; e și culoarea marginilor)</span>
+            </b>
           </div>
         )}
         {me.readiness && (
           <div className={`day-verdict v-${me.readiness.verdict}`}>
-            <b>Decizia zilei: {{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[me.readiness.verdict]}</b>
+            <b>Antrenamentul de azi: {{ verde: 'normal', galben: 'mai ușor', rosu: 'pauză', stop: 'stop' }[me.readiness.verdict]}</b>
             {me.readiness.reason && <span>{cleanRefs(me.readiness.reason)}</span>}
-            <small>Cercul: recuperarea de pe brățară (peste 70 verde, 50–70 galben, 30–50 portocaliu, sub 30 roșu). Decizia zilei vine din toate datele: inimă, respirație, recuperare, somn, încărcare și cum te simți.</small>
           </div>
         )}
       </div>

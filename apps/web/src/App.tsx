@@ -265,16 +265,10 @@ function Shell() {
         </div>
       )}
 
-      {isMain && !gateIntake && !labsGate && (
-        <button className="fab" onClick={() => go('antrenor')} aria-label="Antrenor">
-          <span className="circle">{Icons.chat}</span>
-          <span className="lbl">Antrenor</span>
-        </button>
-      )}
 
       {!isForm && !gateIntake && !labsGate && (
         <nav className="nav" aria-label="Navigare">
-          {MAIN.map((t) => (
+          {[...MAIN, { id: 'antrenor' as Screen, label: 'Antrenor', icon: 'chat' as const }].map((t) => (
             <button key={t.id} className={screen === t.id ? 'on' : ''} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>
               {Icons[t.icon]}
               <span>{t.label}</span>

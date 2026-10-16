@@ -246,17 +246,25 @@ function AboutCard() {
   return (
     <Card>
       <Label>Despre tine</Label>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button className={`pill ${sex === 'm' ? 'on' : ''}`} onClick={() => setSex('m')}>
-          Bărbat
-        </button>
-        <button className={`pill ${sex === 'f' ? 'on' : ''}`} onClick={() => setSex('f')}>
-          Femeie
-        </button>
-        <input className="date" style={{ flex: 1, minWidth: 100 }} type="number" inputMode="numeric" placeholder="anul nașterii" value={year} onChange={(e) => setYear(e.target.value)} />
-        <input className="date" style={{ flex: 1, minWidth: 90 }} type="number" inputMode="numeric" placeholder="înălțime cm" value={height} onChange={(e) => setHeight(e.target.value)} />
-        <button className="pill on" disabled={busy || !sex || !year} onClick={() => void save()}>
-          {busy ? '…' : 'Salvează'}
+      <div className="about">
+        <div className="about-sex">
+          <button className={`pill ${sex === 'm' ? 'on' : ''}`} onClick={() => setSex('m')}>
+            Bărbat
+          </button>
+          <button className={`pill ${sex === 'f' ? 'on' : ''}`} onClick={() => setSex('f')}>
+            Femeie
+          </button>
+        </div>
+        <label className="about-f">
+          <span>Anul nașterii</span>
+          <input className="date" type="number" inputMode="numeric" placeholder="1988" value={year} onChange={(e) => setYear(e.target.value)} />
+        </label>
+        <label className="about-f">
+          <span>Înălțime (cm)</span>
+          <input className="date" type="number" inputMode="numeric" placeholder="180" value={height} onChange={(e) => setHeight(e.target.value)} />
+        </label>
+        <button className="btn about-save" disabled={busy || !sex || !year} onClick={() => void save()}>
+          {busy ? 'Salvez…' : 'Salvează'}
         </button>
       </div>
       <div className="tiny muted" style={{ marginTop: 8 }}>

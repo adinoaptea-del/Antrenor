@@ -79,7 +79,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> pregătit pentru {me.user.goal ?? 'cursă'}
           </span>
           <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
-            {bar ? `măsurat ${known}/${bar.components.length}` : 'cum se calculează'} {Icons.chevronRight}
+            {bar && bar.components.length ? `măsurat ${known}/${bar.components.length}` : 'detalii'} {Icons.chevronRight}
           </button>
         </div>
         {barInfo && (
