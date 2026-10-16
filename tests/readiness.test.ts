@@ -29,3 +29,12 @@ describe('starea zilei: întâi datele obiective, apoi cum s-a simțit', () => {
     assert.equal(dayVerdict(none, 8).verdict, 'galben');
   });
 });
+
+import { hooperSum } from '../src/collector/readiness.js';
+describe('chestionarul de dimineață parțial', () => {
+  it('contează și cu răspunsuri lipsă: media × 4', () => {
+    assert.deepEqual(hooperSum({ somn: 6, oboseala: 6, stres: null, dureri: null }), { suma: 24, raspunse: 2 });
+    assert.deepEqual(hooperSum({ somn: null, oboseala: null, stres: null, dureri: null }), { suma: null, raspunse: 0 });
+    assert.deepEqual(hooperSum({ somn: 2, oboseala: 3, stres: 2, dureri: 1 }), { suma: 8, raspunse: 4 });
+  });
+});

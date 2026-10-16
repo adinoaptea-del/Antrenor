@@ -1,4 +1,5 @@
 import { sportReadiness } from '../bar/sport-readiness.js';
+import { hooperSum } from './readiness.js';
 import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
@@ -55,7 +56,8 @@ export interface Packet {
     /** Verdictul calculat de cod: datele obiective, apoi cum s-a simțit (Hooper doar coboară). */
     verdict_cod: { verdict: Verdict; motiv: string };
     scor_producator: number | null;
-    hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null };
+    /** Cum s-a simțit (1–7, mai mare = mai rău). suma: și din răspunsuri parțiale (media × 4); raspunse: câte din 4. */
+    hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null; raspunse: number; istoric_14z: { data: string; suma: number | null; raspunse: number; boala: boolean | null }[]; media_14z: number | null };
   };
   incarcare: {
     acwr: number | null;
@@ -464,7 +466,7 @@ export function buildPacket(input: CollectorInput): Packet {
     sleepMin: todayRow?.sleepMin ?? null,
   });
   const h = input.morning?.hooper;
-  const hooperSum = h && [h.somn, h.oboseala, h.stres, h.dureri].every((x) => x != null) ? h.somn! + h.oboseala! + h.stres! + h.dureri! : null;
+  const hooper = hooperSum(h);
 
   const planToday = input.plan.filter((w) => w.date === today && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
   const tomorrow = addDays(today, 1);
@@ -517,16 +519,24 @@ export function buildPacket(input: CollectorInput): Packet {
     puls_repaus: { azi: todayRow?.rhr ?? null, media7: round(mean(rhr7), 0), baseline60: rhr60.length >= 14 ? round(mean(rhr60), 1) : null },
     readiness: {
       obiectiv: objective,
-      verdict_cod: dayVerdict(objective, hooperSum),
+      verdict_cod: dayVerdict(objective, hooper.suma),
       scor_producator: todayRow?.recoveryScore ?? null,
       hooper: {
         somn: input.morning?.hooper.somn ?? null,
         oboseala: input.morning?.hooper.oboseala ?? null,
         stres: input.morning?.hooper.stres ?? null,
         dureri: input.morning?.hooper.dureri ?? null,
-        suma: input.morning && [input.morning.hooper.somn, input.morning.hooper.oboseala, input.morning.hooper.stres, input.morning.hooper.dureri].every((x) => x != null)
-          ? input.morning.hooper.somn! + input.morning.hooper.oboseala! + input.morning.hooper.stres! + input.morning.hooper.dureri!
-          : null,
+        suma: hooper.suma,
+        raspunse: hooper.raspunse,
+        istoric_14z: (input.morningHistory ?? [])
+          .filter((m) => m.date < today && diffDays(m.date, today) <= 14)
+          .map((m) => ({ data: m.date, suma: hooperSum(m.hooper).suma, raspunse: hooperSum(m.hooper).raspunse, boala: m.semnale?.boala ?? null }))
+          .filter((x) => x.suma != null)
+          .sort((a, b) => (a.data < b.data ? -1 : 1)),
+        media_14z: (() => {
+          const xs = (input.morningHistory ?? []).filter((m) => m.date < today && diffDays(m.date, today) <= 14).map((m) => hooperSum(m.hooper).suma).filter((x): x is number => x != null);
+          return xs.length >= 3 ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null;
+        })(),
       },
     },
     incarcare: {

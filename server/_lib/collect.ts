@@ -189,11 +189,15 @@ export async function loadWellness(userId: string, from: string): Promise<Source
   return rows.map(toSourceDaily);
 }
 
-export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; evenings: EveningForm[]; intake: Record<string, unknown> | null }> {
+export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; mornings: MorningForm[]; evenings: EveningForm[]; intake: Record<string, unknown> | null }> {
   const morningRow = await one<{ answers: MorningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `eq.${today}` }, { order: 'created_at.desc' });
   const eveningRows = await select<{ answers: EveningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -14)}` }, { order: 'created_at.desc', limit: 50 });
   const intakeRow = await one<{ answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
-  return { morning: morningRow?.answers ?? null, evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null };
+  const morningRows = await select<{ answers: MorningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `gte.${addDays(today, -14)}` }, { order: 'created_at.desc', limit: 60 }).catch(() => []);
+  // Una pe zi (cea mai recentă), cu data zilei; și cele parțiale.
+  const byDay = new Map<string, MorningForm>();
+  for (const r of morningRows) if (!byDay.has(r.for_date)) byDay.set(r.for_date, { ...r.answers, date: r.for_date });
+  return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null };
 }
 
 export async function loadZones(userId: string): Promise<ZonesInput | null> {
@@ -293,6 +297,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
+    morningHistory: forms.mornings,
     evenings: forms.evenings,
     labs,
     load: null,

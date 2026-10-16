@@ -152,7 +152,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         {!morningComplete(morning ?? undefined) && new Date().getHours() >= 4 && new Date().getHours() < 14 && (
           <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
             <span className="k">Dimineața</span>
-            <span className="v">Cum te simți azi? · 20 de secunde</span>
+            <span className="v">{morning && Object.values(morning.hooper).some((v) => v != null) ? `Completează (${Object.values(morning.hooper).filter((v) => v != null).length} din 4)` : 'Cum te simți azi? · 20 de secunde'}</span>
           </button>
         )}
         {lastDone && lastDoneId && !eveningComplete(evening) && (

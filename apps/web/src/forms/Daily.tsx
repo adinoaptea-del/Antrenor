@@ -1,3 +1,4 @@
+import { hooperSum } from '@core/collector/readiness.js';
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import { CircleBtn, DAY_NAMES, Icons, LiveTitle, fmtDayMonth, fmtMinutes } from '../ui/common';
@@ -16,8 +17,9 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   const [busy, setBusy] = useState(false);
   const setH = (k: keyof MorningForm['hooper'], v: number) => setM({ ...m, hooper: { ...m.hooper, [k]: v } });
   const setS = (k: keyof MorningForm['semnale'], v: boolean) => setM({ ...m, semnale: { ...m.semnale, [k]: v } });
-  const complete = Object.values(m.hooper).every((v) => v != null);
-  const suma = complete ? Object.values(m.hooper).reduce((a, b) => (a ?? 0) + (b ?? 0), 0) : null;
+  // Contează și răspunsurile parțiale: suma = media celor răspunse × 4 (aceleași praguri).
+  const { suma, raspunse } = hooperSum(m.hooper);
+  const anyAnswer = raspunse > 0 || Object.values(m.semnale).some((v) => v === true);
 
   return (
     <>
@@ -35,7 +37,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
 
       <div className="wizard">
         <p className="hint" style={{ marginTop: 0 }}>
-          Patru note, 1 = foarte bine, 7 = foarte rău. Fiziologul le adună; fără ele decizia zilei e cel mult galbenă.
+          Patru note, 1 = foarte bine, 7 = foarte rău. Răspunde la ce poți: contează și dacă sari peste una. Se țin minte și se compară cu zilele tale trecute.
         </p>
         <Q title="Somnul de azi-noapte">
           <Scale value={m.hooper.somn} min={1} max={7} onChange={(v) => setH('somn', v)} lowLabel="odihnit" highLabel="distrus" />
@@ -60,10 +62,10 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{suma == null ? 'Hooper: –' : `Hooper: ${suma} · ${suma >= 24 ? 'roșu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
+        <div className="small muted">{suma == null ? 'Cum te simți: –' : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
         <button
           className="btn"
-          disabled={!complete || busy}
+          disabled={!anyAnswer || busy}
           onClick={() => {
             setBusy(true);
             submitForm('dimineata', m)

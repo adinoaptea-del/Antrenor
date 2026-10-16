@@ -9,7 +9,7 @@ import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/a
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { compareLabs } from '../../src/collector/labs-compare.js';
-import { dayVerdict, objectiveReadiness } from '../../src/collector/readiness.js';
+import { dayVerdict, hooperSum, objectiveReadiness } from '../../src/collector/readiness.js';
 import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
@@ -87,7 +87,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   };
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base('hrv'), rhr: todayW?.rhr ?? null, rhrBaseline: base('rhr'), resp: todayW?.respiratoryRate ?? null, respBaseline: base('respiratoryRate'), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning as MorningForm | null;
-  const hs = mf && [mf.hooper.somn, mf.hooper.oboseala, mf.hooper.stres, mf.hooper.dureri].every((x) => x != null) ? mf.hooper.somn! + mf.hooper.oboseala! + mf.hooper.stres! + mf.hooper.dureri! : null;
+  const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
 
   const devices = tokens.map((t) => {

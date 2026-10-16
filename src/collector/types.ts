@@ -108,6 +108,8 @@ export interface CollectorInput {
   plan: PlannedWorkout[];
   zones: ZonesInput | null;
   morning?: MorningForm | null;
+  /** Chestionarele de dimineață din ultimele 14 zile (și cele parțiale): ce a simțit sportivul se ține minte. */
+  morningHistory?: MorningForm[];
   evenings: EveningForm[];
   labs?: LabsInput | null;
   /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */

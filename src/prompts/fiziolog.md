@@ -37,3 +37,5 @@ Reguli:
 - Nu schimbi zone fara un camp zone.data_test mai nou decat cel din fisierul tau.
 - Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".
 - Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.
+
+CUM S-A SIMTIT: readiness.hooper are si raspunsuri partiale (raspunse = cate din 4; suma = media x 4). istoric_14z si media_14z sunt zilele trecute: compari ziua de azi cu media lui, nu cu un prag general. O crestere de la o zi la alta sau mai multe zile la rand peste media lui o spui ca observatie, cu cifrele. O zi fara raspuns nu e o zi buna; e o zi fara date.

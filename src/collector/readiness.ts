@@ -93,3 +93,13 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null): {
   }
   return { verdict: v, motiv };
 }
+
+/**
+ * Suma Hooper (somn, oboseală, stres, dureri; 1–7 fiecare, 4–28 total) și din răspunsuri parțiale:
+ * media celor răspunse × 4, ca pragurile să rămână aceleași. Fără niciun răspuns: null.
+ */
+export function hooperSum(h: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null } | null | undefined): { suma: number | null; raspunse: number } {
+  const xs = h ? [h.somn, h.oboseala, h.stres, h.dureri].filter((x): x is number => typeof x === 'number') : [];
+  if (!xs.length) return { suma: null, raspunse: 0 };
+  return { suma: Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 4), raspunse: xs.length };
+}
