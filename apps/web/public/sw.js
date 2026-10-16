@@ -1,5 +1,5 @@
 // Pornește și fără semnal cu ultima versiune salvată; când e net, ia mereu versiunea nouă.
-const CACHE = 'airon-v3';
+const CACHE = 'airon-v4';
 const SHELL = ['./', './index.html', './app.js', './app.css', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', (e) => {
   self.skipWaiting();

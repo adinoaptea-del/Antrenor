@@ -1,18 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#dc2a1e"/>
-  <g fill="#fff" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <!-- punctul lui „i” = capul -->
-    <circle cx="256" cy="140" r="38" stroke="none"/>
-    <!-- corpul lui „i” -->
-    <rect x="230" y="206" width="52" height="222" rx="26" stroke="none"/>
-    <!-- brațele: „dublu biceps” -->
-    <path d="M240 266 L168 266 L160 184" fill="none" stroke-width="30"/>
-    <path d="M272 266 L344 266 L352 184" fill="none" stroke-width="30"/>
-    <!-- bicepșii -->
-    <ellipse cx="204" cy="250" rx="24" ry="19" stroke="none"/>
-    <ellipse cx="308" cy="250" rx="24" ry="19" stroke="none"/>
-    <!-- pumnii -->
-    <circle cx="159" cy="174" r="22" stroke="none"/>
-    <circle cx="353" cy="174" r="22" stroke="none"/>
+  <rect width="512" height="512" fill="#ffffff"/>
+  <g fill="#e8331f" transform="translate(14 6)">
+    <!-- punctul lui „i” -->
+    <ellipse cx="324" cy="128" rx="37" ry="39"/>
+    <!-- „i” cu serife -->
+    <path d="M282 206 L 346 188 L 352 188 L 352 392 C 352 406 364 412 388 416 L 388 432 L 270 432 L 270 416 C 294 412 306 406 306 392 L 306 232 C 306 222 298 218 286 220 L 282 220 Z"/>
+    <!-- brațul încordat -->
+    <path d="M292 296
+             C 280 262 240 248 210 266
+             C 196 274 189 286 185 298
+             C 179 278 180 252 186 228
+             C 197 224 205 211 203 196
+             C 201 176 187 164 167 164
+             L 141 166
+             C 117 170 107 190 111 212
+             C 113 228 119 236 125 242
+             C 113 280 105 322 113 352
+             C 121 378 147 388 177 386
+             L 292 370 Z"/>
   </g>
 </svg>
