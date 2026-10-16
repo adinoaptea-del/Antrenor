@@ -21,7 +21,8 @@ const walk = (dir) =>
   });
 
 rmSync(OUT, { recursive: true, force: true });
-const files = walk(SRC);
+// Doar routerul devine funcție (limita de 12 funcții pe planul gratuit); el include toate celelalte.
+const files = [join(SRC, 'router.ts')];
 for (const file of files) {
   const out = join(OUT, relative(SRC, file).replace(/\.ts$/, '.js'));
   mkdirSync(dirname(out), { recursive: true });
