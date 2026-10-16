@@ -196,3 +196,64 @@ export function dayLevel(me: Me): Level | null {
   if (r.verdict === 'galben') return loaded ? 'portocaliu' : 'galben';
   return loaded ? 'galben' : 'verde';
 }
+
+/**
+ * Desfășurarea unei ședințe: încălzire / partea principală / revenire, din tipul, durata și intervalele din plan.
+ * Zonele în bpm vin doar din testul introdus (Date de bază → Test de efort); fără test rămân Z1–Z5 și testul vorbirii.
+ * Dimineața, antrenorul sportului poate ajusta ședința zilei în mesajul head coach-ului.
+ */
+export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: string }[] {
+  const t = me.baseline.tests;
+  const zonesFor = w.sport === 'alergare' ? t?.alergare_z : w.sport === 'bicicleta' ? t?.bicicleta_z : null;
+  const z = (n: number) => {
+    const up = zonesFor?.[n - 1];
+    const lo = n > 1 ? zonesFor?.[n - 2] : null;
+    if (up == null) return `Z${n}`;
+    return lo != null ? `Z${n} (${lo + 1}–${up} bpm)` : `Z${n} (sub ${up} bpm)`;
+  };
+  const talk = ' – poți vorbi în propoziții întregi';
+  const m = w.plannedMinutes;
+  if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament. Plimbare ușoară sau mobilitate, dacă ai chef.' }];
+  if (w.type === 'forta') {
+    return [
+      { label: 'Încălzire', text: '5 min mobilitate (șolduri, umeri, glezne)' },
+      { label: 'Principal', text: `${Math.max(m - 10, 15)} min forță generală: genuflexiuni, fandări, ridicări pe vârfuri, plank, cele două exerciții de prevenție de la fizio; 2–3 runde, fără epuizare` },
+      { label: 'Revenire', text: '5 min întinderi ușoare' },
+    ];
+  }
+  if (w.type === 'calitate' && w.intervals) {
+    const iv = w.intervals;
+    const warm = 15;
+    const work = iv.count * iv.minutes;
+    const rest = Math.max(1, Math.round(iv.minutes / 2));
+    const cool = Math.max(5, m - warm - work - (iv.count - 1) * rest);
+    return [
+      { label: 'Încălzire', text: `${warm} min ${z(1)}–${z(2)}, la final 3 accelerări scurte` },
+      { label: 'Principal', text: `${iv.count} × ${iv.minutes} min în ${z(iv.zone)}, pauză ${rest} min ușor între ele` },
+      { label: 'Revenire', text: `${cool} min ${z(1)}` },
+    ];
+  }
+  if (w.type === 'brick') {
+    const bike = Math.round((m * 0.7) / 5) * 5;
+    return [
+      { label: 'Bicicletă', text: `${bike} min ${z(2)}${talk}` },
+      { label: 'Tranziție', text: 'schimbi echipamentul cât mai repede, fără pauză lungă' },
+      { label: 'Alergare', text: `${m - bike} min ${z(2)}, primele 5 min mai ușor până se „așază” picioarele` },
+    ];
+  }
+  if (w.sport === 'inot') {
+    const warm = Math.min(10, Math.round(m * 0.25));
+    return [
+      { label: 'Încălzire', text: `${warm} min înot ușor, cu pauze cât ai nevoie` },
+      { label: 'Principal', text: w.type === 'tehnica' ? `${m - warm - 5} min tehnică: exerciții pe respirație și braț, apoi bazine întregi ușor` : `${m - warm - 5} min înot continuu sau pe bucăți, ${z(2)}${talk}` },
+      { label: 'Revenire', text: '5 min înot foarte ușor' },
+    ];
+  }
+  const warm = 10;
+  const cool = 5;
+  return [
+    { label: 'Încălzire', text: `${warm} min ${z(1)}` },
+    { label: 'Principal', text: `${m - warm - cool} min ${z(2)}${w.type === 'lung' ? ', constant, fără opriri lungi' : ''}${talk}` },
+    { label: 'Revenire', text: `${cool} min ${z(1)}` },
+  ];
+}

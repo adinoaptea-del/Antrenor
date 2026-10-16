@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle } from './common';
 import { useMe } from '../data/store';
-import { COLOR_LABEL, SPORT_LABEL, TYPE_LABEL, activitiesOn, colorOf, fmtMinutes, reasonsOf, workoutsOn } from '../data/model';
+import { COLOR_LABEL, SPORT_LABEL, TYPE_LABEL, activitiesOn, colorOf, fmtMinutes, reasonsOf, sessionSteps, workoutsOn } from '../data/model';
 
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
 const DOW = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'];
@@ -131,6 +131,13 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
                         {w.key ? ' · cheie' : ''}
                       </div>
                       <div className="s">{[w.targetZones.length ? `Z${w.targetZones.join('–')}` : '', w.structure ?? '', w.note ?? ''].filter(Boolean).join(' · ')}</div>
+                      <ol className="steps">
+                        {sessionSteps(me, w).map((st) => (
+                          <li key={st.label}>
+                            <b>{st.label}</b> {st.text}
+                          </li>
+                        ))}
+                      </ol>
                       <div className="s" style={{ marginTop: 4, color: 'var(--fg)' }}>
                         {COLOR_LABEL[color]}
                       </div>
