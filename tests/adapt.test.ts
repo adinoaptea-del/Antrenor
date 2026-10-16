@@ -75,12 +75,15 @@ describe('adapt', () => {
     assert.ok(r.changes.some((c) => c.includes('pierdut')));
   });
 
-  it('galben: ședința-cheie a zilei devine Z1–Z2 cu −25%', () => {
+  it('galben: planul rămâne; ședința primește o sugestie Z1–Z2 cu −25%, sportivul alege', () => {
+    const before = plan().find((w) => w.id === 'q1')!;
     const r = adapt(plan(), { kind: 'readiness', date: '2026-11-04', verdict: 'galben' }, ctx);
     const q1 = r.plan.find((w) => w.id === 'q1')!;
-    assert.deepEqual(q1.targetZones, [1, 2]);
-    assert.equal(q1.plannedMinutes, 40);
-    assert.equal(q1.intervals, undefined);
+    assert.deepEqual(q1.targetZones, before.targetZones);
+    assert.equal(q1.plannedMinutes, before.plannedMinutes);
+    assert.deepEqual(q1.suggestion?.zones, [1, 2]);
+    assert.equal(q1.suggestion?.minutes, 40);
+    assert.equal(q1.suggestion?.accepted, null);
   });
 
   it('durere ≥ 3: alergările din următoarele 5 zile devin bicicletă Z2 la aceeași durată', () => {

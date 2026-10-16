@@ -28,13 +28,14 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       if (ready) {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-        const [c, t, l, o] = await Promise.all([
+        const [c, t, l, o, w] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/other_activities?select=id&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=suggestion&limit=1`, h),
         ]);
-        upgrade = !c.ok || !t.ok || !l.ok || !o.ok;
+        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok;
       }
     } catch {
       ready = false;

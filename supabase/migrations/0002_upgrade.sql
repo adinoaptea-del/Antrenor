@@ -60,3 +60,6 @@ end $$;
 
 -- Înălțimea: pentru indicele de masă corporală și necesarul de energie.
 alter table public.users add column if not exists height_cm smallint;
+
+-- Sugestia mai ușoară din zilele galbene/portocalii (sportivul alege).
+alter table public.workouts_planned add column if not exists suggestion jsonb;

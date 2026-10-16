@@ -124,6 +124,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, citire: await readTest(file, mediaType) });
       return;
     }
+    if (kind === 'sugestie') {
+      // Sportivul alege: varianta ușoară (intră în calendar) sau ședința din plan.
+      const id = String(body.workoutId ?? '');
+      const accept = body.accept === true;
+      const row = await one<{ id: string; plan_id: string; planned_minutes: number; target_zones: number[]; structure: string | null; suggestion: { minutes: number; zones: number[]; structure: string; reason: string; accepted: boolean | null } | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      if (!row?.suggestion) throw new HttpError(404, 'nu există sugestie pentru ședința asta');
+      const s = row.suggestion;
+      if (accept) {
+        await update('workouts_planned', { id: `eq.${id}` }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta ușoară aleasă (în loc de ${row.planned_minutes} min)`, suggestion: { ...s, accepted: true } });
+      } else {
+        await update('workouts_planned', { id: `eq.${id}` }, { suggestion: { ...s, accepted: false } });
+      }
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === 'admin-chei') {
       // Doar adminul (primul cont): cheile aplicațiilor de la producători, ca să nu fie nevoie de Vercel.
       const me = await one<{ role: string }>('users', { id: `eq.${u.id}` });

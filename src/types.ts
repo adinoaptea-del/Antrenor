@@ -37,6 +37,11 @@ export interface PlannedWorkout {
   intervals?: { count: number; minutes: number; zone: Zone };
   status: 'planificat' | 'anulat_sistem' | 'mutat' | 'sters';
   note?: string;
+  /**
+   * Zilele galbene/portocalii: ședința rămâne cum e în plan, cu o SUGESTIE mai ușoară. Sportivul alege:
+   * accepted = true → varianta ușoară intră în calendar; false → face ședința din plan; null → n-a ales încă.
+   */
+  suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null } | null;
 }
 
 export interface Activity {

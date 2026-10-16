@@ -45,6 +45,7 @@ export interface WorkoutRow {
   intervals: PlannedWorkout['intervals'] | null;
   status: PlannedWorkout['status'];
   note: string | null;
+  suggestion?: PlannedWorkout['suggestion'] | null;
 }
 
 export function toPlanned(r: WorkoutRow): PlannedWorkout {
@@ -61,6 +62,7 @@ export function toPlanned(r: WorkoutRow): PlannedWorkout {
     intervals: r.intervals ?? undefined,
     status: r.status,
     note: r.note ?? undefined,
+    suggestion: r.suggestion ?? null,
   };
 }
 
@@ -80,6 +82,8 @@ export function toWorkoutRow(w: PlannedWorkout, userId: string, planId: string):
     intervals: w.intervals ?? null,
     status: w.status,
     note: w.note ?? null,
+    // Doar când există: tabelele vechi (fără coloană) nu primesc câmpul.
+    ...(w.suggestion ? { suggestion: w.suggestion } : {}),
   };
 }
 

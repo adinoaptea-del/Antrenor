@@ -108,15 +108,20 @@ function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   if (ev.verdict === 'verde') return;
   const today = plan.filter((x) => x.date === ev.date && x.status === 'planificat');
 
+  // Galben / portocaliu: planul rămâne; fiecare ședință primește o SUGESTIE mai ușoară, iar sportivul alege.
   if (ev.verdict === 'galben') {
     for (const x of today) {
-      if (x.type === 'calitate' || x.type === 'lung' || x.type === 'brick') {
-        x.targetZones = [1, 2];
-        x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
-        x.intervals = undefined;
-        x.note = 'galben: Z1–Z2, volum −25%';
-        changes.push(`${x.id}: redus (galben)`);
-      }
+      if (x.type === 'forta' || x.type === 'odihna' || x.suggestion?.accepted != null) continue;
+      const hard = x.type === 'calitate' || x.type === 'lung' || x.type === 'brick';
+      const minutes = Math.max(20, Math.round((x.plannedMinutes * (hard ? 0.75 : 0.8)) / 5) * 5);
+      x.suggestion = {
+        minutes,
+        zones: [1, 2],
+        structure: hard ? `${minutes} min ușor în Z1–Z2, fără intervale` : `${minutes} min ușor, pe vorbit`,
+        reason: ev.reason ?? 'recuperarea de azi e la jumătate',
+        accepted: null,
+      };
+      changes.push(`${x.id}: sugestie mai ușoară (${minutes} min Z1–Z2); sportivul alege`);
     }
     return;
   }

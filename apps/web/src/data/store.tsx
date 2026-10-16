@@ -5,7 +5,7 @@ import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, ru
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'aviz' | 'admin-chei';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei';
 
 export interface Data {
   status: Status;
