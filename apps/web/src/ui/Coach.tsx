@@ -1,22 +1,40 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
 import { useData, useMe } from '../data/store';
-import { cleanRefs } from '../data/model';
+import { SPORT_LABEL, TYPE_LABEL, cleanRefs, fmtMinutes, workoutsOn } from '../data/model';
 
-const KIND_LABEL = { dimineata: 'dimineața', dupa_antrenament: 'după antrenament', saptamanal: 'săptămânal', memento: 'memento', avertisment: 'avertisment', uman: 'antrenorul uman' } as const;
+// Antrenorul, redus la ce contează: ce faci azi, ce ți-a scris azi, și un singur buton.
+// Mesajele vechi stau strânse, la cerere.
+
+const DAY_WORD = { verde: 'Zi verde: ești recuperat', galben: 'Zi galbenă: recuperare parțială, ai și o variantă mai ușoară', portocaliu: 'Zi portocalie: recuperare slabă, mai ușor azi', rosu: 'Zi roșie: pauză azi', stop: 'Stop: azi nu te antrenezi' } as const;
+const PLAIN: Record<string, string> = { z2: 'ușor, să poți vorbi', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă, ușor', brick: 'bicicletă apoi alergare', forta: 'forță', odihna: 'odihnă' };
+const KIND_LABEL = { dimineata: 'Dimineața', dupa_antrenament: 'După antrenament', saptamanal: 'Săptămâna', memento: 'Memento', avertisment: 'Atenție', uman: 'Antrenorul' } as const;
 
 export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string) => void }) {
   const me = useMe();
   const { runAgents, local } = useData();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const online = false;
+  const [showOld, setShowOld] = useState(false);
 
-  const run = async (event: 'dimineata' | 'dupa_antrenament') => {
+  const today = me.today;
+  const plan = workoutsOn(me, today);
+  const doneToday = me.activities.some((a) => a.date === today);
+  const color = me.readiness?.verdict === 'stop' ? 'stop' : (me.state?.verdict ?? me.readiness?.verdict ?? null);
+  const msgs = me.messages;
+  const todays = msgs.filter((m) => localDay(m.createdAt) === today);
+  // Un mesaj scris cu altă culoare decât starea de acum (date noi, reguli noi) e depășit: nu-l mai arătăm ca mesajul zilei.
+  const fresh = (m: (typeof msgs)[number]) => !m.decision || m.decision === 'stop' || !color || color === 'stop' || m.decision === (color === 'portocaliu' ? 'galben' : color);
+  const latest = todays.find(fresh) ?? null;
+  const stale = !latest && todays.length > 0;
+  const older = msgs.filter((m) => m !== latest).slice(0, 10);
+
+  const ask = async () => {
     setBusy(true);
     setNote(null);
     try {
-      setNote(await runAgents(event));
+      // După o ședință înregistrată azi: analiza ei; altfel: mesajul de dimineață.
+      setNote(await runAgents(doneToday ? 'dupa_antrenament' : 'dimineata'));
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -40,66 +58,80 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
 
       <div className="stack">
         <Card>
-          <div className="row between">
-            <div>
-              <div className="title">Head coach</div>
-              <div className={`status ${online ? 'on' : ''}`}>
-                <i /> {online ? 'online acum' : 'scrie dimineața la 05:30 și seara după antrenament'}
-              </div>
-            </div>
-          </div>
-          <div className="grid-2" style={{ marginTop: 14 }}>
-            <button className="btn" disabled={busy || local || !me.intakeComplete} onClick={() => void run('dimineata')}>
-              {busy ? 'Rulează…' : 'Rulează acum'}
-            </button>
-            <button className="btn dark" disabled={busy || local || !me.intakeComplete} onClick={() => void run('dupa_antrenament')}>
-              După antrenament
-            </button>
-          </div>
-          <div className="tiny muted" style={{ marginTop: 10 }}>
-            {me.intakeComplete ? 'Antrenorul îți scrie singur dimineața și după antrenament. Butoanele de sus îl pun să scrie acum, cu datele de până în acest moment.' : 'Completează chestionarul de intrare ca să existe un plan de comentat.'}
-          </div>
-          {note && (
-            <div className="small" style={{ marginTop: 8 }}>
-              {note}
+          <Label>Azi</Label>
+          {color && <div className={`coach-day lvl-txt-${color === 'stop' ? 'rosu' : color}`}>{DAY_WORD[color]}</div>}
+          {plan.length === 0 ? (
+            <div className="small muted" style={{ marginTop: 6 }}>{me.plan.length ? 'Odihnă în plan.' : 'Planul apare după chestionarul de intrare.'}</div>
+          ) : (
+            <div className="coach-plan">
+              {plan.map((w) => (
+                <div key={w.id} className="cp-row">
+                  <span className="cp-s">{SPORT_LABEL[w.sport]}</span>
+                  <span className="cp-t">{PLAIN[w.type] ?? TYPE_LABEL[w.type]}{w.structure ? ` · ${cleanRefs(w.structure)}` : ''}</span>
+                  <span className="cp-m">{fmtMinutes(w.plannedMinutes)}</span>
+                </div>
+              ))}
             </div>
           )}
         </Card>
 
-        {me.messages.length === 0 && (
-          <Card tight>
-            <div className="small muted">Niciun mesaj încă. Primul vine după prima dimineață cu date de la brățară.</div>
-          </Card>
-        )}
-        {me.messages.map((m) => (
-          <Card key={m.id}>
-            <Label lime icon={Icons.sparkle}>
-              {KIND_LABEL[m.kind]} · {localStamp(m.createdAt)}
-              {m.decision ? ` · ${{ verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[m.decision]}` : ''}
-            </Label>
-            <div className="msg">
-              {cleanRefs(m.body).split('\n').map((l, i) => (
-                <div key={i}>{l}</div>
-              ))}
+        <Card>
+          <Label icon={Icons.sparkle}>{latest ? `${KIND_LABEL[latest.kind]} · ${localTime(latest.createdAt)}` : 'Mesajul de azi'}</Label>
+          {latest ? (
+            <div className="coach-msg">
+              {cleanRefs(latest.body)
+                .split('\n')
+                .filter((l) => l.trim())
+                .map((l, i) => (
+                  <p key={i}>{l}</p>
+                ))}
             </div>
-          </Card>
-        ))}
-
-        <Card tight>
-          <Label>Cum lucrează</Label>
-          <div className="small muted">
-            Șapte specialiști (fiziolog, înot, bicicletă, alergare, nutriție, fizio, minte) citesc același pachet de date. Fiecare cifră pe care o scriu e verificată de cod față de pachet; ce nu are sursă e respins și notat în jurnal. Head coach-ul decide și e singurul care îți scrie.
-          </div>
+          ) : (
+            <div className="small muted">{stale ? 'Mesajul de azi a fost scris pe date mai vechi. Apasă butonul pentru unul nou.' : 'Încă nu ți-a scris azi. Îți scrie singur la 05:30 și după fiecare antrenament sincronizat.'}</div>
+          )}
+          <button className="btn" style={{ marginTop: 14 }} disabled={busy || local || !me.intakeComplete} onClick={() => void ask()}>
+            {busy ? 'Se gândește… (până la un minut)' : doneToday ? 'Cum a fost antrenamentul de azi?' : 'Ce fac azi?'}
+          </button>
+          {note && <div className="tiny muted" style={{ marginTop: 8 }}>{note}</div>}
         </Card>
+
+        {older.length > 0 && (
+          <button className="pill" style={{ alignSelf: 'center' }} onClick={() => setShowOld(!showOld)} aria-expanded={showOld}>
+            {showOld ? 'Ascunde mesajele vechi' : `Mesaje anterioare (${older.length})`}
+          </button>
+        )}
+        {showOld &&
+          older.map((m) => (
+            <Card key={m.id} tight>
+              <Label>
+                {KIND_LABEL[m.kind]} · {localStamp(m.createdAt)}
+              </Label>
+              <div className="coach-msg old">
+                {cleanRefs(m.body)
+                  .split('\n')
+                  .filter((l) => l.trim())
+                  .map((l, i) => (
+                    <p key={i}>{l}</p>
+                  ))}
+              </div>
+            </Card>
+          ))}
       </div>
     </>
   );
 }
 
+function localDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function localTime(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 /** Ora mesajului în fusul telefonului (serverul o salvează în UTC). */
 function localStamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
-  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return `${fmtDayMonth(local)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${fmtDayMonth(localDay(iso))} ${localTime(iso)}`;
 }

@@ -855,3 +855,14 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 @media (prefers-reduced-transparency: reduce) {
   .card, .stat, .q, .box, .form-tile, .seg, .bar-info, .display, .sport-card, .circ, .pill, .rec-chip, .nav { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Antrenor: ziua de azi și mesajul de azi */
+.coach-day { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.coach-plan { display: grid; gap: 8px; margin-top: 10px; }
+.cp-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.cp-s { font-weight: 700; }
+.cp-t { color: var(--muted); min-width: 0; }
+.cp-m { font-weight: 700; white-space: nowrap; }
+.coach-msg { display: grid; gap: 8px; font-size: 15px; line-height: 1.5; }
+.coach-msg p { margin: 0; }
+.coach-msg.old { font-size: 13px; color: var(--muted); }
