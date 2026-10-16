@@ -69,8 +69,7 @@ const config = {
     { src: '^/index\\.html$', headers: { 'cache-control': 'no-cache' }, continue: true },
     { handle: 'filesystem' },
     ...dynamic,
-    { src: '^/api/.*$', status: 404 },
-    { src: '^/(.*)$', dest: '/index.html' },
+    { src: '^/(?!api/).*$', dest: '/index.html' },
   ],
 };
 writeFileSync(join(OUT, 'config.json'), JSON.stringify(config, null, 2));
