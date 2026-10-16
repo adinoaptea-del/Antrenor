@@ -3,6 +3,7 @@ import { fail, json, readJson } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { one } from '../_lib/db.js';
 import { syncUser } from '../_lib/sync.js';
+import { hydrateSettings } from '../_lib/settings.js';
 import type { WhoopWebhookEvent } from '../../src/collector/providers/whoop.js';
 
 /**
@@ -17,7 +18,20 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const raw = Buffer.concat(chunks).toString('utf8');
     const sig = String(req.headers['x-whoop-signature'] ?? '');
     const ts = String(req.headers['x-whoop-signature-timestamp'] ?? '');
-    const expected = createHmac('sha256', process.env.WHOOP_CLIENT_SECRET ?? '').update(ts + raw).digest('base64');
+    await hydrateSettings();
+    const secret = process.env.WHOOP_CLIENT_SECRET;
+    // Fără secret nu se poate verifica nimic: evenimentul se refuză (nu se semnează cu un șir gol).
+    if (!secret) {
+      json(res, 503, { error: 'WHOOP nu e configurat' });
+      return;
+    }
+    // Evenimente vechi (reluate) se refuză: timestamp-ul trebuie să fie în ultimele 5 minute.
+    const tsMs = Number(ts);
+    if (!Number.isFinite(tsMs) || Math.abs(Date.now() - (tsMs < 1e12 ? tsMs * 1000 : tsMs)) > 5 * 60_000) {
+      json(res, 401, { error: 'eveniment expirat' });
+      return;
+    }
+    const expected = createHmac('sha256', secret).update(ts + raw).digest('base64');
     if (!sig || sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
       json(res, 401, { error: 'semnătură invalidă' });
       return;

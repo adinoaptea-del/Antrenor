@@ -11,7 +11,10 @@ import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
-import { runAgents } from '../_lib/agents.js';
+import { applyPlanEvents, runAgents } from '../_lib/agents.js';
+import { loadPlan } from '../_lib/collect.js';
+import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
+import { addDays, localDayStartUtc } from '../../src/util/dates.js';
 
 /**
  * POST /api/forms/intrare   → salvează chestionarul, programul, avizul, consimțământul; generează planul.
@@ -40,13 +43,18 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'dimineata') {
       const date = typeof body.date === 'string' ? body.date : today;
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: null, answers: body }, 'user_id,kind,for_date,activity_id');
-      json(res, 200, { ok: true });
+      // Protecția din cod, imediat la salvare, fără să aștepte agenții: febră, simptom cardiac, boală.
+      const safety = morningSafetyEvents(date, body.semnale as Record<string, unknown> | undefined);
+      const changes = await protect(u.id, today, user.tz, safety);
+      json(res, 200, { ok: true, protectie: safety.events.length ? { verdict: safety.verdict, changes } : null });
       return;
     }
     if (kind === 'seara') {
       const date = typeof body.date === 'string' ? body.date : today;
       const activityId = typeof body.activityId === 'string' ? body.activityId : null;
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: activityId, answers: body }, 'user_id,kind,for_date,activity_id');
+      // Durerea mare schimbă zilele următoare imediat, din cod, chiar dacă agenții nu rulează.
+      await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
       const goal = user.goal && user.goal !== 'full' ? user.goal : '70.3';
       await rescore(u.id, today, goal);
       let agents = null;
@@ -222,6 +230,19 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   } catch (e) {
     fail(res, e);
   }
+}
+
+/** Aplică pe plan evenimentele de siguranță (o singură dată fiecare) și scrie avertismentul din cod, o dată pe zi. */
+async function protect(userId: string, today: string, tz: string | null | undefined, safety: MorningSafety): Promise<string[]> {
+  if (!safety.events.length) return [];
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -7), addDays(today, 14));
+  const changes = planId ? await applyPlanEvents(userId, today, planId, workouts, safety.events) : [];
+  if (safety.message) {
+    const dayStart = localDayStartUtc(today, tz || 'Europe/Bucharest');
+    const said = await one('messages', { user_id: `eq.${userId}`, kind: 'eq.avertisment', body: `eq.${safety.message}`, created_at: `gte.${dayStart}` });
+    if (!said) await insert('messages', { user_id: userId, kind: 'avertisment', body: safety.message, decision: safety.verdict });
+  }
+  return changes;
 }
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);

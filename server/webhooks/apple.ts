@@ -18,15 +18,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const body = await readJson(req);
     const days = parseHealthExport(body);
     // Aceeași ședință de două ori în același pachet ar opri scrierea (Postgres refuză două rânduri cu același id).
-    const workouts = [...new Map(parseHealthWorkouts(body).map((w) => [w.id, w])).values()];
-    await saveOthers(user.id, parseHealthOther(body));
-    if (days.length) {
-      await upsert(
-        'wellness_daily',
-        days.map((d) => ({ user_id: user.id, date: d.date, source: 'apple', hrv: d.hrv, rhr: d.rhr, sleep_min: d.sleep_min, bedtime: d.bedtime, wake_time: d.wake_time, respiratory_rate: d.respiratory_rate ?? null, weight_kg: d.weight_kg ?? null, body_fat_pct: d.body_fat_pct ?? null, synced_at: new Date().toISOString() })),
-        'user_id,date,source',
-      );
-    }
+    // ID-ul intern include contul: aceeași ședință trimisă de doi sportivi dă două rânduri separate.
+    const workouts = [...new Map(parseHealthWorkouts(body).map((w) => [w.id, { ...w, id: appleActivityId(user.id, w.id) }])).values()];
+    await saveOthers(user.id, parseHealthOther(body).map((o) => ({ ...o, id: appleOtherId(user.id, o.externalId) })));
+    for (const group of wellnessGroups(user.id, days)) await upsert('wellness_daily', group, 'user_id,date,source');
     if (workouts.length) {
       await upsert(
         'activities',
@@ -34,7 +29,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
           id: w.id,
           user_id: user.id,
           source: 'apple',
-          external_id: w.id.slice(6),
+          external_id: w.id.slice(`apple-${user.id}-`.length),
           date: w.date,
           start_local: w.start_local,
           sport: w.sport,
@@ -61,4 +56,34 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
 export function newAppleToken(): string {
   return randomBytes(24).toString('base64url');
+}
+
+export function appleActivityId(userId: string, parsedId: string): string {
+  return `apple-${userId}-${parsedId.replace(/^apple-/, '')}`;
+}
+export function appleOtherId(userId: string, externalId: string): string {
+  return `apple-o-${userId}-${externalId}`;
+}
+
+type Wellness = ReturnType<typeof parseHealthExport>[number];
+const WELLNESS_FIELDS = ['hrv', 'rhr', 'sleep_min', 'bedtime', 'wake_time', 'respiratory_rate', 'weight_kg', 'body_fat_pct'] as const;
+
+/**
+ * Doar măsurătorile prezente în pachet: un export ulterior doar cu HRV nu șterge somnul salvat.
+ * Rândurile se grupează după coloanele prezente (o scriere pe grup), ca PostgREST să nu completeze cu null.
+ */
+export function wellnessGroups(userId: string, days: Wellness[]): Record<string, unknown>[][] {
+  const groups = new Map<string, Record<string, unknown>[]>();
+  const now = new Date().toISOString();
+  for (const d of days) {
+    const row: Record<string, unknown> = { user_id: userId, date: d.date, source: 'apple', synced_at: now };
+    for (const f of WELLNESS_FIELDS) {
+      const v = (d as unknown as Record<string, unknown>)[f];
+      if (v != null) row[f] = v;
+    }
+    const sig = Object.keys(row).join(',');
+    if (!groups.has(sig)) groups.set(sig, []);
+    groups.get(sig)!.push(row);
+  }
+  return [...groups.values()];
 }

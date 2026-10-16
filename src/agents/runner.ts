@@ -6,7 +6,7 @@ import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
 import type { Sport } from '../types.js';
 import { HEAD_SCHEMA, SPECIALIST_SCHEMA, type HeadResponse } from './schema.js';
-import { AGENTS, getPath, numbersIn, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
+import { AGENTS, getPath, measurementClaims, numbersIn, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
 
 export type AgentName = (typeof AGENTS)[number];
 
@@ -57,6 +57,8 @@ export interface RunResult {
   events: AdaptEvent[];
   decision: HeadResponse['decizie'];
   fallbackUsed: boolean;
+  /** Apelurile de model care au căzut (timeout, JSON invalid…); protecția și mesajul din cod au mers mai departe. */
+  failures: string[];
 }
 
 // ---------- clientul Anthropic (Messages API, răspuns structurat) ----------
@@ -102,10 +104,13 @@ export function route(p: Packet): AgentName[] {
   const pain = (ultim?.durere.scor ?? 0) >= 3 || /dur(e|o)r/i.test(ultim?.comentariu ?? '');
 
   if (p.meta.eveniment === 'dimineata') {
-    const sport = p.plan_azi?.sport;
-    const coach = sport ? COACH_OF[sport] : null;
-    if (coach) out.add(coach);
-    if (sport === 'forta') out.add('fizioterapeut');
+    // Toate ședințele zilei, nu doar cea principală: două sporturi azi = doi antrenori.
+    const sports = new Set([p.plan_azi?.sport, ...(p.plan_azi_toate ?? []).map((w) => w.sport)].filter(Boolean));
+    for (const sport of sports) {
+      const coach = COACH_OF[sport as string];
+      if (coach) out.add(coach);
+    }
+    if (sports.has('forta')) out.add('fizioterapeut');
     out.add('nutritionist');
     if ((p.readiness.hooper.stres ?? 0) >= 5) out.add('minte');
   } else if (p.meta.eveniment === 'dupa_antrenament') {
@@ -172,6 +177,11 @@ export function verifyHeadText(text: string, packet: Packet, specialists: Verifi
   for (const s of specialists) for (const item of s.ce) if (item.stare === 'acceptat') for (const c of item.cifre ?? []) if (typeof c.valoare === 'number') allowed.push(c.valoare);
   for (const s of specialists) for (const m of s.mese) allowed.push(...numbersIn(m));
   const problems: string[] = [];
+  // Măsurătorile sportivului („pulsul tău 62”, „48 ms”) trebuie să existe în pachet, nu doar la specialiști ca regulă.
+  const packetNums = flattenNumbers(packet);
+  for (const n of measurementClaims(text)) {
+    if (!packetNums.some((v) => Math.abs(v - n) < 0.051)) problems.push(`măsurătoare fără sursă în pachet: ${n}`);
+  }
   for (const n of numbersIn(text)) {
     if (!allowed.some((v) => Math.abs(v - n) < 0.051)) problems.push(`număr fără sursă în pachet sau la specialiști: ${n}`);
   }
@@ -189,7 +199,7 @@ export function fallbackMessage(p: Packet, decision: HeadResponse['decizie'], sp
   const label = { verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[decision];
   lines.push(`Decizia: ${label}.`);
   if (decision === 'rosu') lines.push('Azi: fără antrenament.');
-  else if (decision === 'stop') lines.push('Azi: oprire. Vorbește cu un medic / cardiolog / fizioterapeut.');
+  else if (decision === 'stop') lines.push(safetyLine(p) ? 'Azi: oprire.' : 'Azi: oprire. Vorbește cu un medic înainte să reiei antrenamentele.');
   else if (p.plan_azi) lines.push(`Azi: ${p.plan_azi.sport} ${p.plan_azi.tip} ${p.plan_azi.durata_planificata} min${decision === 'galben' ? ', Z1–Z2' : ''}.`);
   for (const s of specialists) for (const item of s.ce) if (item.stare === 'acceptat') lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join('\n');
@@ -205,7 +215,7 @@ export function eventsFrom(p: Packet, decision: HeadResponse['decizie']): AdaptE
   if (d?.scor != null && d.scor >= 3) ev.push({ kind: 'durere', date: p.antrenament_ultim!.data, score: d.scor, loc: d.loc ?? 'nespecificat' });
   const u = p.antrenament_ultim;
   if (u && !u.in_plan && u.tip_neplanificat && u.tip_neplanificat !== 'altceva') {
-    ev.push({ kind: 'neplanificat', activity: { id: `${u.sport}-${u.data}`, date: u.data, sport: u.sport, minutes: u.durata, distanceKm: u.distanta ?? null }, rpe: u.rpe ?? null, tip: u.tip_neplanificat });
+    ev.push({ kind: 'neplanificat', activity: { id: `${u.sport}-${u.data}-${u.durata}`, date: u.data, sport: u.sport, minutes: u.durata, distanceKm: u.distanta ?? null }, rpe: u.rpe ?? null, tip: u.tip_neplanificat });
   }
   // Creșterea o decide regula (pachetul), nu modelul: doar duminica, doar pe o zi verde.
   if (p.meta.eveniment === 'saptamanal' && decision === 'verde' && p.progres?.eligibil) {
@@ -230,26 +240,52 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   return out;
 }
 
+/** Verdictul de siguranță calculat doar din cod (febră, simptom cardiac, boală, durere): nu depinde de niciun apel AI. */
+export function safetyDecision(p: Packet): HeadResponse['decizie'] {
+  return physVerdict(undefined, p);
+}
+
+/** Rândul de siguranță scris din cod, pus în mesaj oricum ar arăta textul modelului. */
+export function safetyLine(p: Packet): string | null {
+  if (p.semnale.simptom_cardiac === true) return 'Ai raportat un simptom cardiac: azi nu te antrenezi. Cere o evaluare medicală azi. Dacă ai durere în piept, leșin, lipsă de aer sau palpitații care nu trec, sună la 112.';
+  if (p.semnale.febra === true) return 'Ai febră: azi și următoarele două zile fără antrenament; apoi o săptămână doar ușor. Dacă febra nu scade sau apar dureri în piept ori lipsă de aer, mergi la medic.';
+  return null;
+}
+
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+
+/**
+ * Nu aruncă la erorile modelului (timeout, JSON invalid, specialist indisponibil): verdictul de siguranță vine din cod
+ * înaintea oricărui apel, iar mesajul cade pe varianta din cod. Erorile ajung în `failures` (jurnal).
+ */
 export async function runPyramid(input: RunInput, client: ModelClient): Promise<RunResult> {
   const { packet, prompts, models } = input;
   const routed = route(packet);
   const specialists: VerifiedResponse[] = [];
+  const failures: string[] = [];
+  const safe = safetyDecision(packet);
 
-  // 1. Fiziologul primul: verdictul lui intră în pachet pentru ceilalți.
-  const physRaw = await client.json<SpecialistResponse>({
-    model: models.specialist,
-    system: specialistSystem('fiziolog', prompts),
-    user: specialistUser('fiziolog', packet, input.files.fiziolog),
-    schema: SPECIALIST_SCHEMA,
-  });
-  const phys = verifyResponse({ ...physRaw, agent: 'fiziolog' }, packet);
-  specialists.push(phys);
+  // 1. Fiziologul primul: verdictul lui intră în pachet pentru ceilalți. Poate doar înăspri verdictul din cod.
+  let phys: VerifiedResponse | undefined;
+  try {
+    const physRaw = await client.json<SpecialistResponse>({
+      model: models.specialist,
+      system: specialistSystem('fiziolog', prompts),
+      user: specialistUser('fiziolog', packet, input.files.fiziolog),
+      schema: SPECIALIST_SCHEMA,
+    });
+    phys = verifyResponse({ ...physRaw, agent: 'fiziolog' }, packet);
+    specialists.push(phys);
+  } catch (e) {
+    failures.push(`fiziolog: ${errText(e)}`);
+  }
   let decision = physVerdict(phys, packet);
+  if (RANK[decision] < RANK[safe]) decision = safe;
   const packetWithVerdict: Packet = { ...packet, verdict_fiziolog: decision };
 
-  // 2. Restul, în paralel, cu verdictul Fiziologului în pachet.
+  // 2. Restul, în paralel, cu verdictul Fiziologului în pachet. Unul căzut nu le oprește pe celelalte.
   const others = routed.filter((a) => a !== 'fiziolog');
-  const results = await Promise.all(
+  const settled = await Promise.allSettled(
     others.map(async (agent) => {
       const raw = await client.json<SpecialistResponse>({
         model: models.specialist,
@@ -260,41 +296,62 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
       return verifyResponse({ ...raw, agent }, packetWithVerdict);
     }),
   );
-  specialists.push(...results);
+  settled.forEach((r, i) => {
+    if (r.status === 'fulfilled') specialists.push(r.value);
+    else failures.push(`${others[i]}: ${errText(r.reason)}`);
+  });
   if (specialists.some((s) => s.verdict === 'stop')) decision = 'stop';
 
+  const fallbackHead = (why: string): HeadResponse => ({
+    decizie: decision,
+    mesaj: fallbackMessage(packetWithVerdict, decision, specialists),
+    memento: `Ziua ${packet.meta.data}: pregătirea continuă.`,
+    jurnal: [why],
+    intrebare: null,
+  });
+
   // 3. Head coach, cu rândurile deja marcate; textul lui se verifică și el, o dată cu reîncercare.
-  let head = await client.json<HeadResponse>({ model: models.head, system: `${prompts.head_coach}\n\n${prompts.ghid ?? ''}`, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
-  let headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
-  if (RANK[head.decizie] < RANK[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisivă decât a Fiziologului (${decision}); se păstrează ${decision}`);
+  const headSystem = `${prompts.head_coach}\n\n${prompts.ghid ?? ''}`;
+  let head: HeadResponse;
+  let headWarnings: string[] = [];
   let fallbackUsed = false;
-  if (headWarnings.length) {
-    const retry = await client.json<HeadResponse>({
-      model: models.head,
-      system: `${prompts.head_coach}\n\n${prompts.ghid ?? ''}`,
-      user: `${headUser(packetWithVerdict, specialists, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`,
-      schema: HEAD_SCHEMA,
-      maxTokens: 2000,
-    });
-    const again = [...verifyHeadText(retry.mesaj, packetWithVerdict, specialists), ...verifyHeadText(retry.memento, packetWithVerdict, specialists)];
-    if (again.length === 0 && RANK[retry.decizie] >= RANK[decision]) {
+  try {
+    head = await client.json<HeadResponse>({ model: models.head, system: headSystem, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
+    headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
+    if (RANK[head.decizie] < RANK[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisivă decât a Fiziologului (${decision}); se păstrează ${decision}`);
+  } catch (e) {
+    failures.push(`head_coach: ${errText(e)}`);
+    head = fallbackHead(`head coach indisponibil (${errText(e)}); mesaj din cod`);
+    fallbackUsed = true;
+  }
+  if (!fallbackUsed && headWarnings.length) {
+    let again: string[] = headWarnings;
+    let retry: HeadResponse | null = null;
+    try {
+      retry = await client.json<HeadResponse>({
+        model: models.head,
+        system: headSystem,
+        user: `${headUser(packetWithVerdict, specialists, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`,
+        schema: HEAD_SCHEMA,
+        maxTokens: 2000,
+      });
+      again = [...verifyHeadText(retry.mesaj, packetWithVerdict, specialists), ...verifyHeadText(retry.memento, packetWithVerdict, specialists)];
+    } catch (e) {
+      failures.push(`head_coach (reîncercare): ${errText(e)}`);
+    }
+    if (retry && again.length === 0 && RANK[retry.decizie] >= RANK[decision]) {
       head = retry;
       headWarnings = [];
     } else {
       fallbackUsed = true;
-      head = {
-        decizie: decision,
-        mesaj: fallbackMessage(packetWithVerdict, decision, specialists),
-        memento: `Ziua ${packet.meta.data}: pregătirea continuă.`,
-        jurnal: [...head.jurnal, `head coach respins de două ori la verificare: ${again.join('; ') || headWarnings.join('; ')}; mesaj din cod`],
-        intrebare: null,
-      };
-      headWarnings = again.length ? again : headWarnings;
+      head = { ...fallbackHead(`head coach respins de două ori la verificare: ${again.join('; ')}; mesaj din cod`), jurnal: [...head.jurnal, `head coach respins de două ori la verificare: ${again.join('; ')}; mesaj din cod`] };
+      headWarnings = again;
     }
   }
   // Culoarea o dau datele de sănătate; head coach-ul o poate schimba doar în stop (siguranță).
   if (head.decizie === 'stop') decision = 'stop';
-  head = { ...head, decizie: decision };
+  const line = safetyLine(packetWithVerdict);
+  head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}\n${head.mesaj}` : head.mesaj };
 
-  return { routed, specialists, head, headWarnings, events: eventsFrom(packetWithVerdict, decision), decision, fallbackUsed };
+  return { routed, specialists, head, headWarnings, events: eventsFrom(packetWithVerdict, decision), decision, fallbackUsed, failures };
 }

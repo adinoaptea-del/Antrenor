@@ -1,7 +1,7 @@
 // Calendarul viu: regulile de adaptare din protocol, aplicate determinist pe antrenamentele viitoare.
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
-import type { Activity, Color, FreeBlock, PlannedWorkout, Sport } from '../types.js';
+import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 
 export type AdaptEvent =
@@ -34,6 +34,28 @@ export interface AdaptResult {
 }
 
 const CHANGE_MIN = 10;
+const FEVER_HALF_NOTE = 'prima săptămână după febră: volum −50%, fără cheie';
+
+/**
+ * Cheia stabilă a unui eveniment. Serverul o salvează înainte să aplice evenimentul (unică pe sportiv):
+ * același eveniment reluat (reîncercare, două rulări în paralel) nu mai schimbă planul a doua oară.
+ */
+export function eventKey(ev: AdaptEvent): string {
+  switch (ev.kind) {
+    case 'scor':
+      return `scor:${ev.workoutId}:${ev.color}`;
+    case 'readiness':
+      return `readiness:${ev.date}:${ev.verdict}`;
+    case 'durere':
+      return `durere:${ev.date}:${ev.loc}:${ev.score}`;
+    case 'febra':
+      return `febra:${ev.date}`;
+    case 'neplanificat':
+      return `neplanificat:${ev.activity.id}:${ev.activity.minutes}`;
+    case 'progres':
+      return `progres:${ev.date}`;
+  }
+}
 
 export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptContext): AdaptResult {
   const next = plan.map((w) => ({ ...w, targetZones: [...w.targetZones] }));
@@ -70,7 +92,7 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
 
   // Treapta se repetă la următorul antrenament-cheie de același tip; a treia oară coboară.
   const sameType = plan
-    .filter((x) => x.key && x.type === w.type && x.sport === w.sport && diffDays(w.date, x.date) > 0 && x.status === 'planificat')
+    .filter((x) => x.key && x.type === w.type && x.sport === w.sport && diffDays(w.date, x.date) > 0 && isActiveWorkout(x))
     .sort((a, b) => diffDays(b.date, a.date));
   const nextKey = sameType[0];
   if (nextKey) {
@@ -93,7 +115,7 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
     const nextMonday = addDays(w.date, 7 - weekday(w.date));
     const nextSunday = addDays(nextMonday, 6);
     for (const x of plan) {
-      if (x.status !== 'planificat') continue;
+      if (!isActiveWorkout(x)) continue;
       if (diffDays(nextMonday, x.date) < 0 || diffDays(x.date, nextSunday) < 0) continue;
       if (!x.key) {
         x.plannedMinutes = Math.round((x.plannedMinutes * 0.8) / 5) * 5;
@@ -106,7 +128,7 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
 
 function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'readiness' }>, ctx: AdaptContext, changes: string[]): void {
   if (ev.verdict === 'verde') return;
-  const today = plan.filter((x) => x.date === ev.date && x.status === 'planificat');
+  const today = plan.filter((x) => x.date === ev.date && isActiveWorkout(x));
 
   // Galben / portocaliu: planul rămâne; fiecare ședință primește o SUGESTIE mai ușoară, iar sportivul alege.
   if (ev.verdict === 'galben') {
@@ -135,9 +157,9 @@ function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
     if (x.key && ev.verdict === 'rosu') {
       const tomorrow = addDays(ev.date, 1);
       const dayAfter = addDays(ev.date, 2);
-      const keyNearby = plan.some((y) => y.key && y.status === 'planificat' && y.id !== x.id && (y.date === tomorrow || y.date === dayAfter));
+      const keyNearby = plan.some((y) => y.key && isActiveWorkout(y) && y.id !== x.id && (y.date === tomorrow || y.date === dayAfter));
       const longest = ctx.freeBlocks.filter((b) => b.day === weekday(tomorrow)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
-      const countTomorrow = plan.filter((y) => y.date === tomorrow && y.status === 'planificat').length;
+      const countTomorrow = plan.filter((y) => y.date === tomorrow && isActiveWorkout(y)).length;
       if (!keyNearby && longest >= x.plannedMinutes + CHANGE_MIN && countTomorrow < 2) {
         plan.push({ ...x, id: `${x.id}-mutat`, date: tomorrow, status: 'mutat', note: `mutat de pe ${ev.date} (readiness roșu)` });
         changes.push(`${x.id}: antrenament-cheie mutat pe ${tomorrow}`);
@@ -152,7 +174,7 @@ function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'dure
   if (ev.score < 3) return;
   const until = addDays(ev.date, 5);
   for (const x of plan) {
-    if (x.status !== 'planificat') continue;
+    if (!isActiveWorkout(x)) continue;
     if (diffDays(ev.date, x.date) < 0 || diffDays(x.date, until) < 0) continue;
     if (x.sport === 'alergare') {
       x.sport = 'bicicleta';
@@ -177,7 +199,7 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
   const stopUntil = addDays(ev.date, 2);
   const halfUntil = addDays(ev.date, 9);
   for (const x of plan) {
-    if (x.status !== 'planificat') continue;
+    if (!isActiveWorkout(x)) continue;
     const d = diffDays(ev.date, x.date);
     if (d < 0) continue;
     if (diffDays(x.date, stopUntil) >= 0) {
@@ -185,6 +207,8 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
       x.note = 'febră: odihnă';
       changes.push(`${x.id}: anulat (febră)`);
     } else if (diffDays(x.date, halfUntil) >= 0) {
+      // Febră și a doua zi: ședința deja înjumătățită nu se mai înjumătățește o dată.
+      if (x.note === FEVER_HALF_NOTE) continue;
       x.plannedMinutes = Math.round((x.plannedMinutes * 0.5) / 5) * 5;
       x.key = false;
       if (x.type === 'calitate') {
@@ -192,7 +216,7 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
         x.intervals = undefined;
       }
       x.targetZones = x.sport === 'forta' ? [] : [1, 2];
-      x.note = 'prima săptămână după febră: volum −50%, fără cheie';
+      x.note = FEVER_HALF_NOTE;
       changes.push(`${x.id}: −50%, fără intensitate (după febră)`);
     }
   }
@@ -221,7 +245,7 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // 1. Ziua cursei: restul ședințelor planificate se anulează (sportivul a făcut cursa în locul lor).
   if (isRace) {
     for (const x of plan) {
-      if (x.status === 'planificat' && x.date === a.date) {
+      if (isActiveWorkout(x) && x.date === a.date) {
         x.status = 'anulat_sistem';
         x.note = `zi de cursă neplanificată (${a.sport} ${a.minutes} min)`;
         changes.push(`${x.id}: anulat, zi de cursă`);
@@ -232,7 +256,7 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // 1b. Volumul înlocuiește ședințele aceluiași sport din aceeași săptămână, de după activitate.
   let remaining = a.minutes;
   const sameSport = plan
-    .filter((x) => x.status === 'planificat' && x.sport === a.sport && inWeek(x.date) && diffDays(a.date, x.date) > 0)
+    .filter((x) => isActiveWorkout(x) && x.sport === a.sport && inWeek(x.date) && diffDays(a.date, x.date) > 0)
     .sort((p, q) => diffDays(q.date, p.date) || Number(p.key) - Number(q.key));
   for (const x of sameSport) {
     if (remaining <= 0) break;
@@ -249,7 +273,7 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // 2. Zilele următoare: Z1, fără calitate; după cursă și cheile din 72 h coboară.
   const easyDays = isRace ? 2 : 1;
   for (const x of plan) {
-    if (x.status !== 'planificat') continue;
+    if (!isActiveWorkout(x)) continue;
     const d = diffDays(a.date, x.date);
     if (d < 1) continue;
     if (d <= easyDays) {
@@ -285,7 +309,7 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // Referința e cheia planificată a săptămânii cursei, chiar dacă a fost înlocuită de cursă.
   const thisWeekKeys = plan.filter((x) => x.key && inWeek(x.date));
   for (const x of plan) {
-    if (!x.key || x.status !== 'planificat') continue;
+    if (!x.key || !isActiveWorkout(x)) continue;
     if (diffDays(nextMonday, x.date) < 0 || diffDays(x.date, nextSunday) < 0) continue;
     const ref = thisWeekKeys.find((k) => k.sport === x.sport && k.type === x.type);
     if (ref && x.plannedMinutes > ref.plannedMinutes) {
@@ -303,7 +327,7 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
  */
 function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'progres' }>, ctx: AdaptContext, changes: string[]): void {
   const monday = addDays(ev.date, 7 - weekday(ev.date));
-  const week = plan.filter((w) => w.status === 'planificat' && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
+  const week = plan.filter((w) => isActiveWorkout(w) && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
   const total = week.reduce((n, w) => n + w.plannedMinutes, 0);
   let budget = Math.floor((total * 0.1) / 5) * 5;
   if (budget < 5) return;

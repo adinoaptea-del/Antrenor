@@ -54,6 +54,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}, ${fmtDayMonth(d)}`);
   const days = daysToRace(me);
   const overall = me.sportReady ? overallReady(me.sportReady) : null;
+  const limiting = me.sportReady && me.sportReady.length > 1 ? [...me.sportReady].sort((a, b) => (a.value ?? -1) - (b.value ?? -1))[0]! : null;
   const goalName = me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă';
 
   return (
@@ -93,11 +94,12 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
               {me.sportReady.map((r) => (
                 <button key={r.sport} className="bi-row bi-btn" onClick={() => onOpen('antrenament', { sport: r.sport })}>
                   <span className="bi-k">{SPORT_LABEL[r.sport]}</span>
-                  <span className={`bi-v ${r.value == null ? 'none' : ''}`}>{r.value == null ? '0%' : `${r.value}%`}</span>
+                  <span className={`bi-v ${r.value == null ? 'none' : ''}`}>{r.value == null ? 'fără date' : `${r.value}%`}</span>
                   <span className="bi-d">{r.value == null ? `nicio ședință cu distanță în 6 săptămâni; proba: ${r.leg}` : r.parts.map((p) => `${p.label.toLowerCase()}: ${p.have} din ${p.target}`).join('; ')}</span>
                 </button>
               ))}
-              <div className="tiny muted">Media probelor, din tot ce au înregistrat brățările în ultimele 6 săptămâni. O probă fără nicio ședință contează 0. Apasă pe un sport pentru detalii.</div>
+              {limiting && <div className="small" style={{ marginTop: 4 }}>Proba care te ține pe loc: <b>{SPORT_LABEL[limiting.sport]}</b> ({limiting.value == null ? 'fără date' : `${limiting.value}%`}).</div>}
+              <div className="tiny muted">Un index după regulile noastre de antrenor, nu o probabilitate de a termina cursa. Media probelor, din tot ce au înregistrat brățările în ultimele 6 săptămâni; o probă fără nicio ședință contează 0. Apasă pe un sport pentru detalii.</div>
             </div>
           )}
         </div>
@@ -266,7 +268,7 @@ function Suggestions() {
   const me = useMe();
   const { submitForm } = useData();
   const [busy, setBusy] = useState<string | null>(null);
-  const pending = me.plan.filter((w) => w.date === me.today && w.status === 'planificat' && w.suggestion && w.suggestion.accepted == null);
+  const pending = me.plan.filter((w) => w.date === me.today && (w.status === 'planificat' || w.status === 'mutat') && w.suggestion && w.suggestion.accepted == null);
   if (!pending.length) return null;
   const choose = async (id: string, accept: boolean) => {
     setBusy(id);

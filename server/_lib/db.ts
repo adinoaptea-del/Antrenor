@@ -48,6 +48,13 @@ export async function upsert<T = Row>(table: string, rows: Row | Row[], onConfli
   return call<T[]>('POST', `${table}?on_conflict=${encodeURIComponent(onConflict)}`, list, { prefer: 'resolution=merge-duplicates,return=representation' });
 }
 
+/** Inserează doar rândurile noi; cele care există deja (cheie unică) sunt ignorate. Întoarce doar rândurile inserate. */
+export async function insertIgnore<T = Row>(table: string, rows: Row | Row[], onConflict: string): Promise<T[]> {
+  const list = Array.isArray(rows) ? rows : [rows];
+  if (list.length === 0) return [];
+  return call<T[]>('POST', `${table}?on_conflict=${encodeURIComponent(onConflict)}`, list, { prefer: 'resolution=ignore-duplicates,return=representation' });
+}
+
 export async function update(table: string, filters: Filters, patch: Row): Promise<void> {
   const q = params(filters);
   await call('PATCH', `${table}?${q.toString()}`, patch, { prefer: 'return=minimal' });

@@ -88,3 +88,93 @@ create table if not exists public.activity_overrides (
   primary key (user_id, activity_id)
 );
 alter table public.activity_overrides enable row level security;
+
+-- ---------- Audit 17.10.2026: drepturi, izolarea conturilor, evenimente idempotente ----------
+
+-- 1. Aplicația nu scrie niciodată direct în bază (totul trece prin server, cu service role). Un sportiv logat nu
+--    poate modifica niciun rând, nici propriul rol: fără politica de update pe users și fără drept de scriere.
+drop policy if exists users_update_own on public.users;
+drop policy if exists consents_upsert_own on public.consents;
+drop policy if exists consents_update_own on public.consents;
+drop policy if exists questionnaires_insert_own on public.questionnaires;
+drop policy if exists questionnaires_update_own on public.questionnaires;
+revoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;
+alter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;
+-- Rolul se schimbă doar din server (service role); orice altă sesiune primește eroare, chiar dacă un drept ar reapărea.
+create or replace function public.guard_user_role() returns trigger language plpgsql as $$
+begin
+  if new.role is distinct from old.role and coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', 'service_role') not in ('service_role') then
+    raise exception 'rolul se schimbă doar din server';
+  end if;
+  return new;
+end $$;
+drop trigger if exists users_guard_role on public.users;
+create trigger users_guard_role before update on public.users for each row execute function public.guard_user_role();
+
+-- 2. Un import nu poate muta o activitate de la un sportiv la altul.
+create or replace function public.guard_owner() returns trigger language plpgsql as $$
+begin
+  if new.user_id is distinct from old.user_id then
+    raise exception 'activitatea % aparține altui cont', old.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists activities_guard_owner on public.activities;
+create trigger activities_guard_owner before update on public.activities for each row execute function public.guard_owner();
+drop trigger if exists other_activities_guard_owner on public.other_activities;
+create trigger other_activities_guard_owner before update on public.other_activities for each row execute function public.guard_owner();
+
+-- 3. ID-urile Apple includ contul (apple-<user>-<id extern>). Rândurile vechi se redenumesc o singură dată;
+--    scorurile, corecturile și chestionarele care le citează se mută odată cu ele.
+do $$
+declare r record;
+begin
+  if exists (select 1 from public.activities where source = 'apple' and id not like 'apple-' || user_id::text || '-%') then
+    for r in select conname from pg_constraint where conrelid = 'public.scores'::regclass and contype = 'f' and confrelid = 'public.activities'::regclass loop
+      execute format('alter table public.scores drop constraint %I', r.conname);
+    end loop;
+    alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;
+    alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;
+    update public.activity_overrides o set activity_id = 'apple-' || o.user_id::text || '-' || substr(o.activity_id, 7)
+      where o.activity_id like 'apple-%' and o.activity_id not like 'apple-' || o.user_id::text || '-%'
+        and exists (select 1 from public.activities a where a.id = o.activity_id and a.user_id = o.user_id);
+    update public.questionnaires q set activity_id = 'apple-' || q.user_id::text || '-' || substr(q.activity_id, 7)
+      where q.activity_id like 'apple-%' and q.activity_id not like 'apple-' || q.user_id::text || '-%'
+        and exists (select 1 from public.activities a where a.id = q.activity_id and a.user_id = q.user_id);
+    update public.activities set id = 'apple-' || user_id::text || '-' || substr(id, 7)
+      where source = 'apple' and id not like 'apple-' || user_id::text || '-%';
+  end if;
+  if exists (select 1 from public.other_activities where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%') then
+    update public.other_activities set id = 'apple-o-' || user_id::text || '-' || external_id
+      where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%';
+  end if;
+exception when others then
+  -- Nu oprește actualizarea: rândurile vechi rămân; cele noi vin cu ID-ul pe cont, iar dublura se recunoaște la citire.
+  raise notice 'redenumire apple: %', sqlerrm;
+end $$;
+
+-- 4. Evenimentele calendarului (febră, stop, durere, progres…) se aplică o singură dată fiecare.
+create table if not exists public.agent_events (
+  user_id uuid not null references public.users(id) on delete cascade,
+  event_key text not null,
+  applied_at timestamptz not null default now(),
+  primary key (user_id, event_key)
+);
+alter table public.agent_events enable row level security;
+
+-- 5. Un singur chestionar de dimineață pe zi: în SQL două valori NULL nu sunt „egale”, deci unicitatea veche
+--    nu oprea dublurile cu activity_id NULL. Păstrăm cel mai recent și facem NULL-urile egale (PostgreSQL 15+).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'questionnaires_one_per_key') then
+    delete from public.questionnaires q using public.questionnaires r
+      where q.user_id = r.user_id and q.kind = r.kind and q.for_date = r.for_date
+        and q.activity_id is not distinct from r.activity_id
+        and (q.created_at, q.id) < (r.created_at, r.id);
+    alter table public.questionnaires drop constraint if exists questionnaires_user_id_kind_for_date_activity_id_key;
+    alter table public.questionnaires add constraint questionnaires_one_per_key unique nulls not distinct (user_id, kind, for_date, activity_id);
+  end if;
+exception when others then
+  -- PostgreSQL mai vechi de 15: rămâne unicitatea veche; serverul evită oricum dublurile la citire.
+  raise notice 'questionnaires: %', sqlerrm;
+end $$;

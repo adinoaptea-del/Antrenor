@@ -1,14 +1,14 @@
 import { recordUsage } from './usage.js';
 // Rularea agenților pentru un sportiv: pachet → piramidă → mesaje, jurnal, fișiere, calendar viu, readiness.
 import { ENV } from './env.js';
-import { insert, one, select, upsert } from './db.js';
-import { collect, toWorkoutRow } from './collect.js';
+import { insert, insertIgnore, one, remove, select, upsert } from './db.js';
+import { collect, loadUser, toWorkoutRow } from './collect.js';
 import { buildPacket, type Packet } from '../../src/collector/packet.js';
-import { anthropicClient, runPyramid, type AgentName, type RunResult } from '../../src/agents/runner.js';
+import { anthropicClient, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
 import { PROMPTS } from '../../src/prompts/bundle.js';
-import { adapt, type AdaptContext } from '../../src/calendar/adapt.js';
+import { adapt, eventKey, type AdaptContext, type AdaptEvent } from '../../src/calendar/adapt.js';
 import type { PlannedWorkout } from '../../src/types.js';
-import { addDays } from '../../src/util/dates.js';
+import { addDays, localDayStartUtc } from '../../src/util/dates.js';
 
 const FILE_MAX_LINES = 30;
 
@@ -43,10 +43,15 @@ export interface AgentsOutcome {
   fallbackUsed: boolean;
 }
 
-/** Un eveniment complet pentru un sportiv. Idempotent pe zi+eveniment: dacă există deja un pachet azi pentru eveniment, nu rulează din nou. */
+/**
+ * Un eveniment complet pentru un sportiv. Fără force, nu rulează din nou dacă azi (ziua locală a sportivului) există
+ * deja un mesaj pentru eveniment; un pachet rămas de la o rulare căzută nu blochează reluarea.
+ */
 export async function runAgents(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = false): Promise<AgentsOutcome | null> {
+  const user = await loadUser(userId);
+  const dayStart = localDayStartUtc(today, user.tz || 'Europe/Bucharest');
   if (!force) {
-    const existing = await one<{ id: string }>('packets', { user_id: `eq.${userId}`, event: `eq.${event}`, created_at: `gte.${today}T00:00:00` });
+    const existing = await one<{ id: string }>('messages', { user_id: `eq.${userId}`, kind: `eq.${event}`, created_at: `gte.${dayStart}` });
     if (existing) return null;
   }
   const { input, planId } = await collect(userId, today, event);
@@ -56,10 +61,20 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
 
   const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
   const usageWrites: Promise<void>[] = [];
-  const client = anthropicClient(ENV.modelKey(), fetch, (model, u) => usageWrites.push(recordUsage(userId, `agenti:${event}`, model, u)));
+  // Fără cheie de model, piramida merge oricum: protecția și mesajul vin din cod.
+  let client: ModelClient;
+  try {
+    client = anthropicClient(ENV.modelKey(), fetch, (model, u) => usageWrites.push(recordUsage(userId, `agenti:${event}`, model, u)));
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    client = { json: () => Promise.reject(err) };
+  }
   const result = await runPyramid({ packet, files, journal, prompts: PROMPTS, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } }, client);
 
   await Promise.all(usageWrites);
+
+  // Calendarul viu întâi: protecția (stop, febră, durere) nu depinde de salvarea textelor de mai jos.
+  const changes = planId && result.events.length ? await applyPlanEvents(userId, today, planId, input.plan, result.events) : [];
 
   // Răspunsurile, cu starea fiecărui rând.
   await insert(
@@ -78,7 +93,7 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   }
 
   // Jurnal.
-  const entries = [...result.head.jurnal, ...result.specialists.flatMap((s) => s.ce.filter((i) => i.stare === 'respins').map((i) => `respins: ${s.agent} - ${i.text} (${i.motiv})`)), ...result.specialists.flatMap((s) => s.avertismente.map((a) => `avertisment: ${s.agent} - ${a}`))];
+  const entries = [...result.head.jurnal, ...result.failures.map((f) => `model căzut: ${f}`), ...result.specialists.flatMap((s) => s.ce.filter((i) => i.stare === 'respins').map((i) => `respins: ${s.agent} - ${i.text} (${i.motiv})`)), ...result.specialists.flatMap((s) => s.avertismente.map((a) => `avertisment: ${s.agent} - ${a}`))];
   if (entries.length) await insert('journal', entries.map((e) => ({ user_id: userId, date: today, entry: e })));
 
   // Mesajele către sportiv.
@@ -94,21 +109,43 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
     );
   }
 
-  // Calendarul viu: evenimentele deterministe, aplicate pe planul activ.
-  const changes: string[] = [];
-  if (planId && result.events.length) {
-    const ctx: AdaptContext = { today, freeBlocks: await loadSchedules(userId), recentKeyScores: await recentKeyScores(userId, today) };
-    let plan: PlannedWorkout[] = input.plan;
-    for (const ev of result.events) {
-      const r = adapt(plan, ev, ctx);
-      plan = r.plan;
-      changes.push(...r.changes);
-    }
-    const before = new Map(input.plan.map((w) => [w.id, JSON.stringify(w)]));
-    const changed = plan.filter((w) => before.get(w.id) !== JSON.stringify(w));
-    if (changed.length) await upsert('workouts_planned', changed.map((w) => toWorkoutRow(w, userId, planId)), 'id');
-    if (changes.length) await insert('journal', changes.map((c) => ({ user_id: userId, date: today, entry: `calendar: ${c}` })));
-  }
-
   return { packetId, decision: result.decision, message: result.head.mesaj, memento: result.head.memento, changes, routed: result.routed, rejected: result.specialists.reduce((n, s) => n + s.ce.filter((i) => i.stare === 'respins').length, 0), fallbackUsed: result.fallbackUsed };
+}
+
+/**
+ * Aplică evenimentele pe planul activ, o singură dată fiecare: cheia evenimentului se rezervă în agent_events
+ * (unică pe sportiv) înainte de schimbare și se eliberează dacă scrierea pică, ca o reîncercare să poată reface pasul.
+ */
+export async function applyPlanEvents(userId: string, today: string, planId: string, current: PlannedWorkout[], events: AdaptEvent[]): Promise<string[]> {
+  const ctx: AdaptContext = { today, freeBlocks: await loadSchedules(userId), recentKeyScores: await recentKeyScores(userId, today) };
+  const changes: string[] = [];
+  let plan = current;
+  for (const ev of events) {
+    const key = eventKey(ev);
+    const claimed = await claimEvent(userId, key);
+    if (!claimed) continue;
+    const before = new Map(plan.map((w) => [w.id, JSON.stringify(w)]));
+    const r = adapt(plan, ev, ctx);
+    const changed = r.plan.filter((w) => before.get(w.id) !== JSON.stringify(w));
+    try {
+      if (changed.length) await upsert('workouts_planned', changed.map((w) => toWorkoutRow(w, userId, planId)), 'id');
+    } catch (e) {
+      await remove('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` }).catch(() => undefined);
+      throw e;
+    }
+    plan = r.plan;
+    changes.push(...r.changes);
+  }
+  if (changes.length) await insert('journal', changes.map((c) => ({ user_id: userId, date: today, entry: `calendar: ${c}` })));
+  return changes;
+}
+
+/** true = evenimentul e nou și a fost rezervat; false = a fost deja aplicat. Fără tabelă (schemă veche): se aplică. */
+async function claimEvent(userId: string, key: string): Promise<boolean> {
+  try {
+    const rows = await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key');
+    return rows.length > 0;
+  } catch {
+    return true;
+  }
 }

@@ -40,7 +40,7 @@ export function reasonsOf(me: Me, w: PlannedWorkout): string[] {
 export function nextWorkout(me: Me, sport: Sport): PlannedWorkout | null {
   return (
     me.plan
-      .filter((w) => w.sport === sport && w.status === 'planificat' && diffDays(me.today, w.date) >= 0 && colorOf(me, w) === 'asteptare')
+      .filter((w) => w.sport === sport && (w.status === 'planificat' || w.status === 'mutat') && diffDays(me.today, w.date) >= 0 && colorOf(me, w) === 'asteptare')
       .sort((a, b) => diffDays(b.date, a.date))[0] ?? null
   );
 }

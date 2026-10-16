@@ -44,6 +44,11 @@ export interface PlannedWorkout {
   suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null } | null;
 }
 
+/** O ședință care încă trebuie făcută: planificată sau mutată pe altă zi. Singura regulă folosită în toate filtrele. */
+export function isActiveWorkout(w: Pick<PlannedWorkout, 'status'>): boolean {
+  return w.status === 'planificat' || w.status === 'mutat';
+}
+
 export interface Activity {
   id: string;
   date: string;

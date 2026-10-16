@@ -93,6 +93,19 @@ function valueEquals(claimed: number | string, actual: unknown): boolean {
   return false;
 }
 
+/**
+ * Numerele prezentate ca măsurători ale sportivului („pulsul tău 62”, „62 bpm”, „ai dormit 7,5 ore”, „HRV 48 ms”).
+ * Ele trebuie să vină dintr-un câmp al pachetului; „regula” / „prescriptie” nu le pot acoperi.
+ */
+const MEASURE_BEFORE = /(puls\w*|HRV\w*|ai dormit|somn\w*|ai alergat|ai pedalat|ai înotat|ritmul tău|greutate\w*|feritin\w*|vitamina d|hemoglobin\w*|recuperare\w*|respirați\w*)[^.\d]{0,25}?(\d+(?:[.,]\d+)?)(?![\d:])/gi;
+const MEASURE_AFTER = /(\d+(?:[.,]\d+)?)\s*(bpm|bătăi|ms\b)/gi;
+export function measurementClaims(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(MEASURE_BEFORE)) out.push(Number(m[2]!.replace(',', '.')));
+  for (const m of text.matchAll(MEASURE_AFTER)) out.push(Number(m[1]!.replace(',', '.')));
+  return [...new Set(out)];
+}
+
 export function verifyResponse(resp: SpecialistResponse, packet: unknown): VerifiedResponse {
   const avertismente: string[] = [];
   let valid = true;
@@ -122,6 +135,7 @@ export function verifyResponse(resp: SpecialistResponse, packet: unknown): Verif
     const reasons: string[] = [];
     // 1. fiecare pereche trebuie să existe și să coincidă
     const coveredValues: number[] = [];
+    const dataValues: number[] = [];
     for (const c of cifre) {
       if (FREE_FIELDS.has(c.camp)) {
         if (typeof c.valoare === 'number') coveredValues.push(c.valoare);
@@ -131,8 +145,12 @@ export function verifyResponse(resp: SpecialistResponse, packet: unknown): Verif
       if (!found) reasons.push(`câmp inexistent: ${c.camp}`);
       else if (value == null) reasons.push(`câmp null citat ca valoare: ${c.camp}`);
       else if (!valueEquals(c.valoare, value)) reasons.push(`${c.camp}: în pachet ${JSON.stringify(value)}, în text ${JSON.stringify(c.valoare)}`);
-      else if (typeof c.valoare === 'number') coveredValues.push(c.valoare);
-      else if (typeof value === 'number') coveredValues.push(value);
+      else if (typeof c.valoare === 'number') coveredValues.push(c.valoare), dataValues.push(c.valoare);
+      else if (typeof value === 'number') coveredValues.push(value), dataValues.push(value);
+    }
+    // 1b. o „regulă” nu poate acoperi o măsurătoare a sportivului
+    for (const n of measurementClaims(item.text)) {
+      if (!dataValues.some((v) => Math.abs(v - n) < 0.051)) reasons.push(`măsurătoare fără câmp din pachet: ${n}`);
     }
     // 2. fiecare număr din text trebuie acoperit de o pereche
     for (const n of numbersIn(item.text)) {

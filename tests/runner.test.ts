@@ -109,7 +109,9 @@ describe('runner · piramida', () => {
     const p = buildPacket(input);
     assert.deepEqual(verifyHeadText('HRV 27,9 ms [hrv.azi], somn 6:26 [somn.durata]', p, []), []);
     const bad = verifyHeadText('puls 71 [puls.azi]', p, []);
-    assert.equal(bad.length, 2);
+    // număr fără sursă + măsurătoare fără sursă în pachet + câmp inexistent
+    assert.equal(bad.length, 3);
+    assert.ok(bad.some((b) => b.startsWith('măsurătoare fără sursă')));
   });
 
   it('febra, durerea și cursa neplanificată devin evenimente pentru calendarul viu', () => {

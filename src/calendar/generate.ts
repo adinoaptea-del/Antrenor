@@ -1,4 +1,5 @@
 import { DOSE_TEXT, dayById, doseFor, rotation } from '../strength/ppl.js';
+import { enforceLimits } from './validate.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
@@ -126,6 +127,13 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   }
 
   assignStrengthDays(out);
+  // Validatorul final: nicio fază sau șablon nu trece de limita de intensitate și de capacitatea de înot declarată.
+  const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
+  for (const w of out) {
+    const v = enforceLimits(w.workouts, limits);
+    w.workouts = v.workouts;
+    if (v.notes.length) w.notes.push(...v.notes);
+  }
   return { ok: true, weeks: out, budgetHours: budget.hours };
 }
 

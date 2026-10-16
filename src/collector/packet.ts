@@ -4,7 +4,7 @@ import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
-import type { Activity, PlannedWorkout, Sport } from '../types.js';
+import { isActiveWorkout, type Activity, type PlannedWorkout, type Sport } from '../types.js';
 import { scoreWorkout, zoneDirection } from '../scoring/score.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -96,6 +96,9 @@ export interface Packet {
   plan_azi: { sport: Sport; tip: string; durata_planificata: number; zone_tinta: number[]; structura: string | null; cheie: boolean } | null;
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
+  /** Toate ședințele zilei (plan_azi / plan_maine sunt doar cea principală). */
+  plan_azi_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean }[];
+  plan_maine_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean }[];
   plan_saptamana: { interval: string; zile: Record<string, string> };
   /** Ultimele 14 zile (fără azi): ședințe planificate vs făcute (activitate pe același sport, ±1 zi). null fără activități de la brățări în 28 de zile: nu putem ști dacă s-a sărit sau doar nu s-a sincronizat. */
   vreme: CollectorInput['weather'] | null;
@@ -382,6 +385,8 @@ function planLabel(w: PlannedWorkout): string {
   return `${sport}${tip} ${w.plannedMinutes}${w.key ? ' (cheie)' : ''}`;
 }
 
+const brief = (w: PlannedWorkout) => ({ sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key });
+
 export function buildPacket(input: CollectorInput): Packet {
   const { today } = input;
   const merged = mergeWellness(input.wellness);
@@ -468,21 +473,23 @@ export function buildPacket(input: CollectorInput): Packet {
   const h = input.morning?.hooper;
   const hooper = hooperSum(h);
 
-  const planToday = input.plan.filter((w) => w.date === today && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
+  const todayList = input.plan.filter((w) => w.date === today && isActiveWorkout(w)).sort((a, b) => Number(b.key) - Number(a.key));
+  const planToday = todayList[0] ?? null;
   const tomorrow = addDays(today, 1);
-  const planTomorrow = input.plan.filter((w) => w.date === tomorrow && w.status === 'planificat').sort((a, b) => Number(b.key) - Number(a.key))[0] ?? null;
+  const tomorrowList = input.plan.filter((w) => w.date === tomorrow && isActiveWorkout(w)).sort((a, b) => Number(b.key) - Number(a.key));
+  const planTomorrow = tomorrowList[0] ?? null;
   const monday = addDays(today, -weekday(today));
   const zile: Record<string, string> = {};
   for (let i = 0; i < 7; i++) {
     const d = addDays(monday, i);
     const ws = input.plan.filter((w) => w.date === d && w.status !== 'sters');
-    zile[DAY_NAMES[i]!] = ws.length ? ws.map((w) => `${planLabel(w)}${w.status !== 'planificat' ? ` [${w.status}]` : ''}`).join(' + ') : 'odihnă';
+    zile[DAY_NAMES[i]!] = ws.length ? ws.map((w) => `${planLabel(w)}${w.status === 'planificat' ? '' : w.status === 'mutat' ? ' [mutat aici]' : ` [${w.status}]`}`).join(' + ') : 'odihnă';
   }
 
   const acwrTotal = acwr(acts, today);
   const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
-  const pastPlanned = input.plan.filter((w) => w.status === 'planificat' && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
+  const pastPlanned = input.plan.filter((w) => isActiveWorkout(w) && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
   const doneW = pastPlanned.filter((w) => acts.some((a) => a.sport === w.sport && Math.abs(diffDays(w.date, a.date)) <= 1));
   const aderenta = recentActs.length
     ? { planificate: pastPlanned.length, facute: doneW.length, sarite: pastPlanned.filter((w) => !doneW.includes(w)).map((w) => ({ data: w.date, sport: w.sport, cheie: w.key })) }
@@ -589,6 +596,8 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_azi: planToday
       ? { sport: planToday.sport, tip: planToday.type === 'z2' ? 'Z2' : planToday.type, durata_planificata: planToday.plannedMinutes, zone_tinta: planToday.targetZones, structura: planToday.structure ?? null, cheie: planToday.key }
       : null,
+    plan_azi_toate: todayList.map(brief),
+    plan_maine_toate: tomorrowList.map(brief),
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
     vreme: input.weather ?? null,

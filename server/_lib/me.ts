@@ -14,7 +14,7 @@ import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
-import { addDays, labsExpired, weekStart } from '../../src/util/dates.js';
+import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
@@ -147,7 +147,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   ]);
   if (u2.apple_token) (appleRow ? have : missing).push('Apple Watch (Health Auto Export)');
 
-  const memento = messagesRows.find((m) => m.kind === 'memento' && m.created_at >= `${today}T00:00:00`)?.body ?? null;
+  const dayStartMs = Date.parse(localDayStartUtc(today, (user as UserRow).tz || 'Europe/Bucharest'));
+  const memento = messagesRows.find((m) => m.kind === 'memento' && Date.parse(m.created_at) >= dayStartMs)?.body ?? null;
 
   return {
     baseline,

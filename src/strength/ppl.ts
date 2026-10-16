@@ -157,12 +157,14 @@ export const DOSE_TEXT: Record<Dose, string> = {
 export function dosed(day: PplDay, dose: Dose): PplDay {
   const ex = day.exercises.map((e) => {
     let sets = e.sets;
-    if (dose === 'invatare') sets = sets.filter((s) => s.kind !== 'restpause');
+    // Învățare: fără rest-pause și fără seturi până la epuizare; „max” devine set oprit cu 2–3 repetări în rezervă.
+    if (dose === 'invatare') sets = sets.filter((s) => s.kind !== 'restpause').map((s) => (s.kind === 'max' ? { kind: 'fix' as const, reps: '2–3 în rezervă' } : s));
     if (dose === 'anduranta' && day.id === 'legs') sets = sets.filter((s) => s.kind !== 'restpause');
     if (dose === 'mentinere') sets = sets.filter((s) => s.kind !== 'restpause' && s.kind !== 'lowered').slice(0, Math.max(1, sets.filter((s) => s.kind === 'heavy').length || 1));
-    return { ...e, sets: sets.length ? sets : e.sets.slice(0, 1) };
+    return { ...e, sets };
   });
-  return { ...day, exercises: ex };
+  // Un exercițiu rămas fără seturi permise de doză iese din ședință (nu se readuce setul interzis).
+  return { ...day, exercises: ex.filter((e) => e.sets.length > 0) };
 }
 
 export function dayById(id: string): PplDay | undefined {

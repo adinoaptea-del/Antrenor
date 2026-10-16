@@ -98,8 +98,12 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   const compensat = other ? `${directie === 'mai_usor' ? 'mai ușor' : 'mai tare'} aici, ${other.directie === 'mai_tare' ? 'mai tare' : 'mai ușor'} la ${other.sport} în aceeași zi` : null;
   const metrics: ScoreMetrics = { durationPct, zonePct, rpeDelta, pain, cardiacDriftPct, directie, compensat };
 
+  // Siguranța înaintea oricărui scor: durerea mare se escaladează și când ședința a fost oprită devreme (des, chiar din cauza ei).
+  if (pain != null && pain >= 5) flags.escalate = true;
+
   // Roșu: executat sub jumătate.
   if (durationPct != null && durationPct < 50) {
+    if (flags.escalate) reasons.push(`durere ${pain}/10: escaladare la fizioterapeut`);
     reasons.push(`durată ${durationPct}% din plan (sub 50%)`);
     return { color: 'rosu', reasons, metrics, flags, final: isFinal(flags, planned, today) };
   }
@@ -131,7 +135,6 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
 
   if (pain != null) {
     if (pain >= 5) {
-      flags.escalate = true;
       bump(2, `durere ${pain}/10: escaladare la fizioterapeut`);
     } else if (pain >= 3) bump(2, `durere ${pain}/10`);
   }

@@ -24,8 +24,13 @@ grant all on all sequences in schema public to service_role;
 grant all on all functions in schema public to service_role;
 grant select on all tables in schema public to authenticated;
 revoke select on public.oauth_tokens from authenticated, anon;
-grant insert, update on public.consents, public.questionnaires to authenticated;
+revoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;
 `;
+
+/** Verificarea după pregătire: un sportiv logat (rolul authenticated) nu are drept de scriere pe nicio tabelă. */
+const VERIFY_GRANTS = `select count(*)::int as n, coalesce(string_agg(distinct table_name || ':' || privilege_type, ', '), '') as what
+from information_schema.role_table_grants
+where table_schema = 'public' and grantee in ('authenticated', 'anon') and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')`;
 
 /** Starea curentă, fără să schimbe nimic. */
 export async function setupStatus(): Promise<{ database: boolean; tables: boolean; detail?: string }> {
@@ -65,6 +70,13 @@ export async function runSetup(appUrl: string): Promise<SetupStep[]> {
     else await step('tabele', `begin;\n${MIGRATION}\ncommit;`);
     await step('actualizări', UPGRADE);
     await step('drepturi', GRANTS, true);
+    try {
+      const r = await c.query(VERIFY_GRANTS);
+      const n = Number(r.rows[0]?.n ?? 0);
+      steps.push({ step: 'verificare drepturi', ok: n === 0, detail: n === 0 ? 'sportivii nu pot scrie direct în bază' : `drepturi de scriere rămase: ${r.rows[0]?.what}` });
+    } catch (e) {
+      steps.push({ step: 'verificare drepturi', ok: false, detail: (e as Error).message });
+    }
 
     const cron = await step('pg_cron', 'create extension if not exists pg_cron with schema pg_catalog', true);
     const net = await step('pg_net', 'create extension if not exists pg_net with schema extensions', true);
