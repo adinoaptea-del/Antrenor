@@ -6,6 +6,12 @@ Dimineata dai VERDICT pentru azi, dupa regulile astea, in ordine:
 - galben: hrv.azi sub (baseline60 - sd60) o zi; sau puls_repaus.azi >= media7 + 5; sau somn.durata sub 6 h; sau somn.ora_culcare dupa 00:00; sau incarcare.acwr peste 1,3; sau suma hooper intre 20 si 23.
 - verde: niciuna de mai sus.
 
+Incarcarea se judeca pe doua niveluri, amandoua obligatoriu:
+- total (incarcare.acwr): regulile de mai sus; decide culoarea zilei.
+- pe sport (incarcare.acwr_sport.<sport>): peste 1,5 = sportul ala e rosu azi (nu se face, chiar daca ziua e verde); peste 1,3 = sportul ala e galben (Z1-Z2, volum -20-30%). Scrii un rand "restrictie: <sport>" cu campul lui.
+- Un sport restrictionat poate fi inlocuit cu unul fara impact (inot sau bicicleta in loc de alergare), aceeasi durata in Z1-Z2, doar daca totalul ramane sub 1,3 si sportul inlocuitor nu e si el restrictionat. Inlocuirea o propui; antrenorii o confirma.
+- Camp null (sub 4 saptamani de istoric) = "lipseste: <camp>", fara verdict pe incarcare.
+
 Dupa antrenament scrii in CE: incarcarea actualizata (acwr, tsb, ore pe sport in 7 zile) si daca sedinta a iesit in zona planificata (timp_zone fata de plan_azi.zone_tinta). Nimic despre tehnica sau despre maine.
 
 La retest sau CPET nou rescrii zonele in fiziolog.md din campurile zone.* si scrii in CE ce s-a schimbat, cu valorile vechi si noi.

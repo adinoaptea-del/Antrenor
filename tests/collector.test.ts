@@ -109,3 +109,21 @@ function addDays(iso: string, n: number): string {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+
+it('aderenta_14z: sărite doar când există activități de la brățară', () => {
+  const base = (acts: unknown[]) => ({
+    today: '2026-10-16', event: 'dimineata' as const,
+    athlete: { obiectiv: '70.3', raceDate: '2027-09-12', phase: 'baza' as never },
+    wellness: [], activities: acts as never, zones: null, morning: null, evenings: [], aviz: { cardiolog: 'nu', intensitate_permisa: 'Z2' as never },
+    plan: [
+      { id: 'a', date: '2026-10-13', sport: 'alergare', type: 'z2', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat' },
+      { id: 'b', date: '2026-10-14', sport: 'inot', type: 'tehnica', plannedMinutes: 30, targetZones: [2], key: true, status: 'planificat' },
+    ] as never,
+  });
+  assert.equal(buildPacket(base([])).aderenta_14z, null);
+  const run = { source: 'strava', externalId: 'x', date: '2026-10-13', sport: 'alergare', durationMin: 46 };
+  const p = buildPacket(base([run]));
+  assert.equal(p.aderenta_14z?.planificate, 2);
+  assert.equal(p.aderenta_14z?.facute, 1);
+  assert.deepEqual(p.aderenta_14z?.sarite, [{ data: '2026-10-14', sport: 'inot', cheie: true }]);
+});
