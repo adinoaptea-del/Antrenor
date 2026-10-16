@@ -391,7 +391,7 @@ function AdminKeys() {
       </div>
       <div style={{ display: 'grid', gap: 10 }}>
         {PROVIDER_SETUP.map((p) => (
-          <div key={p.id} className="base-row" style={{ cursor: 'default', display: 'grid', gap: 10 }}>
+          <div key={p.id} className="keys-box">
             <button className="row between" style={{ background: 'none', border: 0, color: 'inherit', padding: 0, font: 'inherit', cursor: 'pointer', width: '100%' }} onClick={() => setOpen(open === p.id ? null : p.id)}>
               <span style={{ fontWeight: 700 }}>{p.name}</span>
               {a.providers[p.id] ? <span className="ok">{Icons.check} activ</span> : <span className="tiny muted">{open === p.id ? 'închide' : 'configurează'}</span>}
