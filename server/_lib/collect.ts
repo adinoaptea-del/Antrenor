@@ -163,8 +163,25 @@ export async function loadPlan(userId: string, from: string, to: string): Promis
 }
 
 export async function loadActivities(userId: string, from: string): Promise<SourceActivity[]> {
-  const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 500 });
-  return rows.map(toSourceActivity);
+  const [rows, ov] = await Promise.all([
+    select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 500 }),
+    loadOverrides(userId),
+  ]);
+  return applyOverrides(rows.map(toSourceActivity), ov);
+}
+
+type Override = { activity_id: string; sport: SourceActivity['sport'] | null; ignored: boolean };
+
+/** Corecturile sportivului (tabel lipsă = schemă veche: fără corecturi). */
+export async function loadOverrides(userId: string): Promise<Override[]> {
+  return select<Override>('activity_overrides', { user_id: `eq.${userId}` }, { limit: 1000 }).catch(() => []);
+}
+
+/** „Nu e antrenament” scoate ședința; „e de fapt X” îi schimbă sportul. Corectura bate brățara. */
+export function applyOverrides(acts: SourceActivity[], ov: Override[]): SourceActivity[] {
+  if (!ov.length) return acts;
+  const by = new Map(ov.map((o) => [o.activity_id, o]));
+  return acts.filter((a) => !by.get(a.id)?.ignored).map((a) => (by.get(a.id)?.sport ? { ...a, sport: by.get(a.id)!.sport! } : a));
 }
 
 export async function loadWellness(userId: string, from: string): Promise<SourceDaily[]> {
@@ -312,7 +329,7 @@ export async function loadTotals(userId: string, since: string): Promise<NonNull
     const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1000 });
     raw.push(...rows.map(toSourceActivity));
   }
-  const acts = dedupeActivities(raw);
+  const acts = dedupeActivities(applyOverrides(raw, await loadOverrides(userId)));
   const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
   for (const a of acts) {
     const t = bySport[a.sport];

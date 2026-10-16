@@ -20,7 +20,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
     if (req.method === 'GET') {
       const monthStart = `${todayIn('Europe/Bucharest').slice(0, 7)}-01`;
-      const [users, tokens, logs, intakes, plans, msgs, usage] = await Promise.all([
+      const [users, tokens, logs, intakes, plans, msgs, usage, acts] = await Promise.all([
         select<{ id: string; email: string; name: string; created_at: string; tz: string }>('users', {}, { select: 'id,email,name,created_at,tz', order: 'created_at.asc' }),
         select<{ user_id: string; provider: string }>('oauth_tokens', {}, { select: 'user_id,provider' }),
         select<{ user_id: string; provider: string; ok: boolean; detail: string | null; ran_at: string }>('sync_log', {}, { order: 'ran_at.desc', limit: 300 }),
@@ -28,6 +28,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<{ user_id: string; start_date: string }>('plans', { active: 'eq.true' }, { select: 'user_id,start_date' }),
         select<{ user_id: string; created_at: string; kind: string }>('messages', {}, { select: 'user_id,created_at,kind', order: 'created_at.desc', limit: 300 }),
         select<{ user_id: string | null; input_tokens: number; output_tokens: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: 'user_id,input_tokens,output_tokens,created_at', limit: 20000 }).catch(() => []),
+        select<{ user_id: string; date: string; sport: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', {}, { select: 'user_id,date,sport,source,name,minutes,distance_km', order: 'date.desc', limit: 400 }),
       ]);
       const today = todayIn('Europe/Bucharest');
       const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens), 0) * 100) / 100;
@@ -51,6 +52,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== 'memento')?.created_at ?? null,
             costMonth: cost(usage.filter((r) => r.user_id === x.id)),
+            recent: acts.filter((r) => r.user_id === x.id).slice(0, 8).map((r) => ({ date: r.date, sport: r.sport, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km })),
           };
         }),
       });

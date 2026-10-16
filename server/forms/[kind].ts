@@ -195,6 +195,22 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, oras: g.name });
       return;
     }
+    if (kind === 'activitate') {
+      // Corectura sportivului: { activityId, sport?: 'inot'|'bicicleta'|'alergare'|'forta', ignored?: boolean, reset?: boolean }
+      const id = String(body.activityId ?? '');
+      if (!id) throw new HttpError(400, 'lipsește ședința');
+      const own = await one<{ id: string }>('activities', { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      if (!own) throw new HttpError(404, 'ședință inexistentă');
+      if (body.reset) {
+        await remove('activity_overrides', { user_id: `eq.${u.id}`, activity_id: `eq.${id}` });
+      } else {
+        const sport = ['inot', 'bicicleta', 'alergare', 'forta'].includes(String(body.sport)) ? String(body.sport) : null;
+        await upsert('activity_overrides', { user_id: u.id, activity_id: id, sport, ignored: body.ignored === true, updated_at: new Date().toISOString() }, 'user_id,activity_id');
+      }
+      await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === 'apple') {
       // Un token personal nou: adresa veche nu mai primește date.
       const token = newAppleToken();

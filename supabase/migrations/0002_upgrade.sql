@@ -76,3 +76,15 @@ create table if not exists public.ai_usage (
 );
 create index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);
 alter table public.ai_usage enable row level security;
+
+-- Corecturile sportivului pe ședințe clasificate greșit de brățări („e de fapt alergare”, „nu e antrenament”).
+-- Separat de activities, ca o sincronizare nouă să nu le șteargă.
+create table if not exists public.activity_overrides (
+  user_id uuid not null references public.users(id) on delete cascade,
+  activity_id text not null,
+  sport text check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),
+  ignored boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, activity_id)
+);
+alter table public.activity_overrides enable row level security;

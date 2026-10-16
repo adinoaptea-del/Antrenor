@@ -217,6 +217,7 @@ export interface AdminUser {
   devices: { provider: string; lastSync: string | null; ok: boolean | null; detail: string | null }[];
   lastMessage: string | null;
   costMonth?: number;
+  recent?: { date: string; sport: string; source: string; name: string | null; minutes: number; km: number | null }[];
 }
 
 /** Repornire curată: șterge cache-ul aplicației (nu datele) și reîncarcă. Prima reparație pentru orice blocaj. */

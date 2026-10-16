@@ -3,7 +3,7 @@ import type { Sport } from '@core/types.js';
 import type { MeActivity } from '@core/api-types.js';
 import { diffDays, weekday } from '@core/util/dates.js';
 import { Card, Label } from './common';
-import { useMe } from '../data/store';
+import { useData, useMe } from '../data/store';
 import { DAY_NAMES } from '../data/model';
 
 // Detaliile fiecărei ședințe, din brățări: apeși pe o valoare și vezi cum a evoluat în ultimele ședințe.
@@ -128,6 +128,7 @@ export function SessionDetails({ sport }: { sport: Sport }) {
         ))}
       </div>
 
+      <Origin key={sel.id} act={sel} />
       {sel.details?.polyline && <Route polyline={sel.details.polyline} />}
 
       <div className="det-grid">
@@ -267,6 +268,59 @@ function Route({ polyline }: { polyline: string }) {
         <span><i className="route-start" /> start</span>
         <span><i className="route-end" /> final</span>
       </div>
+    </div>
+  );
+}
+
+const SOURCE_NAME: Record<string, string> = { strava: 'Strava', whoop: 'WHOOP', apple: 'Apple Health', oura: 'Oura', garmin: 'Garmin' };
+const FIX: { sport: 'inot' | 'bicicleta' | 'alergare' | 'forta'; label: string }[] = [
+  { sport: 'alergare', label: 'Alergare' },
+  { sport: 'bicicleta', label: 'Bicicletă' },
+  { sport: 'inot', label: 'Înot' },
+  { sport: 'forta', label: 'Forță' },
+];
+
+/** De unde vine ședința (numele dat de ceas) și corectura, dacă brățara a încurcat sportul. Corectura rămâne și după sincronizări. */
+function Origin({ act }: { act: MeActivity }) {
+  const { submitForm } = useData();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const fix = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await submitForm('activitate', { activityId: act.id, ...body });
+      setOpen(false);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="origin">
+      <div className="tiny muted">
+        Înregistrat ca „{(act.name ?? '–').split(' · ')[0]!.split(';')[0]}” · {SOURCE_NAME[act.source] ?? act.source}
+        {' · '}
+        <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? 'închide' : 'nu e corect?'}
+        </button>
+      </div>
+      {open && (
+        <div className="origin-fix">
+          <span className="tiny muted">E de fapt:</span>
+          {FIX.filter((f) => f.sport !== act.sport).map((f) => (
+            <button key={f.sport} className="pill" disabled={busy} onClick={() => void fix({ sport: f.sport })}>
+              {f.label}
+            </button>
+          ))}
+          <button className="pill" disabled={busy} onClick={() => void fix({ ignored: true })}>
+            Nu e antrenament
+          </button>
+          {msg && <div className="tiny" style={{ color: 'var(--c-rosu)' }}>{msg}</div>}
+        </div>
+      )}
     </div>
   );
 }

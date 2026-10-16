@@ -885,3 +885,7 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .as-step b { font-weight: 700; }
 .as-step span { color: var(--muted); }
 .rp-w { color: var(--muted-2); font-weight: 600; font-size: 11px; }
+
+.origin { margin: -4px 0 12px; }
+.origin .link { background: none; border: 0; padding: 0; color: var(--accent-2); font: inherit; text-decoration: underline; cursor: pointer; }
+.origin-fix { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
