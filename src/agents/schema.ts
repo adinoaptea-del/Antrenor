@@ -4,7 +4,7 @@
 export const SPECIALIST_SCHEMA = {
   type: 'object',
   properties: {
-    agent: { type: 'string', enum: ['fiziolog', 'antrenor_inot', 'antrenor_bicicleta', 'antrenor_alergare', 'nutritionist', 'fizioterapeut', 'minte'] },
+    agent: { type: 'string', enum: ['fiziolog', 'antrenor_inot', 'antrenor_bicicleta', 'antrenor_alergare', 'antrenor_forta', 'nutritionist', 'fizioterapeut', 'minte'] },
     verdict: { type: 'string', enum: ['ok', 'atentie', 'stop', 'tacere', 'verde', 'galben', 'rosu'] },
     ce: {
       type: 'array',

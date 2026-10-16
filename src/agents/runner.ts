@@ -32,6 +32,7 @@ export interface Prompts {
   antrenor_inot: string;
   antrenor_bicicleta: string;
   antrenor_alergare: string;
+  antrenor_forta?: string;
   nutritionist: string;
   fizioterapeut: string;
   minte: string;
@@ -90,7 +91,7 @@ export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch)
 
 // ---------- rutarea ----------
 
-const COACH_OF: Record<string, AgentName | null> = { inot: 'antrenor_inot', bicicleta: 'antrenor_bicicleta', alergare: 'antrenor_alergare', forta: null };
+const COACH_OF: Record<string, AgentName | null> = { inot: 'antrenor_inot', bicicleta: 'antrenor_bicicleta', alergare: 'antrenor_alergare', forta: 'antrenor_forta' };
 
 export function route(p: Packet): AgentName[] {
   const out = new Set<AgentName>(['fiziolog']);
@@ -124,12 +125,12 @@ export function route(p: Packet): AgentName[] {
 function specialistSystem(agent: AgentName, prompts: Prompts): string {
   if (agent.startsWith('antrenor_')) {
     const sport = agent.replace('antrenor_', '');
-    const SPORT = { inot: 'ÎNOT', bicicleta: 'BICICLETĂ', alergare: 'ALERGARE' }[sport] ?? sport.toUpperCase();
+    const SPORT = { inot: 'ÎNOT', bicicleta: 'BICICLETĂ', alergare: 'ALERGARE', forta: 'FORȚĂ' }[sport] ?? sport.toUpperCase();
     const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT).replace(/<sport>/g, sport);
-    const own = prompts[agent as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare'];
+    const own = prompts[agent as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'] ?? '';
     return `${common}\n${own}\n\n${prompts.ghid ?? ''}\n\n${prompts.format}`;
   }
-  return `${prompts[agent as Exclude<AgentName, 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare'>]}\n\n${prompts.format}`;
+  return `${prompts[agent as Exclude<AgentName, 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'>]}\n\n${prompts.format}`;
 }
 
 function specialistUser(agent: AgentName, p: Packet, file: string | undefined): string {

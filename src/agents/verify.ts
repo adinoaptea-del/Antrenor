@@ -40,9 +40,9 @@ export interface VerifiedResponse {
   valid: boolean;
 }
 
-export const AGENTS = ['fiziolog', 'antrenor_inot', 'antrenor_bicicleta', 'antrenor_alergare', 'nutritionist', 'fizioterapeut', 'minte'] as const;
+export const AGENTS = ['fiziolog', 'antrenor_inot', 'antrenor_bicicleta', 'antrenor_alergare', 'antrenor_forta', 'nutritionist', 'fizioterapeut', 'minte'] as const;
 const VERDICTS: Verdict[] = ['ok', 'atentie', 'stop', 'tacere', 'verde', 'galben', 'rosu'];
-const MAX_CE: Record<string, number> = { fiziolog: 4, antrenor_inot: 4, antrenor_bicicleta: 4, antrenor_alergare: 4, nutritionist: 4, fizioterapeut: 3, minte: 2 };
+const MAX_CE: Record<string, number> = { fiziolog: 4, antrenor_inot: 4, antrenor_bicicleta: 4, antrenor_alergare: 4, antrenor_forta: 4, nutritionist: 4, fizioterapeut: 3, minte: 2 };
 const FREE_FIELDS = new Set(['prescriptie', 'regula']);
 
 export function getPath(obj: unknown, path: string): { found: boolean; value: unknown } {

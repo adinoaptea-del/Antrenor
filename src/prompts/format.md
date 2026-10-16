@@ -1,7 +1,7 @@
 Formatul raspunsului oricarui specialist: DOAR acest JSON, fara text inainte sau dupa.
 
 {
-  "agent": "fiziolog | antrenor_inot | antrenor_bicicleta | antrenor_alergare | nutritionist | fizioterapeut | minte",
+  "agent": "fiziolog | antrenor_inot | antrenor_bicicleta | antrenor_alergare | antrenor_forta | nutritionist | fizioterapeut | minte",
   "verdict": "ok | atentie | stop | tacere",          // Fiziologul dimineata: "verde | galben | rosu | stop"
   "ce": [                                             // maximum 4 elemente; gol cand verdict = tacere
     { "text": "HRV 27,9 ms, peste prag", "cifre": [ { "valoare": 27.9, "camp": "hrv.azi" } ] }
