@@ -61,7 +61,7 @@ describe('adapt', () => {
   });
 
   it('readiness roșu: ziua devine gri, cheia se mută cu o zi dacă are bloc și nu e altă cheie în 48 h', () => {
-    const r = adapt(plan(), { kind: 'readiness', date: '2026-11-04', verdict: 'rosu', reason: 'HRV sub baseline 2 zile' }, ctx);
+    const r = adapt(plan(), { kind: 'readiness', date: '2026-11-04', verdict: 'rosu', reason: 'HRV sub baseline 2 zile' }, { ...ctx, today: '2026-11-04' });
     assert.equal(r.plan.find((w) => w.id === 'q1')!.status, 'anulat_sistem');
     const moved = r.plan.find((w) => w.id === 'q1-mutat');
     assert.equal(moved?.date, '2026-11-05');
@@ -77,7 +77,7 @@ describe('adapt', () => {
 
   it('galben: planul rămâne; ședința primește o sugestie Z1–Z2 cu −25%, sportivul alege', () => {
     const before = plan().find((w) => w.id === 'q1')!;
-    const r = adapt(plan(), { kind: 'readiness', date: '2026-11-04', verdict: 'galben' }, ctx);
+    const r = adapt(plan(), { kind: 'readiness', date: '2026-11-04', verdict: 'galben' }, { ...ctx, today: '2026-11-04' });
     const q1 = r.plan.find((w) => w.id === 'q1')!;
     assert.deepEqual(q1.targetZones, before.targetZones);
     assert.equal(q1.plannedMinutes, before.plannedMinutes);
@@ -87,7 +87,7 @@ describe('adapt', () => {
   });
 
   it('durere ≥ 3: alergările din următoarele 5 zile devin bicicletă Z2 la aceeași durată', () => {
-    const r = adapt(plan(), { kind: 'durere', date: '2026-11-03', score: 4, loc: 'tibie' }, ctx);
+    const r = adapt(plan(), { kind: 'durere', date: '2026-11-03', score: 4, loc: 'tibie' }, { ...ctx, today: '2026-11-03' });
     const q1 = r.plan.find((w) => w.id === 'q1')!;
     assert.equal(q1.sport, 'bicicleta');
     assert.equal(q1.plannedMinutes, 50);
@@ -96,7 +96,7 @@ describe('adapt', () => {
   });
 
   it('febră: 48 h odihnă, apoi o săptămână la −50% fără chei', () => {
-    const r = adapt(plan(), { kind: 'febra', date: '2026-11-03' }, ctx);
+    const r = adapt(plan(), { kind: 'febra', date: '2026-11-03' }, { ...ctx, today: '2026-11-03' });
     assert.equal(r.plan.find((w) => w.id === 'q1')!.status, 'anulat_sistem');
     const b1 = r.plan.find((w) => w.id === 'b1')!;
     assert.equal(b1.plannedMinutes, 60);
@@ -105,9 +105,9 @@ describe('adapt', () => {
   });
 
   it('activitate neplanificată mare: ziua următoare devine Z1, dar o cheie nu se atinge', () => {
-    const r = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-04', sport: 'bicicleta', minutes: 120 } }, ctx);
+    const r = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-04', sport: 'bicicleta', minutes: 120 } }, { ...ctx, today: '2026-11-04' });
     assert.deepEqual(r.plan.find((w) => w.id === 'r1')!.targetZones, [1]);
-    const r2 = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-06', sport: 'bicicleta', minutes: 120 } }, ctx);
+    const r2 = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-06', sport: 'bicicleta', minutes: 120 } }, { ...ctx, today: '2026-11-06' });
     assert.deepEqual(r2.plan.find((w) => w.id === 'b1')!.targetZones, [2]);
   });
 });
@@ -159,8 +159,13 @@ describe('adapt · activitate în afara planului', () => {
 });
 
 describe('progres: creștere controlată', () => {
+  // Săptămâna viitoare egală cu cea curentă (325 min): generatorul n-a pus creștere, deci progresul poate adăuga.
+  const flat = (): PlannedWorkout[] => [...plan(), { id: 'f2', date: '2026-11-10', sport: 'forta', type: 'forta', plannedMinutes: 60, targetZones: [], key: false, status: 'planificat' }];
+  it('nu adaugă peste o săptămână deja crescută sau de descărcare', () => {
+    assert.equal(adapt(plan(), { kind: 'progres', date: '2026-11-08' }, ctx).changes.length, 0);
+  });
   it('pune +10% din săptămâna viitoare pe ședințele ușoare, max 15 min pe ședință, fără cheie', () => {
-    const r = adapt(plan(), { kind: 'progres', date: '2026-11-08' }, ctx);
+    const r = adapt(flat(), { kind: 'progres', date: '2026-11-08' }, ctx);
     const r2 = r.plan.find((w) => w.id === 'r2')!;
     assert.equal(r2.plannedMinutes, 65);
     assert.equal(r.plan.find((w) => w.id === 'b2')!.plannedMinutes, 135);
@@ -168,7 +173,15 @@ describe('progres: creștere controlată', () => {
     assert.ok(r.changes.some((c) => c.startsWith('progres:')));
   });
   it('nu crește un sport restricționat', () => {
-    const r = adapt(plan(), { kind: 'progres', date: '2026-11-08', restricted: ['alergare'] }, ctx);
+    const r = adapt(flat(), { kind: 'progres', date: '2026-11-08', restricted: ['alergare'] }, ctx);
     assert.equal(r.changes.length, 0);
+  });
+});
+
+describe('adapt · trecutul nu se rescrie', () => {
+  it('febră raportată azi cu dată de ieri: ședința de ieri rămâne cum a fost prescrisă', () => {
+    const r = adapt(plan(), { kind: 'febra', date: '2026-11-04' }, { ...ctx, today: '2026-11-05' });
+    assert.equal(r.plan.find((w) => w.id === 'q1')!.status, 'planificat');
+    assert.equal(r.plan.find((w) => w.id === 'r1')!.status, 'anulat_sistem');
   });
 });

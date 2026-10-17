@@ -1,11 +1,13 @@
 import { sportReadiness } from '../bar/sport-readiness.js';
 import { hooperSum } from './readiness.js';
+import { activeRestriction } from '../calendar/safety.js';
 import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
 import { isActiveWorkout, type Activity, type PlannedWorkout, type Sport } from '../types.js';
 import { scoreWorkout, zoneDirection } from '../scoring/score.js';
+import { matchActivities } from '../scoring/match.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
@@ -119,6 +121,8 @@ export interface Packet {
   corp: { greutate_azi: number | null; greutate_media7: number | null; /** Indicele de masă corporală din media greutății pe 7 zile și înălțime (calculat). */ imc: number | null; cantariri_7z: number; grasime_pct: number | null; data_masurare: string | null };
   nutritie_ieri: { kcal: number | null; carbohidrati_g: number | null; proteine_g: number | null; apa_l: number | null } | null;
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
+  /** Restricția activă din cod (febră, simptom cardiac, boală, durere în ultimele 2 zile); null = niciuna. */
+  restrictie_activa: { verdict: 'stop' | 'rosu' | 'galben'; motiv: string } | null;
   analize: CollectorInput['labs'] | null;
   aviz: CollectorInput['aviz'];
 }
@@ -294,25 +298,32 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
 const hmMin = (s: string | null | undefined) => (s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null);
 
 /**
- * Aceeași ședință, înregistrată de două brățări sau venită pe două căi: aceeași zi, același sport și intervale care se suprapun
- * (cel puțin 60% din cea scurtă). Fără oră de start: durate la ±3 min și distanțe la ±0,3 km.
+ * Aceeași ședință venită de pe două brățări: aceeași zi, același sport, surse DIFERITE și, cu ore de start, ore care
+ * se suprapun (cel puțin 60% din cea scurtă). Fără ore de start: doar dacă și durata (±3 min) și distanța (±0,3 km,
+ * ambele măsurate) coincid. Cazurile neclare rămân două ședințe (nu ștergem una reală).
  */
 export function sameSession(a: SourceActivity, b: SourceActivity): boolean {
   if (a.date !== b.date || a.sport !== b.sport) return false;
+  if (a.source && b.source && a.source === b.source) return false;
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
     const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
     return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
   }
-  return Math.abs(a.minutes - b.minutes) <= 3 && (a.distanceKm == null || b.distanceKm == null || Math.abs(a.distanceKm - b.distanceKm) < 0.3);
+  return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
 }
+
+/** Viteza minimă (km/h) a minutelor în plus ca să fie efort, nu mers pe jos sau ceas uitat pornit. */
+const EXTRA_EFFORT_KMH: Record<string, number> = { alergare: 6.7, bicicleta: 12, inot: 1 };
 
 /**
  * Care din două înregistrări ale aceleiași ședințe e cea corectă.
  * Regula: cea mai scurtă (o brățară uitată pornită după oprire lungește ședința fără efort real),
- * CU EXCEPȚIA cazului în care minutele în plus ale celei lungi au efort real: distanță în plus (≥ 0,5 km)
- * sau puls mediu pe bucata în plus de cel puțin 85% din pulsul ședinței scurte. Atunci cea scurtă e o brățară oprită prea devreme.
+ * CU EXCEPȚIA cazului în care minutele în plus ale celei lungi au distanță reală în plus: cel puțin 0,5 km (și peste
+ * 3% din distanța celei scurte, ca diferența de GPS dintre ceasuri să nu conteze), la o viteză de efort
+ * (alergare peste 6,7 km/h, adică sub 9 min/km; bicicletă peste 12 km/h). Atunci cea scurtă e o brățară oprită prea
+ * devreme. Fără distanțe, pulsul bucății în plus contează doar dacă bucata e mare (vezi mai jos).
  */
 export function pickRecording(a: SourceActivity, b: SourceActivity): SourceActivity {
   const fields = (x: SourceActivity) => Object.values(x).filter((v) => v != null).length;
@@ -322,8 +333,16 @@ export function pickRecording(a: SourceActivity, b: SourceActivity): SourceActiv
   const sKm = S.distanceKm ?? null;
   const lKm = L.distanceKm ?? null;
   if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L; // cea scurtă n-a măsurat distanța deloc
-  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L;
-  if (S.avgHr != null && L.avgHr != null) {
+  if (sKm != null && lKm != null) {
+    const extraKm = lKm - sKm;
+    const kmh = (extraKm / extraMin) * 60;
+    const minKm = S.sport === 'inot' ? 0.1 : Math.max(0.5, sKm * 0.03);
+    if (extraKm >= minKm && kmh >= (EXTRA_EFFORT_KMH[S.sport] ?? Infinity)) return L;
+    return S;
+  }
+  // Fără distanță pe ambele: pulsul bucății în plus se poate deduce doar când ea e mare (≥ 10 min și ≥ 25% din cea
+  // scurtă). Sub atât, o diferență de câțiva bpm între senzoare s-ar amplifica într-un „efort” fictiv.
+  if (S.avgHr != null && L.avgHr != null && extraMin >= 10 && extraMin >= 0.25 * S.minutes) {
     const extraHr = (L.avgHr * L.minutes - S.avgHr * S.minutes) / extraMin;
     if (extraHr >= 0.85 * S.avgHr) return L;
   }
@@ -351,9 +370,8 @@ export function dedupeActivities(acts: SourceActivity[]): SourceActivity[] {
 
 function minutesToHm(min: number | null): string | null {
   if (min == null) return null;
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return `${h}:${String(m).padStart(2, '0')}`;
+  const t = Math.round(min);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
 function hoursBySport(acts: SourceActivity[], from: string, to: string): SportHours {
@@ -490,7 +508,9 @@ export function buildPacket(input: CollectorInput): Packet {
   const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
   const pastPlanned = input.plan.filter((w) => isActiveWorkout(w) && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
-  const doneW = pastPlanned.filter((w) => acts.some((a) => a.sport === w.sport && Math.abs(diffDays(w.date, a.date)) <= 1));
+  // Aceeași asociere ca la scor: o activitate acoperă o singură ședință, întâi cea din ziua ei.
+  const matchedIds = new Set(matchActivities(pastPlanned, acts, today).matches.filter((m) => m.activity).map((m) => m.planned.id));
+  const doneW = pastPlanned.filter((w) => matchedIds.has(w.id));
   const aderenta = recentActs.length
     ? { planificate: pastPlanned.length, facute: doneW.length, sarite: pastPlanned.filter((w) => !doneW.includes(w)).map((w) => ({ data: w.date, sport: w.sport, cheie: w.key })) }
     : null;
@@ -630,6 +650,10 @@ export function buildPacket(input: CollectorInput): Packet {
       data_masurare: lastWeight?.date ?? null,
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
+    restrictie_activa: (() => {
+      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings });
+      return r ? { verdict: r.verdict, motiv: r.reason } : null;
+    })(),
     semnale: {
       boala: input.morning?.semnale.boala ?? null,
       febra: input.morning?.semnale.febra ?? null,

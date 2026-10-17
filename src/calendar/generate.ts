@@ -1,5 +1,5 @@
 import { DOSE_TEXT, dayById, doseFor, rotation } from '../strength/ppl.js';
-import { enforceLimits } from './validate.js';
+import { enforceLimits, fitStructure } from './validate.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
@@ -84,15 +84,20 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const history = input.historyHoursPerWeek.filter((h) => h > 0);
   const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
   const firstPhase = weeks[0]!.phase;
-  let prevLoaded = Math.max(avgHistory, 0.6 * hours[firstPhase].target);
+  // Doza de start: din ce a făcut sportivul (istoric canonic), nu din șablon. Cu istoric, prima săptămână pornește de la
+  // media lui (+ cel mult 2 h, ca să încapă toate sporturile la minimum); fără istoric, de la 60% din ținta fazei.
+  // Timpul liber e plafonul, nu doza.
+  let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
 
   const runGoal = isRunGoal(input.goal);
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? (input.run?.canDoDistance ? (input.goal === 'maraton' ? 100 : 80) : (input.run?.longestRunKm ?? 0) >= 12 ? 70 : 50) : 60;
   // Triatlon: tura lungă pornește de la ~80% din cea mai lungă tură recentă (60–120 min), ieșirea lungă de la ~80% din cea mai lungă alergare (40–75 min).
   const lvl = input.level ?? {};
-  const triRide = lvl.longestRideH ? Math.min(120, Math.max(60, Math.round((lvl.longestRideH * 60 * 0.8) / 5) * 5)) : 60;
-  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(40, Math.round((lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 0.8) / 5) * 5)) : 45;
+  // Ieșirile lungi pornesc de la ce a demonstrat sportivul (cel mult +25%), nu de la minimul șablonului: 15 min de
+  // bicicletă nu devin 60. Podeaua e durata minimă a unei ședințe din sportul respectiv.
+  const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN.bicicleta, Math.round((lvl.longestRideH * 60 * 1.25) / 5) * 5)) : 60;
+  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN.alergare, Math.round((lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25) / 5) * 5)) : 45;
   const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? startLong : triRun, brickRun: 15 };
   const out: WeekPlan[] = [];
 
@@ -102,7 +107,8 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     if (pw.recovery) {
       target = round1(prevLoaded * RECOVERY_FACTOR);
     } else {
-      target = Math.min(ph.target, Math.max(prevLoaded * 1.1, 0.6 * ph.target));
+      // Cu istoric, creșterea pornește din ce a făcut sportivul (+10%/săpt.), fără saltul la 60% din ținta fazei.
+      target = Math.min(ph.target, Math.max(prevLoaded * 1.1, history.length ? 0 : 0.6 * ph.target));
       target = round1(Math.min(target, budget.hours));
       prevLoaded = target;
     }
@@ -131,7 +137,8 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   for (const w of out) {
     const v = enforceLimits(w.workouts, limits);
-    w.workouts = v.workouts;
+    // Nimic după cursă (nici în săptămâna ei, dacă e la mijlocul săptămânii); durata și repetările din aceleași cifre.
+    w.workouts = v.workouts.filter((x) => x.date < input.raceDate).map(fitStructure);
     if (v.notes.length) w.notes.push(...v.notes);
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
@@ -192,8 +199,8 @@ function advanceProgression(prog: { longRide: number; longRun: number; brickRun:
   if (pw.phase === 'baza2' || pw.phase === 'build') prog.brickRun = Math.min(cap.brick, Math.max(prog.brickRun, 15) + (pw.weekInPhase % 2 === 0 ? 5 : 0));
   if (pw.phase === 'peak') prog.brickRun = 30;
   if (pw.phase === 'taper') {
-    prog.longRide = 90;
-    prog.longRun = 60;
+    prog.longRide = Math.min(prog.longRide, 90); // taper-ul scade, nu urcă niciodată
+    prog.longRun = Math.min(prog.longRun, 60);
     prog.brickRun = 15;
   }
   prog.longRide = Math.min(prog.longRide, cap.ride);
@@ -217,7 +224,8 @@ function advanceRunProgression(prog: { longRun: number }, pw: PhaseWeek, goal: '
 }
 
 function fmtPace(sec: number): string {
-  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}/km`;
+  const t = Math.round(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}/km`;
 }
 
 /** Săptămâna la semimaraton / maraton: 2 alergări ușoare, una de calitate, ieșirea lungă, forță. */

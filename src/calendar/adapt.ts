@@ -1,6 +1,7 @@
 // Calendarul viu: regulile de adaptare din protocol, aplicate determinist pe antrenamentele viitoare.
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
+import { fitStructure } from './validate.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 
@@ -82,7 +83,16 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
       break;
   }
 
-  return { plan: next, changes };
+  // Trecutul nu se rescrie: ce era înainte de azi rămâne prescripția valabilă atunci (o febră raportată târziu
+  // protejează viitorul, nu ședințele deja trecute). Iar o ședință scurtată nu păstrează repetări care nu mai încap.
+  const byId = new Map(plan.map((w) => [w.id, w]));
+  const out = next.map((w) => {
+    const orig = byId.get(w.id);
+    if (orig && w.date < ctx.today) return orig;
+    return orig && orig.plannedMinutes !== w.plannedMinutes ? fitStructure(w) : w;
+  });
+  const kept = changes.filter((c) => !plan.some((w) => w.date < ctx.today && c.startsWith(`${w.id}:`)));
+  return { plan: out, changes: kept };
 }
 
 function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'scor' }>, ctx: AdaptContext, changes: string[]): void {
@@ -329,6 +339,10 @@ function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: '
   const monday = addDays(ev.date, 7 - weekday(ev.date));
   const week = plan.filter((w) => isActiveWorkout(w) && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
   const total = week.reduce((n, w) => n + w.plannedMinutes, 0);
+  // Generatorul are deja progresia lui: dacă săptămâna viitoare e deja mai mare decât cea curentă (creștere planificată)
+  // sau mai mică (descărcare / taper), nu se mai adaugă nimic peste. Un singur mecanism de creștere pe săptămână.
+  const thisWeek = plan.filter((w) => isActiveWorkout(w) && diffDays(addDays(monday, -7), w.date) >= 0 && diffDays(addDays(monday, -7), w.date) < 7).reduce((n, w) => n + w.plannedMinutes, 0);
+  if (thisWeek > 0 && (total > thisWeek * 1.02 || total < thisWeek * 0.9)) return;
   let budget = Math.floor((total * 0.1) / 5) * 5;
   if (budget < 5) return;
   const easy = week

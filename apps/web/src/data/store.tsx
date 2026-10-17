@@ -1,11 +1,11 @@
 // Starea aplicației: sesiunea, obiectul `Me` de la server, reîncărcarea după formulare și sincronizare.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Me } from '@core/api-types.js';
 import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, runSetup, server, setBootStage, signOut } from './api';
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare';
 
 export interface Data {
   status: Status;
@@ -30,8 +30,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('boot');
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Generația sesiunii: un răspuns /me pornit înainte de ieșire (sau de schimbarea contului) nu mai are voie să
+  // reinstaleze datele vechi.
+  const gen = useRef(0);
+  const syncing = useRef<Promise<string | null> | null>(null);
 
   const load = useCallback(async () => {
+    const my = gen.current;
     if (local) {
       setMe(await localServer.me());
       setStatus('ready');
@@ -68,10 +73,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setStatus((st) => (st === 'ready' ? st : 'loading'));
     try {
       setBootStage('citesc datele contului');
-      setMe(await server.me());
+      const fresh = await server.me();
+      if (my !== gen.current) return;
+      setMe(fresh);
       setStatus('ready');
       setError(null);
     } catch (e) {
+      if (my !== gen.current) return;
       setError(e instanceof Error ? e.message : String(e));
       setStatus('error');
     }
@@ -93,10 +101,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [backend, load],
   );
 
+  // O singură sincronizare odată (buton, revenire în aplicație, interval): cererile simultane o așteaptă pe aceeași.
   const sync = useCallback(async () => {
-    const r = await backend.sync();
-    await load();
-    return r.lastSync;
+    if (syncing.current) return syncing.current;
+    const p = (async () => {
+      const r = await backend.sync();
+      await load();
+      return r.lastSync;
+    })();
+    syncing.current = p;
+    try {
+      return await p;
+    } finally {
+      syncing.current = null;
+    }
   }, [backend, load]);
 
   const connect = useCallback(
@@ -121,7 +139,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         for (let i = 0; i < 24; i++) {
           await new Promise((r) => setTimeout(r, 10_000));
           const fresh = await backend.me().catch(() => null);
-          if (fresh && fresh.messages.some((m) => Date.parse(m.createdAt) >= started - 5_000)) {
+          // Mesajul cerut, nu oricare: același tip (sau avertismentul de siguranță) scris după apăsare.
+          if (fresh && fresh.messages.some((m) => Date.parse(m.createdAt) >= started - 5_000 && (m.kind === event || m.kind === 'avertisment'))) {
             setMe(fresh);
             return 'Gata.';
           }
@@ -138,9 +157,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await load();
       return;
     }
+    gen.current += 1;
     await signOut();
     setMe(null);
     setStatus('anon');
+    // Ciornele și preferințele locale ale contului care iese nu rămân pentru următorul.
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith('airon-') && k !== 'airon-invite') localStorage.removeItem(k);
+    } catch {
+      /* fără stocare locală */
+    }
   }, [local, load]);
 
   const value = useMemo<Data>(() => ({ status, me, error, local, refresh: load, logout, submitForm, sync, connect, runAgents }), [status, me, error, local, load, logout, submitForm, sync, connect, runAgents]);

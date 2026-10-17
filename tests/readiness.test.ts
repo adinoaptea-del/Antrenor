@@ -32,8 +32,10 @@ describe('starea zilei: întâi datele obiective, apoi cum s-a simțit', () => {
 
 import { hooperSum } from '../src/collector/readiness.js';
 describe('chestionarul de dimineață parțial', () => {
-  it('contează și cu răspunsuri lipsă: media × 4', () => {
-    assert.deepEqual(hooperSum({ somn: 6, oboseala: 6, stres: null, dureri: null }), { suma: 24, raspunse: 2 });
+  it('total doar de la 3 din 4 răspunsuri; cu 1–2 nu inventăm restul', () => {
+    assert.deepEqual(hooperSum({ somn: 6, oboseala: 6, stres: null, dureri: null }), { suma: null, raspunse: 2 });
+    assert.deepEqual(hooperSum({ somn: null, oboseala: null, stres: 6, dureri: null }), { suma: null, raspunse: 1 });
+    assert.deepEqual(hooperSum({ somn: 6, oboseala: 6, stres: 6, dureri: null }), { suma: 24, raspunse: 3 });
     assert.deepEqual(hooperSum({ somn: null, oboseala: null, stres: null, dureri: null }), { suma: null, raspunse: 0 });
     assert.deepEqual(hooperSum({ somn: 2, oboseala: 3, stres: 2, dureri: 1 }), { suma: 8, raspunse: 4 });
   });

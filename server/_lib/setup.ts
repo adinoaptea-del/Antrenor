@@ -48,7 +48,7 @@ export async function setupStatus(): Promise<{ database: boolean; tables: boolea
   }
 }
 
-export async function runSetup(appUrl: string): Promise<SetupStep[]> {
+export async function runSetup(appUrl: string, opts: { schedule?: boolean } = {}): Promise<SetupStep[]> {
   const url = ENV.postgresUrl();
   if (!url) throw new Error('lipsește POSTGRES_URL: adaugă integrarea Supabase în proiectul Vercel');
   const steps: SetupStep[] = [];
@@ -78,7 +78,7 @@ export async function runSetup(appUrl: string): Promise<SetupStep[]> {
       steps.push({ step: 'verificare drepturi', ok: false, detail: (e as Error).message });
     }
 
-    const cron = await step('pg_cron', 'create extension if not exists pg_cron with schema pg_catalog', true);
+    const cron = opts.schedule === false ? false : await step('pg_cron', 'create extension if not exists pg_cron with schema pg_catalog', true);
     const net = await step('pg_net', 'create extension if not exists pg_net with schema extensions', true);
     if (cron && net) {
       const auth = JSON.stringify({ authorization: `Bearer ${ENV.cronSecret()}` });

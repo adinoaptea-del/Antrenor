@@ -12,11 +12,14 @@ export function Admin({ onBack }: { onBack: () => void }) {
   const [cost, setCost] = useState<{ month: number; today: number; tracking: boolean } | null>(null);
   const [out, setOut] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const load = () =>
     server.adminList().then(
       (r) => {
         setUsers(r.users);
         setCost({ month: r.costMonth ?? 0, today: r.costToday ?? 0, tracking: !!r.tracking });
+        setInvite(r.inviteUrl ?? null);
       },
       (e: Error) => setErr(e.message),
     );
@@ -52,6 +55,35 @@ export function Admin({ onBack }: { onBack: () => void }) {
             Dacă cuiva i se blochează aplicația: întâi îi spui să apese în Profil „Repornește aplicația”. Dacă nu ajunge, de aici: citești din nou brățările, refaci planul din chestionarul lui sau îi dai o parolă temporară.
           </div>
         </Card>
+        {invite && (
+          <Card tight>
+            <Label>Link de invitație</Label>
+            <div className="small muted">Un prieten nou își face cont doar din linkul ăsta. Dacă a ajuns unde nu trebuie, fă unul nou: cel vechi nu mai merge.</div>
+            <div className="small" style={{ wordBreak: 'break-all', marginTop: 8, userSelect: 'all' }}>{invite}</div>
+            <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <button
+                className="pill"
+                onClick={() => {
+                  navigator.clipboard?.writeText(invite).then(
+                    () => setCopied(true),
+                    () => setCopied(false),
+                  );
+                }}
+              >
+                {copied ? 'Copiat' : 'Copiază'}
+              </button>
+              <button
+                className="pill"
+                onClick={() => {
+                  setCopied(false);
+                  void server.newInvite().then((r) => setInvite(r.inviteUrl), (e: Error) => setErr(e.message));
+                }}
+              >
+                Link nou
+              </button>
+            </div>
+          </Card>
+        )}
         {cost && (
           <Card tight>
             <Label>Cost AI (Anthropic)</Label>

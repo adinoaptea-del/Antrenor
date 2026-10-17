@@ -54,7 +54,9 @@ describe('înot fără oprire', () => {
   it('o tură imposibil de rapidă (atingere de perete) nu se numără și rupe șirul', () => {
     assert.equal(longestContinuousSwim([L(25, 30), L(75, 16), L(25, 30)])?.m, 25);
   });
-  it('o tură cu pauză în interior nu se leagă de vecine', () => {
-    assert.equal(longestContinuousSwim([L(50, 60), L(100, 120, 40), L(50, 60)])?.m, 100);
+  it('o tură cu pauză în interior nu contează ca înot continuu și nu se leagă de vecine', () => {
+    assert.equal(longestContinuousSwim([L(50, 60), L(100, 120, 40), L(50, 60)])?.m, 50);
+    // 500 m cu 5 minute oprit în interior nu devin 500 m fără oprire
+    assert.equal(longestContinuousSwim([L(500, 600, 300)])?.m, 0);
   });
 });

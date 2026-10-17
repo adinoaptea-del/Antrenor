@@ -97,15 +97,21 @@ describe('scoreWorkout', () => {
     );
   });
 
-  it('compensare în aceeași zi: mai ușor aici, mai tare la alt sport = fără penalizare pe zonă', () => {
+  it('altă ședință mai tare în aceeași zi nu repară zona ratată aici: rămâne doar observație', () => {
     const easy = activity({ timeInZonesMin: { 1: 30, 2: 20 } });
     const alone = scoreWorkout({ planned, activity: easy, questionnaire: { rpe: 4 }, today: '2026-11-03' });
     const comp = scoreWorkout({ planned, activity: easy, questionnaire: { rpe: 4 }, today: '2026-11-03', sameDay: [{ sport: 'alergare', directie: 'mai_tare' }] });
     assert.equal(alone.metrics.directie, 'mai_usor');
     assert.equal(alone.color, 'galben');
-    assert.equal(comp.color, 'verde');
+    assert.equal(comp.color, 'galben');
     assert.ok(comp.metrics.compensat);
-    assert.ok((comp.metrics.eficienta ?? 0) > (alone.metrics.eficienta ?? 0));
+    assert.equal(comp.metrics.eficienta, alone.metrics.eficienta);
+  });
+
+  it('un minut de puls într-o ședință de 50 min: intensitate neevaluată, nu 100% în zonă', () => {
+    const r = scoreWorkout({ planned, activity: activity({ timeInZonesMin: { 2: 1 } }), questionnaire: { rpe: 4 }, today: '2026-11-03' });
+    assert.equal(r.metrics.zonePct, null);
+    assert.ok(r.reasons.some((x) => x.includes('neevaluată')));
   });
 
   it('nefăcut: marcat ca ratat, fără eficiență', () => {

@@ -7,6 +7,8 @@ export function startAutoSync(run: () => Promise<unknown>): () => void {
     if (document.visibilityState === 'visible') void run().catch(() => undefined);
   };
   const iv = setInterval(tick, INTERVAL_MS);
+  // Prima citire imediat la pornire, nu după primul interval.
+  tick();
   const onVis = () => {
     if (document.visibilityState === 'visible') void run().catch(() => undefined);
   };

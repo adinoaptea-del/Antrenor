@@ -17,7 +17,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   const [busy, setBusy] = useState(false);
   const setH = (k: keyof MorningForm['hooper'], v: number) => setM({ ...m, hooper: { ...m.hooper, [k]: v } });
   const setS = (k: keyof MorningForm['semnale'], v: boolean) => setM({ ...m, semnale: { ...m.semnale, [k]: v } });
-  // Contează și răspunsurile parțiale: suma = media celor răspunse × 4 (aceleași praguri).
+  // Contează și răspunsurile parțiale; totalul apare de la 3 din 4 răspunsuri (cu mai puține nu inventăm restul).
   const { suma, raspunse } = hooperSum(m.hooper);
   const anyAnswer = raspunse > 0 || Object.values(m.semnale).some((v) => v === true);
 
@@ -62,7 +62,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{suma == null ? 'Cum te simți: –' : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
+        <div className="small muted">{suma == null ? (raspunse > 0 ? `Cum te simți: ${raspunse} din 4 răspunsuri, prea puține pentru un total; contează fiecare în parte` : 'Cum te simți: –') : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
         <button
           className="btn"
           disabled={!anyAnswer || busy}

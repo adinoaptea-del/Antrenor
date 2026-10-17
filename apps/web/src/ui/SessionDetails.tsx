@@ -20,7 +20,8 @@ interface Metric {
   hint?: string;
 }
 
-const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+// Rotunjirea întâi la secunda întreagă, apoi împărțirea: 59,9 s devine 1:00, nu 0:60.
+const mmss = (sec: number) => { const t = Math.round(sec); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const dec = (v: number, d = 1) => v.toLocaleString('ro-RO', { maximumFractionDigits: d, minimumFractionDigits: 0 });
 const paceSec = (a: MeActivity) => (a.paceMinKm != null ? a.paceMinKm * 60 : a.distanceKm && a.distanceKm > 0.2 ? (a.minutes * 60) / a.distanceKm : null);
 

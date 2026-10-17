@@ -100,6 +100,8 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null): {
  */
 export function hooperSum(h: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null } | null | undefined): { suma: number | null; raspunse: number } {
   const xs = h ? [h.somn, h.oboseala, h.stres, h.dureri].filter((x): x is number => typeof x === 'number') : [];
-  if (!xs.length) return { suma: null, raspunse: 0 };
+  // Totalul (și culoarea din chestionar) doar cu cel puțin 3 din 4 răspunsuri; cu 1–2 răspunsuri nu inventăm
+  // celelalte: răspunsurile ajung la fiziolog una câte una, dar nu fac un total.
+  if (xs.length < 3) return { suma: null, raspunse: xs.length };
   return { suma: Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 4), raspunse: xs.length };
 }

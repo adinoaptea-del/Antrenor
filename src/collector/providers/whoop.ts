@@ -103,7 +103,8 @@ export const whoopApi = {
 export function normalizeWhoopNight(sleep: WhoopSleep, recovery: WhoopRecovery | null): SourceDaily | null {
   if (sleep.nap || sleep.score_state !== 'SCORED' || !sleep.score) return null;
   const s = sleep.score.stage_summary;
-  const asleepMin = Math.round((s.total_in_bed_time_milli - s.total_awake_time_milli) / 60_000);
+  // Somnul = suma stadiilor (ușor + profund + REM). Timpul „fără date” al brățării nu e somn.
+  const asleepMin = Math.round(((s.total_light_sleep_time_milli ?? 0) + (s.total_slow_wave_sleep_time_milli ?? 0) + (s.total_rem_sleep_time_milli ?? 0)) / 60_000);
   return {
     date: localDate(sleep.end, sleep.timezone_offset),
     source: 'whoop',
@@ -145,7 +146,8 @@ export function normalizeWhoopWorkout(w: WhoopWorkout): SourceActivity | null {
     startLocal: localHm(w.start, w.timezone_offset),
     sport,
     minutes,
-    distanceKm: w.score.distance_meter != null ? Math.round((w.score.distance_meter / 1000) * 10) / 10 : null,
+    // Precizie completă la stocare (25 m de înot nu devin 0 km); rotunjirea doar la afișare.
+    distanceKm: w.score.distance_meter != null ? Math.round(w.score.distance_meter) / 1000 : null,
     avgHr: w.score.average_heart_rate,
     maxHr: w.score.max_heart_rate,
     // Zonele Whoop sunt ale Whoop (% din FCmax), nu ale sportivului: le păstrăm doar ca referință brută, nu ca timeInZonesMin.

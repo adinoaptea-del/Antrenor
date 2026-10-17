@@ -40,3 +40,41 @@ export function painSafetyEvents(date: string, durere: unknown): MorningSafety {
     message: score >= 5 ? `Durere ${score}/10 la ${loc}: următoarele 5 zile fără alergare (bicicletă ușoară în loc). Arată durerea unui fizioterapeut sau medic, ideal în 1–2 zile; dacă se umflă, nu poți călca sau doare în repaus, mergi azi.` : null,
   };
 }
+
+export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string } | null;
+
+/**
+ * Restricția activă azi, aceeași pentru API, calendar și ecrane. Datele brățărilor (somn, HRV) nu o pot ridica:
+ *  - febră sau simptom cardiac raportat azi, ori stop salvat azi → stop;
+ *  - boală raportată azi → roșu;
+ *  - durere ≥ 5 în ultimele 2 zile → roșu; durere 3–4 în ultimele 2 zile → cel puțin galben.
+ */
+export function activeRestriction(input: {
+  today: string;
+  morning: { date?: string; semnale?: Record<string, unknown> | null } | null;
+  evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null }[];
+  savedVerdict?: 'verde' | 'galben' | 'rosu' | 'stop' | null;
+}): Restriction {
+  const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? (input.morning.semnale ?? {}) : {};
+  if (s.simptom_cardiac === true) return { verdict: 'stop', reason: 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.' };
+  if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
+  if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
+  if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };
+  const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
+  const worst = recent.reduce<{ scor: number; loc: string | null } | null>((m, e) => (!m || e.durere!.scor! > m.scor ? { scor: e.durere!.scor!, loc: e.durere!.loc } : m), null);
+  if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: fără alergare și fără intensitate până trece.` };
+  if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: doar ușor, fără impact.` };
+  return null;
+}
+
+const RANK = { verde: 0, galben: 1, portocaliu: 2, rosu: 3, stop: 4 } as const;
+/** Cea mai strictă dintre două culori (restricția nu poate fi coborâtă de media brățărilor). */
+export function stricter<T extends keyof typeof RANK, U extends keyof typeof RANK>(a: T, b: U): T | U {
+  return RANK[b] > RANK[a] ? b : a;
+}
+
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}

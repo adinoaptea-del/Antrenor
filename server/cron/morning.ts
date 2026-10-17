@@ -1,5 +1,6 @@
 import { fail, json, requireCron, todayIn } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
+import { consentActive } from '../_lib/consent.js';
 import { select } from '../_lib/db.js';
 import { syncUser } from '../_lib/sync.js';
 import { rescore } from '../_lib/score.js';
@@ -10,10 +11,10 @@ import { labsReminder } from '../_lib/reminders.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     requireCron(req);
-    const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null; consents: { health_data: boolean } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data)' });
+    const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data,withdrawn_at)' });
     const out: Record<string, unknown> = {};
     for (const u of users) {
-      if (!u.consents?.health_data) continue;
+      if (!consentActive(u.consents)) continue;
       const today = todayIn(u.tz);
       try {
         await syncUser(u.id, 3);

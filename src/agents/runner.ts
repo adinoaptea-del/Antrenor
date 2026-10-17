@@ -237,6 +237,10 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   let out: HeadResponse['decizie'] = raw === 'portocaliu' ? 'galben' : raw;
   if (v?.verdict === 'stop' || p.semnale.febra === true || p.semnale.simptom_cardiac === true) return 'stop';
   if (p.semnale.boala === true || (p.antrenament_ultim?.durere.scor ?? 0) >= 5) out = 'rosu';
+  // Restricția activă (și durerea de ieri, nu doar a ultimei ședințe) e podeaua.
+  const r = p.restrictie_activa?.verdict;
+  if (r === 'stop') return 'stop';
+  if (r && RANK[r] > RANK[out]) out = r;
   return out;
 }
 

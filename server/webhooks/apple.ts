@@ -4,6 +4,7 @@ import { q, type Req, type Res } from '../_lib/http.js';
 import { insert, one, upsert } from '../_lib/db.js';
 import { parseHealthExport, parseHealthOther, parseHealthWorkouts } from '../_lib/apple.js';
 import { saveOthers } from '../_lib/sync.js';
+import { hasConsent } from '../_lib/consent.js';
 
 /** POST /api/webhooks/apple?t=<token personal> — trimis de Health Auto Export de pe iPhone-ul sportivului. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -15,6 +16,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const user = await one<{ id: string }>('users', { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, 'token necunoscut');
     userId = user.id;
+    if (!(await hasConsent(user.id))) throw new HttpError(403, 'consimțământul pentru date de sănătate lipsește sau a fost retras');
     const body = await readJson(req);
     const days = parseHealthExport(body);
     // Aceeași ședință de două ori în același pachet ar opri scrierea (Postgres refuză două rânduri cu același id).

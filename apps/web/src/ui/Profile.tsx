@@ -16,7 +16,8 @@ const DEVICES: { provider: 'whoop' | 'strava' | 'oura'; name: string; note: stri
 
 export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
   const me = useMe();
-  const { connect, logout, local } = useData();
+  const { connect, logout, local, submitForm } = useData();
+  const [confirmOff, setConfirmOff] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const lastDone = lastDoneWorkout(me);
   const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
@@ -129,7 +130,19 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
                     <div className="tiny muted">{c ? `conectat · ultima citire ${c.lastSync ? fmtTime(c.lastSync) : '–'}${c.lastOk === false ? ` · eroare: ${c.detail ?? ''}` : ''}` : d.note}</div>
                   </div>
                   {c ? (
-                    <span className="ok">{Icons.check} conectat</span>
+                    <button
+                      className="pill"
+                      onClick={() => {
+                        if (confirmOff !== d.provider) {
+                          setConfirmOff(d.provider);
+                          return;
+                        }
+                        setConfirmOff(null);
+                        void submitForm('deconectare', { provider: d.provider }).catch((e: Error) => setErr(e.message));
+                      }}
+                    >
+                      {confirmOff === d.provider ? 'Sigur? Apasă din nou' : 'Deconectează'}
+                    </button>
                   ) : SERVER?.providers && !SERVER.providers[d.provider] ? (
                     <span className="tiny muted">încă neactivat</span>
                   ) : (

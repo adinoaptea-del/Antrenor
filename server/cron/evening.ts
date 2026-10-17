@@ -1,5 +1,6 @@
 import { fail, json, requireCron, todayIn } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
+import { consentActive } from '../_lib/consent.js';
 import { one, select } from '../_lib/db.js';
 import { runAgents } from '../_lib/agents.js';
 import { weekday } from '../../src/util/dates.js';
@@ -8,10 +9,10 @@ import { weekday } from '../../src/util/dates.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     requireCron(req);
-    const users = await select<{ id: string; tz: string; consents: { health_data: boolean } | null }>('users', {}, { select: 'id,tz,consents(health_data)' });
+    const users = await select<{ id: string; tz: string; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,consents(health_data,withdrawn_at)' });
     const out: Record<string, unknown> = {};
     for (const u of users) {
-      if (!u.consents?.health_data) continue;
+      if (!consentActive(u.consents)) continue;
       const today = todayIn(u.tz);
       try {
         const activity = await one('activities', { user_id: `eq.${u.id}`, date: `eq.${today}` });

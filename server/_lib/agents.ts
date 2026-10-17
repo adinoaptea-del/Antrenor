@@ -1,4 +1,5 @@
 import { recordUsage } from './usage.js';
+import { hasConsent } from './consent.js';
 // Rularea agenților pentru un sportiv: pachet → piramidă → mesaje, jurnal, fișiere, calendar viu, readiness.
 import { ENV } from './env.js';
 import { insert, insertIgnore, one, remove, select, upsert } from './db.js';
@@ -48,6 +49,7 @@ export interface AgentsOutcome {
  * deja un mesaj pentru eveniment; un pachet rămas de la o rulare căzută nu blochează reluarea.
  */
 export async function runAgents(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = false): Promise<AgentsOutcome | null> {
+  if (!(await hasConsent(userId))) return null;
   const user = await loadUser(userId);
   const dayStart = localDayStartUtc(today, user.tz || 'Europe/Bucharest');
   if (!force) {

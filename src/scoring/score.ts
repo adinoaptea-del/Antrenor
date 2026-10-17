@@ -122,10 +122,10 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
 
   if (zonePct != null) {
     const dir = directie === 'mai_tare' ? ', mai tare decât planul' : directie === 'mai_usor' ? ', mai ușor decât planul' : '';
-    if (compensat && zonePct < 75) reasons.push(`timp în zona-țintă ${zonePct}%${dir}: compensat (${compensat})`);
-    else if (zonePct < 75) bump(1, `timp în zona-țintă ${zonePct}%${dir}: făcut, dar mai puțin eficient`);
+    // O alergare prea intensă nu e „reparată” de o bicicletă prea ușoară: celelalte ședințe ale zilei sunt doar observație.
+    if (zonePct < 75) bump(1, `timp în zona-țintă ${zonePct}%${dir}: făcut, dar diferit de plan${compensat ? ` (${compensat}; încărcarea zilei e de urmărit)` : ''}`);
   } else {
-    reasons.push('fără date de zone: criteriul de zonă nu s-a aplicat');
+    reasons.push('intensitate neevaluată: fără puls pe zone suficient pentru ședință');
   }
 
   if (rpeDelta != null) {
@@ -144,9 +144,9 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
 
   if (flags.cardiacDrift) bump(1, `derivație cardiacă ${cardiacDriftPct}% (peste 8%)`);
 
-  metrics.eficienta = efficiency(metrics, activity, !!compensat);
+  metrics.eficienta = efficiency(metrics, activity, false);
   const color: Color = level === 0 ? 'verde' : level === 1 ? 'galben' : 'portocaliu';
-  if (color === 'verde') reasons.unshift('durată, zone și RPE în țintă');
+  if (color === 'verde') reasons.unshift(['durată în țintă', zonePct != null ? 'zone în țintă' : null, rpeDelta != null ? 'RPE în țintă' : null].filter(Boolean).join(', '));
   if (flags.noQuestionnaire) reasons.push('fără chestionar: RPE și durerea lipsesc');
 
   return { color, reasons, metrics, flags, final: isFinal(flags, planned, today) };
@@ -211,7 +211,10 @@ function computeZonePct(planned: PlannedWorkout, activity: Activity, extra: Acti
       if (planned.targetZones.includes(z)) inTarget += m;
     }
   }
-  if (total === 0) return null;
+  // Acoperire: minutele cu puls în zone trebuie să acopere cel puțin jumătate din ședință; altfel intensitatea
+  // e neevaluată (un minut de puls nu dovedește o oră în zonă).
+  const minutes = parts.reduce((n, a) => n + a.minutes, 0);
+  if (total === 0 || total < 0.5 * minutes) return null;
   return round1((inTarget / total) * 100);
 }
 

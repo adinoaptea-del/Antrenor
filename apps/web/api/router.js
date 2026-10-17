@@ -54,54 +54,6 @@ function supabaseKeyHeaders(key2) {
   return key2.startsWith("sb_") ? { apikey: key2 } : { apikey: key2, authorization: `Bearer ${key2}` };
 }
 
-// server/_lib/auth.ts
-var HttpError = class extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-  status;
-};
-function bearer(req) {
-  const h = req.headers.authorization;
-  if (!h || !h.toLowerCase().startsWith("bearer ")) return null;
-  return h.slice(7).trim();
-}
-async function requireUser(req) {
-  const token = bearer(req);
-  if (!token) throw new HttpError(401, "f\u0103r\u0103 token");
-  const res = await fetch(`${ENV.supabaseUrl()}/auth/v1/user`, { headers: { apikey: ENV.supabaseAnon(), authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new HttpError(401, "token invalid sau expirat");
-  const u = await res.json();
-  return { id: u.id, email: u.email };
-}
-function requireCron(req) {
-  const token = bearer(req);
-  if (!token || token !== ENV.cronSecret()) throw new HttpError(401, "cron neautorizat");
-}
-function todayIn(tz, now = /* @__PURE__ */ new Date()) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
-function json(res, status, body) {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.setHeader("cache-control", "no-store");
-  res.end(JSON.stringify(body));
-}
-function fail(res, e) {
-  const status = e instanceof HttpError ? e.status : 500;
-  const message = e instanceof Error ? e.message : String(e);
-  json(res, status, { error: message });
-}
-async function readJson(req) {
-  if (req.body !== void 0 && req.body !== null && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") return JSON.parse(req.body);
-  const chunks = [];
-  for await (const c of req) chunks.push(typeof c === "string" ? Buffer.from(c) : c);
-  const text = Buffer.concat(chunks).toString("utf8");
-  return text ? JSON.parse(text) : {};
-}
-
 // server/_lib/db.ts
 function headers(extra = {}) {
   return { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json", ...extra };
@@ -141,6 +93,9 @@ async function insertIgnore(table, rows, onConflict) {
   if (list.length === 0) return [];
   return call("POST", `${table}?on_conflict=${encodeURIComponent(onConflict)}`, list, { prefer: "resolution=ignore-duplicates,return=representation" });
 }
+async function rpc(name, args) {
+  return call("POST", `rpc/${name}`, args);
+}
 async function update(table, filters, patch) {
   const q2 = params(filters);
   await call("PATCH", `${table}?${q2.toString()}`, patch, { prefer: "return=minimal" });
@@ -148,6 +103,64 @@ async function update(table, filters, patch) {
 async function remove(table, filters) {
   const q2 = params(filters);
   await call("DELETE", `${table}?${q2.toString()}`, void 0, { prefer: "return=minimal" });
+}
+
+// server/_lib/auth.ts
+var HttpError = class extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
+function bearer(req) {
+  const h = req.headers.authorization;
+  if (!h || !h.toLowerCase().startsWith("bearer ")) return null;
+  return h.slice(7).trim();
+}
+async function requireUser(req) {
+  const token = bearer(req);
+  if (!token) throw new HttpError(401, "f\u0103r\u0103 token");
+  const res = await fetch(`${ENV.supabaseUrl()}/auth/v1/user`, { headers: { apikey: ENV.supabaseAnon(), authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new HttpError(401, "token invalid sau expirat");
+  const u = await res.json();
+  if (!await isApproved(u.id)) throw new HttpError(403, "contul nu a fost creat prin aplica\u021Bie (link de invita\u021Bie)");
+  return { id: u.id, email: u.email };
+}
+var approvedCache = /* @__PURE__ */ new Map();
+async function isApproved(id) {
+  const t = approvedCache.get(id);
+  if (t && Date.now() - t < 3e5) return true;
+  const rows = await select("users", { id: `eq.${id}` }, { select: "*", limit: 1 });
+  const ok2 = !!rows[0] && rows[0].approved !== false;
+  if (ok2) approvedCache.set(id, Date.now());
+  return ok2;
+}
+function requireCron(req) {
+  const token = bearer(req);
+  if (!token || token !== ENV.cronSecret()) throw new HttpError(401, "cron neautorizat");
+}
+function todayIn(tz, now = /* @__PURE__ */ new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+function json(res, status, body) {
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.end(JSON.stringify(body));
+}
+function fail(res, e) {
+  const status = e instanceof HttpError ? e.status : 500;
+  const message = e instanceof Error ? e.message : String(e);
+  json(res, status, { error: message });
+}
+async function readJson(req) {
+  if (req.body !== void 0 && req.body !== null && typeof req.body === "object") return req.body;
+  if (typeof req.body === "string") return JSON.parse(req.body);
+  const chunks = [];
+  for await (const c of req) chunks.push(typeof c === "string" ? Buffer.from(c) : c);
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? JSON.parse(text) : {};
 }
 
 // server/_lib/settings.ts
@@ -171,6 +184,23 @@ async function saveSettings(values) {
 }
 
 // server/account/signup.ts
+import { timingSafeEqual } from "node:crypto";
+
+// server/_lib/invite.ts
+import { randomBytes } from "node:crypto";
+async function inviteCode(create = false) {
+  const rows = await select("app_settings", { key: "eq.INVITE_CODE" }, { select: "value", limit: 1 }).catch(() => []);
+  if (rows[0]?.value) return rows[0].value;
+  if (!create) return null;
+  return rotateInvite();
+}
+async function rotateInvite() {
+  const code = randomBytes(12).toString("base64url");
+  await upsert("app_settings", { key: "INVITE_CODE", value: code, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, "key");
+  return code;
+}
+
+// server/account/signup.ts
 async function handler(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
@@ -180,7 +210,14 @@ async function handler(req, res) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "adresa de e-mail nu pare valid\u0103");
     if (password.length < 8) throw new HttpError(400, "parola: minimum 8 caractere");
     const existing = await select("users", {}, { select: "id" });
-    if (existing.length >= ENV.maxUsers()) throw new HttpError(403, `s-au ocupat toate cele ${ENV.maxUsers()} locuri`);
+    const max = ENV.maxUsers();
+    if (!Number.isInteger(max) || max < 1) throw new HttpError(500, "MAX_USERS trebuie s\u0103 fie un num\u0103r \xEEntreg pozitiv");
+    if (existing.length >= max) throw new HttpError(403, `s-au ocupat toate cele ${max} locuri`);
+    if (existing.length > 0) {
+      const code = await inviteCode();
+      const given = String(body.invite ?? "");
+      if (!code || given.length !== code.length || !timingSafeEqual(Buffer.from(given), Buffer.from(code))) throw new HttpError(403, "ai nevoie de linkul de invita\u021Bie de la admin");
+    }
     const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users`, {
       method: "POST",
       headers: { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json" },
@@ -191,7 +228,7 @@ async function handler(req, res) {
       const exists = r2.status === 422 || /already/i.test(j.msg ?? j.message ?? "");
       throw new HttpError(exists ? 409 : 400, exists ? "exist\u0103 deja un cont cu adresa asta: intr\u0103 cu parola" : j.msg ?? j.message ?? `eroare ${r2.status}`);
     }
-    if (existing.length === 0 && j.id) await update("users", { id: `eq.${j.id}` }, { role: "admin" });
+    if (j.id) await update("users", { id: `eq.${j.id}` }, existing.length === 0 ? { role: "admin", approved: true } : { approved: true });
     json(res, 200, { ok: true, admin: existing.length === 0 });
   } catch (e) {
     fail(res, e);
@@ -276,6 +313,7 @@ function swimDeclared(intake) {
 }
 function sportReadiness(goal, activities, today, declared = {}) {
   const legs = LEGS[goal];
+  if (!legs) return [];
   const recent = activities.filter((a) => {
     const d = diffDays(a.date, today);
     return d >= 0 && d < WINDOW;
@@ -425,13 +463,10 @@ function phaseLengths(totalWeeks) {
     i += 1;
   }
   while (rest < 0) {
-    const p = ["evaluare", "baza1", "baza2", "build", "peak"][(-rest - 1) % 5];
-    if (out[p] > MIN_WEEKS[p]) {
-      out[p] -= 1;
-      rest += 1;
-    } else {
-      break;
-    }
+    const p = ["evaluare", "baza1", "baza2", "build", "peak"].filter((q2) => out[q2] > 0).sort((a, b) => out[b] - out[a])[0];
+    if (!p) break;
+    out[p] -= 1;
+    rest += 1;
   }
   return out;
 }
@@ -488,6 +523,12 @@ function paceFromResult(r2, distanceKm) {
   return t ? t / distanceKm : null;
 }
 
+// src/collector/permissions.ts
+var AI_BLOCKED_SOURCES = /* @__PURE__ */ new Set(["strava"]);
+function allowedForAI(rows) {
+  return rows.filter((r2) => !r2.source || !AI_BLOCKED_SOURCES.has(r2.source));
+}
+
 // src/collector/readiness.ts
 var clamp = (x) => Math.max(0, Math.min(100, Math.round(x)));
 function sleepScore(m) {
@@ -538,8 +579,54 @@ function dayVerdict(obj, hooperSum2) {
 }
 function hooperSum(h) {
   const xs = h ? [h.somn, h.oboseala, h.stres, h.dureri].filter((x) => typeof x === "number") : [];
-  if (!xs.length) return { suma: null, raspunse: 0 };
+  if (xs.length < 3) return { suma: null, raspunse: xs.length };
   return { suma: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 4), raspunse: xs.length };
+}
+
+// src/calendar/safety.ts
+function morningSafetyEvents(date, semnale) {
+  const s = semnale ?? {};
+  const cardiac = s.simptom_cardiac === true;
+  const febra = s.febra === true;
+  const boala = s.boala === true;
+  const events = [];
+  if (febra) events.push({ kind: "febra", date });
+  if (cardiac || febra) events.push({ kind: "readiness", date, verdict: "stop", reason: cardiac ? "simptom cardiac raportat" : "febr\u0103" });
+  else if (boala) events.push({ kind: "readiness", date, verdict: "rosu", reason: "boal\u0103 raportat\u0103 diminea\u021Ba" });
+  const message = cardiac ? "Ai raportat un simptom cardiac: azi nu te antrenezi. Cere o evaluare medical\u0103 azi. Dac\u0103 ai durere \xEEn piept, le\u0219in, lips\u0103 de aer sau palpita\u021Bii care nu trec, sun\u0103 la 112." : febra ? "Ai febr\u0103: azi \u0219i urm\u0103toarele dou\u0103 zile f\u0103r\u0103 antrenament; apoi o s\u0103pt\u0103m\xE2n\u0103 doar u\u0219or. Dac\u0103 febra nu scade sau apar dureri \xEEn piept ori lips\u0103 de aer, mergi la medic." : boala ? "Ai raportat c\u0103 e\u0219ti bolnav: azi f\u0103r\u0103 antrenament. Reiei c\xE2nd simptomele au trecut." : null;
+  return { verdict: cardiac || febra ? "stop" : boala ? "rosu" : null, events, message };
+}
+function painSafetyEvents(date, durere) {
+  const d = durere ?? {};
+  const score2 = typeof d.scor === "number" && Number.isFinite(d.scor) ? d.scor : null;
+  if (score2 == null || score2 < 3) return { verdict: null, events: [], message: null };
+  const loc = typeof d.loc === "string" && d.loc.trim() ? d.loc.trim() : "nespecificat";
+  return {
+    verdict: score2 >= 5 ? "rosu" : null,
+    events: [{ kind: "durere", date, score: score2, loc }],
+    message: score2 >= 5 ? `Durere ${score2}/10 la ${loc}: urm\u0103toarele 5 zile f\u0103r\u0103 alergare (biciclet\u0103 u\u0219oar\u0103 \xEEn loc). Arat\u0103 durerea unui fizioterapeut sau medic, ideal \xEEn 1\u20132 zile; dac\u0103 se umfl\u0103, nu po\u021Bi c\u0103lca sau doare \xEEn repaus, mergi azi.` : null
+  };
+}
+function activeRestriction(input) {
+  const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning.semnale ?? {} : {};
+  if (s.simptom_cardiac === true) return { verdict: "stop", reason: "Simptom cardiac raportat azi: f\u0103r\u0103 antrenament, cere o evaluare medical\u0103." };
+  if (s.febra === true) return { verdict: "stop", reason: "Febr\u0103 raportat\u0103 azi: f\u0103r\u0103 antrenament." };
+  if (input.savedVerdict === "stop") return { verdict: "stop", reason: "Stop pentru azi." };
+  if (s.boala === true) return { verdict: "rosu", reason: "Boal\u0103 raportat\u0103 azi: pauz\u0103." };
+  const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
+  const worst = recent.reduce((m, e) => !m || e.durere.scor > m.scor ? { scor: e.durere.scor, loc: e.durere.loc } : m, null);
+  if (worst && worst.scor >= 5) return { verdict: "rosu", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""}: f\u0103r\u0103 alergare \u0219i f\u0103r\u0103 intensitate p\xE2n\u0103 trece.` };
+  if (worst && worst.scor >= 3) return { verdict: "galben", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""}: doar u\u0219or, f\u0103r\u0103 impact.` };
+  return null;
+}
+var RANK2 = { verde: 0, galben: 1, portocaliu: 2, rosu: 3, stop: 4 };
+function stricter(a, b) {
+  return RANK2[b] > RANK2[a] ? b : a;
+}
+function addDaysIso(iso, n2) {
+  const d = /* @__PURE__ */ new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n2);
+  return d.toISOString().slice(0, 10);
 }
 
 // src/collector/details.ts
@@ -556,10 +643,12 @@ function longestContinuousSwim(laps) {
       cur = { m: 0, sec: 0 };
       continue;
     }
-    const paused = l.elapsed_time - l.moving_time > 10;
-    cur = paused ? { m: l.distance, sec: t } : { m: cur.m + l.distance, sec: cur.sec + t };
+    if (l.elapsed_time - l.moving_time > 10) {
+      cur = { m: 0, sec: 0 };
+      continue;
+    }
+    cur = { m: cur.m + l.distance, sec: cur.sec + t };
     if (cur.m > best.m) best = { ...cur };
-    if (paused) cur = { m: 0, sec: 0 };
   }
   return { m: Math.round(best.m), pace100: best.m > 0 ? Math.round(best.sec / (best.m / 100)) : null };
 }
@@ -701,10 +790,9 @@ function scoreWorkout(input) {
   }
   if (zonePct != null) {
     const dir = directie === "mai_tare" ? ", mai tare dec\xE2t planul" : directie === "mai_usor" ? ", mai u\u0219or dec\xE2t planul" : "";
-    if (compensat && zonePct < 75) reasons.push(`timp \xEEn zona-\u021Bint\u0103 ${zonePct}%${dir}: compensat (${compensat})`);
-    else if (zonePct < 75) bump(1, `timp \xEEn zona-\u021Bint\u0103 ${zonePct}%${dir}: f\u0103cut, dar mai pu\u021Bin eficient`);
+    if (zonePct < 75) bump(1, `timp \xEEn zona-\u021Bint\u0103 ${zonePct}%${dir}: f\u0103cut, dar diferit de plan${compensat ? ` (${compensat}; \xEEnc\u0103rcarea zilei e de urm\u0103rit)` : ""}`);
   } else {
-    reasons.push("f\u0103r\u0103 date de zone: criteriul de zon\u0103 nu s-a aplicat");
+    reasons.push("intensitate neevaluat\u0103: f\u0103r\u0103 puls pe zone suficient pentru \u0219edin\u021B\u0103");
   }
   if (rpeDelta != null) {
     if (rpeDelta >= 3) bump(2, `RPE cu +${rpeDelta} peste a\u0219teptat`);
@@ -718,9 +806,9 @@ function scoreWorkout(input) {
   if (activity.mainSetAbandoned) bump(2, "set principal abandonat");
   else if ((activity.intervalsAbandoned ?? 0) >= 1) bump(1, `${activity.intervalsAbandoned} interval(e) abandonat(e)`);
   if (flags.cardiacDrift) bump(1, `deriva\u021Bie cardiac\u0103 ${cardiacDriftPct}% (peste 8%)`);
-  metrics.eficienta = efficiency(metrics, activity, !!compensat);
+  metrics.eficienta = efficiency(metrics, activity, false);
   const color = level === 0 ? "verde" : level === 1 ? "galben" : "portocaliu";
-  if (color === "verde") reasons.unshift("durat\u0103, zone \u0219i RPE \xEEn \u021Bint\u0103");
+  if (color === "verde") reasons.unshift(["durat\u0103 \xEEn \u021Bint\u0103", zonePct != null ? "zone \xEEn \u021Bint\u0103" : null, rpeDelta != null ? "RPE \xEEn \u021Bint\u0103" : null].filter(Boolean).join(", "));
   if (flags.noQuestionnaire) reasons.push("f\u0103r\u0103 chestionar: RPE \u0219i durerea lipsesc");
   return { color, reasons, metrics, flags, final: isFinal(flags, planned, today) };
 }
@@ -777,7 +865,8 @@ function computeZonePct(planned, activity, extra) {
       if (planned.targetZones.includes(z)) inTarget += m;
     }
   }
-  if (total === 0) return null;
+  const minutes = parts.reduce((n2, a) => n2 + a.minutes, 0);
+  if (total === 0 || total < 0.5 * minutes) return null;
   return round1(inTarget / total * 100);
 }
 function computeDrift(a) {
@@ -790,6 +879,61 @@ function computeDrift(a) {
 }
 function round1(n2) {
   return Math.round(n2 * 10) / 10;
+}
+
+// src/scoring/match.ts
+var WINDOW_DAYS = 1;
+function matchActivities(planned, activities, today) {
+  const used = /* @__PURE__ */ new Set();
+  const candidates = activities.filter((a) => diffDays(a.date, today) >= 0);
+  const found = /* @__PURE__ */ new Map();
+  const ordered = [...planned].filter((p) => p.status === "planificat" || p.status === "mutat").sort((a, b) => diffDays(b.date, a.date));
+  for (const lag of [0, WINDOW_DAYS]) {
+    for (const p of ordered) {
+      if (found.get(p.id)?.activity) continue;
+      const inWindow = (a) => diffDays(p.date, a.date) === lag && !used.has(a.id);
+      if (p.type === "brick") {
+        const split = brickSplit(p);
+        const bike = pickClosest(candidates.filter((a) => a.sport === "bicicleta" && inWindow(a)), split.bike);
+        let run = null;
+        if (bike) {
+          run = pickClosest(candidates.filter((a) => a.sport === "alergare" && a.date === bike.date && !used.has(a.id) && afterBike(a, bike) != null && afterBike(a, bike) <= 30), split.run);
+          used.add(bike.id);
+          if (run) used.add(run.id);
+        }
+        if (bike || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: bike, extraActivity: run });
+        continue;
+      }
+      const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
+      if (best) used.add(best.id);
+      if (best || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: best, extraActivity: null });
+    }
+  }
+  const matches = ordered.map((p) => found.get(p.id) ?? { planned: p, activity: null, extraActivity: null });
+  const unplanned = candidates.filter((a) => !used.has(a.id));
+  return { matches, unplanned };
+}
+function afterBike(run, bike) {
+  if (run.afterBikeMinutes != null) return run.afterBikeMinutes;
+  const hm3 = (a) => {
+    const s = a.startLocal;
+    const m = s ? /^(\d{1,2}):(\d{2})/.exec(s) : null;
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const rs = hm3(run);
+  const bs = hm3(bike);
+  if (rs == null || bs == null) return null;
+  const gap = rs - (bs + bike.minutes);
+  return gap >= -5 ? Math.max(0, gap) : null;
+}
+function brickSplit(p) {
+  const m = /tură (\d+) min.*alergare (\d+) min/.exec(p.structure ?? "");
+  if (m) return { bike: Number(m[1]), run: Number(m[2]) };
+  return { bike: p.plannedMinutes * 0.75, run: p.plannedMinutes * 0.25 };
+}
+function pickClosest(list, targetMinutes) {
+  if (list.length === 0) return null;
+  return [...list].sort((a, b) => Math.abs(a.minutes - targetMinutes) - Math.abs(b.minutes - targetMinutes))[0] ?? null;
 }
 
 // src/collector/packet.ts
@@ -913,14 +1057,16 @@ function mergeWellness(rows) {
 var hmMin = (s) => s && /^\d{2}:\d{2}/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null;
 function sameSession(a, b) {
   if (a.date !== b.date || a.sport !== b.sport) return false;
+  if (a.source && b.source && a.source === b.source) return false;
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
     const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
     return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
   }
-  return Math.abs(a.minutes - b.minutes) <= 3 && (a.distanceKm == null || b.distanceKm == null || Math.abs(a.distanceKm - b.distanceKm) < 0.3);
+  return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
 }
+var EXTRA_EFFORT_KMH = { alergare: 6.7, bicicleta: 12, inot: 1 };
 function pickRecording(a, b) {
   const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
   const [S, L2] = a.minutes <= b.minutes ? [a, b] : [b, a];
@@ -929,8 +1075,14 @@ function pickRecording(a, b) {
   const sKm = S.distanceKm ?? null;
   const lKm = L2.distanceKm ?? null;
   if (lKm != null && lKm > 0 && (sKm == null || sKm === 0)) return L2;
-  if (sKm != null && lKm != null && lKm - sKm >= 0.5) return L2;
-  if (S.avgHr != null && L2.avgHr != null) {
+  if (sKm != null && lKm != null) {
+    const extraKm = lKm - sKm;
+    const kmh = extraKm / extraMin * 60;
+    const minKm = S.sport === "inot" ? 0.1 : Math.max(0.5, sKm * 0.03);
+    if (extraKm >= minKm && kmh >= (EXTRA_EFFORT_KMH[S.sport] ?? Infinity)) return L2;
+    return S;
+  }
+  if (S.avgHr != null && L2.avgHr != null && extraMin >= 10 && extraMin >= 0.25 * S.minutes) {
     const extraHr = (L2.avgHr * L2.minutes - S.avgHr * S.minutes) / extraMin;
     if (extraHr >= 0.85 * S.avgHr) return L2;
   }
@@ -953,9 +1105,8 @@ function dedupeActivities(acts) {
 }
 function minutesToHm(min) {
   if (min == null) return null;
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return `${h}:${String(m).padStart(2, "0")}`;
+  const t = Math.round(min);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 function hoursBySport(acts, from, to) {
   const h = { inot: 0, bicicleta: 0, alergare: 0, forta: 0 };
@@ -1067,7 +1218,8 @@ function buildPacket(input) {
   const acwrBySport = { inot: acwr(acts, today, "inot"), bicicleta: acwr(acts, today, "bicicleta"), alergare: acwr(acts, today, "alergare"), forta: acwr(acts, today, "forta") };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
   const pastPlanned = input.plan.filter((w) => isActiveWorkout(w) && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
-  const doneW = pastPlanned.filter((w) => acts.some((a) => a.sport === w.sport && Math.abs(diffDays(w.date, a.date)) <= 1));
+  const matchedIds = new Set(matchActivities(pastPlanned, acts, today).matches.filter((m) => m.activity).map((m) => m.planned.id));
+  const doneW = pastPlanned.filter((w) => matchedIds.has(w.id));
   const aderenta = recentActs.length ? { planificate: pastPlanned.length, facute: doneW.length, sarite: pastPlanned.filter((w) => !doneW.includes(w)).map((w) => ({ data: w.date, sport: w.sport, cheie: w.key })) } : null;
   const weights = merged.filter((r2) => r2.weightKg != null && diffDays(r2.date, today) >= 0 && diffDays(r2.date, today) <= 6);
   const lastWeight = merged.find((r2) => r2.weightKg != null) ?? null;
@@ -1188,6 +1340,10 @@ function buildPacket(input) {
       data_masurare: lastWeight?.date ?? null
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
+    restrictie_activa: (() => {
+      const r2 = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings });
+      return r2 ? { verdict: r2.verdict, motiv: r2.reason } : null;
+    })(),
     semnale: {
       boala: input.morning?.semnale.boala ?? null,
       febra: input.morning?.semnale.febra ?? null,
@@ -1341,8 +1497,8 @@ function toWorkoutRow(w, userId, planId) {
     intervals: w.intervals ?? null,
     status: w.status,
     note: w.note ?? null,
-    // Doar când există: tabelele vechi (fără coloană) nu primesc câmpul.
-    ...w.suggestion ? { suggestion: w.suggestion } : {}
+    // Mereu scrisă (și null): o sugestie expirată se șterge explicit.
+    suggestion: w.suggestion ?? null
   };
 }
 function toSourceActivity(r2) {
@@ -1482,17 +1638,17 @@ async function collect(userId, today, event) {
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),
-    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null)
+    planRow ? loadTotals(userId, planRow.start_date, true) : Promise.resolve(null)
   ]);
-  const others = await loadOthers(userId, addDays(today, -8));
+  const others = allowedForAI(await loadOthers(userId, addDays(today, -8)));
   const input = {
     others,
     today,
     event,
     nowLocal: new Intl.DateTimeFormat("en-GB", { timeZone: user.tz || "Europe/Bucharest", hour: "2-digit", minute: "2-digit", hour12: false }).format(/* @__PURE__ */ new Date()),
     athlete: { goal: user.goal ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
-    wellness,
-    activities,
+    wellness: allowedForAI(wellness),
+    activities: allowedForAI(activities),
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
@@ -1521,14 +1677,15 @@ async function loadHistory(userId, today) {
   }
   return { greenStreak: streak, lastIncrease: inc?.date ?? null };
 }
-async function loadTotals(userId, since) {
+async function loadTotals(userId, since, forAI = false) {
   const raw = [];
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (let from = since; from <= today; from = addDays(from, 30)) {
     const rows = await select("activities", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1e3 });
     raw.push(...rows.map(toSourceActivity));
   }
-  const acts = dedupeActivities(applyOverrides(raw, await loadOverrides(userId)));
+  const all = applyOverrides(raw, await loadOverrides(userId));
+  const acts = dedupeActivities(forAI ? allowedForAI(all) : all);
   const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
   for (const a of acts) {
     const t = bySport[a.sport];
@@ -1577,13 +1734,24 @@ async function loadOthers(userId, from) {
 // server/_lib/usage.ts
 var PRICE_IN = 2;
 var PRICE_OUT = 10;
-function costUsd(input, output) {
-  return (input * PRICE_IN + output * PRICE_OUT) / 1e6;
+function costUsd(input, output, cacheWrite = 0, cacheRead = 0) {
+  return (input * PRICE_IN + cacheWrite * PRICE_IN * 1.25 + cacheRead * PRICE_IN * 0.1 + output * PRICE_OUT) / 1e6;
 }
 async function recordUsage(userId, kind, model, u) {
   if (!u) return;
-  const input = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  await insert("ai_usage", { user_id: userId, kind, model, input_tokens: input, output_tokens: u.output_tokens ?? 0 }).catch(() => void 0);
+  const row = { user_id: userId, kind, model, input_tokens: u.input_tokens ?? 0, output_tokens: u.output_tokens ?? 0, cache_write_tokens: u.cache_creation_input_tokens ?? 0, cache_read_tokens: u.cache_read_input_tokens ?? 0 };
+  await insert("ai_usage", row).catch(async () => {
+    await insert("ai_usage", { user_id: userId, kind, model, input_tokens: row.input_tokens + row.cache_write_tokens + row.cache_read_tokens, output_tokens: row.output_tokens }).catch((e) => console.error("ai_usage", e instanceof Error ? e.message : e));
+  });
+}
+
+// server/_lib/consent.ts
+function consentActive(c) {
+  return !!c?.health_data && !c.withdrawn_at;
+}
+async function hasConsent(userId) {
+  const c = await one("consents", { user_id: `eq.${userId}` }).catch(() => null);
+  return consentActive(c);
 }
 
 // src/agents/schema.ts
@@ -1899,12 +2067,15 @@ function eventsFrom(p, decision) {
   }
   return ev;
 }
-var RANK2 = { verde: 0, galben: 1, rosu: 2, stop: 3 };
+var RANK3 = { verde: 0, galben: 1, rosu: 2, stop: 3 };
 function physVerdict(v, p) {
   const raw = p.readiness.verdict_cod?.verdict ?? "galben";
   let out = raw === "portocaliu" ? "galben" : raw;
   if (v?.verdict === "stop" || p.semnale.febra === true || p.semnale.simptom_cardiac === true) return "stop";
   if (p.semnale.boala === true || (p.antrenament_ultim?.durere.scor ?? 0) >= 5) out = "rosu";
+  const r2 = p.restrictie_activa?.verdict;
+  if (r2 === "stop") return "stop";
+  if (r2 && RANK3[r2] > RANK3[out]) out = r2;
   return out;
 }
 function safetyDecision(p) {
@@ -1936,7 +2107,7 @@ async function runPyramid(input, client) {
     failures.push(`fiziolog: ${errText(e)}`);
   }
   let decision = physVerdict(phys, packet);
-  if (RANK2[decision] < RANK2[safe]) decision = safe;
+  if (RANK3[decision] < RANK3[safe]) decision = safe;
   const packetWithVerdict = { ...packet, verdict_fiziolog: decision };
   const others = routed.filter((a) => a !== "fiziolog");
   const settled = await Promise.allSettled(
@@ -1971,7 +2142,7 @@ ${prompts.ghid ?? ""}`;
   try {
     head = await client.json({ model: models.head, system: headSystem, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2e3 });
     headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
-    if (RANK2[head.decizie] < RANK2[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisiv\u0103 dec\xE2t a Fiziologului (${decision}); se p\u0103streaz\u0103 ${decision}`);
+    if (RANK3[head.decizie] < RANK3[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisiv\u0103 dec\xE2t a Fiziologului (${decision}); se p\u0103streaz\u0103 ${decision}`);
   } catch (e) {
     failures.push(`head_coach: ${errText(e)}`);
     head = fallbackHead(`head coach indisponibil (${errText(e)}); mesaj din cod`);
@@ -1996,7 +2167,7 @@ Rescrie f\u0103r\u0103 aceste cifre sau cu c\xE2mpul lor corect. Decizia nu poat
     } catch (e) {
       failures.push(`head_coach (re\xEEncercare): ${errText(e)}`);
     }
-    if (retry && again.length === 0 && RANK2[retry.decizie] >= RANK2[decision]) {
+    if (retry && again.length === 0 && RANK3[retry.decizie] >= RANK3[decision]) {
       head = retry;
       headWarnings = [];
     } else {
@@ -2040,6 +2211,61 @@ Reguli:
   ghid: "GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)\n\nIRONMAN 70.3 (jumatate de Ironman)\n- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.\n- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.\n- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.\n\nCUM ARATA ANUL (incepator, 40-50 de saptamani)\n1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.\n2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.\n3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.\n4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.\n5. Peak (3-4 sapt.): ritmul de cursa, simulari (o \u201Ecursa de proba\u201D sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.\n6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.\n\nCE CONTEAZA CEL MAI MULT LA UN INCEPATOR\n- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.\n- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.\n- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.\n- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.\n- Forta: picioare, core, sold; protejeaza de accidentari.\n- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.\n- Somnul si zilele usoare fac adaptarea.\n- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.\n\nGRESELI TIPICE DE EVITAT\n- Prea tare in zilele usoare, prea usor in cele tari (\u201Ezona gri\u201D).\n- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.\n- Prima iesire in ape deschise in ziua cursei.\n- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.\n- Alimentare netestata, deshidratare la caldura.\n\nSEMIMARATON / MARATON (doar alergare)\n- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.\n- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.\n- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.\n"
 };
 
+// src/calendar/validate.ts
+var INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
+var SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
+function enforceLimits(workouts, lim) {
+  const notes = [];
+  const maxZone = lim.intensityAllowed === "Z2" ? 2 : lim.intensityAllowed === "pana_la_Z4" ? 4 : 5;
+  const out = workouts.map((w0) => {
+    const w = { ...w0, targetZones: [...w0.targetZones] };
+    if (w.sport === "forta" || w.type === "odihna") return w;
+    if (w.sport === "inot" && !lim.swimContinuous400 && (w.type === "lung" || w.type === "calitate" || SWIM_BEYOND.test(w.structure ?? ""))) {
+      w.type = "tehnica";
+      w.key = false;
+      w.targetZones = [1, 2];
+      w.intervals = void 0;
+      w.structure = "tehnic\u0103 \u0219i buc\u0103\u021Bi scurte cu pauz\u0103 (\xEEnc\u0103 nu \xEEno\u021Bi 400 m f\u0103r\u0103 oprire)";
+      notes.push(`${w.id}: \xEEnot adus la tehnic\u0103 (capacitatea de 400 m continuu nu e confirmat\u0103)`);
+    }
+    const tooHard = w.targetZones.some((z) => z > maxZone) || w.intervals != null && w.intervals.zone > maxZone;
+    const textHard = maxZone === 2 && INTENSE_TEXT.test(w.structure ?? "");
+    if (tooHard || textHard) {
+      if (maxZone === 2) {
+        if (w.type === "calitate") w.type = "z2";
+        if (w.type === "z2") w.key = false;
+        w.targetZones = w.targetZones.filter((z) => z <= 2);
+        if (!w.targetZones.length) w.targetZones = [2];
+        w.intervals = void 0;
+        if (textHard || tooHard) w.structure = w.type === "brick" ? w.structure?.replace(INTENSE_TEXT, "Z2") : "u\u0219or \xEEn Z2, f\u0103r\u0103 intervale (intensitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic)";
+      } else {
+        w.targetZones = w.targetZones.filter((z) => z <= maxZone);
+        if (!w.targetZones.length) w.targetZones = [maxZone];
+        if (w.intervals && w.intervals.zone > maxZone) w.intervals = { ...w.intervals, zone: maxZone };
+      }
+      notes.push(`${w.id}: intensitatea cobor\xE2t\u0103 la limita permis\u0103 (${lim.intensityAllowed})`);
+    }
+    return w;
+  });
+  return { workouts: out, notes };
+}
+function fitStructure(w) {
+  const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? "");
+  if (!m || w.type === "brick") return w;
+  const count = Number(m[1]);
+  const reps = Number(m[2]);
+  const restM = /(\d+)\s*min ușor între/.exec(w.structure ?? "");
+  const rest = restM ? Number(restM[1]) : 0;
+  const need = (n3) => n3 * reps + (n3 - 1) * rest + 10;
+  if (need(count) <= w.plannedMinutes) return w;
+  let n2 = count;
+  while (n2 > 0 && need(n2) > w.plannedMinutes) n2 -= 1;
+  if (n2 === 0) {
+    return { ...w, type: w.type === "calitate" ? "z2" : w.type, key: w.type === "calitate" ? false : w.key, intervals: void 0, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min u\u0219or (prea scurt pentru repet\u0103ri)` };
+  }
+  return { ...w, structure: w.structure.replace(m[0], `${n2} \xD7 ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n2 } : void 0 };
+}
+
 // src/calendar/adapt.ts
 var CHANGE_MIN = 10;
 var FEVER_HALF_NOTE = "prima s\u0103pt\u0103m\xE2n\u0103 dup\u0103 febr\u0103: volum \u221250%, f\u0103r\u0103 cheie";
@@ -2082,7 +2308,14 @@ function adapt(plan, event, ctx) {
       applyProgress(next, event, ctx, changes);
       break;
   }
-  return { plan: next, changes };
+  const byId = new Map(plan.map((w) => [w.id, w]));
+  const out = next.map((w) => {
+    const orig = byId.get(w.id);
+    if (orig && w.date < ctx.today) return orig;
+    return orig && orig.plannedMinutes !== w.plannedMinutes ? fitStructure(w) : w;
+  });
+  const kept = changes.filter((c) => !plan.some((w) => w.date < ctx.today && c.startsWith(`${w.id}:`)));
+  return { plan: out, changes: kept };
 }
 function applyScore(plan, ev, ctx, changes) {
   const w = plan.find((x) => x.id === ev.workoutId);
@@ -2285,6 +2518,8 @@ function applyProgress(plan, ev, ctx, changes) {
   const monday = addDays(ev.date, 7 - weekday(ev.date));
   const week = plan.filter((w) => isActiveWorkout(w) && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
   const total = week.reduce((n2, w) => n2 + w.plannedMinutes, 0);
+  const thisWeek = plan.filter((w) => isActiveWorkout(w) && diffDays(addDays(monday, -7), w.date) >= 0 && diffDays(addDays(monday, -7), w.date) < 7).reduce((n2, w) => n2 + w.plannedMinutes, 0);
+  if (thisWeek > 0 && (total > thisWeek * 1.02 || total < thisWeek * 0.9)) return;
   let budget = Math.floor(total * 0.1 / 5) * 5;
   if (budget < 5) return;
   const easy = week.filter((w) => !w.key && (w.type === "z2" || w.type === "tehnica") && w.sport !== "forta" && !(ev.restricted ?? []).includes(w.sport)).sort((a, b) => b.plannedMinutes - a.plannedMinutes);
@@ -2321,6 +2556,7 @@ async function recentKeyScores(userId, today) {
   return rows.filter((r2) => r2.workouts_planned.is_key && r2.workouts_planned.date >= addDays(today, -14)).map((r2) => ({ date: r2.workouts_planned.date, color: r2.color }));
 }
 async function runAgents(userId, today, event, force = false) {
+  if (!await hasConsent(userId)) return null;
   const user = await loadUser(userId);
   const dayStart = localDayStartUtc(today, user.tz || "Europe/Bucharest");
   if (!force) {
@@ -2432,7 +2668,7 @@ async function handler2(req, res) {
 }
 
 // server/_lib/tokens.ts
-import { createHmac as createHmac2, timingSafeEqual } from "node:crypto";
+import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 
 // src/collector/providers/oauth.ts
 function authorizeUrl(cfg, state) {
@@ -2559,7 +2795,7 @@ var whoopApi = {
 function normalizeWhoopNight(sleep, recovery) {
   if (sleep.nap || sleep.score_state !== "SCORED" || !sleep.score) return null;
   const s = sleep.score.stage_summary;
-  const asleepMin = Math.round((s.total_in_bed_time_milli - s.total_awake_time_milli) / 6e4);
+  const asleepMin = Math.round(((s.total_light_sleep_time_milli ?? 0) + (s.total_slow_wave_sleep_time_milli ?? 0) + (s.total_rem_sleep_time_milli ?? 0)) / 6e4);
   return {
     date: localDate(sleep.end, sleep.timezone_offset),
     source: "whoop",
@@ -2598,7 +2834,8 @@ function normalizeWhoopWorkout(w) {
     startLocal: localHm(w.start, w.timezone_offset),
     sport,
     minutes,
-    distanceKm: w.score.distance_meter != null ? Math.round(w.score.distance_meter / 1e3 * 10) / 10 : null,
+    // Precizie completă la stocare (25 m de înot nu devin 0 km); rotunjirea doar la afișare.
+    distanceKm: w.score.distance_meter != null ? Math.round(w.score.distance_meter) / 1e3 : null,
     avgHr: w.score.average_heart_rate,
     maxHr: w.score.max_heart_rate,
     // Zonele Whoop sunt ale Whoop (% din FCmax), nu ale sportivului: le păstrăm doar ca referință brută, nu ca timeInZonesMin.
@@ -2775,6 +3012,9 @@ async function accessToken(userId, provider) {
 async function connectedProviders(userId) {
   return select("oauth_tokens", { user_id: `eq.${userId}` });
 }
+async function disconnect(userId, provider) {
+  await remove("oauth_tokens", { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+}
 function signState(userId) {
   const payload = `${userId.replace(/-/g, "")}.${Date.now().toString(36)}`;
   const sig = createHmac2("sha256", ENV.stateSecret()).update(payload).digest("base64url").slice(0, 22);
@@ -2785,7 +3025,7 @@ function verifyState(state) {
   const [id, ts, sig] = state.split(".");
   if (!id || !ts || !sig || id.length !== 32) throw new Error("codul de siguran\u021B\u0103 (state) primit \xEEnapoi e modificat; apas\u0103 din nou Conecteaz\u0103");
   const expected = createHmac2("sha256", ENV.stateSecret()).update(`${id}.${ts}`).digest("base64url").slice(0, 22);
-  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error("codul de siguran\u021B\u0103 (state) nu se potrive\u0219te; apas\u0103 din nou Conecteaz\u0103");
+  if (expected.length !== sig.length || !timingSafeEqual2(Buffer.from(expected), Buffer.from(sig))) throw new Error("codul de siguran\u021B\u0103 (state) nu se potrive\u0219te; apas\u0103 din nou Conecteaz\u0103");
   if (Date.now() - parseInt(ts, 36) > 15 * 6e4) throw new Error("au trecut peste 15 minute de la Conecteaz\u0103; apas\u0103 din nou");
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }
@@ -2811,7 +3051,7 @@ async function handler3(_req, res) {
       users = Number(r2.headers.get("content-range")?.split("/")[1] ?? 0) || 0;
       if (ready) {
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-        const [c, t, l, o, w, a, ov, ev] = await Promise.all([
+        const [c, t, l, o, w, a, ov, ev, a2] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
@@ -2819,9 +3059,10 @@ async function handler3(_req, res) {
           fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=suggestion&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h)
+          fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/plans?select=audit2&limit=1`, h)
         ]);
-        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok;
+        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok;
       }
     } catch {
       ready = false;
@@ -2846,10 +3087,10 @@ async function handler3(_req, res) {
 async function handler4(req, res) {
   try {
     requireCron(req);
-    const users = await select("users", {}, { select: "id,tz,consents(health_data)" });
+    const users = await select("users", {}, { select: "id,tz,consents(health_data,withdrawn_at)" });
     const out = {};
     for (const u of users) {
-      if (!u.consents?.health_data) continue;
+      if (!consentActive(u.consents)) continue;
       const today = todayIn(u.tz);
       try {
         const activity = await one("activities", { user_id: `eq.${u.id}`, date: `eq.${today}` });
@@ -2961,6 +3202,7 @@ async function enrichStrava(userId, token, acts) {
   }
 }
 async function syncUser(userId, days = 3) {
+  if (!await hasConsent(userId)) return [];
   const connected = await connectedProviders(userId);
   const reports = [];
   for (const row of connected) {
@@ -2970,6 +3212,11 @@ async function syncUser(userId, days = 3) {
       if (!token) throw new Error("f\u0103r\u0103 token");
       let rows = 0;
       if (provider === "whoop") {
+        const tok = await one("oauth_tokens", { user_id: `eq.${userId}`, provider: "eq.whoop" }).catch(() => null);
+        if (tok && !tok.external_user_id) {
+          const p = await whoopApi.profile(token).catch(() => null);
+          if (p?.user_id != null) await update("oauth_tokens", { user_id: `eq.${userId}`, provider: "eq.whoop" }, { external_user_id: String(p.user_id) }).catch(() => void 0);
+        }
         const { wellness, activities, others } = await pullWhoop(userId, token, days);
         await saveOthers(userId, others);
         if (wellness.length) await upsert("wellness_daily", wellness.map((w) => wellnessRow(userId, w)), "user_id,date,source");
@@ -3003,46 +3250,6 @@ async function saveOthers(userId, others) {
     others.map((o) => ({ id: o.id, user_id: userId, source: o.source, external_id: o.externalId, date: o.date, start_local: o.startLocal, kind: o.kind, name: o.name, minutes: o.minutes, avg_hr: o.avgHr, max_hr: o.maxHr, synced_at: (/* @__PURE__ */ new Date()).toISOString() })),
     "id"
   ).catch(() => void 0);
-}
-
-// src/scoring/match.ts
-var WINDOW_DAYS = 1;
-function matchActivities(planned, activities, today) {
-  const used = /* @__PURE__ */ new Set();
-  const candidates = activities.filter((a) => diffDays(a.date, today) >= 0);
-  const matches = [];
-  const ordered = [...planned].filter((p) => p.status === "planificat" || p.status === "mutat").sort((a, b) => diffDays(b.date, a.date));
-  for (const p of ordered) {
-    const inWindow = (a) => {
-      const d = diffDays(p.date, a.date);
-      return d >= 0 && d <= WINDOW_DAYS && !used.has(a.id);
-    };
-    if (p.type === "brick") {
-      const bike = pickClosest(candidates.filter((a) => a.sport === "bicicleta" && inWindow(a)), p.plannedMinutes * 0.75);
-      let run = null;
-      if (bike) {
-        run = pickClosest(
-          candidates.filter(
-            (a) => a.sport === "alergare" && a.date === bike.date && !used.has(a.id) && a.afterBikeMinutes != null && a.afterBikeMinutes <= 30
-          ),
-          p.plannedMinutes * 0.25
-        );
-        used.add(bike.id);
-        if (run) used.add(run.id);
-      }
-      matches.push({ planned: p, activity: bike, extraActivity: run });
-      continue;
-    }
-    const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
-    if (best) used.add(best.id);
-    matches.push({ planned: p, activity: best, extraActivity: null });
-  }
-  const unplanned = candidates.filter((a) => !used.has(a.id));
-  return { matches, unplanned };
-}
-function pickClosest(list, targetMinutes) {
-  if (list.length === 0) return null;
-  return [...list].sort((a, b) => Math.abs(a.minutes - targetMinutes) - Math.abs(b.minutes - targetMinutes))[0] ?? null;
 }
 
 // src/bar/bar.ts
@@ -3184,9 +3391,8 @@ function maxBy(list, f) {
   return best;
 }
 function fmtPace2(sec) {
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}/100 m`;
+  const t = Math.round(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}/100 m`;
 }
 function r(n2) {
   return Math.round(n2 * 10) / 10;
@@ -3262,10 +3468,10 @@ async function labsReminder(userId, today) {
 async function handler5(req, res) {
   try {
     requireCron(req);
-    const users = await select("users", {}, { select: "id,tz,goal,consents(health_data)" });
+    const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
     const out = {};
     for (const u of users) {
-      if (!u.consents?.health_data) continue;
+      if (!consentActive(u.consents)) continue;
       const today = todayIn(u.tz);
       try {
         await syncUser(u.id, 3);
@@ -3287,13 +3493,17 @@ async function handler5(req, res) {
 async function handler6(req, res) {
   try {
     requireCron(req);
-    const users = await select("users", {}, { select: "id,tz,goal,consents(health_data)" });
+    const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
     const done = {};
     for (const u of users) {
-      if (!u.consents?.health_data) continue;
-      const reports = await syncUser(u.id, 3);
-      if (reports.length) await rescore(u.id, todayIn(u.tz), u.goal && u.goal !== "full" ? u.goal : "70.3");
-      done[u.id] = reports.map((r2) => `${r2.provider}:${r2.ok ? r2.rows : "eroare"}`);
+      if (!consentActive(u.consents)) continue;
+      try {
+        const reports = await syncUser(u.id, 3);
+        if (reports.length) await rescore(u.id, todayIn(u.tz), u.goal && u.goal !== "full" ? u.goal : "70.3");
+        done[u.id] = reports.map((r2) => `${r2.provider}:${r2.ok ? r2.rows : "eroare"}`);
+      } catch (e) {
+        done[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
+      }
     }
     json(res, 200, { ok: true, done });
   } catch (e) {
@@ -3355,7 +3565,9 @@ function toTestForm(r2) {
   let bike = [null, null, null, null, null];
   if (full(five(r2.zone_alergare_fc_max))) run = five(r2.zone_alergare_fc_max);
   if (full(five(r2.zone_bicicleta_fc_max))) bike = five(r2.zone_bicicleta_fc_max);
-  if (!full(run) && !full(bike) && hasThr) {
+  if (!full(run) && !full(bike) && hasThr && r2.ergometru !== "bicicleta" && r2.ergometru !== "banda") {
+    note.push("raportul nu spune dac\u0103 testul a fost pe band\u0103 sau pe biciclet\u0103: pragurile nu se pun la niciun sport; completeaz\u0103 zonele la sportul testat");
+  } else if (!full(run) && !full(bike) && hasThr) {
     if (r2.ergometru === "bicicleta") bike = fromThresholds;
     else run = fromThresholds;
     note.push("raportul nu are tabel de zone: am pus pragurile (Z2 sus = primul prag, Z4 sus = al doilea prag, Z5 = FC max); completeaz\u0103 Z1 \u0219i Z3 din raport, altfel zonele de FC nu intr\u0103 \xEEn plan (doar FC max \u0219i ritmul de prag)");
@@ -3504,7 +3716,7 @@ async function readLabs(base64, mediaType, userId = null) {
 }
 
 // server/webhooks/apple.ts
-import { randomBytes } from "node:crypto";
+import { randomBytes as randomBytes2 } from "node:crypto";
 
 // server/_lib/apple.ts
 var day = (s) => typeof s === "string" ? s.slice(0, 10) : null;
@@ -3673,6 +3885,7 @@ async function handler7(req, res) {
     const user = await one("users", { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, "token necunoscut");
     userId = user.id;
+    if (!await hasConsent(user.id)) throw new HttpError(403, "consim\u021B\u0103m\xE2ntul pentru date de s\u0103n\u0103tate lipse\u0219te sau a fost retras");
     const body = await readJson(req);
     const days = parseHealthExport(body);
     const workouts = [...new Map(parseHealthWorkouts(body).map((w) => [w.id, { ...w, id: appleActivityId(user.id, w.id) }])).values()];
@@ -3709,7 +3922,7 @@ async function handler7(req, res) {
   }
 }
 function newAppleToken() {
-  return randomBytes(24).toString("base64url");
+  return randomBytes2(24).toString("base64url");
 }
 function appleActivityId(userId, parsedId) {
   return `apple-${userId}-${parsedId.replace(/^apple-/, "")}`;
@@ -3847,50 +4060,21 @@ function dayById(id) {
   return PPL.find((d) => d.id === id);
 }
 
-// src/calendar/validate.ts
-var INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
-var SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
-function enforceLimits(workouts, lim) {
-  const notes = [];
-  const maxZone = lim.intensityAllowed === "Z2" ? 2 : lim.intensityAllowed === "pana_la_Z4" ? 4 : 5;
-  const out = workouts.map((w0) => {
-    const w = { ...w0, targetZones: [...w0.targetZones] };
-    if (w.sport === "forta" || w.type === "odihna") return w;
-    if (w.sport === "inot" && !lim.swimContinuous400 && (w.type === "lung" || w.type === "calitate" || SWIM_BEYOND.test(w.structure ?? ""))) {
-      w.type = "tehnica";
-      w.key = false;
-      w.targetZones = [1, 2];
-      w.intervals = void 0;
-      w.structure = "tehnic\u0103 \u0219i buc\u0103\u021Bi scurte cu pauz\u0103 (\xEEnc\u0103 nu \xEEno\u021Bi 400 m f\u0103r\u0103 oprire)";
-      notes.push(`${w.id}: \xEEnot adus la tehnic\u0103 (capacitatea de 400 m continuu nu e confirmat\u0103)`);
-    }
-    const tooHard = w.targetZones.some((z) => z > maxZone) || w.intervals != null && w.intervals.zone > maxZone;
-    const textHard = maxZone === 2 && INTENSE_TEXT.test(w.structure ?? "");
-    if (tooHard || textHard) {
-      if (maxZone === 2) {
-        if (w.type === "calitate") w.type = "z2";
-        if (w.type === "z2") w.key = false;
-        w.targetZones = w.targetZones.filter((z) => z <= 2);
-        if (!w.targetZones.length) w.targetZones = [2];
-        w.intervals = void 0;
-        if (textHard || tooHard) w.structure = w.type === "brick" ? w.structure?.replace(INTENSE_TEXT, "Z2") : "u\u0219or \xEEn Z2, f\u0103r\u0103 intervale (intensitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic)";
-      } else {
-        w.targetZones = w.targetZones.filter((z) => z <= maxZone);
-        if (!w.targetZones.length) w.targetZones = [maxZone];
-        if (w.intervals && w.intervals.zone > maxZone) w.intervals = { ...w.intervals, zone: maxZone };
-      }
-      notes.push(`${w.id}: intensitatea cobor\xE2t\u0103 la limita permis\u0103 (${lim.intensityAllowed})`);
-    }
-    return w;
-  });
-  return { workouts: out, notes };
-}
-
 // src/calendar/budget.ts
 var MIN_BLOCK_MIN = 45;
 var REALITY_FACTOR = 0.8;
+function normalizeBlocks(blocks) {
+  const valid = blocks.filter((b) => Number.isInteger(b.day) && b.day >= 0 && b.day <= 6 && Number.isFinite(b.startMin) && Number.isFinite(b.endMin)).map((b) => ({ ...b, startMin: Math.max(0, Math.min(1440, b.startMin)), endMin: Math.max(0, Math.min(1440, b.endMin)) })).filter((b) => b.endMin > b.startMin).sort((a, b) => a.day - b.day || a.startMin - b.startMin);
+  const out = [];
+  for (const b of valid) {
+    const last = out[out.length - 1];
+    if (last && last.day === b.day && b.startMin <= last.endMin) last.endMin = Math.max(last.endMin, b.endMin);
+    else out.push({ ...b });
+  }
+  return out;
+}
 function weeklyBudget(blocks, realityFactor = REALITY_FACTOR) {
-  const usable = blocks.filter((b) => b.endMin > b.startMin && b.endMin - b.startMin >= MIN_BLOCK_MIN).sort((a, b) => a.day - b.day || a.startMin - b.startMin);
+  const usable = normalizeBlocks(blocks).filter((b) => b.endMin - b.startMin >= MIN_BLOCK_MIN);
   const minutes = usable.reduce((s, b) => s + (b.endMin - b.startMin), 0);
   return { hours: Math.round(minutes / 60 * realityFactor * 10) / 10, blocks: usable };
 }
@@ -3923,12 +4107,12 @@ function generatePlan(input) {
   const history = input.historyHoursPerWeek.filter((h) => h > 0);
   const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
   const firstPhase = weeks[0].phase;
-  let prevLoaded = Math.max(avgHistory, 0.6 * hours[firstPhase].target);
+  let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
   const runGoal = isRunGoal(input.goal);
   const startLong = runGoal ? input.run?.canDoDistance ? input.goal === "maraton" ? 100 : 80 : (input.run?.longestRunKm ?? 0) >= 12 ? 70 : 50 : 60;
   const lvl = input.level ?? {};
-  const triRide = lvl.longestRideH ? Math.min(120, Math.max(60, Math.round(lvl.longestRideH * 60 * 0.8 / 5) * 5)) : 60;
-  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(40, Math.round(lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 0.8 / 5) * 5)) : 45;
+  const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN.bicicleta, Math.round(lvl.longestRideH * 60 * 1.25 / 5) * 5)) : 60;
+  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN.alergare, Math.round(lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25 / 5) * 5)) : 45;
   const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? startLong : triRun, brickRun: 15 };
   const out = [];
   for (const pw of weeks) {
@@ -3937,7 +4121,7 @@ function generatePlan(input) {
     if (pw.recovery) {
       target = round12(prevLoaded * RECOVERY_FACTOR);
     } else {
-      target = Math.min(ph.target, Math.max(prevLoaded * 1.1, 0.6 * ph.target));
+      target = Math.min(ph.target, Math.max(prevLoaded * 1.1, history.length ? 0 : 0.6 * ph.target));
       target = round12(Math.min(target, budget.hours));
       prevLoaded = target;
     }
@@ -3962,7 +4146,7 @@ function generatePlan(input) {
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   for (const w of out) {
     const v = enforceLimits(w.workouts, limits);
-    w.workouts = v.workouts;
+    w.workouts = v.workouts.filter((x) => x.date < input.raceDate).map(fitStructure);
     if (v.notes.length) w.notes.push(...v.notes);
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
@@ -4012,8 +4196,8 @@ function advanceProgression(prog, pw) {
   if (pw.phase === "baza2" || pw.phase === "build") prog.brickRun = Math.min(cap.brick, Math.max(prog.brickRun, 15) + (pw.weekInPhase % 2 === 0 ? 5 : 0));
   if (pw.phase === "peak") prog.brickRun = 30;
   if (pw.phase === "taper") {
-    prog.longRide = 90;
-    prog.longRun = 60;
+    prog.longRide = Math.min(prog.longRide, 90);
+    prog.longRun = Math.min(prog.longRun, 60);
     prog.brickRun = 15;
   }
   prog.longRide = Math.min(prog.longRide, cap.ride);
@@ -4034,7 +4218,8 @@ function advanceRunProgression(prog, pw, goal) {
   prog.longRun = Math.min(prog.longRun, cap);
 }
 function fmtPace3(sec) {
-  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}/km`;
+  const t = Math.round(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}/km`;
 }
 function runWeekTemplate(pw, input, prog) {
   const p = pw.phase;
@@ -4313,10 +4498,15 @@ function round12(n2) {
 // server/_lib/plan.ts
 async function historyHours(userId, today) {
   const from = addDays(weekStart(today), -56);
-  const rows = await select("activities", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${weekStart(today)}`] }, { limit: 500 });
+  const to = weekStart(today);
+  const acts = dedupeActivities((await loadActivities(userId, from)).filter((a) => a.date < to));
   const weeks = /* @__PURE__ */ new Map();
-  for (const r2 of rows) weeks.set(weekStart(r2.date), (weeks.get(weekStart(r2.date)) ?? 0) + r2.minutes);
-  return [...weeks.entries()].sort((a, b) => diffDays(b[0], a[0])).map(([, m]) => Math.round(m / 60 * 10) / 10);
+  for (const a of acts) weeks.set(weekStart(a.date), (weeks.get(weekStart(a.date)) ?? 0) + a.minutes);
+  if (!weeks.size) return [];
+  const first2 = [...weeks.keys()].sort()[0];
+  const out = [];
+  for (let w = first2; w < to; w = addDays(w, 7)) out.push(Math.round((weeks.get(w) ?? 0) / 60 * 10) / 10);
+  return out.reverse();
 }
 async function saveIntake(userId, today, intake) {
   await upsert("questionnaires", { user_id: userId, kind: "intrare", for_date: today, activity_id: null, answers: intake }, "user_id,kind,for_date,activity_id");
@@ -4333,18 +4523,29 @@ function raceName(goal) {
   return { "70.3": "Ironman 70.3", olimpic: "Triatlon olimpic", sprint: "Triatlon sprint", semimaraton: "Semimaraton", maraton: "Maraton", full: "Ironman" }[goal];
 }
 async function labsGate(userId) {
-  const l = await loadLabs(userId);
-  if (!l) return { valid: false, limitIntensity: false, why: null };
-  const lowFerritin = l.feritina != null && l.feritina < 30;
-  const lowHb = (l.in_afara_intervalului ?? []).some((v) => v.directie === "sub" && /hemoglobin/i.test(v.nume));
-  const why = lowFerritin ? `feritina ${l.feritina} \xB5g/L (sub 30)` : lowHb ? "hemoglobina sub intervalul laboratorului" : null;
-  return { valid: true, limitIntensity: !!why, why };
+  const rows = await select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 20 });
+  return labsGateFrom(rows, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+}
+function labsGateFrom(rows, today) {
+  if (!rows.length) return { valid: false, limitIntensity: false, why: null };
+  const sorted = [...rows].sort((a, b) => a.drawn_at < b.drawn_at ? 1 : -1);
+  const valid = !labsExpired(sorted[0].drawn_at, today);
+  const fer = sorted.find((r2) => r2.feritina != null && r2.feritina !== "");
+  const ferVal = fer ? Number(fer.feritina) : null;
+  const hb = sorted.find((r2) => (r2.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume)));
+  const lowHb = !!hb && (hb.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume) && v.in_afara === "sub");
+  const old = (d) => labsExpired(d, today) ? `, din ${d}; limita r\u0103m\xE2ne p\xE2n\u0103 la o analiz\u0103 nou\u0103` : "";
+  const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} \xB5g/L (sub 30${old(fer.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb.drawn_at)}` : null;
+  return { valid, limitIntensity: !!why, why };
 }
 async function generateAndStore(userId, today, intake) {
   if (intake.obiectiv === "full") {
     return { ok: false, reason: "Ironman complet nu e \xEEn versiunea asta a planului; alege 70.3 pentru acum.", budgetHours: 0 };
   }
-  const startDate = addDays(weekStart(today), 7);
+  const nextMonday = addDays(weekStart(today), 7);
+  const current = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
+  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday;
+  const startDate = continuing ? current.start_date : nextMonday;
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
   const result = generatePlan({
@@ -4365,7 +4566,6 @@ async function generateAndStore(userId, today, intake) {
     } : void 0
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
-  await update("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { active: false });
   const prev = await select("plans", { user_id: `eq.${userId}` }, { order: "version.desc", limit: 1 });
   const [plan] = await insert("plans", {
     user_id: userId,
@@ -4374,10 +4574,17 @@ async function generateAndStore(userId, today, intake) {
     start_date: startDate,
     budget_hours: result.budgetHours,
     version: (prev[0]?.version ?? 0) + 1,
-    active: true
+    active: false
   });
-  const rows = result.weeks.flatMap((w) => w.workouts.map((x) => toWorkoutRow({ ...x, id: `${plan.id.slice(0, 8)}-${x.id}` }, userId, plan.id)));
-  for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
+  const future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan.id}-${x.id}` }, userId, plan.id));
+  try {
+    for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
+    await rpc("activate_plan", { p_user: userId, p_plan: plan.id, p_keep_before: nextMonday });
+  } catch (e) {
+    await remove("plans", { id: `eq.${plan.id}`, active: "eq.false" }).catch(() => void 0);
+    throw e;
+  }
   return {
     ok: true,
     budgetHours: result.budgetHours,
@@ -4401,31 +4608,6 @@ async function testsAvailable(userId, intake) {
   };
 }
 
-// src/calendar/safety.ts
-function morningSafetyEvents(date, semnale) {
-  const s = semnale ?? {};
-  const cardiac = s.simptom_cardiac === true;
-  const febra = s.febra === true;
-  const boala = s.boala === true;
-  const events = [];
-  if (febra) events.push({ kind: "febra", date });
-  if (cardiac || febra) events.push({ kind: "readiness", date, verdict: "stop", reason: cardiac ? "simptom cardiac raportat" : "febr\u0103" });
-  else if (boala) events.push({ kind: "readiness", date, verdict: "rosu", reason: "boal\u0103 raportat\u0103 diminea\u021Ba" });
-  const message = cardiac ? "Ai raportat un simptom cardiac: azi nu te antrenezi. Cere o evaluare medical\u0103 azi. Dac\u0103 ai durere \xEEn piept, le\u0219in, lips\u0103 de aer sau palpita\u021Bii care nu trec, sun\u0103 la 112." : febra ? "Ai febr\u0103: azi \u0219i urm\u0103toarele dou\u0103 zile f\u0103r\u0103 antrenament; apoi o s\u0103pt\u0103m\xE2n\u0103 doar u\u0219or. Dac\u0103 febra nu scade sau apar dureri \xEEn piept ori lips\u0103 de aer, mergi la medic." : boala ? "Ai raportat c\u0103 e\u0219ti bolnav: azi f\u0103r\u0103 antrenament. Reiei c\xE2nd simptomele au trecut." : null;
-  return { verdict: cardiac || febra ? "stop" : boala ? "rosu" : null, events, message };
-}
-function painSafetyEvents(date, durere) {
-  const d = durere ?? {};
-  const score2 = typeof d.scor === "number" && Number.isFinite(d.scor) ? d.scor : null;
-  if (score2 == null || score2 < 3) return { verdict: null, events: [], message: null };
-  const loc = typeof d.loc === "string" && d.loc.trim() ? d.loc.trim() : "nespecificat";
-  return {
-    verdict: score2 >= 5 ? "rosu" : null,
-    events: [{ kind: "durere", date, score: score2, loc }],
-    message: score2 >= 5 ? `Durere ${score2}/10 la ${loc}: urm\u0103toarele 5 zile f\u0103r\u0103 alergare (biciclet\u0103 u\u0219oar\u0103 \xEEn loc). Arat\u0103 durerea unui fizioterapeut sau medic, ideal \xEEn 1\u20132 zile; dac\u0103 se umfl\u0103, nu po\u021Bi c\u0103lca sau doare \xEEn repaus, mergi azi.` : null
-  };
-}
-
 // server/forms/[kind].ts
 async function handler8(req, res) {
   try {
@@ -4438,13 +4620,15 @@ async function handler8(req, res) {
     if (kind === "intrare") {
       const intake = body;
       if (!intake.consimtamant) throw new HttpError(400, "f\u0103r\u0103 consim\u021B\u0103m\xE2nt nu se salveaz\u0103 date de s\u0103n\u0103tate");
+      if (!["70.3", "olimpic", "sprint", "semimaraton", "maraton"].includes(String(intake.obiectiv))) throw new HttpError(400, "obiectiv indisponibil deocamdat\u0103: alege 70.3, olimpic, sprint, semimaraton sau maraton");
+      if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, "data cursei trebuie s\u0103 fie \xEEn viitor");
       await saveIntake(u.id, today, intake);
       const plan = await generateAndStore(u.id, today, intake);
       json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === "dimineata") {
-      const date = typeof body.date === "string" ? body.date : today;
+      const date = formDate(body.date, today);
       await upsert("questionnaires", { user_id: u.id, kind, for_date: date, activity_id: null, answers: body }, "user_id,kind,for_date,activity_id");
       const safety = morningSafetyEvents(date, body.semnale);
       const changes = await protect(u.id, today, user.tz, safety);
@@ -4452,7 +4636,7 @@ async function handler8(req, res) {
       return;
     }
     if (kind === "seara") {
-      const date = typeof body.date === "string" ? body.date : today;
+      const date = formDate(body.date, today);
       const activityId = typeof body.activityId === "string" ? body.activityId : null;
       await upsert("questionnaires", { user_id: u.id, kind, for_date: date, activity_id: activityId, answers: body }, "user_id,kind,for_date,activity_id");
       await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
@@ -4484,25 +4668,21 @@ async function handler8(req, res) {
     if (kind === "teste") {
       const t = body;
       if (!isDate(t.data)) throw new HttpError(400, "data testului");
-      const zones = (z) => z && z.every((v) => typeof v === "number" && v > 0) ? z : null;
+      const zones = (z) => z && z.every((v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v < 260) && z.every((v, i) => i === 0 || v > z[i - 1]) ? z : null;
       await remove("tests", { user_id: `eq.${u.id}`, tested_at: `eq.${t.data}` });
       await insert("tests", { user_id: u.id, kind: t.tip, results: t, tested_at: t.data });
-      await upsert(
-        "zones",
-        {
-          user_id: u.id,
-          run_hr_zones: zones(t.alergare_z),
-          run_threshold_pace_sec_km: paceSec(t.pace_prag),
-          bike_ftp_w: n(t.ftp),
-          bike_hr_zones: zones(t.bicicleta_z),
-          swim_css_sec_100m: n(t.css),
-          hr_max_test: n(t.fcmax),
-          source: t.tip === "altul" ? "teren" : t.tip,
-          tested_at: t.data,
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        "user_id"
-      );
+      const measured = {
+        run_hr_zones: zones(t.alergare_z),
+        run_threshold_pace_sec_km: paceSec(t.pace_prag),
+        bike_ftp_w: n(t.ftp),
+        bike_hr_zones: zones(t.bicicleta_z),
+        swim_css_sec_100m: n(t.css),
+        hr_max_test: n(t.fcmax)
+      };
+      const present = Object.fromEntries(Object.entries(measured).filter(([, v]) => v != null));
+      if (Object.keys(present).length) {
+        await upsert("zones", { user_id: u.id, ...present, source: t.tip === "altul" ? "teren" : t.tip, tested_at: t.data, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, "user_id");
+      }
       json(res, 200, { ok: true });
       return;
     }
@@ -4536,10 +4716,19 @@ async function handler8(req, res) {
       const row = await one("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` });
       if (!row?.suggestion) throw new HttpError(404, "nu exist\u0103 sugestie pentru \u0219edin\u021Ba asta");
       const s = row.suggestion;
+      if (row.status !== "planificat" && row.status !== "mutat") throw new HttpError(409, "\u0219edin\u021Ba nu mai e activ\u0103 (anulat\u0103 sau \xEEnlocuit\u0103); planul s-a schimbat");
+      if (row.date < today) throw new HttpError(409, "sugestia era pentru o zi trecut\u0103");
+      if (s.accepted === accept) {
+        json(res, 200, { ok: true, neschimbat: true });
+        return;
+      }
       if (accept) {
-        await update("workouts_planned", { id: `eq.${id}` }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta u\u0219oar\u0103 aleas\u0103 (\xEEn loc de ${row.planned_minutes} min)`, suggestion: { ...s, accepted: true } });
+        const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null };
+        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}`, status: "in.(planificat,mutat)" }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta u\u0219oar\u0103 aleas\u0103 (\xEEn loc de ${original.minutes} min)`, suggestion: { ...s, accepted: true, original } });
+      } else if (s.accepted === true && s.original) {
+        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, note: null, suggestion: { ...s, accepted: false } });
       } else {
-        await update("workouts_planned", { id: `eq.${id}` }, { suggestion: { ...s, accepted: false } });
+        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }
       json(res, 200, { ok: true });
       return;
@@ -4611,6 +4800,14 @@ async function handler8(req, res) {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === "deconectare") {
+      const p = String(body.provider ?? "");
+      if (p === "apple") await update("users", { id: `eq.${u.id}` }, { apple_token: null });
+      else if (["whoop", "strava", "oura"].includes(p)) await disconnect(u.id, p);
+      else throw new HttpError(400, "br\u0103\u021Bar\u0103 necunoscut\u0103");
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === "apple") {
       const token = newAppleToken();
       await update("users", { id: `eq.${u.id}` }, { apple_token: token });
@@ -4634,9 +4831,18 @@ async function protect(userId, today, tz, safety) {
   return changes;
 }
 var n = (v) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
-var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+var isDate = (v) => {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = /* @__PURE__ */ new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+var formDate = (v, today) => {
+  if (v == null || v === "") return today;
+  if (!isDate(v) || v > today || v < addDays(today, -60)) throw new HttpError(400, "data formularului nu e valid\u0103");
+  return v;
+};
 function paceSec(p) {
-  const m = p ? /^(\d{1,2}):(\d{2})$/.exec(p.trim()) : null;
+  const m = p ? /^(\d{1,2}):([0-5]\d)$/.exec(p.trim()) : null;
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
@@ -4708,7 +4914,9 @@ async function buildMe(userId, today) {
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning;
   const hs = hooperSum(mf?.hooper).suma;
-  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const restriction = activeRestriction({ today, morning: mf, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null });
+  const state0 = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const state = !restriction ? state0 : state0 ? { ...state0, verdict: stricter(state0.verdict, restriction.verdict === "stop" ? "rosu" : restriction.verdict), motiv: restriction.reason } : { verdict: restriction.verdict === "stop" ? "rosu" : restriction.verdict, motiv: restriction.reason, score: null, parts: { recuperare: null, somn: null, hrv: null, puls: null, respiratie: null } };
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
     return { provider: t.provider, connectedAt: t.connected_at, lastSync: last?.ran_at ?? null, lastOk: last ? last.ok : null, detail: last?.detail ?? null };
@@ -4745,16 +4953,6 @@ async function buildMe(userId, today) {
     cardiolog: clearance?.cardiology ? "da" : aviz === "da" ? "da" : aviz ? "nu" : null
   };
   const u2 = user;
-  if (u2.role !== "admin") {
-    const admins = await select("users", { role: "eq.admin" }, { select: "id", limit: 1 });
-    if (!admins.length) {
-      const first2 = await select("users", {}, { select: "id", order: "created_at.asc", limit: 1 });
-      if (first2[0]?.id === userId) {
-        await update("users", { id: `eq.${userId}` }, { role: "admin" });
-        u2.role = "admin";
-      }
-    }
-  }
   const [totals, appleRow] = await Promise.all([
     planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
     one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.apple" }, { order: "synced_at.desc" }).catch(() => null)
@@ -4782,7 +4980,7 @@ async function buildMe(userId, today) {
     activities: meActivities,
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    readiness: withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction),
     sportReady: user.goal ? sportReadiness(user.goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
@@ -4799,6 +4997,12 @@ async function buildMe(userId, today) {
     dataAvailability: { have, missing },
     warnings
   };
+}
+function withRestriction(r2, restriction) {
+  if (!restriction) return r2;
+  if (!r2) return { verdict: restriction.verdict, reason: restriction.reason, acwr: null, hooperSum: null };
+  const v = stricter(r2.verdict, restriction.verdict);
+  return v === r2.verdict && r2.verdict !== "verde" ? r2 : { ...r2, verdict: v, reason: restriction.reason };
 }
 async function weeklyDone(userId, today) {
   const row = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.saptamanal", for_date: `gte.${weekStart(today)}` });
@@ -4849,6 +5053,10 @@ async function handler10(req, res) {
     }
     const userId = verifyState(q(req, "state"));
     const tokens = await exchangeCode(providerConfig(provider), q(req, "code"));
+    if (provider === "whoop" && !tokens.externalUserId) {
+      const p = await whoopApi.profile(tokens.accessToken).catch(() => null);
+      if (p?.user_id != null) tokens.externalUserId = String(p.user_id);
+    }
     await saveTokens(userId, provider, tokens);
     await syncUser(userId, 35).catch(() => void 0);
     redirect(res, `${ENV.appUrl()}/#profil?conectat=${provider}`);
@@ -4891,10 +5099,10 @@ async function handler12(req, res) {
 var init_default = "-- Antrenor \u2014 schema real\u0103 (Supabase / PostgreSQL). Ruleaz\u0103 cu `supabase db push` sau \xEEn SQL Editor.\n-- Principii: fiecare r\xE2nd are user_id; sportivul \xEE\u0219i vede doar r\xE2ndurile lui (RLS); scrie doar serverul (service role),\n-- cu excep\u021Bia chestionarelor \u0219i a consim\u021B\u0103m\xE2ntului, pe care le poate scrie \u0219i aplica\u021Bia direct.\n\ncreate extension if not exists pgcrypto;\n\n-- ---------- utilizatori (oglinda auth.users) ----------\ncreate table public.users (\n  id uuid primary key references auth.users(id) on delete cascade,\n  email text unique not null,\n  name text not null default '',\n  role text not null check (role in ('sportiv', 'head_coach', 'admin')) default 'sportiv',\n  coach_id uuid references public.users(id),\n  tz text not null default 'Europe/Bucharest',\n  goal text check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),\n  race_name text,\n  race_date date,\n  created_at timestamptz not null default now()\n);\n\ncreate or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$\nbegin\n  insert into public.users (id, email, name)\n  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)))\n  on conflict (id) do nothing;\n  return new;\nend $$;\ndrop trigger if exists on_auth_user_created on auth.users;\ncreate trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();\n\ncreate table public.consents (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  health_data boolean not null default false,\n  adult boolean not null default false,\n  not_medical_ack boolean not null default false,\n  accepted_at timestamptz,\n  withdrawn_at timestamptz\n);\n\n-- ---------- chestionare: intrare, dimineata, seara, saptamanal ----------\ncreate table public.questionnaires (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null check (kind in ('intrare', 'dimineata', 'seara', 'saptamanal')),\n  for_date date not null,\n  activity_id text,                      -- la \u201Eseara\u201D: activitatea la care se refer\u0103\n  answers jsonb not null,\n  created_at timestamptz not null default now(),\n  unique (user_id, kind, for_date, activity_id)\n);\ncreate index on public.questionnaires (user_id, kind, for_date desc);\n\n-- Blocurile libere recurente: day 0 = luni; minute din miezul nop\u021Bii.\ncreate table public.schedules (\n  user_id uuid not null references public.users(id) on delete cascade,\n  day smallint not null check (day between 0 and 6),\n  start_min smallint not null,\n  end_min smallint not null,\n  valid_from date not null default current_date,\n  primary key (user_id, day, start_min, valid_from)\n);\n\ncreate table public.zones (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  run_hr_zones smallint[],          -- limite superioare Z1..Z5, bpm\n  run_threshold_pace_sec_km int,\n  bike_ftp_w int,\n  bike_hr_zones smallint[],\n  swim_css_sec_100m int,\n  hr_max_test smallint,\n  source text,                      -- cpet | lactat | teren | provizoriu\n  tested_at date,\n  updated_at timestamptz not null default now()\n);\n\ncreate table public.tests (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null,\n  results jsonb not null,\n  tested_at date not null\n);\n\ncreate table public.labs (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  feritina numeric, vitamina_d numeric, hemoglobina numeric, ck numeric, crp numeric,\n  other jsonb,\n  drawn_at date not null\n);\n\ncreate table public.clearances (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  cardiology boolean not null default false,\n  cleared_at date,\n  intensity_allowed text not null check (intensity_allowed in ('Z2', 'pana_la_Z4', 'toate')) default 'Z2'\n);\n\n-- ---------- br\u0103\u021B\u0103ri ----------\n-- Token-urile OAuth: doar service role le cite\u0219te. Niciodat\u0103 expuse aplica\u021Biei.\ncreate table public.oauth_tokens (\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null check (provider in ('whoop', 'strava', 'oura')),\n  access_token text not null,\n  refresh_token text,\n  expires_at timestamptz not null,\n  scope text,\n  external_user_id text,\n  connected_at timestamptz not null default now(),\n  updated_at timestamptz not null default now(),\n  primary key (user_id, provider)\n);\n\n-- O noapte / o zi, pe surs\u0103, \xEEn forma normalizat\u0103 a colectorului. Arbitrajul \xEEntre surse se face la citire.\ncreate table public.wellness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,                  -- ziua trezirii\n  source text not null check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata')),\n  hrv numeric, rhr smallint,\n  sleep_min int, bedtime text, wake_time text, sleep_score smallint,\n  recovery_score smallint, respiratory_rate numeric,\n  weight_kg numeric, body_fat_pct numeric,\n  raw jsonb,\n  synced_at timestamptz not null default now(),\n  primary key (user_id, date, source)\n);\n\ncreate table public.sync_log (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null,\n  ok boolean not null,\n  detail text,\n  rows int not null default 0,\n  ran_at timestamptz not null default now()\n);\ncreate index on public.sync_log (user_id, ran_at desc);\n\n-- ---------- plan ----------\ncreate table public.plans (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  goal text not null check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),\n  race_date date not null,\n  start_date date not null,\n  budget_hours numeric not null,\n  version int not null default 1,\n  active boolean not null default true,\n  approved_by uuid references public.users(id),\n  created_at timestamptz not null default now()\n);\ncreate index on public.plans (user_id, active);\n\ncreate table public.workouts_planned (\n  id text primary key,\n  plan_id uuid not null references public.plans(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  type text not null check (type in ('z2', 'tehnica', 'calitate', 'lung', 'brick', 'forta', 'odihna')),\n  planned_minutes int not null,\n  target_zones smallint[] not null,\n  is_key boolean not null default false,\n  step int,\n  structure text,\n  intervals jsonb,\n  status text not null check (status in ('planificat', 'anulat_sistem', 'mutat', 'sters')) default 'planificat',\n  note text,\n  pushed_to_watch_at timestamptz\n);\ncreate index on public.workouts_planned (user_id, date);\n\ncreate table public.activities (\n  id text primary key,              -- \u201Estrava-123\u201D, \u201Ewhoop-abc\u201D\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  minutes int not null,\n  distance_km numeric,\n  avg_hr smallint, max_hr smallint,\n  avg_pace_min_km numeric, avg_cadence smallint, avg_watts smallint,\n  time_in_zones_min jsonb,\n  intervals_hit_pct numeric, intervals_abandoned int, main_set_abandoned boolean,\n  first_third_hr smallint, last_third_hr smallint, first_third_output numeric, last_third_output numeric,\n  after_bike_minutes int,\n  name text,\n  raw jsonb,\n  synced_at timestamptz not null default now()\n);\ncreate index on public.activities (user_id, date desc);\n\ncreate table public.scores (\n  workout_id text primary key references public.workouts_planned(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text references public.activities(id),\n  extra_activity_id text references public.activities(id),\n  color text not null check (color in ('verde', 'galben', 'portocaliu', 'rosu', 'gri', 'albastru', 'asteptare')),\n  reasons text[] not null,\n  metrics jsonb not null,\n  flags jsonb not null,\n  is_final boolean not null default false,\n  scored_at timestamptz not null default now()\n);\n\ncreate table public.readiness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  verdict text not null check (verdict in ('verde', 'galben', 'rosu', 'stop')),\n  reason text,\n  hrv numeric, hrv_baseline numeric, rhr numeric, sleep_min int,\n  hooper_sum smallint,\n  acwr numeric, tsb numeric,\n  primary key (user_id, date)\n);\n\n-- ---------- agen\u021Bi ----------\ncreate table public.packets (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  event text not null check (event in ('dimineata', 'dupa_antrenament', 'saptamanal', 'lunar', 'semnal', 'analize', 'retest')),\n  packet jsonb not null,\n  created_at timestamptz not null default now()\n);\ncreate index on public.packets (user_id, created_at desc);\n\ncreate table public.agent_outputs (\n  id uuid primary key default gen_random_uuid(),\n  packet_id uuid not null references public.packets(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  verdict text,\n  output jsonb not null,            -- r\u0103spunsul JSON, cu \u201Estare\u201D pe fiecare r\xE2nd dup\u0103 verificare\n  rejected int not null default 0,\n  model text,\n  created_at timestamptz not null default now()\n);\n\n-- Mesajele head coach-ului c\u0103tre sportiv: ce vede \xEEn sec\u021Biunea Antrenor \u0219i \xEEn memento.\ncreate table public.messages (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  packet_id uuid references public.packets(id) on delete set null,\n  kind text not null check (kind in ('dimineata', 'dupa_antrenament', 'saptamanal', 'memento', 'avertisment', 'uman')),\n  body text not null,\n  decision text check (decision in ('verde', 'galben', 'rosu', 'stop')),\n  from_human boolean not null default false,\n  created_at timestamptz not null default now()\n);\ncreate index on public.messages (user_id, created_at desc);\n\ncreate table public.journal (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  entry text not null,\n  created_at timestamptz not null default now()\n);\n\n-- Fi\u0219ierele agen\u021Bilor (fiziolog.md, inot.md \u2026): maximum 30 de r\xE2nduri, rescrise de agent prin \u201Epentru_viitor\u201D.\ncreate table public.agent_files (\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  content text not null default '',\n  updated_at timestamptz not null default now(),\n  primary key (user_id, agent)\n);\n\ncreate table public.bar_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  total numeric,\n  blocked text,\n  basis text not null,\n  components jsonb not null,\n  primary key (user_id, date)\n);\n\n-- ---------- RLS: sportivul \xEE\u0219i vede r\xE2ndurile; scrie doar serverul (service role trece peste RLS) ----------\ndo $$\ndeclare t text;\nbegin\n  for t in select unnest(array['users','consents','questionnaires','schedules','zones','tests','labs','clearances','wellness_daily','sync_log','plans','workouts_planned','activities','scores','readiness_daily','packets','agent_outputs','messages','journal','agent_files','bar_daily']) loop\n    execute format('alter table public.%I enable row level security', t);\n    if t = 'users' then\n      execute 'create policy users_select_own on public.users for select using (auth.uid() = id)';\n      execute 'create policy users_update_own on public.users for update using (auth.uid() = id)';\n    else\n      execute format('create policy %I_select_own on public.%I for select using (auth.uid() = user_id)', t, t);\n    end if;\n  end loop;\nend $$;\n\n-- Aplica\u021Bia poate scrie direct consim\u021B\u0103m\xE2ntul \u0219i chestionarele proprii; restul trece prin API.\ncreate policy consents_upsert_own on public.consents for insert with check (auth.uid() = user_id);\ncreate policy consents_update_own on public.consents for update using (auth.uid() = user_id);\ncreate policy questionnaires_insert_own on public.questionnaires for insert with check (auth.uid() = user_id);\ncreate policy questionnaires_update_own on public.questionnaires for update using (auth.uid() = user_id);\n\n-- Token-urile OAuth nu au nicio politic\u0103 de select: doar service role le vede.\nalter table public.oauth_tokens enable row level security;\n";
 
 // supabase/migrations/0002_upgrade.sql
-var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D (\u0219i automat c\xE2nd aplica\u021Bia vede schema veche).\nalter table public.users add column if not exists city text;\nalter table public.users add column if not exists lat double precision;\nalter table public.users add column if not exists lon double precision;\nalter table public.users add column if not exists apple_token text;\ncreate unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;\n\n-- Apple Health (prin Health Auto Export) ca surs\u0103 de somn, HRV \u0219i puls de repaus.\nalter table public.wellness_daily drop constraint if exists wellness_daily_source_check;\nalter table public.wellness_daily add constraint wellness_daily_source_check\n  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));\n\n-- Set\u0103rile aplica\u021Biei introduse de admin din aplica\u021Bie (cheile aplica\u021Biilor WHOOP / Strava / Oura).\n-- F\u0103r\u0103 nicio politic\u0103 RLS: le cite\u0219te doar serverul (service role).\ncreate table if not exists public.app_settings (\n  key text primary key,\n  value text not null,\n  updated_at timestamptz not null default now()\n);\nalter table public.app_settings enable row level security;\nrevoke all on public.app_settings from anon, authenticated;\n\n-- Analize: c\xE2nd a fost urcat buletinul (pentru \u201Eanalize noi\u201D \u0219i compara\u021Bia cu cele vechi).\nalter table public.labs add column if not exists uploaded_at timestamptz not null default now();\n\n-- Obiective noi: semimaraton \u0219i maraton (doar alergare).\nalter table public.users drop constraint if exists users_goal_check;\nalter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\nalter table public.plans drop constraint if exists plans_goal_check;\nalter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\n-- Marcaj de versiune a schemei (aplica\u021Bia cere singur\u0103 actualizarea c\xE2nd lipse\u0219te).\nalter table public.users add column if not exists schema_v smallint not null default 3;\n\n-- Sex \u0219i anul na\u0219terii: conteaz\u0103 pentru intervalele analizelor, nutri\u021Bie \u0219i recuperare.\nalter table public.users add column if not exists sex text check (sex in ('m', 'f'));\nalter table public.users add column if not exists birth_year smallint;\n\n-- Recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, alte sporturi) de pe br\u0103\u021B\u0103ri.\ncreate table if not exists public.other_activities (\n  id text primary key,\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  kind text not null check (kind in ('recuperare', 'activ')),\n  name text not null,\n  minutes int not null,\n  avg_hr smallint,\n  max_hr smallint,\n  synced_at timestamptz not null default now()\n);\ncreate index if not exists other_activities_user_date on public.other_activities (user_id, date desc);\nalter table public.other_activities enable row level security;\ndo $$ begin\n  if not exists (select 1 from pg_policies where tablename = 'other_activities' and policyname = 'other_activities_select_own') then\n    create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);\n  end if;\nend $$;\n\n-- \xCEn\u0103l\u021Bimea: pentru indicele de mas\u0103 corporal\u0103 \u0219i necesarul de energie.\nalter table public.users add column if not exists height_cm smallint;\n\n-- Sugestia mai u\u0219oar\u0103 din zilele galbene/portocalii (sportivul alege).\nalter table public.workouts_planned add column if not exists suggestion jsonb;\n\n-- Consumul AI real, pe apel: tokeni de la Anthropic, pentru costul afi\u0219at adminului.\ncreate table if not exists public.ai_usage (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid references public.users(id) on delete cascade,\n  kind text not null,               -- agenti:dimineata, analize, test \u2026\n  model text not null,\n  input_tokens int not null default 0,\n  output_tokens int not null default 0,\n  created_at timestamptz not null default now()\n);\ncreate index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);\nalter table public.ai_usage enable row level security;\n\n-- Corecturile sportivului pe \u0219edin\u021Be clasificate gre\u0219it de br\u0103\u021B\u0103ri (\u201Ee de fapt alergare\u201D, \u201Enu e antrenament\u201D).\n-- Separat de activities, ca o sincronizare nou\u0103 s\u0103 nu le \u0219tearg\u0103.\ncreate table if not exists public.activity_overrides (\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text not null,\n  sport text check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  ignored boolean not null default false,\n  updated_at timestamptz not null default now(),\n  primary key (user_id, activity_id)\n);\nalter table public.activity_overrides enable row level security;\n\n-- ---------- Audit 17.10.2026: drepturi, izolarea conturilor, evenimente idempotente ----------\n\n-- 1. Aplica\u021Bia nu scrie niciodat\u0103 direct \xEEn baz\u0103 (totul trece prin server, cu service role). Un sportiv logat nu\n--    poate modifica niciun r\xE2nd, nici propriul rol: f\u0103r\u0103 politica de update pe users \u0219i f\u0103r\u0103 drept de scriere.\ndrop policy if exists users_update_own on public.users;\ndrop policy if exists consents_upsert_own on public.consents;\ndrop policy if exists consents_update_own on public.consents;\ndrop policy if exists questionnaires_insert_own on public.questionnaires;\ndrop policy if exists questionnaires_update_own on public.questionnaires;\nrevoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;\nalter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;\n-- Rolul se schimb\u0103 doar din server (service role); orice alt\u0103 sesiune prime\u0219te eroare, chiar dac\u0103 un drept ar reap\u0103rea.\ncreate or replace function public.guard_user_role() returns trigger language plpgsql as $$\nbegin\n  if new.role is distinct from old.role and coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', 'service_role') not in ('service_role') then\n    raise exception 'rolul se schimb\u0103 doar din server';\n  end if;\n  return new;\nend $$;\ndrop trigger if exists users_guard_role on public.users;\ncreate trigger users_guard_role before update on public.users for each row execute function public.guard_user_role();\n\n-- 2. Un import nu poate muta o activitate de la un sportiv la altul.\ncreate or replace function public.guard_owner() returns trigger language plpgsql as $$\nbegin\n  if new.user_id is distinct from old.user_id then\n    raise exception 'activitatea % apar\u021Bine altui cont', old.id;\n  end if;\n  return new;\nend $$;\ndrop trigger if exists activities_guard_owner on public.activities;\ncreate trigger activities_guard_owner before update on public.activities for each row execute function public.guard_owner();\ndrop trigger if exists other_activities_guard_owner on public.other_activities;\ncreate trigger other_activities_guard_owner before update on public.other_activities for each row execute function public.guard_owner();\n\n-- 3. ID-urile Apple includ contul (apple-<user>-<id extern>). R\xE2ndurile vechi se redenumesc o singur\u0103 dat\u0103;\n--    scorurile, corecturile \u0219i chestionarele care le citeaz\u0103 se mut\u0103 odat\u0103 cu ele.\ndo $$\nbegin\n  if exists (select 1 from public.activities where source = 'apple' and id not like 'apple-' || user_id::text || '-%') then\n    alter table public.scores drop constraint if exists scores_activity_id_fkey;\n    alter table public.scores drop constraint if exists scores_extra_activity_id_fkey;\n    alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n    alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n    update public.activity_overrides o set activity_id = 'apple-' || o.user_id::text || '-' || substr(o.activity_id, 7)\n      where o.activity_id like 'apple-%' and o.activity_id not like 'apple-' || o.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = o.activity_id and a.user_id = o.user_id);\n    update public.questionnaires q set activity_id = 'apple-' || q.user_id::text || '-' || substr(q.activity_id, 7)\n      where q.activity_id like 'apple-%' and q.activity_id not like 'apple-' || q.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = q.activity_id and a.user_id = q.user_id);\n    update public.activities set id = 'apple-' || user_id::text || '-' || substr(id, 7)\n      where source = 'apple' and id not like 'apple-' || user_id::text || '-%';\n  end if;\n  if exists (select 1 from public.other_activities where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%') then\n    update public.other_activities set id = 'apple-o-' || user_id::text || '-' || external_id\n      where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%';\n  end if;\nend $$;\n\n-- 4. Evenimentele calendarului (febr\u0103, stop, durere, progres\u2026) se aplic\u0103 o singur\u0103 dat\u0103 fiecare.\ncreate table if not exists public.agent_events (\n  user_id uuid not null references public.users(id) on delete cascade,\n  event_key text not null,\n  applied_at timestamptz not null default now(),\n  primary key (user_id, event_key)\n);\nalter table public.agent_events enable row level security;\n\n-- 5. Un singur chestionar de diminea\u021B\u0103 pe zi: \xEEn SQL dou\u0103 valori NULL nu sunt \u201Eegale\u201D, deci unicitatea veche\n--    nu oprea dublurile cu activity_id NULL. P\u0103str\u0103m cel mai recent \u0219i facem NULL-urile egale (PostgreSQL 15+).\ndo $$\nbegin\n  if not exists (select 1 from pg_constraint where conname = 'questionnaires_one_per_key') then\n    delete from public.questionnaires q using public.questionnaires r\n      where q.user_id = r.user_id and q.kind = r.kind and q.for_date = r.for_date\n        and q.activity_id is not distinct from r.activity_id\n        and (q.created_at, q.id) < (r.created_at, r.id);\n    alter table public.questionnaires drop constraint if exists questionnaires_user_id_kind_for_date_activity_id_key;\n    alter table public.questionnaires add constraint questionnaires_one_per_key unique nulls not distinct (user_id, kind, for_date, activity_id);\n  end if;\nexception when others then\n  -- PostgreSQL mai vechi de 15: r\u0103m\xE2ne unicitatea veche; serverul evit\u0103 oricum dublurile la citire.\n  raise notice 'questionnaires: %', sqlerrm;\nend $$;\n";
+var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D (\u0219i automat c\xE2nd aplica\u021Bia vede schema veche).\nalter table public.users add column if not exists city text;\nalter table public.users add column if not exists lat double precision;\nalter table public.users add column if not exists lon double precision;\nalter table public.users add column if not exists apple_token text;\ncreate unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;\n\n-- Apple Health (prin Health Auto Export) ca surs\u0103 de somn, HRV \u0219i puls de repaus.\nalter table public.wellness_daily drop constraint if exists wellness_daily_source_check;\nalter table public.wellness_daily add constraint wellness_daily_source_check\n  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));\n\n-- Set\u0103rile aplica\u021Biei introduse de admin din aplica\u021Bie (cheile aplica\u021Biilor WHOOP / Strava / Oura).\n-- F\u0103r\u0103 nicio politic\u0103 RLS: le cite\u0219te doar serverul (service role).\ncreate table if not exists public.app_settings (\n  key text primary key,\n  value text not null,\n  updated_at timestamptz not null default now()\n);\nalter table public.app_settings enable row level security;\nrevoke all on public.app_settings from anon, authenticated;\n\n-- Analize: c\xE2nd a fost urcat buletinul (pentru \u201Eanalize noi\u201D \u0219i compara\u021Bia cu cele vechi).\nalter table public.labs add column if not exists uploaded_at timestamptz not null default now();\n\n-- Obiective noi: semimaraton \u0219i maraton (doar alergare).\nalter table public.users drop constraint if exists users_goal_check;\nalter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\nalter table public.plans drop constraint if exists plans_goal_check;\nalter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\n-- Marcaj de versiune a schemei (aplica\u021Bia cere singur\u0103 actualizarea c\xE2nd lipse\u0219te).\nalter table public.users add column if not exists schema_v smallint not null default 3;\n\n-- Sex \u0219i anul na\u0219terii: conteaz\u0103 pentru intervalele analizelor, nutri\u021Bie \u0219i recuperare.\nalter table public.users add column if not exists sex text check (sex in ('m', 'f'));\nalter table public.users add column if not exists birth_year smallint;\n\n-- Recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, alte sporturi) de pe br\u0103\u021B\u0103ri.\ncreate table if not exists public.other_activities (\n  id text primary key,\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  kind text not null check (kind in ('recuperare', 'activ')),\n  name text not null,\n  minutes int not null,\n  avg_hr smallint,\n  max_hr smallint,\n  synced_at timestamptz not null default now()\n);\ncreate index if not exists other_activities_user_date on public.other_activities (user_id, date desc);\nalter table public.other_activities enable row level security;\ndo $$ begin\n  if not exists (select 1 from pg_policies where tablename = 'other_activities' and policyname = 'other_activities_select_own') then\n    create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);\n  end if;\nend $$;\n\n-- \xCEn\u0103l\u021Bimea: pentru indicele de mas\u0103 corporal\u0103 \u0219i necesarul de energie.\nalter table public.users add column if not exists height_cm smallint;\n\n-- Sugestia mai u\u0219oar\u0103 din zilele galbene/portocalii (sportivul alege).\nalter table public.workouts_planned add column if not exists suggestion jsonb;\n\n-- Consumul AI real, pe apel: tokeni de la Anthropic, pentru costul afi\u0219at adminului.\ncreate table if not exists public.ai_usage (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid references public.users(id) on delete cascade,\n  kind text not null,               -- agenti:dimineata, analize, test \u2026\n  model text not null,\n  input_tokens int not null default 0,\n  output_tokens int not null default 0,\n  created_at timestamptz not null default now()\n);\ncreate index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);\nalter table public.ai_usage enable row level security;\n\n-- Corecturile sportivului pe \u0219edin\u021Be clasificate gre\u0219it de br\u0103\u021B\u0103ri (\u201Ee de fapt alergare\u201D, \u201Enu e antrenament\u201D).\n-- Separat de activities, ca o sincronizare nou\u0103 s\u0103 nu le \u0219tearg\u0103.\ncreate table if not exists public.activity_overrides (\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text not null,\n  sport text check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  ignored boolean not null default false,\n  updated_at timestamptz not null default now(),\n  primary key (user_id, activity_id)\n);\nalter table public.activity_overrides enable row level security;\n\n-- ---------- Audit 17.10.2026: drepturi, izolarea conturilor, evenimente idempotente ----------\n\n-- 1. Aplica\u021Bia nu scrie niciodat\u0103 direct \xEEn baz\u0103 (totul trece prin server, cu service role). Un sportiv logat nu\n--    poate modifica niciun r\xE2nd, nici propriul rol: f\u0103r\u0103 politica de update pe users \u0219i f\u0103r\u0103 drept de scriere.\ndrop policy if exists users_update_own on public.users;\ndrop policy if exists consents_upsert_own on public.consents;\ndrop policy if exists consents_update_own on public.consents;\ndrop policy if exists questionnaires_insert_own on public.questionnaires;\ndrop policy if exists questionnaires_update_own on public.questionnaires;\nrevoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;\nalter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;\n-- Rolul se schimb\u0103 doar din server (service role); orice alt\u0103 sesiune prime\u0219te eroare, chiar dac\u0103 un drept ar reap\u0103rea.\ncreate or replace function public.guard_user_role() returns trigger language plpgsql as $$\nbegin\n  if new.role is distinct from old.role and coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', 'service_role') not in ('service_role') then\n    raise exception 'rolul se schimb\u0103 doar din server';\n  end if;\n  return new;\nend $$;\ndrop trigger if exists users_guard_role on public.users;\ncreate trigger users_guard_role before update on public.users for each row execute function public.guard_user_role();\n\n-- 2. Un import nu poate muta o activitate de la un sportiv la altul.\ncreate or replace function public.guard_owner() returns trigger language plpgsql as $$\nbegin\n  if new.user_id is distinct from old.user_id then\n    raise exception 'activitatea % apar\u021Bine altui cont', old.id;\n  end if;\n  return new;\nend $$;\ndrop trigger if exists activities_guard_owner on public.activities;\ncreate trigger activities_guard_owner before update on public.activities for each row execute function public.guard_owner();\ndrop trigger if exists other_activities_guard_owner on public.other_activities;\ncreate trigger other_activities_guard_owner before update on public.other_activities for each row execute function public.guard_owner();\n\n-- 3. ID-urile Apple includ contul (apple-<user>-<id extern>). R\xE2ndurile vechi se redenumesc o singur\u0103 dat\u0103;\n--    scorurile, corecturile \u0219i chestionarele care le citeaz\u0103 se mut\u0103 odat\u0103 cu ele.\ndo $$\ndeclare r record;\nbegin\n  if exists (select 1 from public.activities where source = 'apple' and id not like 'apple-' || user_id::text || '-%') then\n    for r in select conname from pg_constraint where conrelid = 'public.scores'::regclass and contype = 'f' and confrelid = 'public.activities'::regclass loop\n      execute format('alter table public.scores drop constraint %I', r.conname);\n    end loop;\n    alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n    alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n    update public.activity_overrides o set activity_id = 'apple-' || o.user_id::text || '-' || substr(o.activity_id, 7)\n      where o.activity_id like 'apple-%' and o.activity_id not like 'apple-' || o.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = o.activity_id and a.user_id = o.user_id);\n    update public.questionnaires q set activity_id = 'apple-' || q.user_id::text || '-' || substr(q.activity_id, 7)\n      where q.activity_id like 'apple-%' and q.activity_id not like 'apple-' || q.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = q.activity_id and a.user_id = q.user_id);\n    update public.activities set id = 'apple-' || user_id::text || '-' || substr(id, 7)\n      where source = 'apple' and id not like 'apple-' || user_id::text || '-%';\n  end if;\n  if exists (select 1 from public.other_activities where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%') then\n    update public.other_activities set id = 'apple-o-' || user_id::text || '-' || external_id\n      where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%';\n  end if;\nexception when others then\n  -- Nu opre\u0219te actualizarea: r\xE2ndurile vechi r\u0103m\xE2n; cele noi vin cu ID-ul pe cont, iar dublura se recunoa\u0219te la citire.\n  raise notice 'redenumire apple: %', sqlerrm;\nend $$;\n\n-- 4. Evenimentele calendarului (febr\u0103, stop, durere, progres\u2026) se aplic\u0103 o singur\u0103 dat\u0103 fiecare.\ncreate table if not exists public.agent_events (\n  user_id uuid not null references public.users(id) on delete cascade,\n  event_key text not null,\n  applied_at timestamptz not null default now(),\n  primary key (user_id, event_key)\n);\nalter table public.agent_events enable row level security;\n\n-- 5. Un singur chestionar de diminea\u021B\u0103 pe zi: \xEEn SQL dou\u0103 valori NULL nu sunt \u201Eegale\u201D, deci unicitatea veche\n--    nu oprea dublurile cu activity_id NULL. P\u0103str\u0103m cel mai recent \u0219i facem NULL-urile egale (PostgreSQL 15+).\ndo $$\nbegin\n  if not exists (select 1 from pg_constraint where conname = 'questionnaires_one_per_key') then\n    delete from public.questionnaires q using public.questionnaires r\n      where q.user_id = r.user_id and q.kind = r.kind and q.for_date = r.for_date\n        and q.activity_id is not distinct from r.activity_id\n        and (q.created_at, q.id) < (r.created_at, r.id);\n    alter table public.questionnaires drop constraint if exists questionnaires_user_id_kind_for_date_activity_id_key;\n    alter table public.questionnaires add constraint questionnaires_one_per_key unique nulls not distinct (user_id, kind, for_date, activity_id);\n  end if;\nexception when others then\n  -- PostgreSQL mai vechi de 15: r\u0103m\xE2ne unicitatea veche; serverul evit\u0103 oricum dublurile la citire.\n  raise notice 'questionnaires: %', sqlerrm;\nend $$;\n\n-- 6. Un singur plan activ pe sportiv; activarea unui plan nou e o singur\u0103 tranzac\u021Bie: \u0219edin\u021Bele de dinainte de lunea\n--    de la care se reface planul trec \xEEn planul nou (istoricul \u0219i s\u0103pt\u0103m\xE2na curent\u0103 r\u0103m\xE2n), apoi se schimb\u0103 planul activ.\nupdate public.plans p set active = false\n  where p.active and exists (select 1 from public.plans q where q.user_id = p.user_id and q.active and (q.created_at, q.id) > (p.created_at, p.id));\ncreate unique index if not exists plans_one_active on public.plans (user_id) where active;\ncreate or replace function public.activate_plan(p_user uuid, p_plan uuid, p_keep_before date) returns void\nlanguage plpgsql as $$\nbegin\n  if not exists (select 1 from public.plans where id = p_plan and user_id = p_user) then\n    raise exception 'plan inexistent pentru sportiv';\n  end if;\n  update public.workouts_planned set plan_id = p_plan\n    where user_id = p_user and date < p_keep_before\n      and plan_id in (select id from public.plans where user_id = p_user and active and id <> p_plan);\n  update public.plans set active = false where user_id = p_user and active and id <> p_plan;\n  update public.plans set active = true where id = p_plan;\nend $$;\nrevoke execute on function public.activate_plan(uuid, uuid, date) from public, anon, authenticated;\ngrant execute on function public.activate_plan(uuid, uuid, date) to service_role;\n\n-- Marcaj: actualizarea din auditul 2 (17.10.2026) a rulat (aplica\u021Bia o cere singur\u0103 c\xE2nd lipse\u0219te).\nalter table public.plans add column if not exists audit2 boolean not null default true;\n\n-- 7. Doar conturile create prin aplica\u021Bie (cu linkul de invita\u021Bie) au acces. Conturile de p\xE2n\u0103 acum r\u0103m\xE2n aprobate;\n--    un cont f\u0103cut direct \xEEn Supabase (ocolind aplica\u021Bia) nu e aprobat \u0219i serverul \xEEl refuz\u0103.\nalter table public.users add column if not exists approved boolean not null default true;\nalter table public.users alter column approved set default false;\n\n-- Costul AI: tokenii de cache separat (au alt tarif dec\xE2t intrarea obi\u0219nuit\u0103).\nalter table public.ai_usage add column if not exists cache_write_tokens int not null default 0;\nalter table public.ai_usage add column if not exists cache_read_tokens int not null default 0;\n";
 
 // server/_lib/pg.ts
-import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes2 } from "node:crypto";
+import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes3 } from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 function parsePgUrl(url) {
@@ -5016,7 +5224,7 @@ async function connect(url, timeoutMs = 15e3) {
       } else if (code === 10) {
         const mechs = m.body.subarray(4).toString("utf8").split("\0");
         if (!mechs.includes("SCRAM-SHA-256")) throw new Error(`postgres: autentificare nesuportat\u0103 (${mechs.join(", ")})`);
-        nonce = randomBytes2(18).toString("base64");
+        nonce = randomBytes3(18).toString("base64");
         const first2 = `n,,n=*,r=${nonce}`;
         const firstBuf = Buffer.from(first2, "utf8");
         const len = Buffer.alloc(4);
@@ -5138,7 +5346,7 @@ async function setupStatus() {
     c?.end();
   }
 }
-async function runSetup(appUrl2) {
+async function runSetup(appUrl2, opts = {}) {
   const url = ENV.postgresUrl();
   if (!url) throw new Error("lipse\u0219te POSTGRES_URL: adaug\u0103 integrarea Supabase \xEEn proiectul Vercel");
   const steps = [];
@@ -5169,7 +5377,7 @@ commit;`);
     } catch (e) {
       steps.push({ step: "verificare drepturi", ok: false, detail: e.message });
     }
-    const cron = await step("pg_cron", "create extension if not exists pg_cron with schema pg_catalog", true);
+    const cron = opts.schedule === false ? false : await step("pg_cron", "create extension if not exists pg_cron with schema pg_catalog", true);
     const net2 = await step("pg_net", "create extension if not exists pg_net with schema extensions", true);
     if (cron && net2) {
       const auth = JSON.stringify({ authorization: `Bearer ${ENV.cronSecret()}` });
@@ -5195,31 +5403,34 @@ async function handler13(req, res) {
     if (req.method !== "POST") throw new HttpError(405, "GET sau POST");
     const status = await setupStatus();
     const needsUpgrade = status.tables && !await hasUpgrade();
+    let admin = false;
     if (status.tables && !needsUpgrade) {
       const u = await requireUser(req);
       const me = await one("users", { id: `eq.${u.id}` });
       if (me?.role !== "admin") throw new HttpError(403, "doar adminul poate rula din nou preg\u0103tirea");
+      admin = true;
     }
-    const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-    const appUrl2 = process.env.APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL ? ENV.appUrl() : `https://${host}`;
-    const steps = await runSetup(appUrl2);
-    json(res, 200, { ok: steps.every((s) => s.ok || s.step.startsWith("programare") || s.step === "drepturi"), appUrl: appUrl2, steps });
+    if (!process.env.APP_URL && !process.env.VERCEL_PROJECT_PRODUCTION_URL) throw new HttpError(500, "lipse\u0219te adresa aplica\u021Biei \xEEn configura\u021Bia serverului (APP_URL)");
+    const appUrl2 = ENV.appUrl();
+    const steps = await runSetup(appUrl2, { schedule: admin || !status.tables });
+    json(res, 200, { ok: steps.every((s) => s.ok || s.step.startsWith("programare") || s.step.startsWith("pg_")), appUrl: appUrl2, steps });
   } catch (e) {
     fail(res, e);
   }
 }
 async function hasUpgrade() {
   const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-  const [r2, t, e] = await Promise.all([
+  const [r2, t, e, a2] = await Promise.all([
     fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h)
+    fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/plans?select=audit2&limit=1`, h)
   ]);
-  return r2.ok && t.ok && e.ok;
+  return r2.ok && t.ok && e.ok && a2.ok;
 }
 
 // server/admin.ts
-import { randomBytes as randomBytes3 } from "node:crypto";
+import { randomBytes as randomBytes4 } from "node:crypto";
 async function handler14(req, res) {
   try {
     const u = await requireUser(req);
@@ -5234,12 +5445,13 @@ async function handler14(req, res) {
         select("questionnaires", { kind: "eq.intrare" }, { select: "user_id" }),
         select("plans", { active: "eq.true" }, { select: "user_id,start_date" }),
         select("messages", {}, { select: "user_id,created_at,kind", order: "created_at.desc", limit: 300 }),
-        select("ai_usage", { created_at: `gte.${monthStart}T00:00:00Z` }, { select: "user_id,input_tokens,output_tokens,created_at", limit: 2e4 }).catch(() => []),
+        select("ai_usage", { created_at: `gte.${monthStart}T00:00:00Z` }, { select: "*", limit: 2e4 }).catch(() => []),
         select("activities", {}, { select: "user_id,date,sport,source,name,minutes,distance_km", order: "date.desc", limit: 400 })
       ]);
       const today = todayIn("Europe/Bucharest");
-      const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens), 0) * 100) / 100;
+      const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0), 0) * 100) / 100;
       json(res, 200, {
+        inviteUrl: `${ENV.appUrl()}/?invite=${await inviteCode(true)}`,
         costMonth: cost(usage),
         costToday: cost(usage.filter((r2) => r2.created_at.slice(0, 10) === today)),
         tracking: usage.length > 0,
@@ -5267,6 +5479,10 @@ async function handler14(req, res) {
     }
     if (req.method !== "POST") throw new HttpError(405, "GET sau POST");
     const body = await readJson(req);
+    if (body.action === "invitatie") {
+      json(res, 200, { ok: true, inviteUrl: `${ENV.appUrl()}/?invite=${await rotateInvite()}` });
+      return;
+    }
     const target = await one("users", { id: `eq.${body.userId ?? ""}` });
     if (!target) throw new HttpError(404, "sportiv inexistent");
     if (body.action === "sync") {
@@ -5282,7 +5498,7 @@ async function handler14(req, res) {
       return;
     }
     if (body.action === "parola") {
-      const password = randomBytes3(6).toString("base64url");
+      const password = randomBytes4(6).toString("base64url");
       const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${target.id}`, {
         method: "PUT",
         headers: { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json" },
@@ -5337,7 +5553,7 @@ async function handler16(req, res) {
 }
 
 // server/webhooks/whoop.ts
-import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
 async function handler17(req, res) {
   try {
     const chunks = [];
@@ -5357,7 +5573,7 @@ async function handler17(req, res) {
       return;
     }
     const expected = createHmac4("sha256", secret).update(ts + raw).digest("base64");
-    if (!sig || sig.length !== expected.length || !timingSafeEqual2(Buffer.from(sig), Buffer.from(expected))) {
+    if (!sig || sig.length !== expected.length || !timingSafeEqual3(Buffer.from(sig), Buffer.from(expected))) {
       json(res, 401, { error: "semn\u0103tur\u0103 invalid\u0103" });
       return;
     }

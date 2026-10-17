@@ -153,7 +153,15 @@ export async function signInWithPassword(email: string, password: string): Promi
 
 /** Contul se creează pe serverul nostru (deja confirmat), apoi intrăm cu parola. */
 export async function signUp(email: string, password: string): Promise<void> {
-  const res = await fetch('/api/account/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  // Linkul de invitație (…/?invite=cod) se păstrează pe telefon până la crearea contului.
+  let invite = new URLSearchParams(location.search).get('invite') ?? '';
+  try {
+    if (invite) localStorage.setItem('airon-invite', invite);
+    else invite = localStorage.getItem('airon-invite') ?? '';
+  } catch {
+    /* fără stocare: rămâne cel din adresă */
+  }
+  const res = await fetch('/api/account/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, invite }) });
   const j = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(j.error ?? `nu am putut crea contul (${res.status})`);
   await signInWithPassword(email, password);
@@ -202,7 +210,8 @@ export const server = {
   form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force: true }) }),
-  adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean }>('/api/admin'),
+  adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; inviteUrl?: string }>('/api/admin'),
+  newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
   adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
   regeneratePlan: () => api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number }>('/api/plan/generate', { method: 'POST' }),
 };

@@ -1,6 +1,8 @@
 // Planul: din chestionarul de intrare (program, nivel, aviz) și istoricul de activități → generatePlan → workouts_planned.
-import { insert, remove, select, update, upsert } from './db.js';
-import { loadLabs, loadZones, toWorkoutRow } from './collect.js';
+import { insert, one, remove, rpc, select, update, upsert } from './db.js';
+import { loadActivities, loadZones, toWorkoutRow } from './collect.js';
+import { dedupeActivities } from '../../src/collector/packet.js';
+import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
@@ -24,14 +26,22 @@ export interface IntakeLike {
 }
 
 /** Orele pe săptămână din ultimele până la 8 săptămâni, din activitățile deja sincronizate (gol = fără istoric). */
+/**
+ * Orele pe săptămână din ultimele 8 săptămâni, din activitățile canonice (corecturile sportivului aplicate, dublurile
+ * dintre brățări unite). O săptămână fără nimic între prima și ultima săptămână cu date contează 0 (pauză reală);
+ * înainte de prima săptămână cu date nu se știe nimic, deci nu intră.
+ */
 export async function historyHours(userId: string, today: string): Promise<number[]> {
   const from = addDays(weekStart(today), -56);
-  const rows = await select<{ date: string; minutes: number }>('activities', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${weekStart(today)}`] }, { limit: 500 });
+  const to = weekStart(today);
+  const acts = dedupeActivities((await loadActivities(userId, from)).filter((a) => a.date < to));
   const weeks = new Map<string, number>();
-  for (const r of rows) weeks.set(weekStart(r.date), (weeks.get(weekStart(r.date)) ?? 0) + r.minutes);
-  return [...weeks.entries()]
-    .sort((a, b) => diffDays(b[0], a[0]))
-    .map(([, m]) => Math.round((m / 60) * 10) / 10);
+  for (const a of acts) weeks.set(weekStart(a.date), (weeks.get(weekStart(a.date)) ?? 0) + a.minutes);
+  if (!weeks.size) return [];
+  const first = [...weeks.keys()].sort()[0]!;
+  const out: number[] = [];
+  for (let w = first; w < to; w = addDays(w, 7)) out.push(Math.round(((weeks.get(w) ?? 0) / 60) * 10) / 10);
+  return out.reverse();
 }
 
 export async function saveIntake(userId: string, today: string, intake: IntakeLike & { consimtamant?: boolean }): Promise<void> {
@@ -68,12 +78,25 @@ export interface PlanOutcome {
  * laboratorului țin intensitatea la Z1–Z2 până la analize noi (după discuția cu medicul). Nimic altceva.
  */
 export async function labsGate(userId: string): Promise<{ valid: boolean; limitIntensity: boolean; why: string | null }> {
-  const l = await loadLabs(userId);
-  if (!l) return { valid: false, limitIntensity: false, why: null };
-  const lowFerritin = l.feritina != null && l.feritina < 30;
-  const lowHb = (l.in_afara_intervalului ?? []).some((v) => v.directie === 'sub' && /hemoglobin/i.test(v.nume));
-  const why = lowFerritin ? `feritina ${l.feritina} µg/L (sub 30)` : lowHb ? 'hemoglobina sub intervalul laboratorului' : null;
-  return { valid: true, limitIntensity: !!why, why };
+  const rows = await select<{ drawn_at: string; feritina: number | string | null; hemoglobina: number | string | null; other: { valori?: { nume: string; in_afara?: 'sub' | 'peste' | null }[] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 20 });
+  return labsGateFrom(rows, new Date().toISOString().slice(0, 10));
+}
+
+/**
+ * Pe fiecare analit, ultima valoare cunoscută (nu doar ultimul buletin): un buletin nou fără feritină nu ascunde o
+ * feritină mică de dinainte, iar un buletin expirat (peste 12 luni) nu „vindecă” limita: ea rămâne până la o valoare nouă.
+ */
+export function labsGateFrom(rows: { drawn_at: string; feritina: number | string | null; hemoglobina?: number | string | null; other: { valori?: { nume: string; in_afara?: 'sub' | 'peste' | null }[] } | null }[], today: string): { valid: boolean; limitIntensity: boolean; why: string | null } {
+  if (!rows.length) return { valid: false, limitIntensity: false, why: null };
+  const sorted = [...rows].sort((a, b) => (a.drawn_at < b.drawn_at ? 1 : -1));
+  const valid = !labsExpired(sorted[0]!.drawn_at, today);
+  const fer = sorted.find((r) => r.feritina != null && r.feritina !== '');
+  const ferVal = fer ? Number(fer.feritina) : null;
+  const hb = sorted.find((r) => (r.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume)));
+  const lowHb = !!hb && (hb.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume) && v.in_afara === 'sub');
+  const old = (d: string) => (labsExpired(d, today) ? `, din ${d}; limita rămâne până la o analiză nouă` : '');
+  const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} µg/L (sub 30${old(fer!.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb!.drawn_at)}` : null;
+  return { valid, limitIntensity: !!why, why };
 }
 
 /** Generează (sau regenerează) planul activ de la lunea următoare. Planul vechi rămâne în istoric, inactiv. */
@@ -81,7 +104,12 @@ export async function generateAndStore(userId: string, today: string, intake: In
   if (intake.obiectiv === 'full') {
     return { ok: false, reason: 'Ironman complet nu e în versiunea asta a planului; alege 70.3 pentru acum.', budgetHours: 0 };
   }
-  const startDate = addDays(weekStart(today), 7);
+  const nextMonday = addDays(weekStart(today), 7);
+  // Același obiectiv și aceeași cursă: planul continuă din fazele lui (nu revine la evaluare); trecutul și săptămâna
+  // curentă rămân cum sunt, se refac doar săptămânile de la lunea viitoare.
+  const current = await one<{ id: string; start_date: string; race_date: string; goal: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' });
+  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday;
+  const startDate = continuing ? current!.start_date : nextMonday;
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
   const result: GenerateResult = generatePlan({
@@ -105,7 +133,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
 
-  await update('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { active: false });
+  // Planul nou se construiește întreg (inactiv), apoi se activează într-o singură tranzacție; un eșec la mijloc lasă
+  // planul vechi activ, nu un plan gol sau pe jumătate.
   const prev = await select<{ version: number }>('plans', { user_id: `eq.${userId}` }, { order: 'version.desc', limit: 1 });
   const [plan] = await insert<{ id: string }>('plans', {
     user_id: userId,
@@ -114,10 +143,17 @@ export async function generateAndStore(userId: string, today: string, intake: In
     start_date: startDate,
     budget_hours: result.budgetHours,
     version: (prev[0]?.version ?? 0) + 1,
-    active: true,
+    active: false,
   });
-  const rows = result.weeks.flatMap((w) => w.workouts.map((x) => toWorkoutRow({ ...x, id: `${plan!.id.slice(0, 8)}-${x.id}` }, userId, plan!.id)));
-  for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));
+  const future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan!.id}-${x.id}` }, userId, plan!.id));
+  try {
+    for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));
+    await rpc('activate_plan', { p_user: userId, p_plan: plan!.id, p_keep_before: nextMonday });
+  } catch (e) {
+    await remove('plans', { id: `eq.${plan!.id}`, active: 'eq.false' }).catch(() => undefined);
+    throw e;
+  }
   return {
     ok: true,
     budgetHours: result.budgetHours,

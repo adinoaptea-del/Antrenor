@@ -6,6 +6,7 @@ import { readTest } from '../_lib/test-extract.js';
 import { readLabs } from '../_lib/labs-extract.js';
 import { saveSettings } from '../_lib/settings.js';
 import { newAppleToken } from '../webhooks/apple.js';
+import { disconnect } from '../_lib/tokens.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
@@ -35,13 +36,16 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'intrare') {
       const intake = body as unknown as IntakeLike & { consimtamant?: boolean };
       if (!intake.consimtamant) throw new HttpError(400, 'fără consimțământ nu se salvează date de sănătate');
+      // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
+      if (!['70.3', 'olimpic', 'sprint', 'semimaraton', 'maraton'].includes(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: alege 70.3, olimpic, sprint, semimaraton sau maraton');
+      if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
       await saveIntake(u.id, today, intake);
       const plan = await generateAndStore(u.id, today, intake);
       json(res, 200, { ok: true, plan });
       return;
     }
     if (kind === 'dimineata') {
-      const date = typeof body.date === 'string' ? body.date : today;
+      const date = formDate(body.date, today);
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: null, answers: body }, 'user_id,kind,for_date,activity_id');
       // Protecția din cod, imediat la salvare, fără să aștepte agenții: febră, simptom cardiac, boală.
       const safety = morningSafetyEvents(date, body.semnale as Record<string, unknown> | undefined);
@@ -50,7 +54,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'seara') {
-      const date = typeof body.date === 'string' ? body.date : today;
+      const date = formDate(body.date, today);
       const activityId = typeof body.activityId === 'string' ? body.activityId : null;
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: activityId, answers: body }, 'user_id,kind,for_date,activity_id');
       // Durerea mare schimbă zilele următoare imediat, din cod, chiar dacă agenții nu rulează.
@@ -84,25 +88,23 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'teste') {
       const t = body as unknown as TestsForm;
       if (!isDate(t.data)) throw new HttpError(400, 'data testului');
-      const zones = (z: (number | null)[] | undefined) => (z && z.every((v) => typeof v === 'number' && v > 0) ? z : null);
+      // Zonele: numere pozitive, în ordine crescătoare; altfel nu se salvează (nu stricăm zonele existente).
+      const zones = (z: (number | null)[] | undefined) => (z && z.every((v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 260) && z.every((v, i) => i === 0 || (v as number) > (z[i - 1] as number)) ? z : null);
       await remove('tests', { user_id: `eq.${u.id}`, tested_at: `eq.${t.data}` });
       await insert('tests', { user_id: u.id, kind: t.tip, results: t, tested_at: t.data });
-      await upsert(
-        'zones',
-        {
-          user_id: u.id,
-          run_hr_zones: zones(t.alergare_z),
-          run_threshold_pace_sec_km: paceSec(t.pace_prag),
-          bike_ftp_w: n(t.ftp),
-          bike_hr_zones: zones(t.bicicleta_z),
-          swim_css_sec_100m: n(t.css),
-          hr_max_test: n(t.fcmax),
-          source: t.tip === 'altul' ? 'teren' : t.tip,
-          tested_at: t.data,
-          updated_at: new Date().toISOString(),
-        },
-        'user_id',
-      );
+      // Doar zonele prezente în testul ăsta se schimbă: un test de alergare nu șterge FTP-ul sau CSS-ul de dinainte.
+      const measured = {
+        run_hr_zones: zones(t.alergare_z),
+        run_threshold_pace_sec_km: paceSec(t.pace_prag),
+        bike_ftp_w: n(t.ftp),
+        bike_hr_zones: zones(t.bicicleta_z),
+        swim_css_sec_100m: n(t.css),
+        hr_max_test: n(t.fcmax),
+      };
+      const present = Object.fromEntries(Object.entries(measured).filter(([, v]) => v != null));
+      if (Object.keys(present).length) {
+        await upsert('zones', { user_id: u.id, ...present, source: t.tip === 'altul' ? 'teren' : t.tip, tested_at: t.data, updated_at: new Date().toISOString() }, 'user_id');
+      }
       json(res, 200, { ok: true });
       return;
     }
@@ -133,16 +135,27 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'sugestie') {
-      // Sportivul alege: varianta ușoară (intră în calendar) sau ședința din plan.
+      // Sportivul alege: varianta ușoară (intră în calendar) sau ședința din plan. Se revalidează pe starea de acum.
       const id = String(body.workoutId ?? '');
       const accept = body.accept === true;
-      const row = await one<{ id: string; plan_id: string; planned_minutes: number; target_zones: number[]; structure: string | null; suggestion: { minutes: number; zones: number[]; structure: string; reason: string; accepted: boolean | null } | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      const row = await one<{ id: string; date: string; status: string; planned_minutes: number; target_zones: number[]; structure: string | null; intervals: unknown; suggestion: { minutes: number; zones: number[]; structure: string; reason: string; accepted: boolean | null; original?: { minutes: number; zones: number[]; structure: string | null; intervals?: unknown } } | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
       if (!row?.suggestion) throw new HttpError(404, 'nu există sugestie pentru ședința asta');
       const s = row.suggestion;
+      if (row.status !== 'planificat' && row.status !== 'mutat') throw new HttpError(409, 'ședința nu mai e activă (anulată sau înlocuită); planul s-a schimbat');
+      if (row.date < today) throw new HttpError(409, 'sugestia era pentru o zi trecută');
+      // Aceeași alegere de două ori = nimic nou.
+      if (s.accepted === accept) {
+        json(res, 200, { ok: true, neschimbat: true });
+        return;
+      }
       if (accept) {
-        await update('workouts_planned', { id: `eq.${id}` }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta ușoară aleasă (în loc de ${row.planned_minutes} min)`, suggestion: { ...s, accepted: true } });
+        const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null };
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}`, status: 'in.(planificat,mutat)' }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta ușoară aleasă (în loc de ${original.minutes} min)`, suggestion: { ...s, accepted: true, original } });
+      } else if (s.accepted === true && s.original) {
+        // Revine la ședința din plan: prescripția originală se pune înapoi.
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, note: null, suggestion: { ...s, accepted: false } });
       } else {
-        await update('workouts_planned', { id: `eq.${id}` }, { suggestion: { ...s, accepted: false } });
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }
       json(res, 200, { ok: true });
       return;
@@ -219,6 +232,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === 'deconectare') {
+      // Deconectarea unei brățări: tokenul se șterge, importul se oprește. Datele importate deja rămân (ștergerea lor e separată).
+      const p = String(body.provider ?? '');
+      if (p === 'apple') await update('users', { id: `eq.${u.id}` }, { apple_token: null });
+      else if (['whoop', 'strava', 'oura'].includes(p)) await disconnect(u.id, p as 'whoop' | 'strava' | 'oura');
+      else throw new HttpError(400, 'brățară necunoscută');
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === 'apple') {
       // Un token personal nou: adresa veche nu mai primește date.
       const token = newAppleToken();
@@ -246,8 +268,19 @@ async function protect(userId: string, today: string, tz: string | null | undefi
 }
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
-const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+/** Dată calendaristică reală (2026-02-30 nu trece). */
+const isDate = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+/** Data unui formular: reală, nu în viitor, nu mai veche de 60 de zile; altfel ziua de azi. */
+const formDate = (v: unknown, today: string): string => {
+  if (v == null || v === '') return today;
+  if (!isDate(v) || v > today || v < addDays(today, -60)) throw new HttpError(400, 'data formularului nu e validă');
+  return v;
+};
 function paceSec(p: string | null | undefined): number | null {
-  const m = p ? /^(\d{1,2}):(\d{2})$/.exec(p.trim()) : null;
+  const m = p ? /^(\d{1,2}):([0-5]\d)$/.exec(p.trim()) : null;
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }

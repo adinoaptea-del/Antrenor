@@ -55,6 +55,11 @@ export async function insertIgnore<T = Row>(table: string, rows: Row | Row[], on
   return call<T[]>('POST', `${table}?on_conflict=${encodeURIComponent(onConflict)}`, list, { prefer: 'resolution=ignore-duplicates,return=representation' });
 }
 
+/** Funcție SQL (tranzacție pe server): POST /rpc/<name>. */
+export async function rpc<T = unknown>(name: string, args: Row): Promise<T> {
+  return call<T>('POST', `rpc/${name}`, args);
+}
+
 export async function update(table: string, filters: Filters, patch: Row): Promise<void> {
   const q = params(filters);
   await call('PATCH', `${table}?${q.toString()}`, patch, { prefer: 'return=minimal' });

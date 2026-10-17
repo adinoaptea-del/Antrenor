@@ -105,7 +105,9 @@ export function swimDeclared(intake: Record<string, unknown> | null | undefined)
 }
 
 export function sportReadiness(goal: Goal, activities: SourceActivity[], today: string, declared: Declared = {}): SportReady[] {
+  // Obiectiv nesuportat (ex. „full”, salvat de o versiune veche): fără bară, nu o eroare.
   const legs = LEGS[goal];
+  if (!legs) return [];
   const recent = activities.filter((a) => {
     const d = diffDays(a.date, today);
     return d >= 0 && d < WINDOW;

@@ -9,6 +9,7 @@ import type { OtherActivity } from '../../src/collector/other.js';
 import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
+import { allowedForAI } from '../../src/collector/permissions.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
 import type { LabsForm } from '../../src/api-types.js';
@@ -84,8 +85,8 @@ export function toWorkoutRow(w: PlannedWorkout, userId: string, planId: string):
     intervals: w.intervals ?? null,
     status: w.status,
     note: w.note ?? null,
-    // Doar când există: tabelele vechi (fără coloană) nu primesc câmpul.
-    ...(w.suggestion ? { suggestion: w.suggestion } : {}),
+    // Mereu scrisă (și null): o sugestie expirată se șterge explicit.
+    suggestion: w.suggestion ?? null,
   };
 }
 
@@ -283,17 +284,18 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),
-    planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
+    planRow ? loadTotals(userId, planRow.start_date, true) : Promise.resolve(null),
   ]);
-  const others = await loadOthers(userId, addDays(today, -8));
+  // Pachetul merge la AI: sursele fără drept de folosire în AI (Strava) nu intră deloc, nici prin derivate.
+  const others = allowedForAI(await loadOthers(userId, addDays(today, -8)));
   const input: CollectorInput = {
     others,
     today,
     event,
     nowLocal: new Intl.DateTimeFormat('en-GB', { timeZone: user.tz || 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()),
     athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
-    wellness,
-    activities,
+    wellness: allowedForAI(wellness),
+    activities: allowedForAI(activities),
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
@@ -326,7 +328,7 @@ export async function loadHistory(userId: string, today: string): Promise<{ gree
 }
 
 /** Totaluri pe sport de la începutul pregătirii (data planului activ). Activități deduplicate pe sursă. */
-export async function loadTotals(userId: string, since: string): Promise<NonNullable<CollectorInput['totals']>> {
+export async function loadTotals(userId: string, since: string, forAI = false): Promise<NonNullable<CollectorInput['totals']>> {
   // Pe ferestre de 30 de zile: Supabase întoarce maximum 1000 de rânduri pe cerere.
   const raw: SourceActivity[] = [];
   const today = new Date().toISOString().slice(0, 10);
@@ -334,7 +336,8 @@ export async function loadTotals(userId: string, since: string): Promise<NonNull
     const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1000 });
     raw.push(...rows.map(toSourceActivity));
   }
-  const acts = dedupeActivities(applyOverrides(raw, await loadOverrides(userId)));
+  const all = applyOverrides(raw, await loadOverrides(userId));
+  const acts = dedupeActivities(forAI ? allowedForAI(all) : all);
   const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
   for (const a of acts) {
     const t = bySport[a.sport];

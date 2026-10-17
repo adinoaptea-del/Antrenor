@@ -10,10 +10,10 @@ export type { Me, MeActivity };
 export const SPORT_LABEL: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță' };
 export const TYPE_LABEL: Record<PlannedWorkout['type'], string> = { z2: 'Z2', tehnica: 'tehnică', calitate: 'calitate', lung: 'lung', brick: 'brick', forta: 'forță', odihna: 'odihnă' };
 export const COLOR_LABEL: Record<Color, string> = {
-  verde: 'executat bine',
-  galben: 'executat mediu',
-  portocaliu: 'executat slab',
-  rosu: 'nefăcut',
+  verde: 'conform planului',
+  galben: 'parțial conform',
+  portocaliu: 'departe de plan',
+  rosu: 'nefăcut sau sub jumătate',
   gri: 'anulat de sistem',
   albastru: 'în afara planului',
   asteptare: 'urmează',
@@ -112,14 +112,15 @@ export function completedWeekStarts(me: Me, max = 8): string[] {
 export function weeklyHours(me: Me): { start: string; label: string; hours: number; plannedHours: number }[] {
   return completedWeekStarts(me).map((s) => {
     const mins = me.activities.filter((a) => inWeek(a.date, s)).reduce((n, a) => n + a.minutes, 0);
-    const planned = me.plan.filter((w) => inWeek(w.date, s) && w.sport !== 'forta' && w.status !== 'sters').reduce((n, w) => n + w.plannedMinutes, 0);
+    // Aceleași categorii sus și jos: toate sporturile (și forța), fără ședințele anulate sau scoase din plan.
+    const planned = me.plan.filter((w) => inWeek(w.date, s) && (w.status === 'planificat' || w.status === 'mutat')).reduce((n, w) => n + w.plannedMinutes, 0);
     return { start: s, label: weekLabel(s), hours: Math.round((mins / 60) * 10) / 10, plannedHours: Math.round((planned / 60) * 10) / 10 };
   });
 }
 
 export function weeklyExecution(me: Me): { label: string; pct: number | null }[] {
   return completedWeekStarts(me).map((s) => {
-    const ws = me.plan.filter((w) => inWeek(w.date, s) && w.status !== 'sters' && diffDays(w.date, me.today) > 0);
+    const ws = me.plan.filter((w) => inWeek(w.date, s) && (w.status === 'planificat' || w.status === 'mutat') && diffDays(w.date, me.today) > 0);
     if (ws.length === 0) return { label: weekLabel(s), pct: null };
     const good = ws.filter((w) => ['verde', 'galben'].includes(colorOf(me, w))).length;
     return { label: weekLabel(s), pct: Math.round((good / ws.length) * 100) };
@@ -162,7 +163,7 @@ export function greeting(me: Me): string {
     const m = best.minutes % 60;
     const dur = h ? `${h} h${m ? ` ${m}` : ''}` : `${m} min`;
     const verb = best.sport === 'bicicleta' ? 'ai pedalat' : 'ai alergat';
-    return `${cap(DAY_NAMES[weekday(best.date)]!)} ${verb} ${dur} fără oprire, cel mai mult din ultimele 6 săptămâni.`;
+    return `${cap(DAY_NAMES[weekday(best.date)]!)} ${verb} ${dur}, cea mai lungă ședință din ultimele 6 săptămâni.`;
   }
   const start = planStart(me);
   if (start && start > me.today) return `Planul începe ${DAY_NAMES[weekday(start)]}, ${fmtDM(start)}. Până atunci: datele de bază de mai jos.`;
@@ -212,6 +213,7 @@ export function dayLevel(me: Me): Level | null {
  * Dimineața, antrenorul sportului poate ajusta ședința zilei în mesajul head coach-ului.
  */
 export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: string }[] {
+  // Aceeași ședință ca în plan: minutele însumate dau exact durata planificată, nicio parte negativă, zonele din prescripție.
   const t = me.baseline.tests;
   const zonesFor = w.sport === 'alergare' ? t?.alergare_z : w.sport === 'bicicleta' ? t?.bicicleta_z : null;
   const z = (n: number) => {
@@ -220,49 +222,59 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
     if (up == null) return `Z${n}`;
     return lo != null ? `Z${n} (${lo + 1}–${up} bpm)` : `Z${n} (sub ${up} bpm)`;
   };
-  const talk = ' – poți vorbi în propoziții întregi';
-  const m = w.plannedMinutes;
+  const target = w.targetZones.length ? (w.targetZones.length > 1 ? `${z(Math.min(...w.targetZones))}–${z(Math.max(...w.targetZones))}` : z(w.targetZones[0]!)) : z(2);
+  const easyTarget = w.targetZones.some((x) => x > 2) ? z(2) : target;
+  const talk = w.targetZones.every((x) => x <= 2) ? ' – poți vorbi în propoziții întregi' : '';
+  const m = Math.max(0, w.plannedMinutes);
   if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament. Plimbare ușoară sau mobilitate, dacă ai chef.' }];
   if (w.type === 'forta') {
+    const warm = Math.min(5, Math.floor(m / 4));
+    const cool = Math.min(5, Math.floor(m / 6));
     return [
-      { label: 'Încălzire', text: '5 min mobilitate (șolduri, umeri, glezne)' },
-      { label: 'Principal', text: `${Math.max(m - 10, 15)} min forță generală: genuflexiuni, fandări, ridicări pe vârfuri, plank, cele două exerciții de prevenție de la fizio; 2–3 runde, fără epuizare` },
-      { label: 'Revenire', text: '5 min întinderi ușoare' },
+      { label: 'Încălzire', text: `${warm} min mobilitate (șolduri, umeri, glezne)` },
+      { label: 'Principal', text: `${m - warm - cool} min: exercițiile zilei din programul de forță, fără epuizare` },
+      { label: 'Revenire', text: `${cool} min întinderi ușoare` },
     ];
   }
   if (w.type === 'calitate' && w.intervals) {
     const iv = w.intervals;
-    const warm = 15;
-    const work = iv.count * iv.minutes;
-    const rest = Math.max(1, Math.round(iv.minutes / 2));
-    const cool = Math.max(5, m - warm - work - (iv.count - 1) * rest);
+    const restMatch = /(\d+)\s*min ușor între/.exec(w.structure ?? '');
+    const rest = restMatch ? Number(restMatch[1]) : Math.max(1, Math.round(iv.minutes / 2));
+    let count = iv.count;
+    // Câte repetări încap realist în durata planificată, cu minimum 10 min încălzire + revenire.
+    while (count > 1 && count * iv.minutes + (count - 1) * rest + 10 > m) count -= 1;
+    const work = count * iv.minutes + (count - 1) * rest;
+    const left = Math.max(0, m - work);
+    const warm = Math.min(15, Math.max(0, left - Math.min(5, Math.floor(left / 3))));
+    const cool = left - warm;
     return [
-      { label: 'Încălzire', text: `${warm} min ${z(1)}–${z(2)}, la final 3 accelerări scurte` },
-      { label: 'Principal', text: `${iv.count} × ${iv.minutes} min în ${z(iv.zone)}, pauză ${rest} min ușor între ele` },
+      { label: 'Încălzire', text: `${warm} min ${z(1)}–${z(2)}${warm >= 10 ? ', la final 3 accelerări scurte' : ''}` },
+      { label: 'Principal', text: `${count} × ${iv.minutes} min în ${z(iv.zone)}${count > 1 ? `, pauză ${rest} min ușor între ele` : ''}` },
       { label: 'Revenire', text: `${cool} min ${z(1)}` },
     ];
   }
   if (w.type === 'brick') {
-    const bike = Math.round((m * 0.7) / 5) * 5;
+    const parsed = /tură (\d+) min.*alergare (\d+) min/.exec(w.structure ?? '');
+    const bike = parsed && Number(parsed[1]) + Number(parsed[2]) === m ? Number(parsed[1]) : Math.round((m * 0.7) / 5) * 5;
     return [
-      { label: 'Bicicletă', text: `${bike} min ${z(2)}${talk}` },
+      { label: 'Bicicletă', text: `${bike} min ${easyTarget}${talk}` },
       { label: 'Tranziție', text: 'schimbi echipamentul cât mai repede, fără pauză lungă' },
-      { label: 'Alergare', text: `${m - bike} min ${z(2)}, primele 5 min mai ușor până se „așază” picioarele` },
+      { label: 'Alergare', text: `${m - bike} min ${easyTarget}, primele 5 min mai ușor până se „așază” picioarele` },
     ];
   }
+  const warm = m >= 30 ? 10 : Math.floor(m / 3);
+  const cool = m >= 30 ? 5 : Math.floor(m / 6);
+  const main = m - warm - cool;
   if (w.sport === 'inot') {
-    const warm = Math.min(10, Math.round(m * 0.25));
     return [
       { label: 'Încălzire', text: `${warm} min înot ușor, cu pauze cât ai nevoie` },
-      { label: 'Principal', text: w.type === 'tehnica' ? `${m - warm - 5} min tehnică: exerciții pe respirație și braț, apoi bazine întregi ușor` : `${m - warm - 5} min înot continuu sau pe bucăți, ${z(2)}${talk}` },
-      { label: 'Revenire', text: '5 min înot foarte ușor' },
+      { label: 'Principal', text: w.type === 'tehnica' ? `${main} min tehnică: exerciții pe respirație și braț, apoi bucăți scurte ușor` : `${main} min pe bucăți, ${target}${talk}` },
+      { label: 'Revenire', text: `${cool} min înot foarte ușor` },
     ];
   }
-  const warm = 10;
-  const cool = 5;
   return [
     { label: 'Încălzire', text: `${warm} min ${z(1)}` },
-    { label: 'Principal', text: `${m - warm - cool} min ${z(2)}${w.type === 'lung' ? ', constant, fără opriri lungi' : ''}${talk}` },
+    { label: 'Principal', text: `${main} min ${target}${w.type === 'lung' ? ', constant' : ''}${talk}` },
     { label: 'Revenire', text: `${cool} min ${z(1)}` },
   ];
 }

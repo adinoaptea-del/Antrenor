@@ -1,6 +1,7 @@
 // Cine cheamă: sportivul (JWT-ul lui Supabase din aplicație) sau cron-ul Vercel (CRON_SECRET).
 import type { IncomingMessage } from 'node:http';
 import { ENV } from './env.js';
+import { select } from './db.js';
 
 export interface AuthUser {
   id: string;
@@ -26,7 +27,19 @@ export async function requireUser(req: IncomingMessage): Promise<AuthUser> {
   const res = await fetch(`${ENV.supabaseUrl()}/auth/v1/user`, { headers: { apikey: ENV.supabaseAnon(), authorization: `Bearer ${token}` } });
   if (!res.ok) throw new HttpError(401, 'token invalid sau expirat');
   const u = (await res.json()) as { id: string; email: string };
+  if (!(await isApproved(u.id))) throw new HttpError(403, 'contul nu a fost creat prin aplicație (link de invitație)');
   return { id: u.id, email: u.email };
+}
+
+const approvedCache = new Map<string, number>();
+/** Contul există în aplicație și e aprobat (creat prin semnare cu invitație). Cache 5 min pe instanță. */
+async function isApproved(id: string): Promise<boolean> {
+  const t = approvedCache.get(id);
+  if (t && Date.now() - t < 300_000) return true;
+  const rows = await select<{ approved?: boolean }>('users', { id: `eq.${id}` }, { select: '*', limit: 1 });
+  const ok = !!rows[0] && rows[0].approved !== false;
+  if (ok) approvedCache.set(id, Date.now());
+  return ok;
 }
 
 export function requireCron(req: IncomingMessage): void {

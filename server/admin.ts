@@ -5,6 +5,7 @@ import { one, select } from './_lib/db.js';
 import { ENV, supabaseKeyHeaders } from './_lib/env.js';
 import { syncUser } from './_lib/sync.js';
 import { costUsd } from './_lib/usage.js';
+import { inviteCode, rotateInvite } from './_lib/invite.js';
 import { generateAndStore, type IntakeLike } from './_lib/plan.js';
 
 /**
@@ -27,12 +28,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<{ user_id: string }>('questionnaires', { kind: 'eq.intrare' }, { select: 'user_id' }),
         select<{ user_id: string; start_date: string }>('plans', { active: 'eq.true' }, { select: 'user_id,start_date' }),
         select<{ user_id: string; created_at: string; kind: string }>('messages', {}, { select: 'user_id,created_at,kind', order: 'created_at.desc', limit: 300 }),
-        select<{ user_id: string | null; input_tokens: number; output_tokens: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: 'user_id,input_tokens,output_tokens,created_at', limit: 20000 }).catch(() => []),
+        select<{ user_id: string | null; input_tokens: number; output_tokens: number; cache_write_tokens?: number; cache_read_tokens?: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: '*', limit: 20000 }).catch(() => []),
         select<{ user_id: string; date: string; sport: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', {}, { select: 'user_id,date,sport,source,name,minutes,distance_km', order: 'date.desc', limit: 400 }),
       ]);
       const today = todayIn('Europe/Bucharest');
-      const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens), 0) * 100) / 100;
+      const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0), 0) * 100) / 100;
       json(res, 200, {
+        inviteUrl: `${ENV.appUrl()}/?invite=${await inviteCode(true)}`,
         costMonth: cost(usage),
         costToday: cost(usage.filter((r) => r.created_at.slice(0, 10) === today)),
         tracking: usage.length > 0,
@@ -61,6 +63,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
     if (req.method !== 'POST') throw new HttpError(405, 'GET sau POST');
     const body = await readJson<{ action?: string; userId?: string }>(req);
+    if (body.action === 'invitatie') {
+      // Link nou: cel vechi nu mai creează conturi.
+      json(res, 200, { ok: true, inviteUrl: `${ENV.appUrl()}/?invite=${await rotateInvite()}` });
+      return;
+    }
     const target = await one<{ id: string; tz: string; email: string }>('users', { id: `eq.${body.userId ?? ''}` });
     if (!target) throw new HttpError(404, 'sportiv inexistent');
 

@@ -64,11 +64,14 @@ export function longestContinuousSwim(laps: { distance: number; moving_time: num
       cur = { m: 0, sec: 0 };
       continue;
     }
-    // O tură cu pauză în interior (timp scurs mult peste timpul în mișcare) nu se leagă de vecinele ei.
-    const paused = l.elapsed_time - l.moving_time > 10;
-    cur = paused ? { m: l.distance, sec: t } : { m: cur.m + l.distance, sec: cur.sec + t };
+    // O tură cu pauză în interior (timp scurs cu peste 10 s peste timpul în mișcare): nu știm cât din ea a fost fără
+    // oprire, deci nu contează ca înot continuu și rupe legătura cu vecinele.
+    if (l.elapsed_time - l.moving_time > 10) {
+      cur = { m: 0, sec: 0 };
+      continue;
+    }
+    cur = { m: cur.m + l.distance, sec: cur.sec + t };
     if (cur.m > best.m) best = { ...cur };
-    if (paused) cur = { m: 0, sec: 0 };
   }
   return { m: Math.round(best.m), pace100: best.m > 0 ? Math.round(best.sec / (best.m / 100)) : null };
 }

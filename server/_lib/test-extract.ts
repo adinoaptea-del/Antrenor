@@ -78,7 +78,10 @@ export function toTestForm(r: TestReading): TestResult {
   let bike: Z = [null, null, null, null, null];
   if (full(five(r.zone_alergare_fc_max))) run = five(r.zone_alergare_fc_max);
   if (full(five(r.zone_bicicleta_fc_max))) bike = five(r.zone_bicicleta_fc_max);
-  if (!full(run) && !full(bike) && hasThr) {
+  if (!full(run) && !full(bike) && hasThr && r.ergometru !== 'bicicleta' && r.ergometru !== 'banda') {
+    // Ergometrul nu e scris în raport: nu ghicim sportul pragurilor.
+    note.push('raportul nu spune dacă testul a fost pe bandă sau pe bicicletă: pragurile nu se pun la niciun sport; completează zonele la sportul testat');
+  } else if (!full(run) && !full(bike) && hasThr) {
     if (r.ergometru === 'bicicleta') bike = fromThresholds;
     else run = fromThresholds;
     note.push('raportul nu are tabel de zone: am pus pragurile (Z2 sus = primul prag, Z4 sus = al doilea prag, Z5 = FC max); completează Z1 și Z3 din raport, altfel zonele de FC nu intră în plan (doar FC max și ritmul de prag)');

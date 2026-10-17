@@ -205,9 +205,8 @@ function maxBy<T>(list: T[], f: (x: T) => number): T | null {
 }
 
 function fmtPace(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}/100 m`;
+  const t = Math.round(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}/100 m`;
 }
 
 function r(n: number): number {

@@ -46,7 +46,7 @@ describe('adaptoare de producător', () => {
     assert.equal(w.date, '2026-10-14');
     assert.equal(w.startLocal, '19:02');
     assert.equal(w.minutes, 46);
-    assert.equal(w.distanceKm, 6);
+    assert.equal(w.distanceKm, 6.007); // precizia de la sursă, rotunjirea doar la afișare
     assert.equal(w.timeInZonesMin, null);
     assert.equal(normalizeWhoopWorkout({ id: 'w2', user_id: 1, start: '2026-10-11T10:00:00Z', end: '2026-10-11T10:30:00Z', timezone_offset: '+03:00', sport_name: 'walking', score_state: 'SCORED', score: { strain: 3, average_heart_rate: 90, max_heart_rate: 110, kilojoule: 300, percent_recorded: 100 } }), null);
   });

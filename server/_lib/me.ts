@@ -15,6 +15,7 @@ import { matchActivities } from '../../src/scoring/match.js';
 import type { Color } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
+import { activeRestriction, stricter, type Restriction } from '../../src/calendar/safety.js';
 
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
@@ -88,7 +89,14 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base('hrv'), rhr: todayW?.rhr ?? null, rhrBaseline: base('rhr'), resp: todayW?.respiratoryRate ?? null, respBaseline: base('respiratoryRate'), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
-  const state = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
+  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null });
+  const state0 = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const state = !restriction
+    ? state0
+    : state0
+      ? { ...state0, verdict: stricter(state0.verdict, restriction.verdict === 'stop' ? 'rosu' : restriction.verdict), motiv: restriction.reason }
+      : { verdict: restriction.verdict === 'stop' ? ('rosu' as const) : restriction.verdict, motiv: restriction.reason, score: null, parts: { recuperare: null, somn: null, hrv: null, puls: null, respiratie: null } };
 
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
@@ -130,17 +138,6 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   };
 
   const u2 = user as UserRow;
-  // Reparație: dacă nimeni nu e admin (setarea n-a prins la creare), primul cont creat devine admin.
-  if (u2.role !== 'admin') {
-    const admins = await select<{ id: string }>('users', { role: 'eq.admin' }, { select: 'id', limit: 1 });
-    if (!admins.length) {
-      const first = await select<{ id: string }>('users', {}, { select: 'id', order: 'created_at.asc', limit: 1 });
-      if (first[0]?.id === userId) {
-        await update('users', { id: `eq.${userId}` }, { role: 'admin' });
-        u2.role = 'admin';
-      }
-    }
-  }
   const [totals, appleRow] = await Promise.all([
     planRow ? loadTotals(userId, planRow.start_date) : Promise.resolve(null),
     one<{ synced_at: string }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.apple' }, { order: 'synced_at.desc' }).catch(() => null),
@@ -167,7 +164,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     activities: meActivities,
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null,
+    readiness: withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction),
     sportReady: user.goal ? sportReadiness(user.goal as Goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
@@ -186,6 +183,14 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     dataAvailability: { have, missing },
     warnings,
   };
+}
+
+/** Restricția activă e podeaua: decizia afișată nu poate fi mai permisivă decât ea. */
+function withRestriction<T extends { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; acwr: number | null; hooperSum: number | null }>(r: T | null, restriction: Restriction): T | { verdict: 'galben' | 'rosu' | 'stop'; reason: string; acwr: null; hooperSum: null } | null {
+  if (!restriction) return r;
+  if (!r) return { verdict: restriction.verdict, reason: restriction.reason, acwr: null, hooperSum: null };
+  const v = stricter(r.verdict, restriction.verdict);
+  return v === r.verdict && r.verdict !== 'verde' ? r : { ...r, verdict: v, reason: restriction.reason };
 }
 
 async function weeklyDone(userId: string, today: string): Promise<boolean> {

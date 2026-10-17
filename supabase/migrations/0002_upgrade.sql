@@ -178,3 +178,35 @@ exception when others then
   -- PostgreSQL mai vechi de 15: rămâne unicitatea veche; serverul evită oricum dublurile la citire.
   raise notice 'questionnaires: %', sqlerrm;
 end $$;
+
+-- 6. Un singur plan activ pe sportiv; activarea unui plan nou e o singură tranzacție: ședințele de dinainte de lunea
+--    de la care se reface planul trec în planul nou (istoricul și săptămâna curentă rămân), apoi se schimbă planul activ.
+update public.plans p set active = false
+  where p.active and exists (select 1 from public.plans q where q.user_id = p.user_id and q.active and (q.created_at, q.id) > (p.created_at, p.id));
+create unique index if not exists plans_one_active on public.plans (user_id) where active;
+create or replace function public.activate_plan(p_user uuid, p_plan uuid, p_keep_before date) returns void
+language plpgsql as $$
+begin
+  if not exists (select 1 from public.plans where id = p_plan and user_id = p_user) then
+    raise exception 'plan inexistent pentru sportiv';
+  end if;
+  update public.workouts_planned set plan_id = p_plan
+    where user_id = p_user and date < p_keep_before
+      and plan_id in (select id from public.plans where user_id = p_user and active and id <> p_plan);
+  update public.plans set active = false where user_id = p_user and active and id <> p_plan;
+  update public.plans set active = true where id = p_plan;
+end $$;
+revoke execute on function public.activate_plan(uuid, uuid, date) from public, anon, authenticated;
+grant execute on function public.activate_plan(uuid, uuid, date) to service_role;
+
+-- Marcaj: actualizarea din auditul 2 (17.10.2026) a rulat (aplicația o cere singură când lipsește).
+alter table public.plans add column if not exists audit2 boolean not null default true;
+
+-- 7. Doar conturile create prin aplicație (cu linkul de invitație) au acces. Conturile de până acum rămân aprobate;
+--    un cont făcut direct în Supabase (ocolind aplicația) nu e aprobat și serverul îl refuză.
+alter table public.users add column if not exists approved boolean not null default true;
+alter table public.users alter column approved set default false;
+
+-- Costul AI: tokenii de cache separat (au alt tarif decât intrarea obișnuită).
+alter table public.ai_usage add column if not exists cache_write_tokens int not null default 0;
+alter table public.ai_usage add column if not exists cache_read_tokens int not null default 0;

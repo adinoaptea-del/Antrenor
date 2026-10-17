@@ -1,5 +1,6 @@
 // Sincronizarea: trage ultimele zile de la fiecare brățară conectată, normalizează, scrie în wellness_daily și activities.
-import { insert, select, upsert } from './db.js';
+import { insert, one, select, update, upsert } from './db.js';
+import { hasConsent } from './consent.js';
 import { DETAILS_V, mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
 import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
@@ -121,6 +122,7 @@ async function enrichStrava(userId: string, token: string, acts: SourceActivity[
 
 /** Sincronizează toate brățările conectate ale unui sportiv. days = câte zile înapoi (3 la apăsare, 35 la conectare). */
 export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> {
+  if (!(await hasConsent(userId))) return [];
   const connected = await connectedProviders(userId);
   const reports: SyncReport[] = [];
   for (const row of connected) {
@@ -130,6 +132,12 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
       if (!token) throw new Error('fără token');
       let rows = 0;
       if (provider === 'whoop') {
+        // Conexiunile vechi fără id-ul WHOOP: îl completăm o dată din profil (webhook-ul caută contul după el).
+        const tok = await one<{ external_user_id: string | null }>('oauth_tokens', { user_id: `eq.${userId}`, provider: 'eq.whoop' }).catch(() => null);
+        if (tok && !tok.external_user_id) {
+          const p = await whoopApi.profile(token).catch(() => null);
+          if (p?.user_id != null) await update('oauth_tokens', { user_id: `eq.${userId}`, provider: 'eq.whoop' }, { external_user_id: String(p.user_id) }).catch(() => undefined);
+        }
         const { wellness, activities, others } = await pullWhoop(userId, token, days);
         await saveOthers(userId, others);
         if (wellness.length) await upsert('wellness_daily', wellness.map((w) => wellnessRow(userId, w)), 'user_id,date,source');

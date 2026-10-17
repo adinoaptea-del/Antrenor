@@ -221,6 +221,20 @@ describe('aceeași ședință pe două brățări', () => {
     const l = run({ id: 'l', minutes: 60, avgHr: 152 });
     assert.equal(pickRecording(s, l).id, 'l');
   });
+  it('fără distanță, câteva minute în plus: diferența de senzor nu fabrică efort → cea scurtă', () => {
+    const s = run({ id: 's', minutes: 60, avgHr: 150 });
+    const l = run({ id: 'l', source: 'apple', minutes: 63, avgHr: 155 });
+    assert.equal(pickRecording(s, l).id, 's');
+  });
+  it('aceeași sursă sau fără ore și fără distanțe: rămân două ședințe', () => {
+    assert.equal(sameSession(run({ id: 'a', startLocal: null }), run({ id: 'b', source: 'apple', startLocal: null })), false);
+    assert.equal(sameSession(run({ id: 'a' }), run({ id: 'b' })), false);
+  });
+  it('GPS diferit cu 0,4 km pe 21 km și minute de mers după → tot cea scurtă', () => {
+    const s = run({ id: 's', minutes: 127, distanceKm: 21.1 });
+    const l = run({ id: 'l', source: 'apple', minutes: 135, distanceKm: 21.5 });
+    assert.equal(pickRecording(s, l).id, 's');
+  });
   it('două alergări diferite în aceeași zi (dimineața și seara) nu se unesc', () => {
     assert.equal(sameSession(run({ startLocal: '07:00', minutes: 40 }), run({ startLocal: '19:00', minutes: 40 })), false);
   });

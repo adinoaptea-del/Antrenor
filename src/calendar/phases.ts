@@ -100,14 +100,13 @@ export function phaseLengths(totalWeeks: number): Record<Phase, number> {
     rest -= 1;
     i += 1;
   }
+  // Prea puține săptămâni pentru minimele fazelor: se scoate din faza cea mai lungă (taper rămâne o săptămână, cea a
+  // cursei), până când totalul e exact orizontul. Fazele pot lipsi; planul nu trece niciodată de cursă.
   while (rest < 0) {
-    const p = ['evaluare', 'baza1', 'baza2', 'build', 'peak'][(-rest - 1) % 5] as Phase;
-    if (out[p] > MIN_WEEKS[p]) {
-      out[p] -= 1;
-      rest += 1;
-    } else {
-      break;
-    }
+    const p = (['evaluare', 'baza1', 'baza2', 'build', 'peak'] as Phase[]).filter((q) => out[q] > 0).sort((a, b) => out[b] - out[a])[0];
+    if (!p) break;
+    out[p] -= 1;
+    rest += 1;
   }
   return out;
 }

@@ -28,7 +28,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       if (ready) {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-        const [c, t, l, o, w, a, ov, ev] = await Promise.all([
+        const [c, t, l, o, w, a, ov, ev, a2] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
@@ -37,8 +37,9 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
           fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/plans?select=audit2&limit=1`, h),
         ]);
-        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok;
+        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok;
       }
     } catch {
       ready = false;

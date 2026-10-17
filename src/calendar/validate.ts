@@ -66,3 +66,25 @@ export function limitViolations(workouts: PlannedWorkout[], lim: PlanLimits): st
   }
   return out;
 }
+
+/**
+ * Durata și conținutul din aceleași cifre: o ședință scurtată nu păstrează repetări care nu mai încap.
+ * „3 × 10 min …, 3 min ușor între” cere 36 min + minimum 10 min încălzire/revenire; la 30 min rămân 1 × 10 sau 2 × 10
+ * (după pauză), iar dacă nu încape nicio repetare, devine ședință ușoară.
+ */
+export function fitStructure(w: PlannedWorkout): PlannedWorkout {
+  const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? '');
+  if (!m || w.type === 'brick') return w;
+  const count = Number(m[1]);
+  const reps = Number(m[2]);
+  const restM = /(\d+)\s*min ușor între/.exec(w.structure ?? '');
+  const rest = restM ? Number(restM[1]) : 0;
+  const need = (n: number) => n * reps + (n - 1) * rest + 10;
+  if (need(count) <= w.plannedMinutes) return w;
+  let n = count;
+  while (n > 0 && need(n) > w.plannedMinutes) n -= 1;
+  if (n === 0) {
+    return { ...w, type: w.type === 'calitate' ? 'z2' : w.type, key: w.type === 'calitate' ? false : w.key, intervals: undefined, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min ușor (prea scurt pentru repetări)` };
+  }
+  return { ...w, structure: w.structure!.replace(m[0], `${n} × ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n } : undefined };
+}
