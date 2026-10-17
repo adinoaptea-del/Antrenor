@@ -18,7 +18,12 @@ export type AdaptEvent =
       tip?: 'cursa' | 'antrenament' | 'altceva' | null;
     }
   /** Creșterea controlată: +10% volum săptămâna viitoare, doar pe ședințele ușoare (Z1–Z2), fără intensitate în plus. */
-  | { kind: 'progres'; date: string; restricted?: Sport[] };
+  | { kind: 'progres'; date: string; restricted?: Sport[] }
+  /**
+   * Efort mare făcut (≥ 90 min sau RPE ≥ 7), planificat sau nu: restul zilei se închide, zilele următoare se ușurează.
+   * `planned` = activitatea a acoperit o ședință din plan (atunci partea „în afara planului” n-a mai aplicat nimic).
+   */
+  | { kind: 'efort'; activity: Activity; rpe?: number | null; planned: boolean };
 
 export interface AdaptContext {
   today: string;
@@ -27,6 +32,8 @@ export interface AdaptContext {
   recentKeyScores: { date: string; color: Color }[];
   /** Antrenamentele-cheie repetate în ultimele 28 de zile (treaptă repetată), pe tip+sport. */
   recentRepeats?: Record<string, number>;
+  /** Ședințele deja executate (au activitate asociată): nicio adaptare nu le mai anulează sau schimbă. */
+  done?: string[];
 }
 
 export interface AdaptResult {
@@ -51,10 +58,13 @@ export function eventKey(ev: AdaptEvent): string {
       return `durere:${ev.date}:${ev.loc}:${ev.score}`;
     case 'febra':
       return `febra:${ev.date}`;
+    // Zi + sport, nu id-ul: aceeași ședință poate sosi întâi de pe o brățară și apoi de pe alta (alt id, alte minute).
     case 'neplanificat':
-      return `neplanificat:${ev.activity.id}:${ev.activity.minutes}`;
+      return `neplanificat:${ev.activity.date}:${ev.activity.sport}`;
     case 'progres':
       return `progres:${ev.date}`;
+    case 'efort':
+      return `efort:${ev.activity.date}:${ev.activity.sport}`;
   }
 }
 
@@ -81,17 +91,21 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
     case 'progres':
       applyProgress(next, event, ctx, changes);
       break;
+    case 'efort':
+      applyBigEffort(next, event, ctx, changes);
+      break;
   }
 
   // Trecutul nu se rescrie: ce era înainte de azi rămâne prescripția valabilă atunci (o febră raportată târziu
   // protejează viitorul, nu ședințele deja trecute). Iar o ședință scurtată nu păstrează repetări care nu mai încap.
   const byId = new Map(plan.map((w) => [w.id, w]));
+  const done = new Set(ctx.done ?? []);
   const out = next.map((w) => {
     const orig = byId.get(w.id);
-    if (orig && w.date < ctx.today) return orig;
+    if (orig && (w.date < ctx.today || done.has(w.id))) return orig;
     return orig && orig.plannedMinutes !== w.plannedMinutes ? fitStructure(w) : w;
   });
-  const kept = changes.filter((c) => !plan.some((w) => w.date < ctx.today && c.startsWith(`${w.id}:`)));
+  const kept = changes.filter((c) => !plan.some((w) => (w.date < ctx.today || done.has(w.id)) && c.startsWith(`${w.id}:`)));
   return { plan: out, changes: kept };
 }
 
@@ -138,7 +152,7 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
 
 function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'readiness' }>, ctx: AdaptContext, changes: string[]): void {
   if (ev.verdict === 'verde') return;
-  const today = plan.filter((x) => x.date === ev.date && isActiveWorkout(x));
+  const today = plan.filter((x) => x.date === ev.date && isActiveWorkout(x) && !(ctx.done ?? []).includes(x.id));
 
   // Galben / portocaliu: planul rămâne; fiecare ședință primește o SUGESTIE mai ușoară, iar sportivul alege.
   if (ev.verdict === 'galben') {
@@ -360,4 +374,45 @@ function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: '
     changes.push(`${w.id}: ${w.sport} ${w.date} +${add} min (progres)`);
   }
   if (changes.length) changes.push(`progres: săptămâna ${monday}, +${Math.round(((total * 0.1 - budget) / Math.max(total, 1)) * 100)}% față de ${total} min`);
+}
+
+/**
+ * Organismul a primit azi un efort mare (≥ 90 min sau RPE ≥ 7): ce mai era de făcut azi se anulează, iar zilele
+ * următoare se ușurează. Peste 3 ore (ca o cursă): 2 zile ușoare și cheile din 72 h la Z1–Z2, −25%.
+ * Dacă activitatea a fost în afara planului, zilele următoare le-a ajustat deja regula „neplanificat”; aici doar ziua.
+ */
+function applyBigEffort(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'efort' }>, ctx: AdaptContext, changes: string[]): void {
+  const a = ev.activity;
+  const done = new Set(ctx.done ?? []);
+  const what = `${a.sport} ${a.minutes} min`;
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || x.date !== a.date || done.has(x.id)) continue;
+    x.status = 'anulat_sistem';
+    x.note = `efort mare azi (${what}): restul zilei odihnă`;
+    changes.push(`${x.id}: anulat, ai făcut deja azi un efort mare (${what})`);
+  }
+  if (!ev.planned) return;
+  const huge = a.minutes >= 180;
+  const easyDays = huge ? 2 : 1;
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || done.has(x.id)) continue;
+    const d = diffDays(a.date, x.date);
+    if (d < 1 || d > (huge ? 3 : easyDays)) continue;
+    if (d <= easyDays && !x.key) {
+      x.targetZones = x.sport === 'forta' ? [] : [1];
+      if (x.type === 'calitate') {
+        x.type = 'z2';
+        x.intervals = undefined;
+      }
+      x.note = `${x.sport === 'forta' ? 'ușor, fără încărcări mari' : 'Z1'} după efortul mare din ${a.date} (${what})`;
+      changes.push(`${x.id}: ușor (după efortul mare din ${a.date})`);
+    } else if (x.key && huge) {
+      x.targetZones = x.sport === 'forta' ? [] : [1, 2];
+      x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
+      x.intervals = undefined;
+      if (x.type === 'calitate') x.type = 'z2';
+      x.note = `în 72 h după efortul mare din ${a.date}: Z1–Z2, −25%`;
+      changes.push(`${x.id}: cheie coborâtă la Z1–Z2, −25% (efort de ${a.minutes} min)`);
+    }
+  }
 }

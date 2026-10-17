@@ -162,3 +162,31 @@ describe('62 / T60 · obiectiv nesuportat', () => {
     assert.deepEqual(sportReadiness('full' as never, [], '2026-10-17'), []);
   });
 });
+
+import { adapt } from '../src/calendar/adapt.js';
+import { bigEffort } from '../src/calendar/safety.js';
+describe('organism viu · efortul mare de azi închide ziua și ușurează zilele următoare', () => {
+  const run = { id: 'azuga', date: '2026-10-17', sport: 'alergare' as const, minutes: 229, distanceKm: 21.3 };
+  const plan: PlannedWorkout[] = [
+    P({ id: 'lung', date: '2026-10-17', type: 'lung', plannedMinutes: 90, key: true }),
+    P({ id: 'inot', date: '2026-10-17', sport: 'inot', type: 'tehnica', plannedMinutes: 30, targetZones: [1, 2] }),
+    P({ id: 'luni', date: '2026-10-19', sport: 'bicicleta', type: 'z2', plannedMinutes: 60 }),
+    P({ id: 'marti', date: '2026-10-20', sport: 'alergare', type: 'calitate', plannedMinutes: 50, targetZones: [4], key: true, intervals: { count: 5, minutes: 4, zone: 4 } }),
+  ];
+  it('3 h 49 de munte: înotul de azi se anulează, ședința făcută rămâne, mâine ușor, cheia din 72 h −25% Z1–Z2', () => {
+    const r = adapt(plan, { kind: 'efort', activity: run, rpe: null, planned: true }, { today: '2026-10-17', freeBlocks: [], recentKeyScores: [], done: ['lung'] });
+    assert.equal(r.plan.find((w) => w.id === 'lung')!.status, 'planificat');
+    assert.equal(r.plan.find((w) => w.id === 'inot')!.status, 'anulat_sistem');
+    assert.deepEqual(r.plan.find((w) => w.id === 'luni')!.targetZones, [1]);
+    const m = r.plan.find((w) => w.id === 'marti')!;
+    assert.equal(m.plannedMinutes, 40);
+    assert.equal(m.type, 'z2');
+  });
+  it('pe ecran: zi roșie cu motivul, din aceeași regulă', () => {
+    assert.match(bigEffort([{ sport: 'alergare', minutes: 229 }]) ?? '', /alergare 3 h 49 min/);
+    const r = activeRestriction({ today: '2026-10-17', morning: null, evenings: [], todayActivities: [{ sport: 'alergare', minutes: 229 }] });
+    assert.equal(r?.verdict, 'rosu');
+    assert.equal(bigEffort([{ sport: 'alergare', minutes: 45 }]), null);
+    assert.ok(bigEffort([{ sport: 'alergare', minutes: 45, rpe: 8 }]));
+  });
+});

@@ -651,7 +651,7 @@ export function buildPacket(input: CollectorInput): Packet {
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
     restrictie_activa: (() => {
-      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings });
+      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;
     })(),
     semnale: {

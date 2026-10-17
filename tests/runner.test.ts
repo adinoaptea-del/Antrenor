@@ -123,7 +123,7 @@ describe('runner · piramida', () => {
       evenings: [{ date: '2026-10-11', activityId: '24681877392', rpe: 9, fata_de_asteptari: 'mai_greu', durere: { scor: 3, loc: 'gambă' }, ce_a_incurcat: 'nimic', fueling_conform: 'partial', comentariu: null, tip_neplanificat: 'cursa' }],
     });
     const ev = eventsFrom(p, 'rosu');
-    assert.deepEqual(ev.map((e) => e.kind).sort(), ['durere', 'febra', 'neplanificat', 'readiness']);
+    assert.deepEqual(ev.map((e) => e.kind).sort(), ['durere', 'febra', 'readiness']); // neplanificatul îl aplică sincronizarea
   });
 });
 

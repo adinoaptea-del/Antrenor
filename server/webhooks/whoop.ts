@@ -3,6 +3,7 @@ import { fail, json, readJson } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { one } from '../_lib/db.js';
 import { syncUser } from '../_lib/sync.js';
+import { reactNow } from '../_lib/react.js';
 import { hydrateSettings } from '../_lib/settings.js';
 import type { WhoopWebhookEvent } from '../../src/collector/providers/whoop.js';
 
@@ -38,7 +39,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     }
     const ev = JSON.parse(raw) as WhoopWebhookEvent;
     const row = await one<{ user_id: string }>('oauth_tokens', { provider: 'eq.whoop', external_user_id: `eq.${ev.user_id}` });
-    if (row) await syncUser(row.user_id, 3);
+    if (row) {
+      await syncUser(row.user_id, 3);
+      await reactNow(row.user_id);
+    }
     json(res, 200, { ok: true });
   } catch (e) {
     void readJson;

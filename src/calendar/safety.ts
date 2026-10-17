@@ -54,6 +54,8 @@ export function activeRestriction(input: {
   morning: { date?: string; semnale?: Record<string, unknown> | null } | null;
   evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null }[];
   savedVerdict?: 'verde' | 'galben' | 'rosu' | 'stop' | null;
+  /** Activitățile de azi (după dedublare) și RPE-ul declarat: un efort mare azi închide ziua. */
+  todayActivities?: { sport: string; minutes: number; rpe?: number | null }[];
 }): Restriction {
   const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? (input.morning.semnale ?? {}) : {};
   if (s.simptom_cardiac === true) return { verdict: 'stop', reason: 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.' };
@@ -63,6 +65,8 @@ export function activeRestriction(input: {
   const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
   const worst = recent.reduce<{ scor: number; loc: string | null } | null>((m, e) => (!m || e.durere!.scor! > m.scor ? { scor: e.durere!.scor!, loc: e.durere!.loc } : m), null);
   if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: fără alergare și fără intensitate până trece.` };
+  const big = bigEffort(input.todayActivities ?? []);
+  if (big) return { verdict: 'rosu', reason: `Ai făcut deja azi un efort mare (${big}): restul zilei odihnă, fără alt antrenament.` };
   if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: doar ușor, fără impact.` };
   return null;
 }
@@ -77,4 +81,17 @@ function addDaysIso(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+const SPORT_WORD: Record<string, string> = { alergare: 'alergare', bicicleta: 'bicicletă', inot: 'înot', forta: 'forță' };
+/**
+ * Efort mare azi, aceeași regulă ca la activitățile neplanificate: o ședință de cel puțin 90 de minute, ori RPE ≥ 7.
+ * Întoarce descrierea scurtă sau null.
+ */
+export function bigEffort(acts: { sport: string; minutes: number; rpe?: number | null }[]): string | null {
+  const a = [...acts].sort((x, y) => y.minutes - x.minutes).find((x) => x.minutes >= 90 || (x.rpe ?? 0) >= 7);
+  if (!a) return null;
+  const h = Math.floor(a.minutes / 60);
+  const m = a.minutes % 60;
+  return `${SPORT_WORD[a.sport] ?? a.sport} ${h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`}${(a.rpe ?? 0) >= 7 ? `, efort ${a.rpe}/10` : ''}`;
 }

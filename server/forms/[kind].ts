@@ -12,6 +12,7 @@ import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
+import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, runAgents } from '../_lib/agents.js';
 import { loadPlan } from '../_lib/collect.js';
 import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
@@ -61,6 +62,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
       const goal = user.goal && user.goal !== 'full' ? user.goal : '70.3';
       await rescore(u.id, today, goal);
+      // RPE ≥ 7 sau tipul ales (cursă / altceva) schimbă reacția calendarului imediat.
+      await reactToActivities(u.id, today).catch(() => undefined);
       let agents = null;
       if (body.tip_neplanificat && body.tip_neplanificat !== 'altceva') agents = await runAgents(u.id, today, 'dupa_antrenament', true).catch((e: Error) => ({ error: e.message }));
       json(res, 200, { ok: true, agents });

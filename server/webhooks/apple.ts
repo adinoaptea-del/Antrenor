@@ -5,6 +5,7 @@ import { insert, one, upsert } from '../_lib/db.js';
 import { parseHealthExport, parseHealthOther, parseHealthWorkouts } from '../_lib/apple.js';
 import { saveOthers } from '../_lib/sync.js';
 import { hasConsent } from '../_lib/consent.js';
+import { reactNow } from '../_lib/react.js';
 
 /** POST /api/webhooks/apple?t=<token personal> — trimis de Health Auto Export de pe iPhone-ul sportivului. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -47,6 +48,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         'id',
       );
     }
+    if (workouts.length) await reactNow(user.id);
     await insert('sync_log', { user_id: user.id, provider: 'apple', ok: true, rows: days.length + workouts.length, detail: `${days.length} zile, ${workouts.length} antrenamente` }).catch(() => undefined);
     json(res, 200, { ok: true, zile: days.length, antrenamente: workouts.length });
   } catch (e) {

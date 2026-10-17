@@ -2,6 +2,7 @@ import { fail, json, readJson } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
 import { one } from '../_lib/db.js';
 import { syncUser } from '../_lib/sync.js';
+import { reactNow } from '../_lib/react.js';
 import type { StravaWebhookEvent } from '../../src/collector/providers/strava.js';
 
 /**
@@ -21,7 +22,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const ev = await readJson<StravaWebhookEvent>(req);
     if (ev.object_type === 'activity') {
       const row = await one<{ user_id: string }>('oauth_tokens', { provider: 'eq.strava', external_user_id: `eq.${ev.owner_id}` });
-      if (row) await syncUser(row.user_id, 3);
+      if (row) {
+      await syncUser(row.user_id, 3);
+      await reactNow(row.user_id);
+    }
     }
     json(res, 200, { ok: true });
   } catch (e) {

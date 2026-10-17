@@ -90,7 +90,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
-  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null });
+  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
   const state0 = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
   const state = !restriction
     ? state0

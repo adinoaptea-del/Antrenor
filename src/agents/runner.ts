@@ -213,10 +213,7 @@ export function eventsFrom(p: Packet, decision: HeadResponse['decizie']): AdaptE
   if (decision !== 'verde') ev.push({ kind: 'readiness', date: p.meta.data, verdict: decision });
   const d = p.antrenament_ultim?.durere;
   if (d?.scor != null && d.scor >= 3) ev.push({ kind: 'durere', date: p.antrenament_ultim!.data, score: d.scor, loc: d.loc ?? 'nespecificat' });
-  const u = p.antrenament_ultim;
-  if (u && !u.in_plan && u.tip_neplanificat && u.tip_neplanificat !== 'altceva') {
-    ev.push({ kind: 'neplanificat', activity: { id: `${u.sport}-${u.data}-${u.durata}`, date: u.data, sport: u.sport, minutes: u.durata, distanceKm: u.distanta ?? null }, rpe: u.rpe ?? null, tip: u.tip_neplanificat });
-  }
+  // Activitățile neplanificate și eforturile mari le aplică codul la sincronizare (react.ts), o singură dată pe activitate.
   // Creșterea o decide regula (pachetul), nu modelul: doar duminica, doar pe o zi verde.
   if (p.meta.eveniment === 'saptamanal' && decision === 'verde' && p.progres?.eligibil) {
     const restricted = (Object.entries(p.incarcare.acwr_sport) as [Sport, number | null][]).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
