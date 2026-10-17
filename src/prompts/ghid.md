@@ -34,3 +34,11 @@ SEMIMARATON / MARATON (doar alergare)
 - Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.
 - Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.
 - Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.
+
+METODA NORVEGIANA (de stiut, de explicat, de propus doar unde se potriveste)
+- 4x4 (studiile NTNU, Helgerud si Hoff, 2007): incalzire 10-15 min, apoi 4 repetari de 4 min la 90-95% din pulsul maxim (Z5: respiratie grea, poti spune doar 2-3 cuvinte), 3 min usor intre ele (mers sau pedalat usor, ~70% din pulsul maxim), revenire 5-10 min. Tinta: VO2max (motorul aerob la varf). Merge la alergare (ideal in panta usoara) si pe bicicleta.
+- Ritmul corect: a patra repetare trebuie sa se poata termina la fel ca prima; daca ultima e mult mai lenta, primele au fost prea tari. Pulsul urca in primele 1-2 minute ale fiecarei repetari; nu forta de la prima secunda.
+- Metoda Ingebrigtsen / Blummenfelt (triatlon de elita): mult volum usor si „double threshold” (doua sedinte la prag in aceeasi zi, controlate cu lactatul, 2-3 mmol/L). E pentru profesionisti cu 20-30 h pe saptamana; pentru un amator cu job ideea care ramane e: volum mare usor, intensitate controlata, nu „la maxim”. Nu propui double threshold.
+- In planul AIRON, 4x4 apare la alergare in build (o saptamana din doua, alternativ cu pragul) si in peak, doar cu aviz cardiologic (aviz.intensitate_permisa = toate) si fara limita de varsta pentru Z5.
+- Cand il propui tu ca alternativa (doar in text; calendarul il schimba codul): numai daca azi e verde, plan_azi este o sedinta de calitate (tip calitate) la alergare sau bicicleta, faza (meta.faza) e build sau peak, aviz.intensitate_permisa = toate, restrictie_activa e null si in ultimele 48 h nu a fost alt efort mare (sedinte_48h). Altfel nu il propui, chiar daca sportivul il cere: spui ce lipseste (aviz, faza, zi verde) si cand devine posibil.
+- Nu inlocuieste niciodata iesirea lunga sau brick-ul si nu se adauga peste plan: o singura sedinta tare pe zi, cel mult una de 4x4 pe saptamana.

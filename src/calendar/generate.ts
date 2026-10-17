@@ -234,7 +234,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   const s: Session[] = [];
   const pace = input.run?.goalPaceSecKm ?? null;
   const race = input.goal === 'maraton' ? 'maraton' : 'semimaraton';
-  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null, pw.weekInPhase);
   const early = p === 'evaluare' || p === 'baza1';
 
   s.push({ sport: 'alergare', type: 'z2', minutes: early ? 40 : p === 'taper' ? 30 : 50, zones: [2], key: false, priority: 6 });
@@ -291,7 +291,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   const p = pw.phase;
   const s: Session[] = [];
   const swimMin = input.swimContinuous400 ? (p === 'baza1' || p === 'evaluare' ? 40 : 45) : 30;
-  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null);
+  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null, pw.weekInPhase);
 
   // Înot: 3 ședințe scurte, tehnica înainte de volum.
   const swimCount = p === 'taper' ? 2 : 3;
@@ -362,15 +362,20 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
  * evaluare = fără calitate (doar accelerări); baza1 = tempo scurt; baza2 = tempo lung; build = prag (Z4);
  * peak = intervale VO2max (Z5) — cel mai intens abia aproape de cursă.
  */
-function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null): (minutes: number) => Session {
+function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null, weekInPhase = 0): (minutes: number) => Session {
   return (minutes) => {
     if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e blocată până la avizul cardiologic' };
     if (phase === 'evaluare') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'ușor + 6 accelerări de 20 s (fără calitate în evaluare)' };
     const capZ4 = allowed === 'pana_la_Z4' || (age != null && age >= 55);
     if (phase === 'baza1') return { sport: 'alergare', type: 'calitate', minutes, zones: [3], key: true, priority: 3, structure: '2 × 8 min tempo (Z3), 3 min ușor între', intervals: { count: 2, minutes: 8, zone: 3 } };
     if (phase === 'baza2' || phase === 'taper') return { sport: 'alergare', type: 'calitate', minutes, zones: [3, 4], key: true, priority: 3, structure: '3 × 10 min tempo (Z3–Z4), 3 min ușor între', intervals: { count: 3, minutes: 10, zone: 4 } };
-    if (phase === 'build' || capZ4) return { sport: 'alergare', type: 'calitate', minutes, zones: [4], key: true, priority: 3, structure: '4–5 × 6 min la prag (Z4), 2 min ușor între', intervals: { count: 5, minutes: 6, zone: 4 } };
-    return { sport: 'alergare', type: 'calitate', minutes, zones: [4, 5], key: true, priority: 3, structure: '5–6 × 3 min intervale (Z5), 3 min ușor între', intervals: { count: 5, minutes: 3, zone: 5 } };
+    const prag: Session = { sport: 'alergare', type: 'calitate', minutes, zones: [4], key: true, priority: 3, structure: '4–5 × 6 min la prag (Z4), 2 min ușor între', intervals: { count: 5, minutes: 6, zone: 4 } };
+    // 4×4 norvegian (NTNU): VO2max, o dată pe săptămână, doar cu aviz și fără limită de vârstă pentru Z5.
+    const fourByFour: Session = { sport: 'alergare', type: 'calitate', minutes: Math.max(minutes, 45), zones: [5], key: true, priority: 3, structure: '4 × 4 min la 90–95% din pulsul maxim (4×4 norvegian, Z5), 3 min ușor între', intervals: { count: 4, minutes: 4, zone: 5 } };
+    if (capZ4) return prag;
+    // Build: o săptămână prag, una 4×4; peak: 4×4.
+    if (phase === 'build') return weekInPhase % 2 === 1 ? fourByFour : prag;
+    return fourByFour;
   };
 }
 

@@ -79,12 +79,14 @@ describe('planul de triatlon până la cursă', () => {
     }
   });
 
-  it('intensitatea crește în trepte: fără calitate în evaluare (doar teste), Z5 abia în peak', () => {
+  it('intensitatea crește în trepte: fără calitate în evaluare (doar teste), Z5 din build doar ca 4×4, în peak', () => {
     if (!tri.ok) return;
     const maxZone = (phase: string) => Math.max(0, ...tri.weeks.filter((w) => w.phase === phase).flatMap((w) => w.workouts.filter((x) => x.type === 'calitate' && !(x.structure ?? '').startsWith('TEST')).flatMap((x) => x.targetZones)));
     assert.equal(maxZone('evaluare'), 0);
     assert.ok(maxZone('baza1') <= 3);
-    assert.ok(maxZone('build') <= 4);
+    // În build, Z5 apare doar ca 4×4 norvegian (o săptămână din două), nu ca alte intervale.
+    const buildZ5 = tri.weeks.filter((w) => w.phase === 'build').flatMap((w) => w.workouts).filter((x) => x.targetZones.includes(5) && !(x.structure ?? '').startsWith('TEST'));
+    assert.ok(buildZ5.every((x) => /4×4/.test(x.structure ?? '')));
     assert.equal(maxZone('peak'), 5);
     const tests = tri.weeks.filter((w) => w.phase === 'evaluare').flatMap((w) => w.workouts).filter((x) => (x.structure ?? '').startsWith('TEST'));
     assert.ok(tests.length >= 2);

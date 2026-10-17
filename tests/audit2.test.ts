@@ -190,3 +190,19 @@ describe('organism viu · efortul mare de azi închide ziua și ușurează zilel
     assert.ok(bigEffort([{ sport: 'alergare', minutes: 45, rpe: 8 }]));
   });
 });
+
+describe('4×4 norvegian în plan', () => {
+  const blocks: FreeBlock[] = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day as FreeBlock['day'], startMin: 360, endMin: 600 }));
+  it('cu aviz: apare în build (o săptămână din două) și în peak; fără aviz: niciodată', () => {
+    const ok = generatePlan({ startDate: '2026-10-19', raceDate: '2027-09-26', goal: '70.3', freeBlocks: blocks, historyHoursPerWeek: [8, 8, 8, 8], intensityAllowed: 'toate', swimContinuous400: true });
+    assert.equal(ok.ok, true);
+    if (!ok.ok) return;
+    const ff = (ph: string) => ok.weeks.filter((w) => w.phase === ph).flatMap((w) => w.workouts).filter((x) => /4×4/.test(x.structure ?? ''));
+    assert.ok(ff('build').length >= 3);
+    assert.ok(ff('peak').length >= 1);
+    assert.equal(ff('baza1').length + ff('evaluare').length, 0);
+    for (const x of [...ff('build'), ...ff('peak')]) assert.equal(x.intervals?.count, 4);
+    const no = generatePlan({ startDate: '2026-10-19', raceDate: '2027-09-26', goal: '70.3', freeBlocks: blocks, historyHoursPerWeek: [8, 8, 8, 8], intensityAllowed: 'Z2', swimContinuous400: true });
+    if (no.ok) assert.equal(no.weeks.flatMap((w) => w.workouts).filter((x) => /4×4/.test(x.structure ?? '')).length, 0);
+  });
+});
