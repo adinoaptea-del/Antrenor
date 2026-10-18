@@ -175,6 +175,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </div>
       )}
 
+      <BadgesTeaser onOpen={onOpen} />
+
       <p className="daymsg">{greeting(me)}</p>
 
 
@@ -252,8 +254,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </button>
       </div>
 
-
-      <BadgesTeaser onOpen={onOpen} />
 
       {me.warnings.map((w) => (
         <Card key={w.title} className="warn" tight style={{ marginTop: 12 }}>

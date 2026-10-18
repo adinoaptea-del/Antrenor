@@ -47,6 +47,11 @@ export interface Packet {
     /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
     bilant_lunar: boolean;
     surse: Record<string, string | null>;
+    /**
+     * Surse conectate pe care nu le vezi (Strava, din motive de licență). Dacă lista nu e goală, activitățile tale sunt
+     * incomplete: NU dai totaluri de ore, km sau ședințe și nu tragi concluzii despre ce lipsește.
+     */
+    surse_nevazute: string[];
     /** Sexul și vârsta (din profil). null = necompletate. */
     sportiv: { sex: 'barbat' | 'femeie' | null; varsta: number | null; inaltime_cm: number | null };
     /** Când sunt 2+ brățări: valorile fiecăreia azi și dezacordurile mari. null = o singură sursă. */
@@ -551,6 +556,7 @@ export function buildPacket(input: CollectorInput): Packet {
       obiectiv: input.athlete.obiectiv,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
       bilant_lunar: input.event === 'saptamanal' && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
+      surse_nevazute: input.hiddenSources ?? [],
       surse: { ...(todayRow?.sources ?? { hrv: null, puls_repaus: null, somn: null, recuperare: null }), activitati: [...new Set(acts.map((a) => a.source))].join('+') || null, incarcare: input.load?.source ?? null },
       dispozitive: todayRow && Object.keys(todayRow.perDevice).length > 1 ? { azi: todayRow.perDevice, dezacord: todayRow.disagreements } : null,
     },

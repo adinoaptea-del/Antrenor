@@ -123,6 +123,8 @@ export interface CollectorInput {
   weather?: WeatherInput | null;
   /** Istoric pentru creșterea controlată: zile verzi la rând (readiness), ultima creștere aplicată. */
   history?: { greenStreak: number; lastIncrease: string | null } | null;
+  /** Surse conectate pe care AI-ul nu are voie să le vadă (Strava): doar faptul că sunt conectate, fără date. */
+  hiddenSources?: string[];
   /** Totaluri de la începutul pregătirii (data planului), pe sport. */
   totals?: { since: string; bySport: Record<Sport, { km: number; ore: number; sedinte: number }> } | null;
 }
