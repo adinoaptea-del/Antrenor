@@ -7220,6 +7220,286 @@ function wellnessGroups(userId, days, source = "apple") {
   return [...groups.values()];
 }
 
+// server/_lib/android.ts
+var EXERCISE_CODE = { 8: "biking", 9: "biking", 25: "elliptical", 36: "hiit", 37: "hiking", 53: "rowing", 54: "rowing", 56: "running", 57: "running", 70: "strength", 73: "swimming", 74: "swimming", 79: "walking", 81: "weightlifting", 83: "yoga" };
+var normType = (t) => t.toLowerCase().replace(/record$/, "").replace(/[^a-z]/g, "");
+var num3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+var str = (v) => typeof v === "string" && v ? v : null;
+function pick(r2, keys, inner = ["value", "inMeters", "inKilograms", "inMilliseconds", "beatsPerMinute"]) {
+  for (const k of keys) {
+    const v = r2[k];
+    const n2 = num3(v);
+    if (n2 != null) return n2;
+    if (v && typeof v === "object") {
+      for (const ik of inner) {
+        const n22 = num3(v[ik]);
+        if (n22 != null) return n22;
+      }
+    }
+  }
+  return null;
+}
+function whenMs(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v > 1e11 ? v : v * 1e3;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? null : t;
+  }
+  if (v && typeof v === "object") {
+    const o = v;
+    return whenMs(o.epochSecond ?? o.epochMillis ?? o.time ?? o.value);
+  }
+  return null;
+}
+function local(ms, tz) {
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = Object.fromEntries(f.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hm: `${hour}:${parts.minute}`, minutes: Number(hour) * 60 + Number(parts.minute) };
+}
+function collectRecords(body) {
+  const out = [];
+  const GENERIC = /^(records?|data|items|results?|entries|list|payload|body)$/i;
+  const push = (keyHint, rec) => {
+    const t = str(rec.type) ?? str(rec.recordType) ?? str(rec.dataType) ?? str(rec.kind) ?? (keyHint && !GENERIC.test(keyHint) ? keyHint : null);
+    if (t) out.push({ type: normType(t), rec });
+  };
+  const walk = (node, keyHint, depth) => {
+    if (depth > 4 || !node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const x of node) if (x && typeof x === "object" && !Array.isArray(x)) push(keyHint, x);
+      return;
+    }
+    const o = node;
+    if (str(o.type) || str(o.recordType) || str(o.dataType)) {
+      if (depth === 0 || keyHint == null) push(null, o);
+    }
+    for (const [k, v] of Object.entries(o)) {
+      if (Array.isArray(v)) walk(v, k, depth + 1);
+      else if (v && typeof v === "object" && ["data", "payload", "records", "result", "body", "healthConnect", "health_connect"].includes(k)) walk(v, k, depth + 1);
+    }
+  };
+  walk(body, null, 0);
+  return out;
+}
+function sportOfExercise(rec) {
+  const code = num3(rec.exerciseType ?? rec.exercise_type ?? rec.activityType);
+  if (code != null) return EXERCISE_CODE[code] ?? `exercise_${code}`;
+  const name = str(rec.exerciseType ?? rec.exerciseTypeName ?? rec.activityType ?? rec.title ?? rec.name);
+  return name ? name.toLowerCase() : null;
+}
+function sportOf2(name) {
+  if (/swim|înot|inot/.test(name)) return "inot";
+  if (/bik|cycl|ciclism|bicicl/.test(name)) return "bicicleta";
+  if (/run|alerg/.test(name)) return "alergare";
+  if (/strength|weight|forță|forta|functional|hiit|cross/.test(name)) return "forta";
+  return null;
+}
+var HCW_UNUSED = /* @__PURE__ */ new Set(["steps", "heart_rate", "distance", "active_calories", "total_calories", "oxygen_saturation", "respiratory_rate", "skin_temperature", "body_temperature", "hydration", "nutrition", "height", "blood_pressure", "blood_glucose", "basal_metabolic_rate", "body_fat", "lean_body_mass", "bone_mass", "vo2_max", "menstruation_flow", "menstruation_period", "intermenstrual_bleeding", "ovulation_test", "cervical_mucus", "sexual_activity", "basal_body_temperature", "floors_climbed", "elevation_gained", "speed", "power", "cycling_pedaling_cadence", "steps_cadence", "wheelchair_pushes", "deleted", "mindfulness", "planned_exercise"]);
+function isHcWebhook(body) {
+  return !!body && typeof body === "object" && !Array.isArray(body) && typeof body.app_version === "string" && typeof body.timezone === "string";
+}
+function hcWebhookRecords(body) {
+  const recs = [];
+  const unknown = [];
+  const arr = (k) => Array.isArray(body[k]) ? body[k] : [];
+  const hr = arr("heart_rate").map((h) => ({ t: whenMs(h.time), avg: num3(h.avg ?? h.bpm), max: num3(h.max ?? h.bpm) })).filter((h) => h.t != null && h.avg != null && h.max != null);
+  for (const s of arr("sleep")) {
+    const end = whenMs(s.session_end_time ?? s.end_time);
+    const dur = num3(s.duration_seconds);
+    const start = whenMs(s.start_time) ?? (end != null && dur != null ? end - dur * 1e3 : null);
+    if (start == null || end == null) continue;
+    recs.push({ type: "sleepsession", rec: { startTime: start, endTime: end, stages: (Array.isArray(s.stages) ? s.stages : []).map((st) => ({ stage: st.stage, startTime: st.start_time, endTime: st.end_time })) } });
+  }
+  for (const h of arr("heart_rate_variability")) recs.push({ type: "hrv", rec: { time: h.time, value: h.avg ?? h.rmssd_millis } });
+  for (const r2 of arr("resting_heart_rate")) recs.push({ type: "restingheartrate", rec: { time: r2.time, value: r2.bpm } });
+  for (const w of arr("weight")) recs.push({ type: "weight", rec: { time: w.time, value: w.kilograms } });
+  for (const e of arr("exercise")) {
+    const s0 = whenMs(e.start_time);
+    const s1 = whenMs(e.end_time);
+    const inside = s0 != null && s1 != null ? hr.filter((h) => h.t >= s0 && h.t <= s1) : [];
+    recs.push({
+      type: "exercisesession",
+      rec: {
+        startTime: e.start_time,
+        endTime: e.end_time,
+        exerciseType: e.type,
+        title: e.title,
+        distanceMeters: e.distance_meters,
+        // Pulsul din eșantioane; altfel cel din înregistrarea antrenamentului (exportul Samsung Health îl are).
+        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : num3(e.avg_heart_rate),
+        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : num3(e.max_heart_rate),
+        id: e.metadata?.id ?? null
+      }
+    });
+  }
+  const KNOWN = /* @__PURE__ */ new Set(["timestamp", "app_version", "timezone", "sleep", "heart_rate_variability", "resting_heart_rate", "weight", "exercise"]);
+  for (const k of Object.keys(body)) if (!KNOWN.has(k) && !HCW_UNUSED.has(k)) unknown.push(k);
+  return { recs, unknown };
+}
+function parseHealthConnect(body, tz) {
+  const hcw = isHcWebhook(body) ? hcWebhookRecords(body) : null;
+  const recs = hcw ? hcw.recs : collectRecords(body);
+  const days = /* @__PURE__ */ new Map();
+  const get = (d) => {
+    let r2 = days.get(d);
+    if (!r2) days.set(d, r2 = { date: d, hrv: null, rhr: null, sleep_min: null, bedtime: null, wake_time: null });
+    return r2;
+  };
+  const hrvByDay = /* @__PURE__ */ new Map();
+  const rhrByDay = /* @__PURE__ */ new Map();
+  const workouts = [];
+  const others = [];
+  const unknown = new Set(hcw?.unknown ?? []);
+  let recognized = hcw ? Object.keys(body).filter((k) => HCW_UNUSED.has(k)).length : 0;
+  for (const { type, rec } of recs) {
+    const start = whenMs(rec.startTime ?? rec.start_time ?? rec.start ?? rec.startTimeMillis);
+    const end = whenMs(rec.endTime ?? rec.end_time ?? rec.end ?? rec.endTimeMillis);
+    const at = whenMs(rec.time ?? rec.timestamp ?? rec.instant) ?? start;
+    if (type === "sleepsession") {
+      if (start == null || end == null || end <= start) continue;
+      recognized++;
+      let awakeMs = 0;
+      const stages = Array.isArray(rec.stages) ? rec.stages : [];
+      for (const st of stages) {
+        const code = num3(st.stage ?? st.type);
+        const nm = str(st.stage ?? st.type)?.toLowerCase() ?? "";
+        const s0 = whenMs(st.startTime ?? st.start);
+        const s1 = whenMs(st.endTime ?? st.end);
+        if (s0 == null || s1 == null) continue;
+        if (code === 1 || code === 3 || code === 7 || /awake|out_of_bed|outofbed/.test(nm)) awakeMs += Math.max(0, s1 - s0);
+      }
+      const wake = local(end, tz);
+      const bed = local(start, tz);
+      const d = get(wake.date);
+      const min = Math.round((end - start - awakeMs) / 6e4);
+      d.sleep_min = (d.sleep_min ?? 0) + min;
+      d.bedtime = d.bedtime ?? bed.hm;
+      d.wake_time = wake.hm;
+    } else if (type === "heartratevariabilityrmssd" || type === "hrv" || type === "heartratevariability") {
+      const v = pick(rec, ["heartRateVariabilityMillis", "rmssd", "hrv", "value", "millis"]);
+      if (v == null || at == null) continue;
+      recognized++;
+      const l = local(at, tz);
+      const key2 = l.minutes <= 11 * 60 ? `${l.date}:n` : `${l.date}:d`;
+      hrvByDay.set(key2, [...hrvByDay.get(key2) ?? [], v]);
+    } else if (type === "restingheartrate") {
+      const v = pick(rec, ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
+      if (v == null || at == null) continue;
+      recognized++;
+      const l = local(at, tz);
+      rhrByDay.set(l.date, [...rhrByDay.get(l.date) ?? [], v]);
+    } else if (type === "weight") {
+      const kg = pick(rec, ["weight", "weightKg", "value"], ["inKilograms", "value"]);
+      if (kg == null || at == null) continue;
+      recognized++;
+      get(local(at, tz).date).weight_kg = Math.round(kg * 10) / 10;
+    } else if (type === "exercisesession") {
+      if (start == null || end == null || end <= start) continue;
+      recognized++;
+      const kind = sportOfExercise(rec) ?? "";
+      const sport = sportOf2(kind);
+      const title = str(rec.title) ?? str(rec.name) ?? kind;
+      const sec = (end - start) / 1e3;
+      const l = local(start, tz);
+      const distM = pick(rec, ["distance", "distanceMeters", "totalDistance", "distance_m"], ["inMeters", "value"]);
+      const distKm = distM != null && distM > 0 ? Math.round(distM / 10) / 100 : null;
+      const avg = pick(rec, ["averageHeartRate", "avgHeartRate", "avgHr", "heartRateAvg"], ["value", "beatsPerMinute"]);
+      const max = pick(rec, ["maxHeartRate", "maxHr", "heartRateMax"], ["value", "beatsPerMinute"]);
+      const id = (str(rec.id) ?? str(rec.metadata?.id) ?? `${start}-${kind}`).replace(/[^a-zA-Z0-9-]/g, "");
+      if (sport) {
+        if (sec < 60) continue;
+        const details = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(sec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round(distKm / (sec / 3600) * 10) / 10 : null };
+        if (sport === "inot" && distKm) details.pace100mSec = swimPace100(sec, distKm * 1e3);
+        workouts.push({ id: `android-${id}`, date: l.date, start_local: l.hm, sport, minutes: Math.round(sec / 60), distance_km: distKm, avg_hr: avg == null ? null : Math.round(avg), max_hr: max == null ? null : Math.round(max), avg_pace_min_km: sport === "alergare" && distKm && distKm > 0.2 ? Math.round(sec / 60 / distKm * 100) / 100 : null, name: `${title} \xB7 Samsung Health`, details });
+      } else {
+        const c = classifyOther(kind || title);
+        if (!c || sec < 300) {
+          if (!c) unknown.add(`exercise:${kind || title}`);
+          continue;
+        }
+        others.push({ id: `android-o-${id}`, source: "android", externalId: id, date: l.date, startLocal: l.hm, kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
+      }
+    } else if (type === "steps" || type === "heartrate" || type === "distance" || type === "totalcaloriesburned" || type === "activecaloriesburned" || type === "oxygensaturation" || type === "respiratoryrate" || type === "hydration" || type === "nutrition") {
+      recognized++;
+    } else {
+      unknown.add(type);
+    }
+  }
+  const mean3 = (xs) => Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10;
+  const hrvDates = new Set([...hrvByDay.keys()].map((k) => k.split(":")[0]));
+  for (const d of hrvDates) {
+    const night = hrvByDay.get(`${d}:n`);
+    const dayv = hrvByDay.get(`${d}:d`);
+    const xs = night?.length ? night : dayv ?? [];
+    if (xs.length) get(d).hrv = mean3(xs);
+  }
+  for (const [d, xs] of rhrByDay) get(d).rhr = Math.round(mean3(xs));
+  return { days: [...days.values()], workouts, others, unknownTypes: [...unknown], recognized };
+}
+
+// server/webhooks/android.ts
+async function handler8(req, res) {
+  let userId = null;
+  try {
+    const token = q(req, "t");
+    if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
+    const user = await one("users", { apple_token: `eq.${token}` });
+    if (!user) throw new HttpError(401, "token necunoscut");
+    if (req.method === "GET" || req.method === "HEAD") {
+      json(res, 200, { ok: true, mesaj: "adresa e bun\u0103; trimite datele cu POST (JSON)" });
+      return;
+    }
+    if (req.method !== "POST") throw new HttpError(405, "POST");
+    userId = user.id;
+    if (!await hasConsent(user.id)) throw new HttpError(403, "consim\u021B\u0103m\xE2ntul pentru date de s\u0103n\u0103tate lipse\u0219te sau a fost retras");
+    const body = await readJson(req);
+    if (body && typeof body === "object" && body.test === true) {
+      await insert("sync_log", { user_id: user.id, provider: "android", ok: true, rows: 0, detail: "test primit (date de prob\u0103, nesalvate)" }).catch(() => void 0);
+      json(res, 200, { ok: true, test: true, mesaj: "adresa e bun\u0103; datele de prob\u0103 nu se salveaz\u0103" });
+      return;
+    }
+    const r2 = await ingestAndroid(user, body);
+    json(res, 200, { ok: true, ...r2 });
+  } catch (e) {
+    if (userId) await insert("sync_log", { user_id: userId, provider: "android", ok: false, rows: 0, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => void 0);
+    fail(res, e);
+  }
+}
+async function ingestAndroid(user, body, opts = {}) {
+  const parsed = parseHealthConnect(body, user.tz || "Europe/Bucharest");
+  const workouts = [...new Map(parsed.workouts.map((w) => [w.id, { ...w, id: `android-${user.id}-${w.id.replace(/^android-/, "")}` }])).values()];
+  await saveOthers(user.id, parsed.others.map((o) => ({ ...o, id: `android-o-${user.id}-${o.externalId}` })));
+  for (const group of wellnessGroups(user.id, parsed.days, "android")) await upsert("wellness_daily", group, "user_id,date,source");
+  if (workouts.length) {
+    await upsert(
+      "activities",
+      workouts.map((w) => ({
+        id: w.id,
+        user_id: user.id,
+        source: "android",
+        external_id: w.id.slice(`android-${user.id}-`.length),
+        date: w.date,
+        start_local: w.start_local,
+        sport: w.sport,
+        minutes: w.minutes,
+        distance_km: w.distance_km,
+        avg_hr: w.avg_hr,
+        max_hr: w.max_hr,
+        avg_pace_min_km: w.avg_pace_min_km,
+        name: w.name,
+        raw: w.details,
+        synced_at: (/* @__PURE__ */ new Date()).toISOString()
+      })),
+      "id"
+    );
+    if (!opts.history) await reactNow(user.id);
+  }
+  const detail = `${opts.history ? "istoric importat: " : ""}${parsed.days.length} zile, ${workouts.length} antrenamente, ${parsed.others.length} recuperare${parsed.unknownTypes.length ? ` \xB7 tipuri necunoscute: ${parsed.unknownTypes.slice(0, 8).join(", ")}` : ""}`;
+  await insert("sync_log", { user_id: user.id, provider: "android", ok: parsed.recognized > 0 || parsed.unknownTypes.length === 0, rows: parsed.days.length + workouts.length, detail: detail.slice(0, 300) }).catch(() => void 0);
+  return { zile: parsed.days.length, antrenamente: workouts.length, recuperare: parsed.others.length, tipuri_necunoscute: parsed.unknownTypes };
+}
+
 // server/_lib/plan.ts
 var runBranch = (intake) => intake.alergare?.ramura ?? (intake.alergare?.tinta ? "timp" : "finalizare");
 async function historyHours(userId, today) {
@@ -7375,7 +7655,7 @@ async function testsAvailable(userId, intake) {
 }
 
 // server/forms/[kind].ts
-async function handler8(req, res) {
+async function handler9(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -7723,6 +8003,15 @@ async function handler8(req, res) {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === "samsung-import") {
+      if (!await hasConsent(u.id)) throw new HttpError(403, "consim\u021B\u0103m\xE2ntul pentru date de s\u0103n\u0103tate lipse\u0219te sau a fost retras");
+      const b = body;
+      const n2 = (b.exercise?.length ?? 0) + (b.sleep?.length ?? 0) + (b.weight?.length ?? 0);
+      if (n2 > 5e3) throw new HttpError(413, "prea multe \xEEnregistr\u0103ri \xEEntr-o singur\u0103 trimitere");
+      const r2 = await ingestAndroid({ id: u.id, tz: user.tz ?? null }, { ...body, app_version: "samsung-health-export", timezone: user.tz || "Europe/Bucharest" }, { history: true });
+      json(res, 200, { ok: true, ...r2 });
+      return;
+    }
     if (kind === "apple-arata") {
       const cur = await one("users", { id: `eq.${u.id}` });
       let token = cur?.apple_token ?? null;
@@ -7772,7 +8061,7 @@ function paceSec(p) {
 }
 
 // server/me.ts
-async function handler9(req, res) {
+async function handler10(req, res) {
   try {
     const u = await requireUser(req);
     const user = await loadUser(u.id);
@@ -7783,7 +8072,7 @@ async function handler9(req, res) {
 }
 
 // server/oauth/[provider]/callback.ts
-async function handler10(req, res) {
+async function handler11(req, res) {
   try {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
@@ -7808,7 +8097,7 @@ async function handler10(req, res) {
 }
 
 // server/oauth/[provider]/start.ts
-async function handler11(req, res) {
+async function handler12(req, res) {
   try {
     const u = await requireUser(req);
     const provider = q(req, "provider");
@@ -7821,7 +8110,7 @@ async function handler11(req, res) {
 }
 
 // server/plan/generate.ts
-async function handler12(req, res) {
+async function handler13(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -8134,7 +8423,7 @@ commit;`);
 }
 
 // server/setup.ts
-async function handler13(req, res) {
+async function handler14(req, res) {
   try {
     if (req.method === "GET") {
       json(res, 200, await setupStatus());
@@ -8172,7 +8461,7 @@ async function hasUpgrade() {
 
 // server/admin.ts
 import { randomBytes as randomBytes4 } from "node:crypto";
-async function handler14(req, res) {
+async function handler15(req, res) {
   try {
     const u = await requireUser(req);
     const me = await one("users", { id: `eq.${u.id}` });
@@ -8256,7 +8545,7 @@ async function handler14(req, res) {
 }
 
 // server/sync.ts
-async function handler15(req, res) {
+async function handler16(req, res) {
   try {
     if (req.method !== "POST") throw Object.assign(new Error("POST"), { status: 405 });
     const u = await requireUser(req);
@@ -8273,7 +8562,7 @@ async function handler15(req, res) {
 }
 
 // server/webhooks/strava.ts
-async function handler16(req, res) {
+async function handler17(req, res) {
   try {
     if (req.method === "GET") {
       if (q(req, "hub.verify_token") !== (process.env.STRAVA_VERIFY_TOKEN ?? "")) {
@@ -8299,7 +8588,7 @@ async function handler16(req, res) {
 
 // server/webhooks/whoop.ts
 import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
-async function handler17(req, res) {
+async function handler18(req, res) {
   try {
     const chunks = [];
     for await (const c of req) chunks.push(typeof c === "string" ? Buffer.from(c) : c);
@@ -8335,281 +8624,6 @@ async function handler17(req, res) {
   }
 }
 
-// server/_lib/android.ts
-var EXERCISE_CODE = { 8: "biking", 9: "biking", 25: "elliptical", 36: "hiit", 37: "hiking", 53: "rowing", 54: "rowing", 56: "running", 57: "running", 70: "strength", 73: "swimming", 74: "swimming", 79: "walking", 81: "weightlifting", 83: "yoga" };
-var normType = (t) => t.toLowerCase().replace(/record$/, "").replace(/[^a-z]/g, "");
-var num3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
-var str = (v) => typeof v === "string" && v ? v : null;
-function pick(r2, keys, inner = ["value", "inMeters", "inKilograms", "inMilliseconds", "beatsPerMinute"]) {
-  for (const k of keys) {
-    const v = r2[k];
-    const n2 = num3(v);
-    if (n2 != null) return n2;
-    if (v && typeof v === "object") {
-      for (const ik of inner) {
-        const n22 = num3(v[ik]);
-        if (n22 != null) return n22;
-      }
-    }
-  }
-  return null;
-}
-function whenMs(v) {
-  if (typeof v === "number" && Number.isFinite(v)) return v > 1e11 ? v : v * 1e3;
-  if (typeof v === "string") {
-    const t = Date.parse(v);
-    return Number.isNaN(t) ? null : t;
-  }
-  if (v && typeof v === "object") {
-    const o = v;
-    return whenMs(o.epochSecond ?? o.epochMillis ?? o.time ?? o.value);
-  }
-  return null;
-}
-function local(ms, tz) {
-  const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-  const parts = Object.fromEntries(f.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
-  const hour = parts.hour === "24" ? "00" : parts.hour;
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, hm: `${hour}:${parts.minute}`, minutes: Number(hour) * 60 + Number(parts.minute) };
-}
-function collectRecords(body) {
-  const out = [];
-  const GENERIC = /^(records?|data|items|results?|entries|list|payload|body)$/i;
-  const push = (keyHint, rec) => {
-    const t = str(rec.type) ?? str(rec.recordType) ?? str(rec.dataType) ?? str(rec.kind) ?? (keyHint && !GENERIC.test(keyHint) ? keyHint : null);
-    if (t) out.push({ type: normType(t), rec });
-  };
-  const walk = (node, keyHint, depth) => {
-    if (depth > 4 || !node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      for (const x of node) if (x && typeof x === "object" && !Array.isArray(x)) push(keyHint, x);
-      return;
-    }
-    const o = node;
-    if (str(o.type) || str(o.recordType) || str(o.dataType)) {
-      if (depth === 0 || keyHint == null) push(null, o);
-    }
-    for (const [k, v] of Object.entries(o)) {
-      if (Array.isArray(v)) walk(v, k, depth + 1);
-      else if (v && typeof v === "object" && ["data", "payload", "records", "result", "body", "healthConnect", "health_connect"].includes(k)) walk(v, k, depth + 1);
-    }
-  };
-  walk(body, null, 0);
-  return out;
-}
-function sportOfExercise(rec) {
-  const code = num3(rec.exerciseType ?? rec.exercise_type ?? rec.activityType);
-  if (code != null) return EXERCISE_CODE[code] ?? `exercise_${code}`;
-  const name = str(rec.exerciseType ?? rec.exerciseTypeName ?? rec.activityType ?? rec.title ?? rec.name);
-  return name ? name.toLowerCase() : null;
-}
-function sportOf2(name) {
-  if (/swim|înot|inot/.test(name)) return "inot";
-  if (/bik|cycl|ciclism|bicicl/.test(name)) return "bicicleta";
-  if (/run|alerg/.test(name)) return "alergare";
-  if (/strength|weight|forță|forta|functional|hiit|cross/.test(name)) return "forta";
-  return null;
-}
-var HCW_UNUSED = /* @__PURE__ */ new Set(["steps", "heart_rate", "distance", "active_calories", "total_calories", "oxygen_saturation", "respiratory_rate", "skin_temperature", "body_temperature", "hydration", "nutrition", "height", "blood_pressure", "blood_glucose", "basal_metabolic_rate", "body_fat", "lean_body_mass", "bone_mass", "vo2_max", "menstruation_flow", "menstruation_period", "intermenstrual_bleeding", "ovulation_test", "cervical_mucus", "sexual_activity", "basal_body_temperature", "floors_climbed", "elevation_gained", "speed", "power", "cycling_pedaling_cadence", "steps_cadence", "wheelchair_pushes", "deleted", "mindfulness", "planned_exercise"]);
-function isHcWebhook(body) {
-  return !!body && typeof body === "object" && !Array.isArray(body) && typeof body.app_version === "string" && typeof body.timezone === "string";
-}
-function hcWebhookRecords(body) {
-  const recs = [];
-  const unknown = [];
-  const arr = (k) => Array.isArray(body[k]) ? body[k] : [];
-  const hr = arr("heart_rate").map((h) => ({ t: whenMs(h.time), avg: num3(h.avg ?? h.bpm), max: num3(h.max ?? h.bpm) })).filter((h) => h.t != null && h.avg != null && h.max != null);
-  for (const s of arr("sleep")) {
-    const end = whenMs(s.session_end_time ?? s.end_time);
-    const dur = num3(s.duration_seconds);
-    const start = whenMs(s.start_time) ?? (end != null && dur != null ? end - dur * 1e3 : null);
-    if (start == null || end == null) continue;
-    recs.push({ type: "sleepsession", rec: { startTime: start, endTime: end, stages: (Array.isArray(s.stages) ? s.stages : []).map((st) => ({ stage: st.stage, startTime: st.start_time, endTime: st.end_time })) } });
-  }
-  for (const h of arr("heart_rate_variability")) recs.push({ type: "hrv", rec: { time: h.time, value: h.avg ?? h.rmssd_millis } });
-  for (const r2 of arr("resting_heart_rate")) recs.push({ type: "restingheartrate", rec: { time: r2.time, value: r2.bpm } });
-  for (const w of arr("weight")) recs.push({ type: "weight", rec: { time: w.time, value: w.kilograms } });
-  for (const e of arr("exercise")) {
-    const s0 = whenMs(e.start_time);
-    const s1 = whenMs(e.end_time);
-    const inside = s0 != null && s1 != null ? hr.filter((h) => h.t >= s0 && h.t <= s1) : [];
-    recs.push({
-      type: "exercisesession",
-      rec: {
-        startTime: e.start_time,
-        endTime: e.end_time,
-        exerciseType: e.type,
-        title: e.title,
-        distanceMeters: e.distance_meters,
-        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : null,
-        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : null,
-        id: e.metadata?.id ?? null
-      }
-    });
-  }
-  const KNOWN = /* @__PURE__ */ new Set(["timestamp", "app_version", "timezone", "sleep", "heart_rate_variability", "resting_heart_rate", "weight", "exercise"]);
-  for (const k of Object.keys(body)) if (!KNOWN.has(k) && !HCW_UNUSED.has(k)) unknown.push(k);
-  return { recs, unknown };
-}
-function parseHealthConnect(body, tz) {
-  const hcw = isHcWebhook(body) ? hcWebhookRecords(body) : null;
-  const recs = hcw ? hcw.recs : collectRecords(body);
-  const days = /* @__PURE__ */ new Map();
-  const get = (d) => {
-    let r2 = days.get(d);
-    if (!r2) days.set(d, r2 = { date: d, hrv: null, rhr: null, sleep_min: null, bedtime: null, wake_time: null });
-    return r2;
-  };
-  const hrvByDay = /* @__PURE__ */ new Map();
-  const rhrByDay = /* @__PURE__ */ new Map();
-  const workouts = [];
-  const others = [];
-  const unknown = new Set(hcw?.unknown ?? []);
-  let recognized = hcw ? Object.keys(body).filter((k) => HCW_UNUSED.has(k)).length : 0;
-  for (const { type, rec } of recs) {
-    const start = whenMs(rec.startTime ?? rec.start_time ?? rec.start ?? rec.startTimeMillis);
-    const end = whenMs(rec.endTime ?? rec.end_time ?? rec.end ?? rec.endTimeMillis);
-    const at = whenMs(rec.time ?? rec.timestamp ?? rec.instant) ?? start;
-    if (type === "sleepsession") {
-      if (start == null || end == null || end <= start) continue;
-      recognized++;
-      let awakeMs = 0;
-      const stages = Array.isArray(rec.stages) ? rec.stages : [];
-      for (const st of stages) {
-        const code = num3(st.stage ?? st.type);
-        const nm = str(st.stage ?? st.type)?.toLowerCase() ?? "";
-        const s0 = whenMs(st.startTime ?? st.start);
-        const s1 = whenMs(st.endTime ?? st.end);
-        if (s0 == null || s1 == null) continue;
-        if (code === 1 || code === 3 || code === 7 || /awake|out_of_bed|outofbed/.test(nm)) awakeMs += Math.max(0, s1 - s0);
-      }
-      const wake = local(end, tz);
-      const bed = local(start, tz);
-      const d = get(wake.date);
-      const min = Math.round((end - start - awakeMs) / 6e4);
-      d.sleep_min = (d.sleep_min ?? 0) + min;
-      d.bedtime = d.bedtime ?? bed.hm;
-      d.wake_time = wake.hm;
-    } else if (type === "heartratevariabilityrmssd" || type === "hrv" || type === "heartratevariability") {
-      const v = pick(rec, ["heartRateVariabilityMillis", "rmssd", "hrv", "value", "millis"]);
-      if (v == null || at == null) continue;
-      recognized++;
-      const l = local(at, tz);
-      const key2 = l.minutes <= 11 * 60 ? `${l.date}:n` : `${l.date}:d`;
-      hrvByDay.set(key2, [...hrvByDay.get(key2) ?? [], v]);
-    } else if (type === "restingheartrate") {
-      const v = pick(rec, ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
-      if (v == null || at == null) continue;
-      recognized++;
-      const l = local(at, tz);
-      rhrByDay.set(l.date, [...rhrByDay.get(l.date) ?? [], v]);
-    } else if (type === "weight") {
-      const kg = pick(rec, ["weight", "weightKg", "value"], ["inKilograms", "value"]);
-      if (kg == null || at == null) continue;
-      recognized++;
-      get(local(at, tz).date).weight_kg = Math.round(kg * 10) / 10;
-    } else if (type === "exercisesession") {
-      if (start == null || end == null || end <= start) continue;
-      recognized++;
-      const kind = sportOfExercise(rec) ?? "";
-      const sport = sportOf2(kind);
-      const title = str(rec.title) ?? str(rec.name) ?? kind;
-      const sec = (end - start) / 1e3;
-      const l = local(start, tz);
-      const distM = pick(rec, ["distance", "distanceMeters", "totalDistance", "distance_m"], ["inMeters", "value"]);
-      const distKm = distM != null && distM > 0 ? Math.round(distM / 10) / 100 : null;
-      const avg = pick(rec, ["averageHeartRate", "avgHeartRate", "avgHr", "heartRateAvg"], ["value", "beatsPerMinute"]);
-      const max = pick(rec, ["maxHeartRate", "maxHr", "heartRateMax"], ["value", "beatsPerMinute"]);
-      const id = (str(rec.id) ?? str(rec.metadata?.id) ?? `${start}-${kind}`).replace(/[^a-zA-Z0-9-]/g, "");
-      if (sport) {
-        if (sec < 60) continue;
-        const details = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(sec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round(distKm / (sec / 3600) * 10) / 10 : null };
-        if (sport === "inot" && distKm) details.pace100mSec = swimPace100(sec, distKm * 1e3);
-        workouts.push({ id: `android-${id}`, date: l.date, start_local: l.hm, sport, minutes: Math.round(sec / 60), distance_km: distKm, avg_hr: avg == null ? null : Math.round(avg), max_hr: max == null ? null : Math.round(max), avg_pace_min_km: sport === "alergare" && distKm && distKm > 0.2 ? Math.round(sec / 60 / distKm * 100) / 100 : null, name: `${title} \xB7 Samsung Health`, details });
-      } else {
-        const c = classifyOther(kind || title);
-        if (!c || sec < 300) {
-          if (!c) unknown.add(`exercise:${kind || title}`);
-          continue;
-        }
-        others.push({ id: `android-o-${id}`, source: "android", externalId: id, date: l.date, startLocal: l.hm, kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
-      }
-    } else if (type === "steps" || type === "heartrate" || type === "distance" || type === "totalcaloriesburned" || type === "activecaloriesburned" || type === "oxygensaturation" || type === "respiratoryrate" || type === "hydration" || type === "nutrition") {
-      recognized++;
-    } else {
-      unknown.add(type);
-    }
-  }
-  const mean3 = (xs) => Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10;
-  const hrvDates = new Set([...hrvByDay.keys()].map((k) => k.split(":")[0]));
-  for (const d of hrvDates) {
-    const night = hrvByDay.get(`${d}:n`);
-    const dayv = hrvByDay.get(`${d}:d`);
-    const xs = night?.length ? night : dayv ?? [];
-    if (xs.length) get(d).hrv = mean3(xs);
-  }
-  for (const [d, xs] of rhrByDay) get(d).rhr = Math.round(mean3(xs));
-  return { days: [...days.values()], workouts, others, unknownTypes: [...unknown], recognized };
-}
-
-// server/webhooks/android.ts
-async function handler18(req, res) {
-  let userId = null;
-  try {
-    const token = q(req, "t");
-    if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
-    const user = await one("users", { apple_token: `eq.${token}` });
-    if (!user) throw new HttpError(401, "token necunoscut");
-    if (req.method === "GET" || req.method === "HEAD") {
-      json(res, 200, { ok: true, mesaj: "adresa e bun\u0103; trimite datele cu POST (JSON)" });
-      return;
-    }
-    if (req.method !== "POST") throw new HttpError(405, "POST");
-    userId = user.id;
-    if (!await hasConsent(user.id)) throw new HttpError(403, "consim\u021B\u0103m\xE2ntul pentru date de s\u0103n\u0103tate lipse\u0219te sau a fost retras");
-    const body = await readJson(req);
-    if (body && typeof body === "object" && body.test === true) {
-      await insert("sync_log", { user_id: user.id, provider: "android", ok: true, rows: 0, detail: "test primit (date de prob\u0103, nesalvate)" }).catch(() => void 0);
-      json(res, 200, { ok: true, test: true, mesaj: "adresa e bun\u0103; datele de prob\u0103 nu se salveaz\u0103" });
-      return;
-    }
-    const parsed = parseHealthConnect(body, user.tz || "Europe/Bucharest");
-    const workouts = [...new Map(parsed.workouts.map((w) => [w.id, { ...w, id: `android-${user.id}-${w.id.replace(/^android-/, "")}` }])).values()];
-    await saveOthers(user.id, parsed.others.map((o) => ({ ...o, id: `android-o-${user.id}-${o.externalId}` })));
-    for (const group of wellnessGroups(user.id, parsed.days, "android")) await upsert("wellness_daily", group, "user_id,date,source");
-    if (workouts.length) {
-      await upsert(
-        "activities",
-        workouts.map((w) => ({
-          id: w.id,
-          user_id: user.id,
-          source: "android",
-          external_id: w.id.slice(`android-${user.id}-`.length),
-          date: w.date,
-          start_local: w.start_local,
-          sport: w.sport,
-          minutes: w.minutes,
-          distance_km: w.distance_km,
-          avg_hr: w.avg_hr,
-          max_hr: w.max_hr,
-          avg_pace_min_km: w.avg_pace_min_km,
-          name: w.name,
-          raw: w.details,
-          synced_at: (/* @__PURE__ */ new Date()).toISOString()
-        })),
-        "id"
-      );
-      await reactNow(user.id);
-    }
-    const detail = `${parsed.days.length} zile, ${workouts.length} antrenamente, ${parsed.others.length} recuperare${parsed.unknownTypes.length ? ` \xB7 tipuri necunoscute: ${parsed.unknownTypes.slice(0, 8).join(", ")}` : ""}`;
-    await insert("sync_log", { user_id: user.id, provider: "android", ok: parsed.recognized > 0 || parsed.unknownTypes.length === 0, rows: parsed.days.length + workouts.length, detail: detail.slice(0, 300) }).catch(() => void 0);
-    json(res, 200, { ok: true, zile: parsed.days.length, antrenamente: workouts.length, recuperare: parsed.others.length, tipuri_necunoscute: parsed.unknownTypes });
-  } catch (e) {
-    if (userId) await insert("sync_log", { user_id: userId, provider: "android", ok: false, rows: 0, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => void 0);
-    fail(res, e);
-  }
-}
-
 // server/router.ts
 var STATIC = {
   "account/signup": handler,
@@ -8618,23 +8632,23 @@ var STATIC = {
   "cron/evening": handler4,
   "cron/morning": handler5,
   "cron/sync": handler6,
-  me: handler9,
-  "plan/generate": handler12,
-  setup: handler13,
-  admin: handler14,
-  sync: handler15,
-  "webhooks/strava": handler16,
-  "webhooks/whoop": handler17,
+  me: handler10,
+  "plan/generate": handler13,
+  setup: handler14,
+  admin: handler15,
+  sync: handler16,
+  "webhooks/strava": handler17,
+  "webhooks/whoop": handler18,
   "webhooks/apple": handler7,
-  "webhooks/android": handler18
+  "webhooks/android": handler8
 };
 function resolve(path) {
   const p = path.replace(/^\/+|\/+$/g, "").replace(/^api\//, "");
   if (STATIC[p]) return { handler: STATIC[p], params: {} };
   let m = /^forms\/([^/]+)$/.exec(p);
-  if (m) return { handler: handler8, params: { kind: m[1] } };
+  if (m) return { handler: handler9, params: { kind: m[1] } };
   m = /^oauth\/([^/]+)\/(start|callback)$/.exec(p);
-  if (m) return { handler: m[2] === "start" ? handler11 : handler10, params: { provider: m[1] } };
+  if (m) return { handler: m[2] === "start" ? handler12 : handler11, params: { provider: m[1] } };
   return null;
 }
 async function handler19(req, res) {

@@ -1,3 +1,4 @@
+import { SamsungImport } from './SamsungImport';
 import { useCallback, useEffect, useState } from 'react';
 import { Card, Icons, Label, fmtDayMonth } from './common';
 import { BackHeader, setAmbientOn, useLocalBack } from './Shell';
@@ -308,6 +309,7 @@ function SamsungCard() {
           <b>3. Adresa personală</b>
           <span>În Health Connect Webhook adaugi un webhook cu adresa de mai jos (JSON, POST), programat la o oră. Primul pachet ne arată și ce tipuri trimite telefonul tău; dacă apare „tipuri necunoscute”, le adăugăm.</span>
         </div>
+        <SamsungImport />
       </div>
       {url ? (
         <>

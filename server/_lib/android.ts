@@ -158,8 +158,9 @@ function hcWebhookRecords(body: Rec): { recs: { type: string; rec: Rec }[]; unkn
         exerciseType: e.type,
         title: e.title,
         distanceMeters: e.distance_meters,
-        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : null,
-        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : null,
+        // Pulsul din eșantioane; altfel cel din înregistrarea antrenamentului (exportul Samsung Health îl are).
+        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : num(e.avg_heart_rate),
+        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : num(e.max_heart_rate),
         id: (e.metadata as Rec | undefined)?.id ?? null,
       },
     });

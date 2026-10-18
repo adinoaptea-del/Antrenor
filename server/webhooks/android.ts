@@ -34,6 +34,16 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, test: true, mesaj: 'adresa e bună; datele de probă nu se salvează' });
       return;
     }
+    const r = await ingestAndroid(user, body);
+    json(res, 200, { ok: true, ...r });
+  } catch (e) {
+    if (userId) await insert('sync_log', { user_id: userId, provider: 'android', ok: false, rows: 0, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => undefined);
+    fail(res, e);
+  }
+}
+
+/** Datele în formatul Health Connect (zilnic de pe telefon sau din exportul Samsung Health): zile, antrenamente, recuperare. */
+export async function ingestAndroid(user: { id: string; tz: string | null }, body: unknown, opts: { history?: boolean } = {}): Promise<{ zile: number; antrenamente: number; recuperare: number; tipuri_necunoscute: string[] }> {
     const parsed = parseHealthConnect(body, user.tz || 'Europe/Bucharest');
     const workouts = [...new Map(parsed.workouts.map((w) => [w.id, { ...w, id: `android-${user.id}-${w.id.replace(/^android-/, '')}` }])).values()];
     await saveOthers(user.id, parsed.others.map((o) => ({ ...o, id: `android-o-${user.id}-${o.externalId}` })));
@@ -60,13 +70,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         })),
         'id',
       );
-      await reactNow(user.id);
+      // Istoricul importat nu e „antrenamentul de azi”: fără reacția antrenorilor.
+      if (!opts.history) await reactNow(user.id);
     }
-    const detail = `${parsed.days.length} zile, ${workouts.length} antrenamente, ${parsed.others.length} recuperare${parsed.unknownTypes.length ? ` · tipuri necunoscute: ${parsed.unknownTypes.slice(0, 8).join(', ')}` : ''}`;
+    const detail = `${opts.history ? 'istoric importat: ' : ''}${parsed.days.length} zile, ${workouts.length} antrenamente, ${parsed.others.length} recuperare${parsed.unknownTypes.length ? ` · tipuri necunoscute: ${parsed.unknownTypes.slice(0, 8).join(', ')}` : ''}`;
     await insert('sync_log', { user_id: user.id, provider: 'android', ok: parsed.recognized > 0 || parsed.unknownTypes.length === 0, rows: parsed.days.length + workouts.length, detail: detail.slice(0, 300) }).catch(() => undefined);
-    json(res, 200, { ok: true, zile: parsed.days.length, antrenamente: workouts.length, recuperare: parsed.others.length, tipuri_necunoscute: parsed.unknownTypes });
-  } catch (e) {
-    if (userId) await insert('sync_log', { user_id: userId, provider: 'android', ok: false, rows: 0, detail: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => undefined);
-    fail(res, e);
-  }
+    return { zile: parsed.days.length, antrenamente: workouts.length, recuperare: parsed.others.length, tipuri_necunoscute: parsed.unknownTypes };
 }

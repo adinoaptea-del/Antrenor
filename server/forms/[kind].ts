@@ -6,6 +6,8 @@ import { readTest } from '../_lib/test-extract.js';
 import { readLabs } from '../_lib/labs-extract.js';
 import { saveSettings } from '../_lib/settings.js';
 import { newAppleToken } from '../webhooks/apple.js';
+import { ingestAndroid } from '../webhooks/android.js';
+import { hasConsent } from '../_lib/consent.js';
 import { disconnect } from '../_lib/tokens.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
@@ -406,6 +408,17 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       else if (['whoop', 'strava', 'oura'].includes(p)) await disconnect(u.id, p as 'whoop' | 'strava' | 'oura');
       else throw new HttpError(400, 'brățară necunoscută');
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'samsung-import') {
+      // Istoricul din exportul Samsung Health („Descărcare date personale”), citit în browser și trimis pe bucăți,
+      // în formatul Health Connect: trece prin același parser ca datele zilnice de pe telefon.
+      if (!(await hasConsent(u.id))) throw new HttpError(403, 'consimțământul pentru date de sănătate lipsește sau a fost retras');
+      const b = body as { exercise?: unknown[]; sleep?: unknown[]; weight?: unknown[] };
+      const n = (b.exercise?.length ?? 0) + (b.sleep?.length ?? 0) + (b.weight?.length ?? 0);
+      if (n > 5000) throw new HttpError(413, 'prea multe înregistrări într-o singură trimitere');
+      const r = await ingestAndroid({ id: u.id, tz: user.tz ?? null }, { ...body, app_version: 'samsung-health-export', timezone: user.tz || 'Europe/Bucharest' }, { history: true });
+      json(res, 200, { ok: true, ...r });
       return;
     }
     if (kind === 'apple-arata') {
