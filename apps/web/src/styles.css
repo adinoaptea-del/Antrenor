@@ -344,6 +344,7 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
 .kv .k { color: var(--muted); }
 .ok { color: var(--c-verde); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .ok .i { width: 14px; height: 14px; }
+.warn-text { color: var(--c-galben); font-weight: 600; }
 .no { color: var(--muted); }
 
 .art .ink { fill: none; stroke: var(--fg); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }

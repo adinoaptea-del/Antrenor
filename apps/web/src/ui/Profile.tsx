@@ -4,7 +4,9 @@ import { BackHeader, setAmbientOn } from './Shell';
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
-import { SERVER, hardReload, server } from '../data/api';
+import { SERVER, hardReload, loadServerConfig, runSetup, server } from '../data/api';
+import { SCHEMA_VERSION } from '@core/schema-version.js';
+import { GOAL_LABEL } from '@core/calendar/phases.js';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
@@ -61,6 +63,7 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
           {section === 'cont' && <AccountSection onOpen={onOpen} />}
           {section === 'admin' && me.admin && !local && (
             <>
+              <AdminDb />
               <AdminKeys />
               <Card tight>
                 <Label icon={Icons.users}>Prietenii</Label>
@@ -86,7 +89,7 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
               <div className="h-md">{me.user.name || me.user.email}</div>
               <div className="small muted">{me.user.raceDate ? `${me.user.raceName ?? 'Cursa'} · ${me.user.raceDate.split('-').reverse().join('.')}` : 'fără cursă încă'}</div>
             </div>
-            {me.user.goal && <span className="chip-lime">{me.user.goal}</span>}
+            {me.user.goal && <span className="chip-lime">{me.user.goal in GOAL_LABEL ? GOAL_LABEL[me.user.goal as keyof typeof GOAL_LABEL] : me.user.goal}</span>}
           </div>
         </Card>
 
@@ -679,6 +682,69 @@ function CopyLine({ label, value }: { label: string; value: string }) {
 }
 
 /** Doar adminul: cheile aplicațiilor de la producători, puse din telefon (fără Vercel). */
+/**
+ * Starea bazei de date, vizibilă adminului: actualizarea schemei rulează singură la pornire, în fundal,
+ * dar o eroare acolo n-ar fi văzută de nimeni. Aici se vede dacă schema e la zi și se poate rula din nou, cu pașii la vedere.
+ */
+function AdminDb() {
+  const [state, setState] = useState<'verific' | 'la-zi' | 'veche' | 'eroare'>('verific');
+  const [steps, setSteps] = useState<{ step: string; ok: boolean; detail?: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    setState('verific');
+    try {
+      const c = await loadServerConfig();
+      setState(!c.ready ? 'eroare' : c.upgrade ? 'veche' : 'la-zi');
+    } catch {
+      setState('eroare');
+    }
+  };
+  useEffect(() => {
+    void check();
+  }, []);
+  const run = async () => {
+    setBusy(true);
+    setSteps(null);
+    try {
+      const r = await runSetup();
+      setSteps(r.steps);
+    } catch (e) {
+      setSteps([{ step: 'actualizare', ok: false, detail: e instanceof Error ? e.message : String(e) }]);
+    } finally {
+      setBusy(false);
+      void check();
+    }
+  };
+  const text = state === 'verific' ? 'verific…' : state === 'la-zi' ? `la zi (schema ${SCHEMA_VERSION})` : state === 'veche' ? `schema e mai veche decât aplicația (cerută: ${SCHEMA_VERSION})` : 'serverul nu răspunde';
+  return (
+    <Card tight>
+      <Label icon={Icons.shield}>Baza de date</Label>
+      <div className="row between" style={{ gap: 12, marginTop: 6 }}>
+        <span className={`small ${state === 'la-zi' ? 'ok' : state === 'veche' || state === 'eroare' ? 'warn-text' : 'muted'}`} style={{ minWidth: 0 }}>
+          {state === 'la-zi' ? Icons.check : null} {text}
+        </span>
+        <button className="pill" style={{ flexShrink: 0 }} onClick={() => void run()} disabled={busy}>
+          {busy ? 'Rulează…' : state === 'veche' ? 'Actualizează acum' : 'Rulează din nou'}
+        </button>
+      </div>
+      <div className="tiny muted" style={{ marginTop: 6 }}>Actualizarea rulează singură la pornirea aplicației, fără întrebări; e idempotentă și nu atinge datele. Aici vezi rezultatul.</div>
+      {steps && (
+        <div className="list-rows" style={{ marginTop: 10 }}>
+          {steps.map((s, i) => (
+            <div key={i} className="row between small" style={{ gap: 10 }}>
+              <span>
+                <b>{s.step}</b>
+                {s.detail ? <small className="muted"> · {s.detail}</small> : null}
+              </span>
+              <span className={s.ok ? 'ok' : 'warn-text'}>{s.ok ? 'ok' : 'eroare'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminKeys() {
   const me = useMe();
   const { submitForm } = useData();

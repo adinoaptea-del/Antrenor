@@ -4765,6 +4765,9 @@ async function handler2(req, res) {
   }
 }
 
+// src/schema-version.ts
+var SCHEMA_VERSION = 4;
+
 // server/config.ts
 async function handler3(_req, res) {
   try {
@@ -4818,7 +4821,6 @@ async function handler3(_req, res) {
     fail(res, e);
   }
 }
-var SCHEMA_VERSION = 4;
 async function schemaOk(r2) {
   if (!r2.ok) return false;
   try {

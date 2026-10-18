@@ -2,6 +2,7 @@ import { fail, json } from './_lib/auth.js';
 import type { Req, Res } from './_lib/http.js';
 import { ENV, supabaseKeyHeaders } from './_lib/env.js';
 import { PROVIDERS, providerConfigured } from './_lib/tokens.js';
+import { SCHEMA_VERSION } from '../src/schema-version.js';
 
 /**
  * GET /api/config — public. Ce îi trebuie aplicației ca să pornească: adresa Supabase și cheia publică
@@ -61,8 +62,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
   }
 }
 
-/** Versiunea schemei cerută de codul de acum (vezi 0002_upgrade.sql, schema_meta). */
-export const SCHEMA_VERSION = 4;
+export { SCHEMA_VERSION };
 export async function schemaOk(r: Response): Promise<boolean> {
   if (!r.ok) return false;
   try {
