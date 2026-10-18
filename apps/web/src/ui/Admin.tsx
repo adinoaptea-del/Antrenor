@@ -136,7 +136,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
                   <div className="k">{NAME[d.provider] ?? d.provider}</div>
                   <div className="tiny" style={{ textAlign: 'right', color: d.ok === false ? 'var(--c-rosu)' : undefined }}>
                     {d.lastSync ? `${d.ok === false ? 'eroare' : 'ok'} · ${fmtTime(d.lastSync)}` : 'încă necitit'}
-                    {d.ok === false && d.detail ? <div className="tiny">{d.detail}</div> : null}
+                    {d.detail ? <div className="tiny" style={{ color: d.ok === false ? undefined : 'var(--muted)' }}>{d.detail}</div> : null}
                   </div>
                 </div>
               ))}
