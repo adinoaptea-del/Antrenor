@@ -116,8 +116,62 @@ export interface HealthConnectParse {
   recognized: number;
 }
 
+/**
+ * Formatul aplicației „Health Connect Webhook” (mcnaveen/health-connect-webhook, docs/webhook.md): obiectul rădăcină are
+ * `timestamp`, `app_version`, `timezone` și câte o listă pe tip, cu chei snake_case (`sleep`, `heart_rate_variability`,
+ * `resting_heart_rate`, `exercise`, `weight` …). Somnul are doar `session_end_time` + `duration_seconds`; exercițiul are
+ * `type` = codul numeric Health Connect ca text („56” = alergare) și nu are puls: îl calculăm din `heart_rate`, dacă vine.
+ */
+const HCW_UNUSED = new Set(['steps', 'heart_rate', 'distance', 'active_calories', 'total_calories', 'oxygen_saturation', 'respiratory_rate', 'skin_temperature', 'body_temperature', 'hydration', 'nutrition', 'height', 'blood_pressure', 'blood_glucose', 'basal_metabolic_rate', 'body_fat', 'lean_body_mass', 'bone_mass', 'vo2_max', 'menstruation_flow', 'menstruation_period', 'intermenstrual_bleeding', 'ovulation_test', 'cervical_mucus', 'sexual_activity', 'basal_body_temperature', 'floors_climbed', 'elevation_gained', 'speed', 'power', 'cycling_pedaling_cadence', 'steps_cadence', 'wheelchair_pushes', 'deleted', 'mindfulness', 'planned_exercise']);
+
+export function isHcWebhook(body: unknown): body is Rec {
+  return !!body && typeof body === 'object' && !Array.isArray(body) && typeof (body as Rec).app_version === 'string' && typeof (body as Rec).timezone === 'string';
+}
+
+function hcWebhookRecords(body: Rec): { recs: { type: string; rec: Rec }[]; unknown: string[] } {
+  const recs: { type: string; rec: Rec }[] = [];
+  const unknown: string[] = [];
+  const arr = (k: string) => (Array.isArray(body[k]) ? (body[k] as Rec[]) : []);
+  // Pulsul (eșantioane sau medii pe minut), ca să dăm puls mediu / maxim antrenamentelor.
+  const hr = arr('heart_rate')
+    .map((h) => ({ t: whenMs(h.time), avg: num(h.avg ?? h.bpm), max: num(h.max ?? h.bpm) }))
+    .filter((h): h is { t: number; avg: number; max: number } => h.t != null && h.avg != null && h.max != null);
+  for (const s of arr('sleep')) {
+    const end = whenMs(s.session_end_time ?? s.end_time);
+    const dur = num(s.duration_seconds);
+    const start = whenMs(s.start_time) ?? (end != null && dur != null ? end - dur * 1000 : null);
+    if (start == null || end == null) continue;
+    recs.push({ type: 'sleepsession', rec: { startTime: start, endTime: end, stages: (Array.isArray(s.stages) ? (s.stages as Rec[]) : []).map((st) => ({ stage: st.stage, startTime: st.start_time, endTime: st.end_time })) } });
+  }
+  for (const h of arr('heart_rate_variability')) recs.push({ type: 'hrv', rec: { time: h.time, value: h.avg ?? h.rmssd_millis } });
+  for (const r of arr('resting_heart_rate')) recs.push({ type: 'restingheartrate', rec: { time: r.time, value: r.bpm } });
+  for (const w of arr('weight')) recs.push({ type: 'weight', rec: { time: w.time, value: w.kilograms } });
+  for (const e of arr('exercise')) {
+    const s0 = whenMs(e.start_time);
+    const s1 = whenMs(e.end_time);
+    const inside = s0 != null && s1 != null ? hr.filter((h) => h.t >= s0 && h.t <= s1) : [];
+    recs.push({
+      type: 'exercisesession',
+      rec: {
+        startTime: e.start_time,
+        endTime: e.end_time,
+        exerciseType: e.type,
+        title: e.title,
+        distanceMeters: e.distance_meters,
+        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : null,
+        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : null,
+        id: (e.metadata as Rec | undefined)?.id ?? null,
+      },
+    });
+  }
+  const KNOWN = new Set(['timestamp', 'app_version', 'timezone', 'sleep', 'heart_rate_variability', 'resting_heart_rate', 'weight', 'exercise']);
+  for (const k of Object.keys(body)) if (!KNOWN.has(k) && !HCW_UNUSED.has(k)) unknown.push(k);
+  return { recs, unknown };
+}
+
 export function parseHealthConnect(body: unknown, tz: string): HealthConnectParse {
-  const recs = collectRecords(body);
+  const hcw = isHcWebhook(body) ? hcWebhookRecords(body) : null;
+  const recs = hcw ? hcw.recs : collectRecords(body);
   const days = new Map<string, AppleDay>();
   const get = (d: string) => {
     let r = days.get(d);
@@ -128,8 +182,8 @@ export function parseHealthConnect(body: unknown, tz: string): HealthConnectPars
   const rhrByDay = new Map<string, number[]>();
   const workouts: AppleWorkout[] = [];
   const others: OtherActivity[] = [];
-  const unknown = new Set<string>();
-  let recognized = 0;
+  const unknown = new Set<string>(hcw?.unknown ?? []);
+  let recognized = hcw ? Object.keys(body as Rec).filter((k) => HCW_UNUSED.has(k)).length : 0;
 
   for (const { type, rec } of recs) {
     const start = whenMs(rec.startTime ?? rec.start_time ?? rec.start ?? rec.startTimeMillis);

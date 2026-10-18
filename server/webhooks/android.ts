@@ -15,11 +15,16 @@ import { wellnessGroups } from './apple.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   let userId: string | null = null;
   try {
-    if (req.method !== 'POST') throw new HttpError(405, 'POST');
     const token = q(req, 't');
     if (!token || token.length < 20) throw new HttpError(401, 'lipsește tokenul');
     const user = await one<{ id: string; tz: string | null }>('users', { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, 'token necunoscut');
+    // Butonul „Test” al unor aplicații verifică adresa cu GET: răspundem că e bună, fără date.
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, mesaj: 'adresa e bună; trimite datele cu POST (JSON)' });
+      return;
+    }
+    if (req.method !== 'POST') throw new HttpError(405, 'POST');
     userId = user.id;
     if (!(await hasConsent(user.id))) throw new HttpError(403, 'consimțământul pentru date de sănătate lipsește sau a fost retras');
     const body = await readJson(req);

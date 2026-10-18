@@ -49,3 +49,32 @@ describe('Samsung Health prin Health Connect (parser tolerant)', () => {
     assert.equal(p.others[0]!.source, 'android');
   });
 });
+
+describe('Health Connect Webhook (formatul aplicației mcnaveen, docs/webhook.md)', () => {
+  it('somn din session_end_time + durată, HRV pe minut, puls de repaus, alergare cu codul „56” și pulsul din heart_rate', () => {
+    const body = {
+      timestamp: '2026-10-18T14:25:00.000+03:00',
+      app_version: '2.4.0',
+      timezone: 'Europe/Bucharest',
+      sleep: [{ session_end_time: '2026-10-18T07:00:00+03:00', duration_seconds: 8 * 3600, stages: [{ stage: '1', start_time: '2026-10-18T03:00:00+03:00', end_time: '2026-10-18T03:20:00+03:00', duration_seconds: 1200 }, { stage: '4', start_time: '2026-10-17T23:00:00+03:00', end_time: '2026-10-18T03:00:00+03:00', duration_seconds: 14400 }] }],
+      heart_rate_variability: [{ time: '2026-10-18T04:00:00+03:00', avg: 40, min: 35, max: 45, rmssd_millis: 40 }, { time: '2026-10-18T05:00:00+03:00', avg: 50, min: 45, max: 55, rmssd_millis: 50 }],
+      resting_heart_rate: [{ bpm: 52, time: '2026-10-18T06:30:00+03:00' }],
+      heart_rate: [{ time: '2026-10-18T09:10:00+03:00', avg: 140, min: 130, max: 150, bpm: 140 }, { time: '2026-10-18T09:20:00+03:00', avg: 150, min: 140, max: 165, bpm: 150 }],
+      exercise: [{ type: '56', start_time: '2026-10-18T09:00:00+03:00', end_time: '2026-10-18T09:45:00+03:00', duration_seconds: 2700, distance_meters: 7500, metadata: { id: 'abc-123' } }],
+      steps: [{ count: 900, start_time: '2026-10-18T09:00:00+03:00', end_time: '2026-10-18T09:45:00+03:00' }],
+    };
+    const r = parseHealthConnect(body, 'Europe/Bucharest');
+    const d = r.days.find((x) => x.date === '2026-10-18')!;
+    assert.equal(d.sleep_min, 8 * 60 - 20);
+    assert.equal(d.bedtime, '23:00');
+    assert.equal(d.hrv, 45);
+    assert.equal(d.rhr, 52);
+    assert.equal(r.workouts.length, 1);
+    assert.equal(r.workouts[0]!.sport, 'alergare');
+    assert.equal(r.workouts[0]!.distance_km, 7.5);
+    assert.equal(r.workouts[0]!.avg_hr, 145);
+    assert.equal(r.workouts[0]!.max_hr, 165);
+    assert.deepEqual(r.unknownTypes, []);
+    assert.ok(r.recognized > 0);
+  });
+});
