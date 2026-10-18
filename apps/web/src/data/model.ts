@@ -200,7 +200,7 @@ export type Level = 'verde' | 'galben' | 'portocaliu' | 'rosu';
 export function dayLevel(me: Me): Level | null {
   // Marginea ecranului = decizia zilei (aceeași ca peste tot).
   const d = dayOf(me);
-  if (!d || d.rest) return null;
+  if (!d || d.rest || d.ask) return null;
   return d.level === 'stop' ? 'rosu' : d.level;
 }
 

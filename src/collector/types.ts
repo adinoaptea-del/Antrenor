@@ -43,6 +43,8 @@ export interface MorningForm {
   date: string;
   hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null }; // 1–7
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
+  /** Doar când brățările n-au date: „ești odihnit și apt de antrenament azi?”. Sportivul decide. */
+  apt?: 'da' | 'partial' | 'nu' | null;
 }
 
 export interface EveningForm {

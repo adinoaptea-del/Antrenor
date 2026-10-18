@@ -164,30 +164,30 @@ describe('62 / T60 · obiectiv nesuportat', () => {
 });
 
 import { adapt } from '../src/calendar/adapt.js';
-import { bigEffort } from '../src/calendar/safety.js';
-describe('organism viu · efortul mare de azi închide ziua și ușurează zilele următoare', () => {
-  const run = { id: 'azuga', date: '2026-10-17', sport: 'alergare' as const, minutes: 229, distanceKm: 21.3 };
+import { extraOn } from '../src/calendar/load.js';
+describe('organism viu · efortul peste plan: ziua se echivalează, mâine decid datele', () => {
+  // Azuga: 3 h 49, 21 km, mult în Z3–Z4 (minute din ceas), în locul unei lungi de 90 min Z2 + un înot de 30 min.
+  const run = { id: 'azuga', date: '2026-10-17', sport: 'alergare' as const, minutes: 229, distanceKm: 21.3, timeInZonesMin: { 1: 10, 2: 40, 3: 90, 4: 80, 5: 9 } };
   const plan: PlannedWorkout[] = [
     P({ id: 'lung', date: '2026-10-17', type: 'lung', plannedMinutes: 90, key: true }),
     P({ id: 'inot', date: '2026-10-17', sport: 'inot', type: 'tehnica', plannedMinutes: 30, targetZones: [1, 2] }),
     P({ id: 'luni', date: '2026-10-19', sport: 'bicicleta', type: 'z2', plannedMinutes: 60 }),
     P({ id: 'marti', date: '2026-10-20', sport: 'alergare', type: 'calitate', plannedMinutes: 50, targetZones: [4], key: true, intervals: { count: 5, minutes: 4, zone: 4 } }),
   ];
-  it('3 h 49 de munte: înotul de azi se anulează, ședința făcută rămâne, mâine ușor, cheia din 72 h −25% Z1–Z2', () => {
-    const r = adapt(plan, { kind: 'efort', activity: run, rpe: null, planned: true }, { today: '2026-10-17', freeBlocks: [], recentKeyScores: [], done: ['lung'] });
+  it('3 h 49 de munte: efortul (TRIMP) acoperă ziua → înotul se anulează; zilele următoare rămân cum sunt', () => {
+    const { extra, coverage } = extraOn('2026-10-17', plan, [run as never]);
+    assert.equal(extra, true, 'mult peste lunga planificată');
+    assert.equal(coverage.stare, 'acoperit');
+    assert.ok(coverage.facut > coverage.planificat);
+    const r = adapt(plan, { kind: 'acoperit', date: '2026-10-17', facut: coverage.facut, planificat: coverage.planificat }, { today: '2026-10-17', freeBlocks: [], recentKeyScores: [], done: ['lung'] });
     assert.equal(r.plan.find((w) => w.id === 'lung')!.status, 'planificat');
     assert.equal(r.plan.find((w) => w.id === 'inot')!.status, 'anulat_sistem');
-    assert.deepEqual(r.plan.find((w) => w.id === 'luni')!.targetZones, [1]);
-    const m = r.plan.find((w) => w.id === 'marti')!;
-    assert.equal(m.plannedMinutes, 40);
-    assert.equal(m.type, 'z2');
+    assert.deepEqual(r.plan.find((w) => w.id === 'luni')!.targetZones, [2]);
+    assert.equal(r.plan.find((w) => w.id === 'marti')!.type, 'calitate');
   });
-  it('pe ecran: zi roșie cu motivul, din aceeași regulă', () => {
-    assert.match(bigEffort([{ sport: 'alergare', minutes: 229 }]) ?? '', /alergare 3 h 49 min/);
+  it('restricția de sănătate nu mai vine din durata efortului', () => {
     const r = activeRestriction({ today: '2026-10-17', morning: null, evenings: [], todayActivities: [{ sport: 'alergare', minutes: 229 }] });
-    assert.equal(r?.verdict, 'rosu');
-    assert.equal(bigEffort([{ sport: 'alergare', minutes: 45 }]), null);
-    assert.ok(bigEffort([{ sport: 'alergare', minutes: 45, rpe: 8 }]));
+    assert.equal(r, null);
   });
 });
 

@@ -65,8 +65,8 @@ export function activeRestriction(input: {
   const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
   const worst = recent.reduce<{ scor: number; loc: string | null } | null>((m, e) => (!m || e.durere!.scor! > m.scor ? { scor: e.durere!.scor!, loc: e.durere!.loc } : m), null);
   if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: fără alergare și fără intensitate până trece.` };
-  const big = bigEffort(input.todayActivities ?? []);
-  if (big) return { verdict: 'rosu', reason: `Ai făcut deja azi un efort mare (${big}): restul zilei odihnă, fără alt antrenament.` };
+  // Efortul mare de azi nu mai e o restricție de sănătate: îl echivalează regula „acoperit” (efort făcut față de cel
+  // planificat), iar ziua de mâine o decid datele de dimineață.
   if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: doar ușor, fără impact.` };
   return null;
 }

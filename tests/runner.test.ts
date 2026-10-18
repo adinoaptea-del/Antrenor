@@ -89,6 +89,22 @@ describe('runner · piramida', () => {
     assert.ok(r.events.some((e) => e.kind === 'readiness' && e.verdict === 'rosu'));
   });
 
+  it('activitate în plus azi, ziua parțial acoperită: head coach-ul alege doar dintre variantele codului', async () => {
+    const p0 = buildPacket(input);
+    const cover = { date: '2026-10-16', facut: 60, planificat: 200, procent: 30, neechivalate: [], stare: 'partial' as const, implicit: 'ajunge', optiuni: [
+      { id: 'scurt-v', text: 'alergare scurtată la 20 min', changes: [{ workoutId: 'v', action: 'scurteaza' as const, minutes: 20 }] },
+      { id: 'ajunge', text: 'gata pe azi', changes: [{ workoutId: 'v', action: 'anuleaza' as const }] },
+    ] };
+    const packet = { ...p0, acoperire_azi: cover };
+    const pick = (optiune: string) => fakeModel({ head: () => ({ decizie: 'verde', mesaj: 'Ok.', memento: 'Ziua 1.', jurnal: [], intrebare: null, optiune }) }).client;
+    const a = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, pick('scurt-v'));
+    const ev = a.events.find((e) => e.kind === 'acoperire');
+    assert.ok(ev && ev.kind === 'acoperire' && ev.optiune.id === 'scurt-v');
+    const b = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, pick('alerg 2 ore'));
+    const ev2 = b.events.find((e) => e.kind === 'acoperire');
+    assert.ok(ev2 && ev2.kind === 'acoperire' && ev2.optiune.id === 'ajunge', 'o variantă inventată nu trece: se aplică cea din cod');
+  });
+
   it('o cifră inventată de head coach duce la reîncercare, apoi la mesajul din cod', async () => {
     let headCalls = 0;
     const { client } = fakeModel({

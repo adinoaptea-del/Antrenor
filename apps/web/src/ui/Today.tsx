@@ -2,7 +2,9 @@ import type { Sport } from '@core/types.js';
 import { weekday } from '@core/util/dates.js';
 import { Icons } from './common';
 import { WorkoutCard } from './Workout';
-import { useMe } from '../data/store';
+import { useState } from 'react';
+import { useData, useMe } from '../data/store';
+import { emptyMorning, type MorningForm } from '../forms/types';
 import { DAY_NAMES, SPORT_LABEL, ago, colorOf, dayOf, firstSentences, fmtMinutes, todayMessage, workoutsOn } from '../data/model';
 import { DayDecisionView } from './Day';
 
@@ -28,6 +30,7 @@ export function Today({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sp
         <span>Azi · {DAY_NAMES[weekday(me.today)]}</span>
       </div>
       {day && <DayDecisionView day={day} />}
+      {day?.ask && <AptQuestion />}
 
       {list.length === 0 ? (
         <div className="today-rest">
@@ -49,13 +52,51 @@ export function Today({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sp
       <button className="today-coach" onClick={() => onOpen('antrenor')}>
         {Icons.chat}
         <span>
-          {msg ? firstSentences(msg.body, 3) : stale ? 'Mesajul de azi era scris pe date mai vechi. Cere unul nou.' : 'Antrenorul îți scrie la 05:30 și după fiecare antrenament.'}
+          {day?.ask ? 'Răspunde mai sus și antrenorul îți scrie pe răspunsul tău.' : msg ? firstSentences(msg.body, 3) : stale ? 'Mesajul de azi era scris pe date mai vechi. Cere unul nou.' : 'Antrenorul îți scrie la 05:30 și după fiecare antrenament.'}
           <b> {msg ? 'Vezi explicația' : 'Deschide'}</b>
         </span>
       </button>
 
       <Sources />
     </section>
+  );
+}
+
+/**
+ * Fără date de la brățări: sportivul spune dacă e apt. Răspunsul intră în chestionarul de dimineață, decizia zilei se
+ * reface din el, iar antrenorul scrie mesajul pe răspuns.
+ */
+export function AptQuestion() {
+  const me = useMe();
+  const { submitForm, runAgents, local } = useData();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const answer = async (apt: 'da' | 'partial' | 'nu') => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const base = (me.forms.morning as MorningForm | null) ?? emptyMorning(me.today);
+      await submitForm('dimineata', { ...base, date: me.today, apt });
+      if (!local) void runAgents('dimineata').catch(() => undefined);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="apt">
+      <button className="btn sm" disabled={busy} onClick={() => void answer('da')}>
+        Da, sunt odihnit
+      </button>
+      <button className="btn sm dark" disabled={busy} onClick={() => void answer('partial')}>
+        Parțial
+      </button>
+      <button className="btn sm dark" disabled={busy} onClick={() => void answer('nu')}>
+        Nu azi
+      </button>
+      {err && <div className="wk-note">{err}</div>}
+    </div>
   );
 }
 

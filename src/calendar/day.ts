@@ -23,6 +23,8 @@ export interface DayDecision {
   reason: string | null;
   /** Zi fără ședință în plan: nu există „variantă ușoară”, e odihnă oricum (doar stopul și roșul se spun). */
   rest?: boolean;
+  /** Fără date de la brățări: sportivul spune dacă e apt (da / parțial / nu). */
+  ask?: boolean;
 }
 
 export const DAY_TEXT: Record<DayLevel, { title: string; action: string }> = {
@@ -43,6 +45,10 @@ export interface DayInput {
   restriction: { verdict: 'galben' | 'rosu' | 'stop'; reason: string } | null;
   /** Ședințele de azi din plan (toate statusurile). */
   todayPlan: PlannedWorkout[];
+  /** Ședințele de azi deja făcute (legate de o activitate). */
+  doneIds?: string[];
+  /** Fără date de la brățări și fără răspuns: întrebăm sportivul dacă e apt. */
+  ask?: boolean;
 }
 
 export function decideDay(i: DayInput): DayDecision | null {
@@ -54,10 +60,33 @@ export function decideDay(i: DayInput): DayDecision | null {
 
   // Calendarul: toate ședințele de azi anulate de o regulă de sănătate = pauză azi.
   const sessions = i.todayPlan.filter((w) => w.type !== 'odihna' && w.status !== 'sters');
-  const cancelled = sessions.filter((w) => w.status === 'anulat_sistem' && !(w.note ?? '').startsWith('plecat'));
-  const active = sessions.filter((w) => w.status === 'planificat' || w.status === 'mutat');
+  const coveredNote = (w: PlannedWorkout) => /^(acoperită|gata pe azi)/.test(w.note ?? '');
+  const cancelled = sessions.filter((w) => w.status === 'anulat_sistem' && !(w.note ?? '').startsWith('plecat') && !coveredNote(w));
+  const doneSet = new Set(i.doneIds ?? []);
+  const done = sessions.filter((w) => doneSet.has(w.id));
+  const active = sessions.filter((w) => (w.status === 'planificat' || w.status === 'mutat') && !doneSet.has(w.id));
   if (sessions.length > 0 && active.length === 0 && cancelled.length > 0) candidates.push({ level: 'rosu', reason: cancelled[0]!.note ?? 'ședințele de azi au fost anulate' });
 
+  // Ziua e acoperită: ai făcut deja efortul zilei (sau partea aleasă), restul e odihnă. Nu e „zi roșie”.
+  const covered = sessions.filter((w) => w.status === 'anulat_sistem' && coveredNote(w));
+  if (sessions.length && covered.length && active.length === 0) {
+    const hard = candidates.filter((c) => c.level === 'stop').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
+    if (!hard) return { level: 'verde', title: 'Ziua e acoperită', action: 'Ai făcut deja efortul zilei: restul zilei odihnă.', reason: 'Mâine dimineață antrenorii se uită la somn, recuperare și dureri, apoi decid ziua.', rest: true };
+  }
+  // Ai făcut tot ce era azi în plan.
+  if (sessions.length && done.length && active.length === 0 && cancelled.length === 0 && !candidates.some((c) => c.level === 'stop')) {
+    return { level: 'verde', title: 'Gata pe azi', action: 'Ai făcut ce era în plan. Restul zilei odihnă.', reason: null, rest: true };
+  }
+  // Fără date de la brățări și fără răspuns: întrebarea, nu o culoare ghicită (stopul rămâne stop).
+  if (i.ask && active.length && !candidates.some((c) => c.level === 'stop' || c.level === 'rosu')) {
+    return {
+      level: 'galben',
+      title: 'Fără date de la brățări',
+      action: 'Ești odihnit și apt de antrenament azi?',
+      reason: 'Brățara n-a trimis somnul și recuperarea din noaptea trecută: poate n-ai purtat-o, s-a descărcat sau nu s-a sincronizat. Tu știi cum ai dormit, deci decizi tu.',
+      ask: true,
+    };
+  }
   // Zi fără nicio ședință în plan (odihnă): verde sau galben nu schimbă nimic, deci nu se spune „fă varianta ușoară”.
   if (sessions.length === 0 || (active.length === 0 && cancelled.length === 0)) {
     const hard = candidates.filter((c) => c.level === 'stop' || c.level === 'rosu').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
@@ -73,6 +102,8 @@ export function decideDay(i: DayInput): DayDecision | null {
 /** Un mesaj (al antrenorului) se potrivește cu decizia zilei? Altfel e depășit și nu se arată. */
 export function messageMatches(decision: 'verde' | 'galben' | 'rosu' | 'stop' | null, day: DayDecision | null): boolean {
   if (!day || !decision) return true;
+  // Întrebarea (fără date de la brățări) n-are încă răspuns: niciun mesaj nu a fost scris pe ea.
+  if (day.ask) return false;
   // În zi de odihnă, un mesaj verde sau galben spune tot „odihnă” (nu are ce ședință să ușureze).
   if (day.rest) return decision === 'verde' || decision === 'galben';
   return decision === day.level;

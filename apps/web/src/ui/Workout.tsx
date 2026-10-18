@@ -30,7 +30,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
   // Decizia zilei se aplică și ședinței de azi: în zi roșie nu i se mai propune nimic, în zi galbenă varianta ușoară.
   const day = w.date === me.today && (upcoming || cancelled) ? dayOf(me) : null;
   const paused = !!day && (day.level === 'rosu' || day.level === 'stop');
-  const yellow = !!day && day.level === 'galben' && upcoming;
+  const yellow = !!day && day.level === 'galben' && !day.ask && upcoming;
   const off = cancelled || paused;
 
   return (

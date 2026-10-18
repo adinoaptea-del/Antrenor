@@ -77,13 +77,39 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
 
 const RANK: Record<Verdict, number> = { verde: 0, galben: 1, portocaliu: 2, rosu: 3 };
 
+/** Răspunsul sportivului când brățările n-au date: „ești odihnit și apt de antrenament azi?”. */
+export type Apt = 'da' | 'partial' | 'nu';
+
+export interface DayContext {
+  /** Răspunsul la „ești apt?” (doar când lipsesc datele brățărilor). */
+  apt?: Apt | null;
+  /** Ieri a fost un efort peste plan: azi contează și durerile musculare (brățara nu vede oboseala musculară). */
+  efortIeri?: boolean;
+  /** Hooper „dureri” (1–7), răspunsul de azi. */
+  dureri?: number | null;
+}
+
 /**
- * Verdictul zilei din cod: întâi datele obiective, apoi cum s-a simțit (Hooper) — care doar poate coborî.
- * Fără date obiective: cel mult galben (nu dăm verde pe senzație).
+ * Verdictul zilei din cod: întâi datele obiective (brățările), apoi cum te simți (Hooper), care doar poate coborî.
+ * Fără date de la brățări (dată jos, descărcată, stricată): nu ghicim și nu dăm automat galben — sportivul spune dacă
+ * e apt (el știe cât a dormit). Fără răspuns: `intrebare` = true, verdictul rămâne de decis.
+ * După un efort peste plan, durerile musculare mari (≥ 5 din 7) coboară ziua la galben: HRV-ul nu vede oboseala musculară.
  */
-export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null): { verdict: Verdict; motiv: string } {
-  let v: Verdict = obj.verdict ?? 'galben';
-  let motiv = obj.verdict ? `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)` : 'fără date obiective de la brățări: cel mult galben';
+export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null, ctx: DayContext = {}): { verdict: Verdict; motiv: string; intrebare?: boolean } {
+  let v: Verdict;
+  let motiv: string;
+  let intrebare = false;
+  if (obj.verdict) {
+    v = obj.verdict;
+    motiv = `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)`;
+  } else if (ctx.apt) {
+    v = ctx.apt === 'da' ? 'verde' : ctx.apt === 'partial' ? 'galben' : 'rosu';
+    motiv = `fără date de la brățări; ai spus că ${ctx.apt === 'da' ? 'ești odihnit și apt' : ctx.apt === 'partial' ? 'ești doar parțial odihnit' : 'nu ești apt azi'}`;
+  } else {
+    v = 'galben';
+    motiv = 'fără date de la brățări azi: întrebăm sportivul dacă e apt';
+    intrebare = true;
+  }
   if (hooperSum != null) {
     const felt: Verdict = hooperSum >= 24 ? 'rosu' : hooperSum >= 22 ? 'portocaliu' : hooperSum >= 20 ? 'galben' : 'verde';
     if (RANK[felt] > RANK[v]) {
@@ -91,7 +117,11 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null): {
       motiv += `; cum te simți (Hooper ${hooperSum}) coboară la ${felt}`;
     }
   }
-  return { verdict: v, motiv };
+  if (ctx.efortIeri && (ctx.dureri ?? 0) >= 5 && RANK[v] < RANK.galben) {
+    v = 'galben';
+    motiv += `; dureri musculare ${ctx.dureri}/7 după efortul de ieri`;
+  }
+  return intrebare ? { verdict: v, motiv, intrebare } : { verdict: v, motiv };
 }
 
 /**

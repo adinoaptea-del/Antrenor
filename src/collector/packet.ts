@@ -1,4 +1,4 @@
-import { sportReadiness } from '../bar/sport-readiness.js';
+import { GOAL_NAME, sportReadiness } from '../bar/sport-readiness.js';
 import { hooperSum } from './readiness.js';
 import { activeRestriction } from '../calendar/safety.js';
 import { aerobicEfficiency, type EffTrend } from './efficiency.js';
@@ -9,6 +9,8 @@ import { mergeDetails } from './details.js';
 import { isActiveWorkout, type Activity, type PlannedWorkout, type Sport } from '../types.js';
 import { scoreWorkout, zoneDirection } from '../scoring/score.js';
 import { matchActivities } from '../scoring/match.js';
+import { balanceCheck, type Balance } from '../calendar/balance.js';
+import { extraOn, overYesterday, type DayCoverage } from '../calendar/load.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
@@ -57,7 +59,7 @@ export interface Packet {
     /** Datele obiective (inimă, respirație, recuperare, somn) față de baseline-ul personal, 0–100 fiecare, mediate. */
     obiectiv: ObjectiveReadiness;
     /** Verdictul calculat de cod: datele obiective, apoi cum s-a simțit (Hooper doar coboară). */
-    verdict_cod: { verdict: Verdict; motiv: string };
+    verdict_cod: { verdict: Verdict; motiv: string; /** fără date de la brățări și fără răspuns de la sportiv */ intrebare?: boolean };
     scor_producator: number | null;
     /** Cum s-a simțit (1–7, mai mare = mai rău). suma: și din răspunsuri parțiale (media × 4); raspunse: câte din 4. */
     hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null; raspunse: number; istoric_14z: { data: string; suma: number | null; raspunse: number; boala: boolean | null }[]; media_14z: number | null };
@@ -126,6 +128,15 @@ export interface Packet {
   restrictie_activa: { verdict: 'stop' | 'rosu' | 'galben'; motiv: string } | null;
   /** Eficiența aerobă la același puls (ședințe ușoare, plate): ultimele 3 săptămâni față de cele 6 dinainte. */
   eficienta_aeroba: EffTrend[];
+  /**
+   * Echivalarea zilei de azi (TRIMP Edwards: minute în zone × ponderea zonei; fără puls, din RPE), doar când azi a apărut
+   * ceva în plus față de plan. stare = partial: head coach-ul alege UNA dintre `optiuni` (câmpul „optiune” = id-ul).
+   */
+  acoperire_azi: DayCoverage | null;
+  /** Ieri: efort peste plan? Dimineața, la decizie contează atunci și durerile musculare (hooper.dureri). */
+  efort_ieri: { peste_plan: boolean; trimp_facut: number; trimp_planificat: number };
+  /** Echilibrul pe ultimele 3 săptămâni: sporturi rămase în urmă, intensitate sărită. Din date, nu din impresie. */
+  echilibru: Balance;
   analize: CollectorInput['labs'] | null;
   aviz: CollectorInput['aviz'];
 }
@@ -437,6 +448,12 @@ export function buildPacket(input: CollectorInput): Packet {
 
   const acts = dedupeActivities(input.activities).filter((a) => diffDays(a.date, today) >= 0);
   const yesterday = addDays(today, -1);
+  const rpeOf = (a: { id: string; externalId: string }) => input.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.rpe ?? null;
+  const notOther = (a: { id: string; externalId: string }) => input.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.tip_neplanificat !== 'altceva';
+  const withRpe = acts.filter(notOther).map((a) => ({ ...a, rpe: rpeOf(a) }));
+  const balance = balanceCheck(today, input.plan, acts, input.athlete.goal ? GOAL_NAME[input.athlete.goal] : input.athlete.obiectiv);
+  const ieri = overYesterday(today, input.plan, withRpe);
+  const aziCover = extraOn(today, input.plan, withRpe, balance.in_urma);
   const ore7 = hoursBySport(acts, addDays(today, -7), yesterday);
   const ore28 = hoursBySport(acts, addDays(today, -28), yesterday);
   for (const s of SPORTS) ore28[s] = Math.round((ore28[s] / 4) * 10) / 10;
@@ -549,7 +566,7 @@ export function buildPacket(input: CollectorInput): Packet {
     puls_repaus: { azi: todayRow?.rhr ?? null, media7: round(mean(rhr7), 0), baseline60: rhr60.length >= 14 ? round(mean(rhr60), 1) : null },
     readiness: {
       obiectiv: objective,
-      verdict_cod: dayVerdict(objective, hooper.suma),
+      verdict_cod: dayVerdict(objective, hooper.suma, { apt: input.morning?.apt ?? null, efortIeri: ieri.over, dureri: input.morning?.hooper.dureri ?? null }),
       scor_producator: todayRow?.recoveryScore ?? null,
       hooper: {
         somn: input.morning?.hooper.somn ?? null,
@@ -654,6 +671,9 @@ export function buildPacket(input: CollectorInput): Packet {
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
     eficienta_aeroba: aerobicEfficiency(acts, today),
+    acoperire_azi: aziCover.extra ? aziCover.coverage : null,
+    efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
+    echilibru: balance,
     restrictie_activa: (() => {
       const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;

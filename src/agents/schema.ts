@@ -42,8 +42,9 @@ export const HEAD_SCHEMA = {
     memento: { type: 'string' },
     jurnal: { type: 'array', items: { type: 'string' } },
     intrebare: { type: ['string', 'null'] },
+    optiune: { type: ['string', 'null'] },
   },
-  required: ['decizie', 'mesaj', 'memento', 'jurnal', 'intrebare'],
+  required: ['decizie', 'mesaj', 'memento', 'jurnal', 'intrebare', 'optiune'],
   additionalProperties: false,
 } as const;
 
@@ -53,4 +54,6 @@ export interface HeadResponse {
   memento: string;
   jurnal: string[];
   intrebare: string | null;
+  /** Doar când pachetul are acoperire_azi.stare = partial: id-ul variantei alese pentru restul zilei. */
+  optiune?: string | null;
 }

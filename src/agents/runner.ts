@@ -201,6 +201,11 @@ export function fallbackMessage(p: Packet, decision: HeadResponse['decizie'], sp
   lines.push(`${DAY_TEXT[decision].title}. ${DAY_TEXT[decision].action}`);
   if (decision === 'stop' && !safetyLine(p)) lines.push('Vorbește cu un medic înainte să reiei antrenamentele.');
   else if ((decision === 'verde' || decision === 'galben') && p.plan_azi) lines.push(`Azi: ${p.plan_azi.sport} ${p.plan_azi.tip} ${p.plan_azi.durata_planificata} min${decision === 'galben' ? ', Z1–Z2' : ''}.`);
+  const c = p.acoperire_azi;
+  if (c?.stare === 'partial' && (decision === 'verde' || decision === 'galben')) {
+    const o = c.optiuni.find((x) => x.id === c.implicit);
+    if (o) lines.push(`Ai făcut azi ${c.facut} din ${c.planificat} TRIMP planificat (${c.procent}%). Pentru restul zilei: ${o.text}.`);
+  } else if (c?.stare === 'acoperit') lines.push(`Ai făcut azi ${c.facut} TRIMP, peste cele ${c.planificat} planificate: restul zilei odihnă. Mâine dimineață decid recuperarea și durerile.`);
   for (const s of specialists) for (const item of s.ce) if (item.stare === 'acceptat') lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join('\n');
 }
@@ -309,6 +314,7 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
     memento: `Ziua ${packet.meta.data}: pregătirea continuă.`,
     jurnal: [why],
     intrebare: null,
+    optiune: packetWithVerdict.acoperire_azi?.implicit ?? null,
   });
 
   // 3. Head coach, cu rândurile deja marcate; textul lui se verifică și el, o dată cu reîncercare.
@@ -354,5 +360,15 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
   const line = safetyLine(packetWithVerdict);
   head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}\n${head.mesaj}` : head.mesaj };
 
-  return { routed, specialists, head, headWarnings, events: eventsFrom(packetWithVerdict, decision), decision, fallbackUsed, failures };
+  // Restul zilei după o activitate în plus: varianta aleasă de head coach, doar dintre cele calculate de cod.
+  const cover = packetWithVerdict.acoperire_azi;
+  const coverEvents: AdaptEvent[] = [];
+  if (cover?.stare === 'partial' && cover.optiuni.length && (decision === 'verde' || decision === 'galben')) {
+    const chosen = cover.optiuni.find((o) => o.id === head.optiune) ?? cover.optiuni.find((o) => o.id === cover.implicit) ?? cover.optiuni[0]!;
+    if (head.optiune && chosen.id !== head.optiune) headWarnings.push(`opțiunea „${head.optiune}” nu e printre cele calculate; s-a aplicat ${chosen.id}`);
+    head = { ...head, optiune: chosen.id };
+    coverEvents.push({ kind: 'acoperire', date: packetWithVerdict.meta.data, optiune: chosen, facut: cover.facut, planificat: cover.planificat });
+  }
+
+  return { routed, specialists, head, headWarnings, events: [...eventsFrom(packetWithVerdict, decision), ...coverEvents], decision, fallbackUsed, failures };
 }

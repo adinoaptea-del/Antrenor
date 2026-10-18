@@ -1,9 +1,11 @@
-import { swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
+import { GOAL_NAME, swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
+import { balanceCheck } from '../../src/calendar/balance.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
 import { loadPrefs } from './prefs.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
+import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
@@ -42,7 +44,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== 'sters');
-  const { unplanned } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
+  const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
+  const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
   const unplannedIds = new Set(unplanned.map((a) => a.id));
   const eveningByActivity: Record<string, EveningForm> = {};
   for (const e of forms.evenings) if (e.activityId) eveningByActivity[e.activityId] = e;
@@ -94,7 +97,13 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
   const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
-  const state0 = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  // Ieri a fost efort peste plan? Atunci azi contează și durerile musculare (brățara nu vede oboseala musculară).
+  const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
+  const ieri = overYesterday(today, planned, withRpe);
+  const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
+  // Fără date de la brățări și fără răspuns: nu ghicim o culoare, îl întrebăm pe sportiv.
+  const ask = !!verdict0.intrebare;
+  const state0 = ask || (objective.scor == null && hs == null && !mf?.apt) ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
   const state = !restriction
     ? state0
     : state0
@@ -132,9 +141,11 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const weekAgo = addDays(today, -14);
   const plannedSwim = planned.filter((w) => w.sport === 'inot' && w.date >= weekAgo && w.date < today).reduce((n, w) => n + w.plannedMinutes, 0);
   const doneSwim = activities.filter((a) => a.sport === 'inot' && a.date >= weekAgo && a.date < today).reduce((n, a) => n + a.minutes, 0);
-  if (plannedSwim >= 90 && doneSwim / plannedSwim < 0.6) {
-    warnings.push({ title: 'Înot sub plan', text: `Ai înotat ${Math.round((doneSwim / plannedSwim) * 100)}% din minutele planificate în ultimele două săptămâni.`, fix: 'Săptămâna viitoare ședințele de înot se plasează primele.' });
-  }
+  void plannedSwim;
+  void doneSwim;
+  // Echilibrul pe 3 săptămâni (sporturi rămase în urmă, intensitate sărită): un singur loc, aceleași texte ca la agenți.
+  const balance = balanceCheck(today, planned, activities, user.goal && user.goal in GOAL_NAME ? GOAL_NAME[user.goal as Goal] : (user.goal ?? 'cursă'));
+  for (const a of balance.avertismente) warnings.push({ title: a.titlu, text: a.text, fix: a.ce_faci });
 
   const testRow = await one<{ results: TestsForm }>('tests', { user_id: `eq.${userId}` }, { order: 'tested_at.desc' });
   const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
@@ -157,7 +168,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const dayStartMs = Date.parse(localDayStartUtc(today, (user as UserRow).tz || 'Europe/Bucharest'));
   const readinessOut = withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction);
   // Decizia zilei: una singură, pentru toate ecranele.
-  const day = decideDay({ state, readiness: readinessOut, restriction, todayPlan: planned.filter((w) => w.date === today) });
+  const day = decideDay({ state, readiness: ask ? null : readinessOut, restriction, todayPlan: planned.filter((w) => w.date === today), doneIds: doneToday, ask });
   // Mementoul de azi se arată doar dacă mesajul de dimineață cu care a venit spune același lucru ca decizia de acum.
   const todayMsgs = messagesRows.filter((m) => Date.parse(m.created_at) >= dayStartMs);
   const lastDecided = todayMsgs.find((m) => m.kind !== 'memento' && m.decision);

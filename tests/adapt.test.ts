@@ -104,9 +104,9 @@ describe('adapt', () => {
     assert.equal(r.plan.find((w) => w.id === 'b2')!.plannedMinutes, 135);
   });
 
-  it('activitate neplanificată mare: ziua următoare devine Z1, dar o cheie nu se atinge', () => {
+  it('activitate neplanificată mare: zilele următoare NU se schimbă din prima (decid datele de dimineață)', () => {
     const r = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-04', sport: 'bicicleta', minutes: 120 } }, { ...ctx, today: '2026-11-04' });
-    assert.deepEqual(r.plan.find((w) => w.id === 'r1')!.targetZones, [1]);
+    assert.deepEqual(r.plan.find((w) => w.id === 'r1')!.targetZones, [2]);
     const r2 = adapt(plan(), { kind: 'neplanificat', activity: { id: 'x', date: '2026-11-06', sport: 'bicicleta', minutes: 120 } }, { ...ctx, today: '2026-11-06' });
     assert.deepEqual(r2.plan.find((w) => w.id === 'b1')!.targetZones, [2]);
   });
@@ -115,14 +115,14 @@ describe('adapt', () => {
 describe('adapt · activitate în afara planului', () => {
   const race = { id: 'hm', date: '2026-11-07', sport: 'alergare' as const, minutes: 127, distanceKm: 21.4, avgHr: 165, maxHr: 187 };
 
-  it('semimaraton benevol sâmbătă: anulează ziua, înlocuiește alergarea lungă de duminică, oprește progresia săptămânii următoare', () => {
+  it('semimaraton benevol sâmbătă: anulează ziua, duminica rămâne (o decide dimineața), oprește progresia săptămânii următoare', () => {
     const r = adapt(plan(), { kind: 'neplanificat', activity: race, rpe: 9, tip: 'cursa' }, ctx);
     const b1 = r.plan.find((w) => w.id === 'b1')!; // tura lungă din ziua cursei
     const lr1 = r.plan.find((w) => w.id === 'lr1')!; // alergarea lungă de duminică
     const lr2 = r.plan.find((w) => w.id === 'lr2')!; // alergarea lungă de săptămâna viitoare
     const b2 = r.plan.find((w) => w.id === 'b2')!;
     assert.equal(b1.status, 'anulat_sistem');
-    assert.equal(lr1.status, 'sters');
+    assert.equal(lr1.status, 'planificat');
     assert.equal(lr2.plannedMinutes, 70, 'nu progresează peste cheia săptămânii cursei');
     assert.equal(b2.plannedMinutes, 120, 'nici bicicleta nu progresează');
     assert.ok(r.changes.some((c) => c.includes('progresie oprită')));
@@ -146,13 +146,11 @@ describe('adapt · activitate în afara planului', () => {
     assert.deepEqual(r1.targetZones, [2]);
   });
 
-  it('cursă de 10 km (55 min) sâmbătă: duminica devine Z1 cu −25%, săptămâna următoare nu e atinsă', () => {
+  it('cursă de 10 km (55 min) sâmbătă: duminica nu se schimbă din prima, săptămâna următoare nu e atinsă', () => {
     const r = adapt(plan(), { kind: 'neplanificat', activity: { id: 'c10', date: '2026-11-07', sport: 'alergare', minutes: 55, distanceKm: 10 }, rpe: 8, tip: 'cursa' }, ctx);
     const lr1 = r.plan.find((w) => w.id === 'lr1')!;
-    // 70 min > 55 + 10 → nu e înlocuită, dar coboară: Z1, −25%
     assert.equal(lr1.status, 'planificat');
-    assert.deepEqual(lr1.targetZones, [1]);
-    assert.equal(lr1.plannedMinutes, 55);
+    assert.equal(lr1.plannedMinutes, 70);
     const lr2 = r.plan.find((w) => w.id === 'lr2')!;
     assert.equal(lr2.plannedMinutes, 80, 'cursa sub 60 min nu oprește progresia');
   });

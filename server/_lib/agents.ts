@@ -61,6 +61,9 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   }
   const { input, planId } = await collect(userId, today, event);
   const packet: Packet = buildPacket(input);
+  // Dimineața fără date de la brățări și fără răspunsul sportivului: nu scriem un mesaj pe o culoare ghicită.
+  // Aplicația îl întreabă dacă e apt; după răspuns, mesajul se cere din aplicație.
+  if (event === 'dimineata' && !force && packet.readiness.verdict_cod.intrebare) return null;
   const [packetRow] = await insert<{ id: string }>('packets', { user_id: userId, event, packet });
   const packetId = packetRow!.id;
 

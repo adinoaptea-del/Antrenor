@@ -1,7 +1,9 @@
 // Reacția calendarului la fiecare activitate nouă, imediat după sincronizare (cron la 15 min, buton, webhook),
 // fără să aștepte agenții de seară. Determinist și o singură dată pe activitate (cheile din agent_events).
-//  - efort mare azi sau ieri (≥ 90 min sau RPE ≥ 7): restul zilei se închide, zilele următoare se ușurează;
-//  - activitate în afara planului (≥ 30 min): regula „neplanificat” (volumul ei înlocuiește ședințe din săptămână).
+//  - ceva în plus față de plan azi (activitate neplanificată sau mult peste ședința ei): efortul se echivalează (TRIMP)
+//    cu ziua planificată; dacă a acoperit-o, restul zilei odihnă. Dacă nu, variantele le aleg agenții (mesajul de
+//    după antrenament), dintre cele calculate de cod. Zilele următoare NU se ușurează din prima: decid datele de dimineață;
+//  - cursă neplanificată: săptămâna următoare nu progresează.
 // Agenții (mesajul după antrenament) rulează separat, din cron, când apare o activitate nouă azi.
 
 import { addDays } from '../../src/util/dates.js';
@@ -9,6 +11,7 @@ import { dedupeActivities } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { AdaptEvent } from '../../src/calendar/adapt.js';
 import { detectReturn } from '../../src/calendar/pause.js';
+import { extraOn } from '../../src/calendar/load.js';
 import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
 import { todayIn } from './auth.js';
 import { applyPlanEvents } from './agents.js';
@@ -43,11 +46,16 @@ export async function reactToActivities(userId: string, today: string): Promise<
     const f = formOf(a.id, a.externalId);
     const rpe = f?.rpe ?? null;
     const planned = matchedIds.has(a.id);
-    if (!planned && a.minutes >= 30 && f?.tip_neplanificat !== 'altceva') {
-      events.push({ kind: 'neplanificat', activity: a, rpe, tip: f?.tip_neplanificat ?? 'antrenament' });
+    if (!planned && a.minutes >= 30 && f?.tip_neplanificat === 'cursa') {
+      events.push({ kind: 'neplanificat', activity: a, rpe, tip: 'cursa' });
     }
-    if (a.minutes >= 90 || (rpe ?? 0) >= 7) events.push({ kind: 'efort', activity: a, rpe, planned });
   }
+  // Echivalarea zilei de azi (efort, nu minute). „Altceva” (plimbare, joacă) nu intră.
+  const withRpe = all
+    .filter((a) => formOf(a.id, a.externalId)?.tip_neplanificat !== 'altceva')
+    .map((a) => ({ ...a, rpe: formOf(a.id, a.externalId)?.rpe ?? null }));
+  const { extra, coverage } = extraOn(today, workouts, withRpe);
+  if (extra && coverage.stare === 'acoperit') events.push({ kind: 'acoperit', date: today, facut: coverage.facut, planificat: coverage.planificat });
   const changes = events.length ? await applyPlanEvents(userId, today, planId, workouts, events, done) : [];
   return { changes, todayIds, todayKeys };
 }

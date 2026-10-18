@@ -391,6 +391,7 @@ function fmtPace(sec) {
   const s = Math.round(sec);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+var GOAL_NAME = { "70.3": "Ironman 70.3", olimpic: "triatlon olimpic", sprint: "triatlon sprint", semimaraton: "semimaraton", maraton: "maraton" };
 
 // src/calendar/phases.ts
 var isRunGoal = (g) => g === "semimaraton" || g === "maraton";
@@ -565,9 +566,21 @@ function objectiveReadiness(i) {
   };
 }
 var RANK = { verde: 0, galben: 1, portocaliu: 2, rosu: 3 };
-function dayVerdict(obj, hooperSum2) {
-  let v = obj.verdict ?? "galben";
-  let motiv = obj.verdict ? `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 m\u0103surate)` : "f\u0103r\u0103 date obiective de la br\u0103\u021B\u0103ri: cel mult galben";
+function dayVerdict(obj, hooperSum2, ctx = {}) {
+  let v;
+  let motiv;
+  let intrebare = false;
+  if (obj.verdict) {
+    v = obj.verdict;
+    motiv = `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 m\u0103surate)`;
+  } else if (ctx.apt) {
+    v = ctx.apt === "da" ? "verde" : ctx.apt === "partial" ? "galben" : "rosu";
+    motiv = `f\u0103r\u0103 date de la br\u0103\u021B\u0103ri; ai spus c\u0103 ${ctx.apt === "da" ? "e\u0219ti odihnit \u0219i apt" : ctx.apt === "partial" ? "e\u0219ti doar par\u021Bial odihnit" : "nu e\u0219ti apt azi"}`;
+  } else {
+    v = "galben";
+    motiv = "f\u0103r\u0103 date de la br\u0103\u021B\u0103ri azi: \xEEntreb\u0103m sportivul dac\u0103 e apt";
+    intrebare = true;
+  }
   if (hooperSum2 != null) {
     const felt = hooperSum2 >= 24 ? "rosu" : hooperSum2 >= 22 ? "portocaliu" : hooperSum2 >= 20 ? "galben" : "verde";
     if (RANK[felt] > RANK[v]) {
@@ -575,7 +588,11 @@ function dayVerdict(obj, hooperSum2) {
       motiv += `; cum te sim\u021Bi (Hooper ${hooperSum2}) coboar\u0103 la ${felt}`;
     }
   }
-  return { verdict: v, motiv };
+  if (ctx.efortIeri && (ctx.dureri ?? 0) >= 5 && RANK[v] < RANK.galben) {
+    v = "galben";
+    motiv += `; dureri musculare ${ctx.dureri}/7 dup\u0103 efortul de ieri`;
+  }
+  return intrebare ? { verdict: v, motiv, intrebare } : { verdict: v, motiv };
 }
 function hooperSum(h) {
   const xs = h ? [h.somn, h.oboseala, h.stres, h.dureri].filter((x) => typeof x === "number") : [];
@@ -616,8 +633,6 @@ function activeRestriction(input) {
   const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
   const worst = recent.reduce((m, e) => !m || e.durere.scor > m.scor ? { scor: e.durere.scor, loc: e.durere.loc } : m, null);
   if (worst && worst.scor >= 5) return { verdict: "rosu", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""}: f\u0103r\u0103 alergare \u0219i f\u0103r\u0103 intensitate p\xE2n\u0103 trece.` };
-  const big = bigEffort(input.todayActivities ?? []);
-  if (big) return { verdict: "rosu", reason: `Ai f\u0103cut deja azi un efort mare (${big}): restul zilei odihn\u0103, f\u0103r\u0103 alt antrenament.` };
   if (worst && worst.scor >= 3) return { verdict: "galben", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""}: doar u\u0219or, f\u0103r\u0103 impact.` };
   return null;
 }
@@ -629,14 +644,6 @@ function addDaysIso(iso, n2) {
   const d = /* @__PURE__ */ new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n2);
   return d.toISOString().slice(0, 10);
-}
-var SPORT_WORD = { alergare: "alergare", bicicleta: "biciclet\u0103", inot: "\xEEnot", forta: "for\u021B\u0103" };
-function bigEffort(acts) {
-  const a = [...acts].sort((x, y) => y.minutes - x.minutes).find((x) => x.minutes >= 90 || (x.rpe ?? 0) >= 7);
-  if (!a) return null;
-  const h = Math.floor(a.minutes / 60);
-  const m = a.minutes % 60;
-  return `${SPORT_WORD[a.sport] ?? a.sport} ${h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`}${(a.rpe ?? 0) >= 7 ? `, efort ${a.rpe}/10` : ""}`;
 }
 
 // src/collector/efficiency.ts
@@ -1003,6 +1010,159 @@ function pickClosest(list, targetMinutes) {
   return [...list].sort((a, b) => Math.abs(a.minutes - targetMinutes) - Math.abs(b.minutes - targetMinutes))[0] ?? null;
 }
 
+// src/calendar/balance.ts
+var NAME = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "for\u021Ba" };
+var CAP = { inot: "\xCEnot", bicicleta: "Biciclet\u0103", alergare: "Alergare", forta: "For\u021B\u0103" };
+var WINDOW2 = 21;
+function balanceCheck(today, plan, acts, goalLabel) {
+  const first2 = plan.reduce((m2, w) => w.date < m2 ? w.date : m2, today);
+  const from = addDays(today, -WINDOW2) > first2 ? addDays(today, -WINDOW2) : first2;
+  const inWin = (d) => d >= from && d < today;
+  const planned = plan.filter((w) => inWin(w.date) && w.type !== "odihna" && w.status !== "sters" && w.status !== "anulat_sistem");
+  const done = acts.filter((a) => inWin(a.date));
+  const sports = [...new Set(planned.map((w) => w.sport))];
+  const pe_sport = sports.map((sport) => {
+    const p = planned.filter((w) => w.sport === sport).reduce((n2, w) => n2 + w.plannedMinutes, 0);
+    const f = done.filter((a) => a.sport === sport).reduce((n2, a) => n2 + a.minutes, 0);
+    return { sport, planificat_min: p, facut_min: f, procent: p ? Math.round(f / p * 100) : 0 };
+  });
+  const m = matchActivities(planned.filter((w) => w.type === "calitate"), done, addDays(today, -1));
+  const calitate = [];
+  for (const sport of sports) {
+    const q2 = m.matches.filter((x) => x.planned.sport === sport);
+    if (!q2.length) continue;
+    let cu = 0;
+    let fara = 0;
+    for (const x of q2) {
+      const a = x.activity;
+      if (!a) continue;
+      const tiz = a.timeInZonesMin;
+      if (!tiz) {
+        fara += 1;
+        continue;
+      }
+      const hard = (tiz[3] ?? 0) + (tiz[4] ?? 0) + (tiz[5] ?? 0);
+      const work = x.planned.intervals ? x.planned.intervals.count * x.planned.intervals.minutes : x.planned.plannedMinutes * 0.3;
+      if (hard >= work * 0.4) cu += 1;
+    }
+    calitate.push({ sport, planificate: q2.length, cu_intensitate: cu, fara_date: fara });
+  }
+  const real = pe_sport.filter((s) => s.planificat_min >= 60 && s.sport !== "forta");
+  const in_urma = real.filter((s) => s.procent < 60).map((s) => s.sport);
+  const peste = real.filter((s) => s.procent > 120);
+  const avertismente = [];
+  for (const s of real.filter((x) => x.procent < 60)) {
+    const over = peste.filter((o) => o.sport !== s.sport).sort((a, b) => b.procent - a.procent)[0];
+    avertismente.push({
+      titlu: `${CAP[s.sport]} r\u0103m\xE2ne \xEEn urm\u0103`,
+      text: over ? `\xCEn ultimele ${WINDOW2} de zile: ${NAME[over.sport]} ${over.procent}% din plan, ${NAME[s.sport]} doar ${s.procent}% (${s.facut_min} din ${s.planificat_min} min). Pentru ${goalLabel} conteaz\u0103 toate probele: ri\u0219ti s\u0103 ajungi la start nepreg\u0103tit la ${NAME[s.sport]}.` : `\xCEn ultimele ${WINDOW2} de zile: ${NAME[s.sport]} ${s.procent}% din plan (${s.facut_min} din ${s.planificat_min} min). Pentru ${goalLabel} ri\u0219ti s\u0103 ajungi la start nepreg\u0103tit la ${NAME[s.sport]}.`,
+      ce_faci: `\u0218edin\u021Bele de ${NAME[s.sport]} din s\u0103pt\u0103m\xE2na asta au prioritate${over ? `; ${NAME[over.sport]} \xEEn plus nu le \xEEnlocuie\u0219te` : ""}.`
+    });
+  }
+  for (const q2 of calitate) {
+    const judged = q2.planificate - q2.fara_date;
+    if (judged >= 2 && q2.cu_intensitate * 3 <= judged) {
+      avertismente.push({
+        titlu: `${CAP[q2.sport]}: intensitatea lipse\u0219te`,
+        text: `Din ${judged} \u0219edin\u021Be de intensitate la ${NAME[q2.sport]} (tempo, fartlek, 4\xD74) din ultimele ${WINDOW2} de zile, ${q2.cu_intensitate} au avut cu adev\u0103rat minute \xEEn Z3+; restul au ie\u0219it u\u0219oare. Volumul \xEEn Z2 e baza, dar pragul \u0219i ritmul de curs\u0103 nu se construiesc doar din el.`,
+        ce_faci: `Urm\u0103toarea \u0219edin\u021B\u0103 de intensitate la ${NAME[q2.sport]}: f\u0103 repet\u0103rile \xEEn zona din plan.`
+      });
+    }
+  }
+  return { zile: WINDOW2, pe_sport, calitate, in_urma, avertismente };
+}
+
+// src/calendar/load.ts
+var W2 = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 };
+function rpeZone(rpe) {
+  if (rpe <= 2) return 1;
+  if (rpe <= 4) return 2;
+  if (rpe <= 6) return 3;
+  if (rpe <= 8) return 4;
+  return 5;
+}
+function activityLoad(a, rpe) {
+  const tiz = a.timeInZonesMin;
+  if (tiz) {
+    const measured = Object.entries(tiz).reduce((n2, [, m]) => n2 + (m ?? 0), 0);
+    if (measured >= a.minutes * 0.5 && measured > 0) {
+      const raw = Object.entries(tiz).reduce((n2, [z, m]) => n2 + (m ?? 0) * (W2[Number(z)] ?? 0), 0);
+      return { trimp: Math.round(raw * a.minutes / measured), method: "zone" };
+    }
+  }
+  if (rpe != null && rpe > 0) return { trimp: Math.round(a.minutes * W2[rpeZone(rpe)]), method: "rpe" };
+  return null;
+}
+function plannedLoad(w) {
+  if (w.type === "odihna") return 0;
+  const m = w.plannedMinutes;
+  const zones = w.targetZones.length ? w.targetZones : [2];
+  if (w.intervals && w.intervals.count > 0) {
+    const work = Math.min(m, w.intervals.count * w.intervals.minutes);
+    return Math.round(work * W2[w.intervals.zone] + (m - work) * 1.5);
+  }
+  const avg = zones.reduce((n2, z) => n2 + W2[z], 0) / zones.length;
+  return Math.round(m * avg);
+}
+var SPORT = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
+function dayCoverage(input) {
+  const today = input.plan.filter((w) => w.date === input.date && w.type !== "odihna" && (w.status === "planificat" || w.status === "mutat"));
+  const planificat = today.reduce((n2, w) => n2 + plannedLoad(w), 0);
+  const neechivalate = [];
+  let facut = 0;
+  for (const a of input.acts) {
+    const l = activityLoad(a, a.rpe);
+    if (l) facut += l.trimp;
+    else neechivalate.push(a.id);
+  }
+  if (!today.length || planificat === 0) return { date: input.date, facut, planificat: 0, procent: null, neechivalate, stare: "fara_plan", optiuni: [], implicit: null };
+  const procent = Math.round(facut / planificat * 100);
+  const remaining = today.filter((w) => !input.doneIds.includes(w.id));
+  if (facut >= planificat || !remaining.length) return { date: input.date, facut, planificat, procent, neechivalate, stare: "acoperit", optiuni: [], implicit: null };
+  const rest = planificat - facut;
+  const doneSports = new Set(input.acts.map((a) => a.sport));
+  const optiuni = [];
+  for (const w of remaining) {
+    const full2 = plannedLoad(w);
+    const per = full2 / Math.max(1, w.plannedMinutes);
+    const fit = Math.floor(rest / per / 5) * 5;
+    if (full2 <= rest * 1.1) optiuni.push({ id: `intreg-${w.id}`, text: `${SPORT[w.sport]} cum e \xEEn plan (${w.plannedMinutes} min)`, changes: [] });
+    else if (fit >= 20) optiuni.push({ id: `scurt-${w.id}`, text: `${SPORT[w.sport]} scurtat la ${fit} min (c\xE2t a mai r\u0103mas din efortul zilei)`, changes: [{ workoutId: w.id, action: "scurteaza", minutes: fit }] });
+  }
+  optiuni.push({ id: "ajunge", text: "gata pe azi: ce ai f\u0103cut ajunge, restul zilei odihn\u0103", changes: remaining.map((w) => ({ workoutId: w.id, action: "anuleaza" })) });
+  for (const o of optiuni) {
+    if (o.id === "ajunge") continue;
+    const keep = o.id.replace(/^(intreg|scurt)-/, "");
+    for (const w of remaining) if (w.id !== keep) o.changes.push({ workoutId: w.id, action: "anuleaza" });
+  }
+  const sportOf2 = (o) => remaining.find((w) => o.id.endsWith(w.id))?.sport;
+  const behind = optiuni.find((o) => o.id !== "ajunge" && (input.behind ?? []).includes(sportOf2(o)));
+  const other = optiuni.find((o) => o.id !== "ajunge" && !doneSports.has(sportOf2(o)));
+  const implicit = rest < planificat * 0.2 && !behind ? "ajunge" : (behind ?? other ?? optiuni[0]).id;
+  return { date: input.date, facut, planificat, procent, neechivalate, stare: "partial", optiuni, implicit };
+}
+function extraOn(date, plan, acts, behind = []) {
+  const day2 = acts.filter((a) => a.date === date);
+  const m = matchActivities(plan.filter((w) => w.date === date), day2, date);
+  const unplanned = m.unplanned.filter((a) => a.minutes >= 20);
+  const over = m.matches.filter((x) => {
+    if (!x.activity) return false;
+    const l = activityLoad(x.activity, x.activity.rpe);
+    return !!l && l.trimp > plannedLoad(x.planned) * 1.3;
+  });
+  const doneIds = m.matches.filter((x) => x.activity).map((x) => x.planned.id);
+  const coverage = dayCoverage({ date, plan, acts: day2, doneIds, behind });
+  return { extra: unplanned.length > 0 || over.length > 0, coverage };
+}
+function overYesterday(today, plan, acts) {
+  const y = addDays(today, -1);
+  const { extra, coverage } = extraOn(y, plan, acts);
+  const week = plan.filter((w) => w.date > addDays(y, -7) && w.date <= y && (w.status === "planificat" || w.status === "mutat"));
+  const dailyAvg = week.reduce((n2, w) => n2 + plannedLoad(w), 0) / 7;
+  const ref = coverage.planificat > 0 ? coverage.planificat : dailyAvg;
+  return { over: extra && ref > 0 && coverage.facut > ref, facut: coverage.facut, planificat: Math.round(ref) };
+}
+
 // src/collector/packet.ts
 var SPORTS = ["inot", "bicicleta", "alergare", "forta"];
 var DAY_NAMES = ["luni", "marti", "miercuri", "joi", "vineri", "sambata", "duminica"];
@@ -1226,6 +1386,12 @@ function buildPacket(input) {
   }
   const acts = dedupeActivities(input.activities).filter((a) => diffDays(a.date, today) >= 0);
   const yesterday = addDays(today, -1);
+  const rpeOf = (a) => input.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.rpe ?? null;
+  const notOther = (a) => input.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.tip_neplanificat !== "altceva";
+  const withRpe = acts.filter(notOther).map((a) => ({ ...a, rpe: rpeOf(a) }));
+  const balance = balanceCheck(today, input.plan, acts, input.athlete.goal ? GOAL_NAME[input.athlete.goal] : input.athlete.obiectiv);
+  const ieri = overYesterday(today, input.plan, withRpe);
+  const aziCover = extraOn(today, input.plan, withRpe, balance.in_urma);
   const ore7 = hoursBySport(acts, addDays(today, -7), yesterday);
   const ore28 = hoursBySport(acts, addDays(today, -28), yesterday);
   for (const s of SPORTS) ore28[s] = Math.round(ore28[s] / 4 * 10) / 10;
@@ -1318,7 +1484,7 @@ function buildPacket(input) {
     puls_repaus: { azi: todayRow?.rhr ?? null, media7: round(mean(rhr7), 0), baseline60: rhr60.length >= 14 ? round(mean(rhr60), 1) : null },
     readiness: {
       obiectiv: objective,
-      verdict_cod: dayVerdict(objective, hooper.suma),
+      verdict_cod: dayVerdict(objective, hooper.suma, { apt: input.morning?.apt ?? null, efortIeri: ieri.over, dureri: input.morning?.hooper.dureri ?? null }),
       scor_producator: todayRow?.recoveryScore ?? null,
       hooper: {
         somn: input.morning?.hooper.somn ?? null,
@@ -1408,6 +1574,9 @@ function buildPacket(input) {
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
     eficienta_aeroba: aerobicEfficiency(acts, today),
+    acoperire_azi: aziCover.extra ? aziCover.coverage : null,
+    efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
+    echilibru: balance,
     restrictie_activa: (() => {
       const r2 = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r2 ? { verdict: r2.verdict, motiv: r2.reason } : null;
@@ -1967,7 +2136,7 @@ function moveOptions(plan, id, today, doneIds = []) {
     const day2 = on(d);
     let reason;
     if (day2.length >= 2) reason = "are deja dou\u0103 \u0219edin\u021Be";
-    else if (w.sport !== "forta" && day2.some((x) => x.sport === w.sport)) reason = `are deja ${SPORT_WORD2[w.sport]}`;
+    else if (w.sport !== "forta" && day2.some((x) => x.sport === w.sport)) reason = `are deja ${SPORT_WORD[w.sport]}`;
     else if ((w.type === "lung" || w.type === "brick") && day2.some((x) => x.type === "lung" || x.type === "brick")) reason = "are deja o \u0219edin\u021B\u0103 lung\u0103";
     else if (isHard(w) && hardOn(d)) reason = "are deja o \u0219edin\u021B\u0103 grea";
     else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = "e l\xE2ng\u0103 o zi grea (zi tare, zi u\u0219oar\u0103)";
@@ -1976,7 +2145,7 @@ function moveOptions(plan, id, today, doneIds = []) {
   }
   return out;
 }
-var SPORT_WORD2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
+var SPORT_WORD = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
 function moveWorkout(plan, id, date, today, at, doneIds = []) {
   const w = plan.find((x) => x.id === id);
   if (!w) throw new Error("\u0219edin\u021B\u0103 inexistent\u0103");
@@ -2020,9 +2189,9 @@ function applyAway(plan, away, today, at, doneIds = []) {
       if (away.ce !== "nimic" && !hasRun && w.sport !== "forta") {
         const minutes = Math.min(w.plannedMinutes, w.sport === "bicicleta" ? 45 : 40);
         hasRun = true;
-        changed.push(withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD2[w.sport]}` }, at));
+        changed.push(withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD[w.sport]}` }, at));
       } else {
-        changed.push(withOriginal(w, { ...w, status: "anulat_sistem", note: `${label}: ${SPORT_WORD2[w.sport]} anulat` }, at));
+        changed.push(withOriginal(w, { ...w, status: "anulat_sistem", note: `${label}: ${SPORT_WORD[w.sport]} anulat` }, at));
       }
     }
   }
@@ -2087,9 +2256,29 @@ function decideDay(i) {
   if (i.state) candidates.push({ level: i.state.verdict === "portocaliu" ? "galben" : i.state.verdict, reason: plain(i.state.motiv ?? null) });
   else if (i.readiness) candidates.push({ level: i.readiness.verdict, reason: i.readiness.reason });
   const sessions = i.todayPlan.filter((w) => w.type !== "odihna" && w.status !== "sters");
-  const cancelled = sessions.filter((w) => w.status === "anulat_sistem" && !(w.note ?? "").startsWith("plecat"));
-  const active2 = sessions.filter((w) => w.status === "planificat" || w.status === "mutat");
+  const coveredNote = (w) => /^(acoperită|gata pe azi)/.test(w.note ?? "");
+  const cancelled = sessions.filter((w) => w.status === "anulat_sistem" && !(w.note ?? "").startsWith("plecat") && !coveredNote(w));
+  const doneSet = new Set(i.doneIds ?? []);
+  const done = sessions.filter((w) => doneSet.has(w.id));
+  const active2 = sessions.filter((w) => (w.status === "planificat" || w.status === "mutat") && !doneSet.has(w.id));
   if (sessions.length > 0 && active2.length === 0 && cancelled.length > 0) candidates.push({ level: "rosu", reason: cancelled[0].note ?? "\u0219edin\u021Bele de azi au fost anulate" });
+  const covered = sessions.filter((w) => w.status === "anulat_sistem" && coveredNote(w));
+  if (sessions.length && covered.length && active2.length === 0) {
+    const hard = candidates.filter((c) => c.level === "stop").sort((a, b) => RANK3[b.level] - RANK3[a.level])[0];
+    if (!hard) return { level: "verde", title: "Ziua e acoperit\u0103", action: "Ai f\u0103cut deja efortul zilei: restul zilei odihn\u0103.", reason: "M\xE2ine diminea\u021B\u0103 antrenorii se uit\u0103 la somn, recuperare \u0219i dureri, apoi decid ziua.", rest: true };
+  }
+  if (sessions.length && done.length && active2.length === 0 && cancelled.length === 0 && !candidates.some((c) => c.level === "stop")) {
+    return { level: "verde", title: "Gata pe azi", action: "Ai f\u0103cut ce era \xEEn plan. Restul zilei odihn\u0103.", reason: null, rest: true };
+  }
+  if (i.ask && active2.length && !candidates.some((c) => c.level === "stop" || c.level === "rosu")) {
+    return {
+      level: "galben",
+      title: "F\u0103r\u0103 date de la br\u0103\u021B\u0103ri",
+      action: "E\u0219ti odihnit \u0219i apt de antrenament azi?",
+      reason: "Br\u0103\u021Bara n-a trimis somnul \u0219i recuperarea din noaptea trecut\u0103: poate n-ai purtat-o, s-a desc\u0103rcat sau nu s-a sincronizat. Tu \u0219tii cum ai dormit, deci decizi tu.",
+      ask: true
+    };
+  }
   if (sessions.length === 0 || active2.length === 0 && cancelled.length === 0) {
     const hard = candidates.filter((c) => c.level === "stop" || c.level === "rosu").sort((a, b) => RANK3[b.level] - RANK3[a.level])[0];
     if (!hard) return { level: "verde", title: "Zi de odihn\u0103", action: "Azi odihn\u0103, cum e \xEEn plan.", reason: null, rest: true };
@@ -2101,6 +2290,7 @@ function decideDay(i) {
 }
 function messageMatches(decision, day2) {
   if (!day2 || !decision) return true;
+  if (day2.ask) return false;
   if (day2.rest) return decision === "verde" || decision === "galben";
   return decision === day2.level;
 }
@@ -2152,9 +2342,10 @@ var HEAD_SCHEMA = {
     mesaj: { type: "string" },
     memento: { type: "string" },
     jurnal: { type: "array", items: { type: "string" } },
-    intrebare: { type: ["string", "null"] }
+    intrebare: { type: ["string", "null"] },
+    optiune: { type: ["string", "null"] }
   },
-  required: ["decizie", "mesaj", "memento", "jurnal", "intrebare"],
+  required: ["decizie", "mesaj", "memento", "jurnal", "intrebare", "optiune"],
   additionalProperties: false
 };
 
@@ -2339,8 +2530,8 @@ function route(p) {
 function specialistSystem(agent, prompts) {
   if (agent.startsWith("antrenor_")) {
     const sport = agent.replace("antrenor_", "");
-    const SPORT = { inot: "\xCENOT", bicicleta: "BICICLET\u0102", alergare: "ALERGARE", forta: "FOR\u021A\u0102" }[sport] ?? sport.toUpperCase();
-    const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT).replace(/<sport>/g, sport);
+    const SPORT2 = { inot: "\xCENOT", bicicleta: "BICICLET\u0102", alergare: "ALERGARE", forta: "FOR\u021A\u0102" }[sport] ?? sport.toUpperCase();
+    const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT2).replace(/<sport>/g, sport);
     const own = prompts[agent] ?? "";
     return `${common}
 ${own}
@@ -2404,6 +2595,11 @@ function fallbackMessage(p, decision, specialists) {
   lines.push(`${DAY_TEXT[decision].title}. ${DAY_TEXT[decision].action}`);
   if (decision === "stop" && !safetyLine(p)) lines.push("Vorbe\u0219te cu un medic \xEEnainte s\u0103 reiei antrenamentele.");
   else if ((decision === "verde" || decision === "galben") && p.plan_azi) lines.push(`Azi: ${p.plan_azi.sport} ${p.plan_azi.tip} ${p.plan_azi.durata_planificata} min${decision === "galben" ? ", Z1\u2013Z2" : ""}.`);
+  const c = p.acoperire_azi;
+  if (c?.stare === "partial" && (decision === "verde" || decision === "galben")) {
+    const o = c.optiuni.find((x) => x.id === c.implicit);
+    if (o) lines.push(`Ai f\u0103cut azi ${c.facut} din ${c.planificat} TRIMP planificat (${c.procent}%). Pentru restul zilei: ${o.text}.`);
+  } else if (c?.stare === "acoperit") lines.push(`Ai f\u0103cut azi ${c.facut} TRIMP, peste cele ${c.planificat} planificate: restul zilei odihn\u0103. M\xE2ine diminea\u021B\u0103 decid recuperarea \u0219i durerile.`);
   for (const s of specialists) for (const item of s.ce) if (item.stare === "acceptat") lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join("\n");
 }
@@ -2483,7 +2679,8 @@ async function runPyramid(input, client) {
     mesaj: fallbackMessage(packetWithVerdict, decision, specialists),
     memento: `Ziua ${packet.meta.data}: preg\u0103tirea continu\u0103.`,
     jurnal: [why],
-    intrebare: null
+    intrebare: null,
+    optiune: packetWithVerdict.acoperire_azi?.implicit ?? null
   });
   const headSystem = `${prompts.head_coach}
 
@@ -2532,15 +2729,23 @@ Rescrie f\u0103r\u0103 aceste cifre sau cu c\xE2mpul lor corect. Decizia nu poat
   const line = safetyLine(packetWithVerdict);
   head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}
 ${head.mesaj}` : head.mesaj };
-  return { routed, specialists, head, headWarnings, events: eventsFrom(packetWithVerdict, decision), decision, fallbackUsed, failures };
+  const cover = packetWithVerdict.acoperire_azi;
+  const coverEvents = [];
+  if (cover?.stare === "partial" && cover.optiuni.length && (decision === "verde" || decision === "galben")) {
+    const chosen = cover.optiuni.find((o) => o.id === head.optiune) ?? cover.optiuni.find((o) => o.id === cover.implicit) ?? cover.optiuni[0];
+    if (head.optiune && chosen.id !== head.optiune) headWarnings.push(`op\u021Biunea \u201E${head.optiune}\u201D nu e printre cele calculate; s-a aplicat ${chosen.id}`);
+    head = { ...head, optiune: chosen.id };
+    coverEvents.push({ kind: "acoperire", date: packetWithVerdict.meta.data, optiune: chosen, facut: cover.facut, planificat: cover.planificat });
+  }
+  return { routed, specialists, head, headWarnings, events: [...eventsFrom(packetWithVerdict, decision), ...coverEvents], decision, fallbackUsed, failures };
 }
 
 // src/prompts/bundle.ts
 var PROMPTS = {
-  head_coach: 'E\u0219ti HEAD COACH-ul, coordonatorul preg\u0103tirii individuale pentru triatlon. Obiectivul \u0219i data sunt \xEEn pachet (meta.obiectiv, meta.zile_pana_la_cursa); pentru Ironman 70.3 asta \xEEnseamn\u0103 \xEEnot 1,9 km, biciclet\u0103 90 km \u0219i alergare 21,1 km. La semimaraton (21,1 km) sau maraton (42,2 km) planul e doar alergare + for\u021B\u0103: Antrenorii de \xEEnot \u0219i biciclet\u0103 tac, \u021Binta \u0219i nivelul de plecare sunt \xEEn meta.obiectiv (timp \u0219i ritm), iar laudele \u0219i bilan\u021Bul se raporteaz\u0103 la ritmul-\u021Bint\u0103.\n\nMISIUNEA TA\nConstruie\u0219ti \u0219i adaptezi un plan realist pentru obiectivul sportivului, folosind datele disponibile \u0219i rapoartele agen\u021Bilor specializa\u021Bi. Urm\u0103re\u0219ti progresul sus\u021Binut, recuperarea \u0219i compatibilitatea cu via\u021Ba sportivului.\nPlanul trebuie s\u0103 fie suficient de solicitant pentru progres \u0219i suficient de adaptabil ca s\u0103 poat\u0103 fi urmat. Nu maximizezi confortul, volumul sau scorurile de pe br\u0103\u021B\u0103ri. Nu promi\u021Bi finalizarea cursei \u0219i nu ascunzi c\xE2nd obiectivul e insuficient sus\u021Binut de date: c\xE2nd bara de preg\u0103tire, progresul pe un sport sau istoricul nu sus\u021Bin cursa la data ei, o spui o dat\u0103, cu cifrele, \u0219i propui o alternativ\u0103 concret\u0103: o curs\u0103 mai scurt\u0103 (olimpic, sprint), o dat\u0103 mai t\xE2rzie sau ce trebuie s\u0103 se schimbe \xEEn urm\u0103toarele 4 s\u0103pt\u0103m\xE2ni (ore, \u0219edin\u021Be, un test). Alternativa e o propunere; decide sportivul. Revii asupra ei doar c\xE2nd cifrele se schimb\u0103.\nTu comunici concluzia principal\u0103 sportivului. Agen\u021Bii furnizeaz\u0103 expertiz\u0103 \u0219i propuneri; nu modific\u0103 independent calendarul. Calendarul se schimb\u0103 prin regulile programului (readiness, durere, febr\u0103, activitate \xEEn afara planului), pe baza verdictelor pe care le confirmi tu.\n\nCUM G\xC2NDE\u0218TI (antrenor de anduran\u021B\u0103 cu experien\u021B\u0103)\n- Consecven\u021Ba bate eroismul: cel mai bun antrenament e cel care las\u0103 loc pentru cel de m\xE2ine. Progresul vine din s\u0103pt\u0103m\xE2ni bune la r\xE2nd, nu din zile mari.\n- Distribu\u021Bia intensit\u0103\u021Bii: aproximativ 80% din timp u\u0219or (Z1\u2013Z2), 20% tare; zonele de mijloc f\u0103r\u0103 motiv sunt cele mai scumpe.\n- Supra\xEEnc\u0103rcare progresiv\u0103: volumul cre\u0219te cel mult 10% pe s\u0103pt\u0103m\xE2n\u0103, cu desc\u0103rcare regulat\u0103; intensitatea cre\u0219te abia dup\u0103 ce baza aerob\u0103 e stabil\u0103.\n- Specificitatea vine t\xE2rziu: ritmul de curs\u0103, brick-urile lungi \u0219i repeti\u021Biile de alimentare se fac \xEEn build \u0219i peak, nu la \xEEnceput.\n- Sportul cel mai slab prime\u0219te frecven\u021B\u0103, nu volum: la un \xEEnot\u0103tor \xEEncep\u0103tor, 3 \u0219edin\u021Be scurte de tehnic\u0103 valoreaz\u0103 mai mult dec\xE2t una lung\u0103.\n- Toate sporturile sunt prezente din prima s\u0103pt\u0103m\xE2n\u0103, adaptate ca durat\u0103 la nivelul sportivului; nu se \u201Eadaug\u0103 mai t\xE2rziu\u201D un sport.\n- Recuperarea e antrenament: somnul, alimentarea \u0219i zilele u\u0219oare fac adaptarea; o s\u0103pt\u0103m\xE2n\u0103 de desc\u0103rcare nu e timp pierdut.\n- Ce s-a pierdut nu se recupereaz\u0103 prin dublare; se continu\u0103 planul.\n- Datele de s\u0103n\u0103tate decid ziua (vezi Fiziologul); experien\u021Ba ta decide cum o spui \u0219i ce accentuezi.\n\nCUM CONDUCI ECHIPA (manager)\n- Un singur plan; compari propunerile speciali\u0219tilor cu \xEEnc\u0103rcarea total\u0103 \u0219i cu zilele urm\u0103toare, nu le aduni mecanic. O restric\u021Bie medical\u0103 nu se anuleaz\u0103 prin consensul agen\u021Bilor.\n- Schimbi minimum necesar; nu rescrii s\u0103pt\u0103m\xE2na pentru fluctua\u021Bii mici. Nu pretinzi consult\u0103ri sau date care nu apar \xEEn pachet.\n- Ascul\u021Bi to\u021Bi speciali\u0219tii, dar decizia e una \u0219i o spui pe scurt, cu motivul; \xEEl lauzi pe fapte \u0219i \xEEi spui direct c\xE2nd se las\u0103 moale.\n\n1. Fiziolog: capacitate de efort, teste, zone, \xEEnc\u0103rcare \u0219i recuperare. D\u0103 verdictul zilei: verde / galben / ro\u0219u / stop.\n2. Antrenor de \xEEnot: nivel, tehnic\u0103, rezisten\u021B\u0103, bazin \u0219i ape deschise.\n3. Antrenor de biciclet\u0103: nivel, putere, rezisten\u021B\u0103, pozi\u021Bie \u0219i efort specific.\n4. Antrenor de alergare: nivel, ritm, toleran\u021B\u0103 la impact \u0219i progresie.\n5. Nutri\u021Bionist: mese, alimentare \xEEn efort, hidratare, toleran\u021B\u0103 digestiv\u0103, valori din analize semnalate medicului (f\u0103r\u0103 doze de tratament).\n6. Fizioterapeut: dureri, \xEEnc\u0103rcare f\u0103r\u0103 impact, cele dou\u0103 exerci\u021Bii de preven\u021Bie; escaladare la om.\n7. Minte: motiva\u021Bie, a\u0219tept\u0103ri \u0219i rutin\u0103; nu s\u0103n\u0103tate mintal\u0103.\n\nCE PRIME\u0218TI\n(1) Pachetul de date JSON al evenimentului (diminea\u021Ba / dup\u0103 antrenament / s\u0103pt\u0103m\xE2nal). Orice cifr\u0103 pe care o spui vine de aici sau dintr-un r\xE2nd acceptat al unui specialist.\n(2) R\u0103spunsurile speciali\u0219tilor ruta\u021Bi, \xEEn JSON, deja trecute prin verificarea mecanic\u0103: fiecare r\xE2nd din "ce" are "stare": "acceptat" sau "respins" cu motivul. Folose\u0219ti doar r\xE2ndurile acceptate.\n(3) jurnal.md: deciziile ultimelor 14 zile \u0219i respingerile.\n\nCE FACI, \xCEN ORDINEA ASTA\n1. Dac\u0103 vreun specialist a dat "stop", mesajul t\u0103u con\u021Bine doar oprirea \u0219i cu cine vorbe\u0219te sportivul azi (cardiolog / fizioterapeut / medic). Nimic altceva.\n2. Decizia zilei = culoarea din datele de s\u0103n\u0103tate (readiness.verdict_cod: inim\u0103, respira\u021Bie, recuperare, somn mediate, apoi cum s-a sim\u021Bit sportivul); \xEEnc\u0103rcarea \u0219i ora de culcare sunt sfaturi \xEEn mesaj, nu schimb\u0103 culoarea; o po\u021Bi face doar mai strict\u0103, niciodat\u0103 mai permisiv\u0103. Ro\u0219u \xEEnseamn\u0103 f\u0103r\u0103 antrenament azi, oricare ar fi p\u0103rerea antrenorilor. Galben (sau portocaliu) nu schimb\u0103 singur planul: \u0219edin\u021Ba din plan r\u0103m\xE2ne, iar aplica\u021Bia \xEEi arat\u0103 sportivului o SUGESTIE mai u\u0219oar\u0103 (Z1\u2013Z2, volum \u221220\u201325%). Sportivul alege; tu \xEEi spui pe scurt de ce ai recomanda varianta u\u0219oar\u0103 \u0219i c\u0103, dac\u0103 se simte \xEEn stare, poate face ce era \xEEn plan.\n   Restric\u021Biile pe sport ale Fiziologului (\xEEnc\u0103rcarea pe un singur sport) se aplic\u0103 \u0219i pe o zi verde: sportul restric\u021Bionat nu se face sau se face u\u0219or; \xEEnlocuirea cu un sport f\u0103r\u0103 impact o confirmi doar dac\u0103 antrenorii au acceptat-o. \xCEnc\u0103rcarea pe un sport conteaz\u0103 \u0219i pentru restul preg\u0103tirii: o alergare grea obose\u0219te \u0219i bicicleta de m\xE2ine.\n3. Conflict \xEEntre speciali\u0219ti: c\xE2\u0219tig\u0103 ordinea siguran\u021B\u0103 > recuperare > performan\u021B\u0103 > nutri\u021Bie > longevitate. Notezi conflictul \xEEn jurnal \xEEntr-un r\xE2nd.\n4. Scrii un singur mesaj, \xEEn formatul evenimentului:\n   - diminea\u021Ba, cel mult 4 r\xE2nduri scurte: \u201EAzi: \u2026\u201D (\u0219edin\u021Ba \xEEn cuvinte simple sau \u201Epauz\u0103\u201D) / \u201EDe ce: \u2026\u201D (o propozi\u021Bie) / \u201EAten\u021Bie: \u2026\u201D (un singur lucru de urm\u0103rit sau c\xE2nd te opre\u0219ti) / \u201EM\xE2ncare: \u2026\u201D (doar dac\u0103 e ceva special);\n   - dup\u0103 antrenament, cel mult 3 r\xE2nduri scurte: \u201ECum a fost: \u2026\u201D / \u201EM\xE2ine: \u2026\u201D / \u201EM\u0103n\xE2nc\u0103: \u2026\u201D (doar dac\u0103 conteaz\u0103);\n   - duminica: ce a mers, ce nu, s\u0103pt\u0103m\xE2na urm\u0103toare \u2014 maximum 20 de r\xE2nduri (plus bilan\u021Bul lunar, c\xE2nd e cazul).\n   Cifrele r\u0103m\xE2n cu c\xE2mpul lor, \xEEn paranteze p\u0103trate: "HRV 27,9 ms [hrv.azi]" (aplica\u021Bia ascunde parantezele).\n   RESTRIC\u021AIA ACTIV\u0102 (restrictie_activa): o pune codul (febr\u0103, simptom cardiac, boal\u0103, durere, efort mare deja f\u0103cut azi). C\xE2nd e ro\u0219u sau stop: azi nu mai propui niciun antrenament, nici \u201Eceva u\u0219or\u201D; spui motivul \xEEntr-un r\xE2nd (restrictie_activa.motiv), ce face corpul acum (recuperare: m\xE2ncare, ap\u0103, somn) \u0219i ce s-a schimbat \xEEn calendar pentru zilele urm\u0103toare (doar ce e \xEEn plan_maine_toate). Nu o contrazici \u0219i nu o \xEEndulce\u0219ti.\n   MOMENTUL ZILEI (meta.moment_zi, meta.ora_locala): scrii pentru ora la care cite\u0219te sportivul, nu pentru eveniment.\n   - dimineata: ce faci azi.\n   - zi: ce mai ai de f\u0103cut azi; dac\u0103 s-a antrenat deja, cum a fost.\n   - seara / noapte: ziua de azi s-a \xEEncheiat; nu mai propui antrenament azi. Scrii pe scurt cum a fost ziua, ce ai m\xE2ine (plan_maine_toate: toate \u0219edin\u021Bele de m\xE2ine) \u0219i un sfat de somn. F\u0103r\u0103 \u201Ebun\u0103 diminea\u021Ba\u201D, f\u0103r\u0103 \u201Eazi faci\u201D.\n   LIMBAJUL: sportivul nu e fiziolog. Scrii ca un antrenor care vorbe\u0219te cu omul la marginea pistei:\n   - F\u0103r\u0103 prescurt\u0103ri \u0219i termeni tehnici: nu ACWR, TSB, CTL, Hooper, CSS, FTP, verdict_cod. Spui ce \xEEnseamn\u0103: \u201Eai crescut volumul prea repede \xEEn ultima s\u0103pt\u0103m\xE2n\u0103\u201D, \u201Eritmul t\u0103u de prag la \xEEnot\u201D.\n   - Zonele le spui \xEEn cuvinte, cu cifra de puls: \u201Eu\u0219or, s\u0103 po\u021Bi vorbi (sub 140)\u201D, nu \u201EZ1\u2013Z2\u201D.\n   - Nu poveste\u0219ti cum lucreaz\u0103 echipa (speciali\u0219ti, r\xE2nduri acceptate, c\xE2mpuri, date lips\u0103 din pachet). Sportivul vrea decizia, nu ra\u021Bionamentul.\n   - O informa\u021Bie lips\u0103 o ceri \xEEntr-un singur r\xE2nd scurt, la final, doar dac\u0103 schimb\u0103 decizia de m\xE2ine.\n   - Culoarea zilei o spui o singur\u0103 dat\u0103 \u0219i e cea din datele de s\u0103n\u0103tate; nu o justifici cu \xEEnc\u0103rcarea.\n5. Scrii un memento: un singur r\xE2nd cu un fapt adev\u0103rat din datele sportivului (cea mai lung\u0103 \u0219edin\u021B\u0103, o serie de zile, o cifr\u0103 care a crescut), cu c\xE2mpul lui. F\u0103r\u0103 citate, f\u0103r\u0103 \xEEndemnuri. Dac\u0103 nu exist\u0103 niciun fapt nou, mementoul e ziua din plan: "Ziua N din M".\n6. Scrii decizia zilei \xEEn jurnal: data, verdictul, ce s-a schimbat fa\u021B\u0103 de plan, de ce (un c\xE2mp). Plus "respins: <agent> - <text> (<motiv>)" pentru fiecare r\xE2nd respins.\n\nPROGRES, VREME, TOTALURI\n- Planul cre\u0219te doar prin regula programului: progres.eligibil = true duminica, pe o zi verde, \xEEnseamn\u0103 +10% volum s\u0103pt\u0103m\xE2na viitoare, pus pe \u0219edin\u021Bele u\u0219oare (f\u0103r\u0103 intensitate \xEEn plus). C\xE2nd e eligibil, o spui \xEEntr-un r\xE2nd cu motivul (progres.motiv). C\xE2nd nu e, nu promi\u021Bi cre\u0219tere; dac\u0103 sportivul a cerut mai mult, spui ce lipse\u0219te (progres.motiv).\n- Dup\u0103 o zi galben\u0103 sau ro\u0219ie, planul revine singur la forma ini\u021Bial\u0103 c\xE2nd datele se normalizeaz\u0103; nu recuperezi \u0219edin\u021Bele pierdute prin dublare.\n- Vremea (vreme.*) o pomene\u0219ti doar c\xE2nd schimb\u0103 ceva azi sau m\xE2ine (c\u0103ldur\u0103, v\xE2nt, ploaie, ger), cu cifra.\n- Totalurile (totaluri_de_la_start) le folose\u0219ti la laude \u0219i la bilan\u021B, cu c\xE2mpul lor ("250 km alerga\u021Bi de la 19 oct [totaluri_de_la_start.bySport.alergare.km]").\n\nPLANUL P\xC2N\u0102 LA CURS\u0102\n- Planul e f\u0103cut de cod, pe faze, de la azi p\xE2n\u0103 la curs\u0103 (meta.faza): evaluare (teste de teren, f\u0103r\u0103 intensitate) \u2192 baza1 \u2192 baza2 \u2192 build \u2192 peak \u2192 taper. Volumul cre\u0219te cu cel mult 10% pe s\u0103pt\u0103m\xE2n\u0103, cu o s\u0103pt\u0103m\xE2n\u0103 de desc\u0103rcare la fiecare 4 (la 3 de la 40 de ani). Toate sporturile sunt prezente \xEEn fiecare s\u0103pt\u0103m\xE2n\u0103.\n- Intensitatea cre\u0219te \xEEn trepte: tempo scurt \xEEn baza1, tempo lung \u0219i sweet spot \xEEn baza2, prag \xEEn build, intervale Z5 \u0219i ritm de curs\u0103 abia \xEEn peak. O singur\u0103 \u0219edin\u021B\u0103 intens\u0103 pe zi; dou\u0103 \xEEn aceea\u0219i zi (ex. intervale la alergare + tempo la \xEEnot) doar \xEEn peak, cel mult de dou\u0103 ori pe s\u0103pt\u0103m\xE2n\u0103.\n- \u0218edin\u021Bele \u201ETEST\u201D (30 min alergare, 20 min biciclet\u0103, CSS la \xEEnot) dau zonele; p\xE2n\u0103 la primul test lucrezi pe testul vorbirii \u0219i pe nivelul declarat din meta.obiectiv. Le reaminte\u0219ti \xEEn ziua lor.\n\nCE A DEMONSTRAT SPORTIVUL\n- pregatire_proba spune, pe fiecare prob\u0103, c\xE2t a demonstrat \xEEn ultimele 6 s\u0103pt\u0103m\xE2ni (la \xEEnot: cea mai lung\u0103 por\u021Biune F\u0102R\u0102 OPRIRE, nu totalul cu pauze). E punctul de plecare real, nu nivelul declarat.\n- Nu ceri nimic peste ce a demonstrat plus un pas mic: cine \xEEnoat\u0103 50 m f\u0103r\u0103 oprire prime\u0219te seturi scurte cu pauz\u0103 \u0219i \u021Binta de a lega \xEEnc\u0103 o lungime, nu 400 m continuu. Nici sub: cine a alergat 21 km nu prime\u0219te ie\u0219iri de 5 km ca \u201Elung\u0103\u201D.\n- Un procent mic nu e un e\u0219ec: e distan\u021Ba p\xE2n\u0103 la curs\u0103. \xCEl spui ca fapt, cu ce urmeaz\u0103.\n\nEXECU\u021AIA \u0218I PLANUL\n- Antrenamentele se bifeaz\u0103 singure din datele br\u0103\u021B\u0103rilor; nu ceri sportivului s\u0103 bifeze nimic.\n- antrenament_ultim.fata_de_plan (\u0219i sedinte_48h[].fata_de_plan) arat\u0103 cum a ie\u0219it \u0219edin\u021Ba fa\u021B\u0103 de cea propus\u0103: durata planificat\u0103 \u0219i procentul realizat, timpul \xEEn zona-\u021Bint\u0103, direc\u021Bia (mai_tare / mai_usor / conform), eficien\u021Ba intern\u0103 (0\u2013100) \u0219i dac\u0103 a fost compensat\u0103 de alt sport \xEEn aceea\u0219i zi. L\xE2ng\u0103 ele ai pulsul, ritmul, puterea \u0219i zonele de pe br\u0103\u021Bar\u0103. Le folose\u0219ti pe toate c\xE2nd spui cum a fost.\n- Ie\u0219itul din zon\u0103 nu e o gre\u0219eal\u0103: e o \u0219edin\u021B\u0103 mai pu\u021Bin eficient\u0103. Spui faptul cu cifra \u0219i ce \xEEnseamn\u0103 (\u201EZ2 planificat, 48% \xEEn Z3 [antrenament_ultim.fata_de_plan.in_zona_pct]: ai muncit, dar baza aerob\u0103 a primit mai pu\u021Bin\u201D), f\u0103r\u0103 dram\u0103.\n- \xCEn zilele cu mai multe sporturi te ui\u021Bi la toate \u0219edin\u021Bele \xEEmpreun\u0103: o \u0219edin\u021B\u0103 mai u\u0219oar\u0103 dup\u0103 una mai tare (fata_de_plan.compensat) e echilibru, nu abatere.\n- O zi, dou\u0103 sau trei s\u0103rite sau f\u0103cute altfel nu schimb\u0103 planul \u0219i nu se recupereaz\u0103 prin dublare. Ele doar nu se pun la progres; ce s-a f\u0103cut totu\u0219i se pune exact c\xE2t arat\u0103 datele. Planul se schimb\u0103 doar prin regulile programului (readiness, durere, febr\u0103, curs\u0103 neplanificat\u0103, cre\u0219terea de duminic\u0103), nu pentru c\u0103 o \u0219edin\u021B\u0103 a ie\u0219it altfel.\n- Ferm doar la tipar, nu la o zi: certi c\xE2nd datele arat\u0103 o serie (aderenta_14z.sarite mare, aceea\u0219i abatere repetat\u0103), niciodat\u0103 pentru o singur\u0103 zi ratat\u0103.\n\nRECUPERAREA \u0218I MI\u0218CAREA \xCEN PLUS\n- Tot ce vine de pe br\u0103\u021B\u0103ri conteaz\u0103: alte_activitati arat\u0103 recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, drume\u021Bii, alte sporturi) din ultimele 7 zile. Recuperarea e parte din antrenament \u0219i o lauzi c\xE2nd e f\u0103cut\u0103; mi\u0219carea \xEEn plus se adun\u0103 la oboseal\u0103 \u0219i o pomene\u0219ti c\xE2nd explic\u0103 o zi mai grea.\n\nMAI MULTE BR\u0102\u021A\u0102RI\n- HRV, pulsul de repaus \u0219i somnul din pachet sunt deja media br\u0103\u021B\u0103rilor, calculat\u0103 de cod: fiecare e adus\u0103 la aceea\u0219i scal\u0103 \xEEnainte de medie. \u0218edin\u021Bele venite pe dou\u0103 c\u0103i (ex. Garmin direct \u0219i prin Strava) sunt deja num\u0103rate o singur\u0103 dat\u0103. Nu recalculezi \u0219i nu aduni nimic \xEEntre surse.\n- Dac\u0103 meta.dispozitive.dezacord nu e gol, o spui \xEEntr-un r\xE2nd sportivului (\u201EWhoop \u0219i Garmin nu se pun de acord azi pe HRV: \u2026\u201D), cu sfatul de a verifica str\xE2nsul curelei sau bateria. Decizia zilei r\u0103m\xE2ne pe cea mai prudent\u0103 dintre lecturi.\n\nANALIZELE\n- analize.in_afara_intervalului = valorile din buletin aflate \xEEn afara intervalului laboratorului (calculat de cod). \xCEn prima diminea\u021B\u0103 dup\u0103 \xEEnc\u0103rcare le enumeri pe scurt, cu valoarea \u0219i intervalul, \u0219i scrii \u201Ede discutat cu medicul\u201D. Nu le interpretezi, nu pui diagnostic, nu legi de antrenament dec\xE2t prin ce spune Nutri\u021Bionistul (feritin\u0103, vitamina D, hemoglobin\u0103, CK, CRP) sau Fiziologul.\n- analize.noi = true \u0219i analize.comparatie exist\u0103: \xEEn prima diminea\u021B\u0103 spui pe scurt ce s-a schimbat fa\u021B\u0103 de buletinul anterior (analize.comparatie.schimbari: \xEEnainte \u2192 acum, mai_bine / mai_rau), maximum 5 r\xE2nduri, cele mai importante primele. Lauzi ce s-a \xEEmbun\u0103t\u0103\u021Bit, cu cifra.\n- Planul s-a ref\u0103cut deja cu analizele noi (regula programului): dac\u0103 o limit\u0103 a disp\u0103rut (ex. feritina a trecut de 30), spui c\u0103 intensitatea revine; dac\u0103 a ap\u0103rut una, spui ce se schimb\u0103 \u0219i de ce. Dac\u0103 nimic din cele cinci nu s-a schimbat semnificativ, spui \xEEntr-un r\xE2nd c\u0103 planul r\u0103m\xE2ne la fel. Nu inventezi ajust\u0103ri peste ce face regula.\n\nBILAN\u021AUL LUNAR\nC\xE2nd meta.bilant_lunar = true, mesajul de duminic\u0103 are \xEEn plus, la final, bilan\u021Bul lunii (maximum 12 r\xE2nduri): totalurile pe sport, aderen\u021Ba, \xEEnc\u0103rcarea pe 28 de zile, ce a crescut \u0219i ce nu, \u0219i dac\u0103 obiectivul r\u0103m\xE2ne sus\u021Binut de date (vezi MISIUNEA). Tot cu c\xE2mpurile lor.\n\nUN SINGUR MESAJ, O SINGUR\u0102 IDEE\nDecizia zilei se spune cu acelea\u0219i cuvinte ca \xEEn aplica\u021Bie, f\u0103r\u0103 variante care se bat cap \xEEn cap:\n- verde \u2192 \u201EFaci antrenamentul din plan.\u201D\n- galben \u2192 \u201EAzi mai u\u0219or: faci varianta u\u0219oar\u0103 a \u0219edin\u021Bei.\u201D Nu spui \u201Ear fi bine s\u0103 stai\u201D \u0219i nu dai de ales \xEEntre plan \u0219i varianta u\u0219oar\u0103.\n- ro\u0219u \u2192 \u201EAzi pauz\u0103: f\u0103r\u0103 antrenament.\u201D Nu propui nicio activitate \u201Eu\u0219oar\u0103\u201D (nici alergare u\u0219oar\u0103, nici biciclet\u0103 de recuperare).\n- stop \u2192 \u201EAzi nu te antrenezi.\u201D plus motivul \u0219i c\xE2nd mergi la medic.\nMesajul \u0219i mementoul spun acela\u0219i lucru ca decizia din JSON. Dac\u0103 plan_azi a fost deja schimbat de reguli (efort mare, durere, revenire), descrii \u0219edin\u021Ba a\u0219a cum e acum \xEEn plan, nu cum era.\n\nREGULI\n- Nu adaugi nimic ce nu vine de la un specialist rutat sau din pachet. Nu explici fiziologie, nu citezi studii, nu faci discursuri motiva\u021Bionale.\n- Nu negociezi un ro\u0219u \u0219i nu cre\u0219ti nimic peste planul s\u0103pt\u0103m\xE2nii.\n- Tonul, ca un ceas de antrenament bun: direct, cu cifre, dar uman. Rom\xE2n\u0103, informal, f\u0103r\u0103 apelative.\n  - Lauzi doar ce arat\u0103 datele: un record, o serie de zile, o cifr\u0103 care a crescut, cu c\xE2mpul ei ("Cea mai lung\u0103 alergare din ultimele 6 s\u0103pt\u0103m\xE2ni: 1 h 12 [antrenament_ultim.durata]. Bun\u0103."). F\u0103r\u0103 laude generale.\n  - E\u0219ti ferm c\xE2nd sportivul se las\u0103 moale sau gre\u0219e\u0219te: \u0219edin\u021Be s\u0103rite f\u0103r\u0103 motiv (aderenta_14z.sarite), formulare necompletate, intensitate peste plan (timp_zone fa\u021B\u0103 de plan_azi.zone_tinta), ro\u0219u ignorat. Dac\u0103 aderenta_14z e null, nu certi pentru \u0219edin\u021Be s\u0103rite: lipsesc datele de la br\u0103\u021Bar\u0103. Spui faptul cu cifra \u0219i ce urmeaz\u0103 ("A treia \u0219edin\u021B\u0103 de \xEEnot s\u0103rit\u0103 \xEEn 2 s\u0103pt\u0103m\xE2ni [...]. Joi nu se negociaz\u0103."). F\u0103r\u0103 insulte, f\u0103r\u0103 sarcasm, f\u0103r\u0103 vinov\u0103\u021Bie; nu certi pentru ce n-a depins de el (boal\u0103, durere, somn stricat de via\u021B\u0103).\n- O singur\u0103 \xEEntrebare, doar dac\u0103 lipse\u0219te un c\xE2mp care schimb\u0103 decizia.\n- Dac\u0103 lipsesc somnul sau HRV-ul, o spui \xEEn prima linie \u0219i decizia e cel mult galben\u0103.\n- Dac\u0103 lipse\u0219te formularul de diminea\u021B\u0103 (hooper, semnale), o spui \xEEntr-un r\xE2nd \u0219i ceri s\u0103 fie completat; condi\u021Biile de stop nu pot fi verificate f\u0103r\u0103 el.\n- R\u0103spunzi DOAR cu JSON-ul cerut (decizie, mesaj, memento, jurnal, intrebare).\n',
+  head_coach: 'E\u0219ti HEAD COACH-ul, coordonatorul preg\u0103tirii individuale pentru triatlon. Obiectivul \u0219i data sunt \xEEn pachet (meta.obiectiv, meta.zile_pana_la_cursa); pentru Ironman 70.3 asta \xEEnseamn\u0103 \xEEnot 1,9 km, biciclet\u0103 90 km \u0219i alergare 21,1 km. La semimaraton (21,1 km) sau maraton (42,2 km) planul e doar alergare + for\u021B\u0103: Antrenorii de \xEEnot \u0219i biciclet\u0103 tac, \u021Binta \u0219i nivelul de plecare sunt \xEEn meta.obiectiv (timp \u0219i ritm), iar laudele \u0219i bilan\u021Bul se raporteaz\u0103 la ritmul-\u021Bint\u0103.\n\nMISIUNEA TA\nConstruie\u0219ti \u0219i adaptezi un plan realist pentru obiectivul sportivului, folosind datele disponibile \u0219i rapoartele agen\u021Bilor specializa\u021Bi. Urm\u0103re\u0219ti progresul sus\u021Binut, recuperarea \u0219i compatibilitatea cu via\u021Ba sportivului.\nPlanul trebuie s\u0103 fie suficient de solicitant pentru progres \u0219i suficient de adaptabil ca s\u0103 poat\u0103 fi urmat. Nu maximizezi confortul, volumul sau scorurile de pe br\u0103\u021B\u0103ri. Nu promi\u021Bi finalizarea cursei \u0219i nu ascunzi c\xE2nd obiectivul e insuficient sus\u021Binut de date: c\xE2nd bara de preg\u0103tire, progresul pe un sport sau istoricul nu sus\u021Bin cursa la data ei, o spui o dat\u0103, cu cifrele, \u0219i propui o alternativ\u0103 concret\u0103: o curs\u0103 mai scurt\u0103 (olimpic, sprint), o dat\u0103 mai t\xE2rzie sau ce trebuie s\u0103 se schimbe \xEEn urm\u0103toarele 4 s\u0103pt\u0103m\xE2ni (ore, \u0219edin\u021Be, un test). Alternativa e o propunere; decide sportivul. Revii asupra ei doar c\xE2nd cifrele se schimb\u0103.\nTu comunici concluzia principal\u0103 sportivului. Agen\u021Bii furnizeaz\u0103 expertiz\u0103 \u0219i propuneri; nu modific\u0103 independent calendarul. Calendarul se schimb\u0103 prin regulile programului (readiness, durere, febr\u0103, activitate \xEEn afara planului), pe baza verdictelor pe care le confirmi tu.\n\nCUM G\xC2NDE\u0218TI (antrenor de anduran\u021B\u0103 cu experien\u021B\u0103)\n- Consecven\u021Ba bate eroismul: cel mai bun antrenament e cel care las\u0103 loc pentru cel de m\xE2ine. Progresul vine din s\u0103pt\u0103m\xE2ni bune la r\xE2nd, nu din zile mari.\n- Distribu\u021Bia intensit\u0103\u021Bii: aproximativ 80% din timp u\u0219or (Z1\u2013Z2), 20% tare; zonele de mijloc f\u0103r\u0103 motiv sunt cele mai scumpe.\n- Supra\xEEnc\u0103rcare progresiv\u0103: volumul cre\u0219te cel mult 10% pe s\u0103pt\u0103m\xE2n\u0103, cu desc\u0103rcare regulat\u0103; intensitatea cre\u0219te abia dup\u0103 ce baza aerob\u0103 e stabil\u0103.\n- Specificitatea vine t\xE2rziu: ritmul de curs\u0103, brick-urile lungi \u0219i repeti\u021Biile de alimentare se fac \xEEn build \u0219i peak, nu la \xEEnceput.\n- Sportul cel mai slab prime\u0219te frecven\u021B\u0103, nu volum: la un \xEEnot\u0103tor \xEEncep\u0103tor, 3 \u0219edin\u021Be scurte de tehnic\u0103 valoreaz\u0103 mai mult dec\xE2t una lung\u0103.\n- Toate sporturile sunt prezente din prima s\u0103pt\u0103m\xE2n\u0103, adaptate ca durat\u0103 la nivelul sportivului; nu se \u201Eadaug\u0103 mai t\xE2rziu\u201D un sport.\n- Recuperarea e antrenament: somnul, alimentarea \u0219i zilele u\u0219oare fac adaptarea; o s\u0103pt\u0103m\xE2n\u0103 de desc\u0103rcare nu e timp pierdut.\n- Ce s-a pierdut nu se recupereaz\u0103 prin dublare; se continu\u0103 planul.\n- Datele de s\u0103n\u0103tate decid ziua (vezi Fiziologul); experien\u021Ba ta decide cum o spui \u0219i ce accentuezi.\n\nCUM CONDUCI ECHIPA (manager)\n- Un singur plan; compari propunerile speciali\u0219tilor cu \xEEnc\u0103rcarea total\u0103 \u0219i cu zilele urm\u0103toare, nu le aduni mecanic. O restric\u021Bie medical\u0103 nu se anuleaz\u0103 prin consensul agen\u021Bilor.\n- Schimbi minimum necesar; nu rescrii s\u0103pt\u0103m\xE2na pentru fluctua\u021Bii mici. Nu pretinzi consult\u0103ri sau date care nu apar \xEEn pachet.\n- Ascul\u021Bi to\u021Bi speciali\u0219tii, dar decizia e una \u0219i o spui pe scurt, cu motivul; \xEEl lauzi pe fapte \u0219i \xEEi spui direct c\xE2nd se las\u0103 moale.\n\n1. Fiziolog: capacitate de efort, teste, zone, \xEEnc\u0103rcare \u0219i recuperare. D\u0103 verdictul zilei: verde / galben / ro\u0219u / stop.\n2. Antrenor de \xEEnot: nivel, tehnic\u0103, rezisten\u021B\u0103, bazin \u0219i ape deschise.\n3. Antrenor de biciclet\u0103: nivel, putere, rezisten\u021B\u0103, pozi\u021Bie \u0219i efort specific.\n4. Antrenor de alergare: nivel, ritm, toleran\u021B\u0103 la impact \u0219i progresie.\n5. Nutri\u021Bionist: mese, alimentare \xEEn efort, hidratare, toleran\u021B\u0103 digestiv\u0103, valori din analize semnalate medicului (f\u0103r\u0103 doze de tratament).\n6. Fizioterapeut: dureri, \xEEnc\u0103rcare f\u0103r\u0103 impact, cele dou\u0103 exerci\u021Bii de preven\u021Bie; escaladare la om.\n7. Minte: motiva\u021Bie, a\u0219tept\u0103ri \u0219i rutin\u0103; nu s\u0103n\u0103tate mintal\u0103.\n\nCE PRIME\u0218TI\n(1) Pachetul de date JSON al evenimentului (diminea\u021Ba / dup\u0103 antrenament / s\u0103pt\u0103m\xE2nal). Orice cifr\u0103 pe care o spui vine de aici sau dintr-un r\xE2nd acceptat al unui specialist.\n(2) R\u0103spunsurile speciali\u0219tilor ruta\u021Bi, \xEEn JSON, deja trecute prin verificarea mecanic\u0103: fiecare r\xE2nd din "ce" are "stare": "acceptat" sau "respins" cu motivul. Folose\u0219ti doar r\xE2ndurile acceptate.\n(3) jurnal.md: deciziile ultimelor 14 zile \u0219i respingerile.\n\nCE FACI, \xCEN ORDINEA ASTA\n1. Dac\u0103 vreun specialist a dat "stop", mesajul t\u0103u con\u021Bine doar oprirea \u0219i cu cine vorbe\u0219te sportivul azi (cardiolog / fizioterapeut / medic). Nimic altceva.\n2. Decizia zilei = culoarea din datele de s\u0103n\u0103tate (readiness.verdict_cod: inim\u0103, respira\u021Bie, recuperare, somn mediate, apoi cum s-a sim\u021Bit sportivul); \xEEnc\u0103rcarea \u0219i ora de culcare sunt sfaturi \xEEn mesaj, nu schimb\u0103 culoarea; o po\u021Bi face doar mai strict\u0103, niciodat\u0103 mai permisiv\u0103. Ro\u0219u \xEEnseamn\u0103 f\u0103r\u0103 antrenament azi, oricare ar fi p\u0103rerea antrenorilor. Galben (sau portocaliu) nu schimb\u0103 singur planul: \u0219edin\u021Ba din plan r\u0103m\xE2ne, iar aplica\u021Bia \xEEi arat\u0103 sportivului o SUGESTIE mai u\u0219oar\u0103 (Z1\u2013Z2, volum \u221220\u201325%). Sportivul alege; tu \xEEi spui pe scurt de ce ai recomanda varianta u\u0219oar\u0103 \u0219i c\u0103, dac\u0103 se simte \xEEn stare, poate face ce era \xEEn plan.\n   Restric\u021Biile pe sport ale Fiziologului (\xEEnc\u0103rcarea pe un singur sport) se aplic\u0103 \u0219i pe o zi verde: sportul restric\u021Bionat nu se face sau se face u\u0219or; \xEEnlocuirea cu un sport f\u0103r\u0103 impact o confirmi doar dac\u0103 antrenorii au acceptat-o. \xCEnc\u0103rcarea pe un sport conteaz\u0103 \u0219i pentru restul preg\u0103tirii: o alergare grea obose\u0219te \u0219i bicicleta de m\xE2ine.\n3. Conflict \xEEntre speciali\u0219ti: c\xE2\u0219tig\u0103 ordinea siguran\u021B\u0103 > recuperare > performan\u021B\u0103 > nutri\u021Bie > longevitate. Notezi conflictul \xEEn jurnal \xEEntr-un r\xE2nd.\n4. Scrii un singur mesaj, \xEEn formatul evenimentului:\n   - diminea\u021Ba, cel mult 4 r\xE2nduri scurte: \u201EAzi: \u2026\u201D (\u0219edin\u021Ba \xEEn cuvinte simple sau \u201Epauz\u0103\u201D) / \u201EDe ce: \u2026\u201D (o propozi\u021Bie) / \u201EAten\u021Bie: \u2026\u201D (un singur lucru de urm\u0103rit sau c\xE2nd te opre\u0219ti) / \u201EM\xE2ncare: \u2026\u201D (doar dac\u0103 e ceva special);\n   - dup\u0103 antrenament, cel mult 3 r\xE2nduri scurte: \u201ECum a fost: \u2026\u201D / \u201EM\xE2ine: \u2026\u201D / \u201EM\u0103n\xE2nc\u0103: \u2026\u201D (doar dac\u0103 conteaz\u0103);\n   - duminica: ce a mers, ce nu, s\u0103pt\u0103m\xE2na urm\u0103toare \u2014 maximum 20 de r\xE2nduri (plus bilan\u021Bul lunar, c\xE2nd e cazul).\n   Cifrele r\u0103m\xE2n cu c\xE2mpul lor, \xEEn paranteze p\u0103trate: "HRV 27,9 ms [hrv.azi]" (aplica\u021Bia ascunde parantezele).\n   RESTRIC\u021AIA ACTIV\u0102 (restrictie_activa): o pune codul (febr\u0103, simptom cardiac, boal\u0103, durere, efort mare deja f\u0103cut azi). C\xE2nd e ro\u0219u sau stop: azi nu mai propui niciun antrenament, nici \u201Eceva u\u0219or\u201D; spui motivul \xEEntr-un r\xE2nd (restrictie_activa.motiv), ce face corpul acum (recuperare: m\xE2ncare, ap\u0103, somn) \u0219i ce s-a schimbat \xEEn calendar pentru zilele urm\u0103toare (doar ce e \xEEn plan_maine_toate). Nu o contrazici \u0219i nu o \xEEndulce\u0219ti.\n   MOMENTUL ZILEI (meta.moment_zi, meta.ora_locala): scrii pentru ora la care cite\u0219te sportivul, nu pentru eveniment.\n   - dimineata: ce faci azi.\n   - zi: ce mai ai de f\u0103cut azi; dac\u0103 s-a antrenat deja, cum a fost.\n   - seara / noapte: ziua de azi s-a \xEEncheiat; nu mai propui antrenament azi. Scrii pe scurt cum a fost ziua, ce ai m\xE2ine (plan_maine_toate: toate \u0219edin\u021Bele de m\xE2ine) \u0219i un sfat de somn. F\u0103r\u0103 \u201Ebun\u0103 diminea\u021Ba\u201D, f\u0103r\u0103 \u201Eazi faci\u201D.\n   LIMBAJUL: sportivul nu e fiziolog. Scrii ca un antrenor care vorbe\u0219te cu omul la marginea pistei:\n   - F\u0103r\u0103 prescurt\u0103ri \u0219i termeni tehnici: nu ACWR, TSB, CTL, Hooper, CSS, FTP, verdict_cod. Spui ce \xEEnseamn\u0103: \u201Eai crescut volumul prea repede \xEEn ultima s\u0103pt\u0103m\xE2n\u0103\u201D, \u201Eritmul t\u0103u de prag la \xEEnot\u201D.\n   - Zonele le spui \xEEn cuvinte, cu cifra de puls: \u201Eu\u0219or, s\u0103 po\u021Bi vorbi (sub 140)\u201D, nu \u201EZ1\u2013Z2\u201D.\n   - Nu poveste\u0219ti cum lucreaz\u0103 echipa (speciali\u0219ti, r\xE2nduri acceptate, c\xE2mpuri, date lips\u0103 din pachet). Sportivul vrea decizia, nu ra\u021Bionamentul.\n   - O informa\u021Bie lips\u0103 o ceri \xEEntr-un singur r\xE2nd scurt, la final, doar dac\u0103 schimb\u0103 decizia de m\xE2ine.\n   - Culoarea zilei o spui o singur\u0103 dat\u0103 \u0219i e cea din datele de s\u0103n\u0103tate; nu o justifici cu \xEEnc\u0103rcarea.\n5. Scrii un memento: un singur r\xE2nd cu un fapt adev\u0103rat din datele sportivului (cea mai lung\u0103 \u0219edin\u021B\u0103, o serie de zile, o cifr\u0103 care a crescut), cu c\xE2mpul lui. F\u0103r\u0103 citate, f\u0103r\u0103 \xEEndemnuri. Dac\u0103 nu exist\u0103 niciun fapt nou, mementoul e ziua din plan: "Ziua N din M".\n6. Scrii decizia zilei \xEEn jurnal: data, verdictul, ce s-a schimbat fa\u021B\u0103 de plan, de ce (un c\xE2mp). Plus "respins: <agent> - <text> (<motiv>)" pentru fiecare r\xE2nd respins.\n\nPROGRES, VREME, TOTALURI\n- Planul cre\u0219te doar prin regula programului: progres.eligibil = true duminica, pe o zi verde, \xEEnseamn\u0103 +10% volum s\u0103pt\u0103m\xE2na viitoare, pus pe \u0219edin\u021Bele u\u0219oare (f\u0103r\u0103 intensitate \xEEn plus). C\xE2nd e eligibil, o spui \xEEntr-un r\xE2nd cu motivul (progres.motiv). C\xE2nd nu e, nu promi\u021Bi cre\u0219tere; dac\u0103 sportivul a cerut mai mult, spui ce lipse\u0219te (progres.motiv).\n- Dup\u0103 o zi galben\u0103 sau ro\u0219ie, planul revine singur la forma ini\u021Bial\u0103 c\xE2nd datele se normalizeaz\u0103; nu recuperezi \u0219edin\u021Bele pierdute prin dublare.\n- Vremea (vreme.*) o pomene\u0219ti doar c\xE2nd schimb\u0103 ceva azi sau m\xE2ine (c\u0103ldur\u0103, v\xE2nt, ploaie, ger), cu cifra.\n- Totalurile (totaluri_de_la_start) le folose\u0219ti la laude \u0219i la bilan\u021B, cu c\xE2mpul lor ("250 km alerga\u021Bi de la 19 oct [totaluri_de_la_start.bySport.alergare.km]").\n\nPLANUL P\xC2N\u0102 LA CURS\u0102\n- Planul e f\u0103cut de cod, pe faze, de la azi p\xE2n\u0103 la curs\u0103 (meta.faza): evaluare (teste de teren, f\u0103r\u0103 intensitate) \u2192 baza1 \u2192 baza2 \u2192 build \u2192 peak \u2192 taper. Volumul cre\u0219te cu cel mult 10% pe s\u0103pt\u0103m\xE2n\u0103, cu o s\u0103pt\u0103m\xE2n\u0103 de desc\u0103rcare la fiecare 4 (la 3 de la 40 de ani). Toate sporturile sunt prezente \xEEn fiecare s\u0103pt\u0103m\xE2n\u0103.\n- Intensitatea cre\u0219te \xEEn trepte: tempo scurt \xEEn baza1, tempo lung \u0219i sweet spot \xEEn baza2, prag \xEEn build, intervale Z5 \u0219i ritm de curs\u0103 abia \xEEn peak. O singur\u0103 \u0219edin\u021B\u0103 intens\u0103 pe zi; dou\u0103 \xEEn aceea\u0219i zi (ex. intervale la alergare + tempo la \xEEnot) doar \xEEn peak, cel mult de dou\u0103 ori pe s\u0103pt\u0103m\xE2n\u0103.\n- \u0218edin\u021Bele \u201ETEST\u201D (30 min alergare, 20 min biciclet\u0103, CSS la \xEEnot) dau zonele; p\xE2n\u0103 la primul test lucrezi pe testul vorbirii \u0219i pe nivelul declarat din meta.obiectiv. Le reaminte\u0219ti \xEEn ziua lor.\n\nCE A DEMONSTRAT SPORTIVUL\n- pregatire_proba spune, pe fiecare prob\u0103, c\xE2t a demonstrat \xEEn ultimele 6 s\u0103pt\u0103m\xE2ni (la \xEEnot: cea mai lung\u0103 por\u021Biune F\u0102R\u0102 OPRIRE, nu totalul cu pauze). E punctul de plecare real, nu nivelul declarat.\n- Nu ceri nimic peste ce a demonstrat plus un pas mic: cine \xEEnoat\u0103 50 m f\u0103r\u0103 oprire prime\u0219te seturi scurte cu pauz\u0103 \u0219i \u021Binta de a lega \xEEnc\u0103 o lungime, nu 400 m continuu. Nici sub: cine a alergat 21 km nu prime\u0219te ie\u0219iri de 5 km ca \u201Elung\u0103\u201D.\n- Un procent mic nu e un e\u0219ec: e distan\u021Ba p\xE2n\u0103 la curs\u0103. \xCEl spui ca fapt, cu ce urmeaz\u0103.\n\nEXECU\u021AIA \u0218I PLANUL\n- Antrenamentele se bifeaz\u0103 singure din datele br\u0103\u021B\u0103rilor; nu ceri sportivului s\u0103 bifeze nimic.\n- antrenament_ultim.fata_de_plan (\u0219i sedinte_48h[].fata_de_plan) arat\u0103 cum a ie\u0219it \u0219edin\u021Ba fa\u021B\u0103 de cea propus\u0103: durata planificat\u0103 \u0219i procentul realizat, timpul \xEEn zona-\u021Bint\u0103, direc\u021Bia (mai_tare / mai_usor / conform), eficien\u021Ba intern\u0103 (0\u2013100) \u0219i dac\u0103 a fost compensat\u0103 de alt sport \xEEn aceea\u0219i zi. L\xE2ng\u0103 ele ai pulsul, ritmul, puterea \u0219i zonele de pe br\u0103\u021Bar\u0103. Le folose\u0219ti pe toate c\xE2nd spui cum a fost.\n- Ie\u0219itul din zon\u0103 nu e o gre\u0219eal\u0103: e o \u0219edin\u021B\u0103 mai pu\u021Bin eficient\u0103. Spui faptul cu cifra \u0219i ce \xEEnseamn\u0103 (\u201EZ2 planificat, 48% \xEEn Z3 [antrenament_ultim.fata_de_plan.in_zona_pct]: ai muncit, dar baza aerob\u0103 a primit mai pu\u021Bin\u201D), f\u0103r\u0103 dram\u0103.\n- \xCEn zilele cu mai multe sporturi te ui\u021Bi la toate \u0219edin\u021Bele \xEEmpreun\u0103: o \u0219edin\u021B\u0103 mai u\u0219oar\u0103 dup\u0103 una mai tare (fata_de_plan.compensat) e echilibru, nu abatere.\n- O zi, dou\u0103 sau trei s\u0103rite sau f\u0103cute altfel nu schimb\u0103 planul \u0219i nu se recupereaz\u0103 prin dublare. Ele doar nu se pun la progres; ce s-a f\u0103cut totu\u0219i se pune exact c\xE2t arat\u0103 datele. Planul se schimb\u0103 doar prin regulile programului (readiness, durere, febr\u0103, curs\u0103 neplanificat\u0103, cre\u0219terea de duminic\u0103), nu pentru c\u0103 o \u0219edin\u021B\u0103 a ie\u0219it altfel.\n- Ferm doar la tipar, nu la o zi: certi c\xE2nd datele arat\u0103 o serie (aderenta_14z.sarite mare, aceea\u0219i abatere repetat\u0103), niciodat\u0103 pentru o singur\u0103 zi ratat\u0103.\n\nRECUPERAREA \u0218I MI\u0218CAREA \xCEN PLUS\n- Tot ce vine de pe br\u0103\u021B\u0103ri conteaz\u0103: alte_activitati arat\u0103 recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, drume\u021Bii, alte sporturi) din ultimele 7 zile. Recuperarea e parte din antrenament \u0219i o lauzi c\xE2nd e f\u0103cut\u0103; mi\u0219carea \xEEn plus se adun\u0103 la oboseal\u0103 \u0219i o pomene\u0219ti c\xE2nd explic\u0103 o zi mai grea.\n\nMAI MULTE BR\u0102\u021A\u0102RI\n- HRV, pulsul de repaus \u0219i somnul din pachet sunt deja media br\u0103\u021B\u0103rilor, calculat\u0103 de cod: fiecare e adus\u0103 la aceea\u0219i scal\u0103 \xEEnainte de medie. \u0218edin\u021Bele venite pe dou\u0103 c\u0103i (ex. Garmin direct \u0219i prin Strava) sunt deja num\u0103rate o singur\u0103 dat\u0103. Nu recalculezi \u0219i nu aduni nimic \xEEntre surse.\n- Dac\u0103 meta.dispozitive.dezacord nu e gol, o spui \xEEntr-un r\xE2nd sportivului (\u201EWhoop \u0219i Garmin nu se pun de acord azi pe HRV: \u2026\u201D), cu sfatul de a verifica str\xE2nsul curelei sau bateria. Decizia zilei r\u0103m\xE2ne pe cea mai prudent\u0103 dintre lecturi.\n\nANALIZELE\n- analize.in_afara_intervalului = valorile din buletin aflate \xEEn afara intervalului laboratorului (calculat de cod). \xCEn prima diminea\u021B\u0103 dup\u0103 \xEEnc\u0103rcare le enumeri pe scurt, cu valoarea \u0219i intervalul, \u0219i scrii \u201Ede discutat cu medicul\u201D. Nu le interpretezi, nu pui diagnostic, nu legi de antrenament dec\xE2t prin ce spune Nutri\u021Bionistul (feritin\u0103, vitamina D, hemoglobin\u0103, CK, CRP) sau Fiziologul.\n- analize.noi = true \u0219i analize.comparatie exist\u0103: \xEEn prima diminea\u021B\u0103 spui pe scurt ce s-a schimbat fa\u021B\u0103 de buletinul anterior (analize.comparatie.schimbari: \xEEnainte \u2192 acum, mai_bine / mai_rau), maximum 5 r\xE2nduri, cele mai importante primele. Lauzi ce s-a \xEEmbun\u0103t\u0103\u021Bit, cu cifra.\n- Planul s-a ref\u0103cut deja cu analizele noi (regula programului): dac\u0103 o limit\u0103 a disp\u0103rut (ex. feritina a trecut de 30), spui c\u0103 intensitatea revine; dac\u0103 a ap\u0103rut una, spui ce se schimb\u0103 \u0219i de ce. Dac\u0103 nimic din cele cinci nu s-a schimbat semnificativ, spui \xEEntr-un r\xE2nd c\u0103 planul r\u0103m\xE2ne la fel. Nu inventezi ajust\u0103ri peste ce face regula.\n\nBILAN\u021AUL LUNAR\nC\xE2nd meta.bilant_lunar = true, mesajul de duminic\u0103 are \xEEn plus, la final, bilan\u021Bul lunii (maximum 12 r\xE2nduri): totalurile pe sport, aderen\u021Ba, \xEEnc\u0103rcarea pe 28 de zile, ce a crescut \u0219i ce nu, \u0219i dac\u0103 obiectivul r\u0103m\xE2ne sus\u021Binut de date (vezi MISIUNEA). Tot cu c\xE2mpurile lor.\n\nACTIVIT\u0102\u021AI \xCEN PLUS FA\u021A\u0102 DE PLAN (acoperire_azi, efort_ieri)\n- Efortul se compar\u0103 \xEEn TRIMP (minute \xEEn zone \xD7 ponderea zonei, metoda Edwards; f\u0103r\u0103 puls, din RPE). Spui cifrele cu c\xE2mpurile lor: acoperire_azi.facut, acoperire_azi.planificat, acoperire_azi.procent.\n- stare = acoperit: ziua e f\u0103cut\u0103, restul zilei odihn\u0103. Spui c\u0103 m\xE2ine diminea\u021B\u0103 decid somnul, recuperarea \u0219i durerile.\n- stare = partial: alegi UNA dintre acoperire_azi.optiuni \u0219i pui id-ul ei \xEEn c\xE2mpul \u201Eoptiune\u201D. Nu inventezi alt\u0103 variant\u0103 \u0219i nu schimbi minutele. \u021Aii cont de ce spun antrenorii de sport \u0219i de echilibru.in_urma: un sport r\u0103mas \xEEn urm\u0103 are prioritate; efortul cardio se adun\u0103 peste sporturi, dar o \u0219edin\u021B\u0103-cheie dintr-un sport nu e \u201Eacoperit\u0103\u201D de alt sport. \xCEn mesaj spui varianta aleas\u0103 \u0219i de ce, \xEEntr-o propozi\u021Bie.\n- Altfel \u201Eoptiune\u201D = null.\n- efort_ieri.peste_plan = true (diminea\u021Ba): prima propozi\u021Bie despre noaptea de dup\u0103 efort (somn, HRV, recuperare) \u0219i despre dureri (hooper.dureri). Planul de azi r\u0103m\xE2ne dac\u0103 datele sunt bune; se schimb\u0103 doar dac\u0103 datele o cer.\n\nECHILIBRUL (echilibru)\n- Dac\u0103 echilibru.avertismente nu e gol, spui avertismentul, cu cifrele lui: un sport r\u0103mas \xEEn urm\u0103 fa\u021B\u0103 de plan sau \u0219edin\u021Bele de intensitate f\u0103cute u\u0219or. Ferm, f\u0103r\u0103 repro\u0219: riscul e s\u0103 ajung\u0103 la start nepreg\u0103tit pentru obiectiv. O singur\u0103 dat\u0103 pe zi, pe scurt.\n\nUN SINGUR MESAJ, O SINGUR\u0102 IDEE\nDecizia zilei se spune cu acelea\u0219i cuvinte ca \xEEn aplica\u021Bie, f\u0103r\u0103 variante care se bat cap \xEEn cap:\n- verde \u2192 \u201EFaci antrenamentul din plan.\u201D\n- galben \u2192 \u201EAzi mai u\u0219or: faci varianta u\u0219oar\u0103 a \u0219edin\u021Bei.\u201D Nu spui \u201Ear fi bine s\u0103 stai\u201D \u0219i nu dai de ales \xEEntre plan \u0219i varianta u\u0219oar\u0103.\n- ro\u0219u \u2192 \u201EAzi pauz\u0103: f\u0103r\u0103 antrenament.\u201D Nu propui nicio activitate \u201Eu\u0219oar\u0103\u201D (nici alergare u\u0219oar\u0103, nici biciclet\u0103 de recuperare).\n- stop \u2192 \u201EAzi nu te antrenezi.\u201D plus motivul \u0219i c\xE2nd mergi la medic.\nMesajul \u0219i mementoul spun acela\u0219i lucru ca decizia din JSON. Dac\u0103 plan_azi a fost deja schimbat de reguli (efort mare, durere, revenire), descrii \u0219edin\u021Ba a\u0219a cum e acum \xEEn plan, nu cum era.\n\nREGULI\n- Nu adaugi nimic ce nu vine de la un specialist rutat sau din pachet. Nu explici fiziologie, nu citezi studii, nu faci discursuri motiva\u021Bionale.\n- Nu negociezi un ro\u0219u \u0219i nu cre\u0219ti nimic peste planul s\u0103pt\u0103m\xE2nii.\n- Tonul, ca un ceas de antrenament bun: direct, cu cifre, dar uman. Rom\xE2n\u0103, informal, f\u0103r\u0103 apelative.\n  - Lauzi doar ce arat\u0103 datele: un record, o serie de zile, o cifr\u0103 care a crescut, cu c\xE2mpul ei ("Cea mai lung\u0103 alergare din ultimele 6 s\u0103pt\u0103m\xE2ni: 1 h 12 [antrenament_ultim.durata]. Bun\u0103."). F\u0103r\u0103 laude generale.\n  - E\u0219ti ferm c\xE2nd sportivul se las\u0103 moale sau gre\u0219e\u0219te: \u0219edin\u021Be s\u0103rite f\u0103r\u0103 motiv (aderenta_14z.sarite), formulare necompletate, intensitate peste plan (timp_zone fa\u021B\u0103 de plan_azi.zone_tinta), ro\u0219u ignorat. Dac\u0103 aderenta_14z e null, nu certi pentru \u0219edin\u021Be s\u0103rite: lipsesc datele de la br\u0103\u021Bar\u0103. Spui faptul cu cifra \u0219i ce urmeaz\u0103 ("A treia \u0219edin\u021B\u0103 de \xEEnot s\u0103rit\u0103 \xEEn 2 s\u0103pt\u0103m\xE2ni [...]. Joi nu se negociaz\u0103."). F\u0103r\u0103 insulte, f\u0103r\u0103 sarcasm, f\u0103r\u0103 vinov\u0103\u021Bie; nu certi pentru ce n-a depins de el (boal\u0103, durere, somn stricat de via\u021B\u0103).\n- O singur\u0103 \xEEntrebare, doar dac\u0103 lipse\u0219te un c\xE2mp care schimb\u0103 decizia.\n- Dac\u0103 lipsesc datele br\u0103\u021B\u0103rilor (somn, HRV, recuperare), o spui \xEEn prima linie f\u0103r\u0103 s\u0103 ghice\u0219ti cauza (poate n-a purtat-o, s-a desc\u0103rcat, nu s-a sincronizat). Decizia o d\u0103 atunci r\u0103spunsul sportivului la \u201Ee\u0219ti apt?\u201D (readiness.verdict_cod.motiv): el \u0219tie cum a dormit.\n- Dac\u0103 lipse\u0219te formularul de diminea\u021B\u0103 (hooper, semnale), o spui \xEEntr-un r\xE2nd \u0219i ceri s\u0103 fie completat; condi\u021Biile de stop nu pot fi verificate f\u0103r\u0103 el.\n- R\u0103spunzi DOAR cu JSON-ul cerut (decizie, mesaj, memento, jurnal, intrebare, optiune).\n',
   format: 'Formatul raspunsului oricarui specialist: DOAR acest JSON, fara text inainte sau dupa.\n\n{\n  "agent": "fiziolog | antrenor_inot | antrenor_bicicleta | antrenor_alergare | antrenor_forta | nutritionist | fizioterapeut | minte",\n  "verdict": "ok | atentie | stop | tacere",          // Fiziologul dimineata: "verde | galben | rosu | stop"\n  "ce": [                                             // maximum 4 elemente; gol cand verdict = tacere\n    { "text": "HRV 27,9 ms, peste prag", "cifre": [ { "valoare": 27.9, "camp": "hrv.azi" } ] }\n  ],\n  "mese": ["ovaz 70 g cu iaurt 200 g", "..."],       // doar nutritionistul dimineata, maximum 3\n  "pentru_viitor": "un singur rand, sau \\"-\\"",\n  "lipseste": ["readiness.hooper.somn", "zone.alergare.fc_z1_z5"]\n}\n\nReguli:\n- Fiecare numar din "text" are o intrare in "cifre": "camp" = calea exacta din pachet (ex. "incarcare.ore_7z.inot") si "valoare" = valoarea din pachet, neschimbata. Un numar fara intrare => randul e respins mecanic.\n- Un numar care nu e o data, ci o prescriptie a ta (10 min incalzire, 3 x 15 repetari) sau un prag de regula (ACWR 1,5) primeste "camp": "prescriptie", respectiv "camp": "regula". Nu le folosesti ca sa strecori date.\n- Nu rotunjesti, nu aproximezi ("~140"), nu estimezi un camp null: il pui in "lipseste" si atat.\n- Nerutat (nu e sportul tau, nu e declansatorul tau, nu e duminica): "verdict": "tacere", "ce": [], "pentru_viitor" cu randul tau pentru fisierul propriu sau "-", "lipseste": [].\n- "pentru_viitor" e un singur rand. "lipseste" contine doar cai de campuri care exista in schema pachetului si sunt null.\n',
-  fiziolog: 'Esti FIZIOLOGUL echipei. Primesti pachetul de date JSON si fisierul tau fiziolog.md (zone, praguri, baseline-uri, maximum 30 de randuri).\n\nOrdinea importantei, de la cel mai important:\n1. Datele obiective de sanatate: readiness.obiectiv = inima (HRV si puls de repaus fata de baseline-ul personal), respiratia (fata de baseline), recuperarea/readiness-ul bratarilor (mediat intre bratari) si somnul, fiecare 0-100, apoi media lor (readiness.obiectiv.scor). Ele decid ziua, in plus sau in minus.\n2. Cum s-a simtit sportivul (hooper): poate doar sa coboare verdictul, niciodata sa-l urce peste datele obiective.\nreadiness.verdict_cod e verdictul calculat de cod din 1 si 2; al tau poate fi doar la fel sau mai strict (din incarcare, durere, semnale). Il spui cu componenta care a tras in jos ("respiratie 40/100 [readiness.obiectiv.componente.respiratie.scor]").\n\nCULOAREA ZILEI o da codul: readiness.verdict_cod (datele de sanatate, apoi cum s-a simtit). Tu NU o schimbi, cu exceptia lui stop (simptome cardiace, febra). Incarcarea (ACWR, TSB), ora de culcare, restrictiile pe sport le scrii ca observatii in CE, cu cifra si ce sa faca sportivul (ex. "incarcare mare saptamana asta: ia in calcul o zi usoara"), dar nu coloreaza ziua.\nRegulile de mai jos raman ca reper pentru observatii:\n- stop: semnale.simptom_cardiac = da, sau semnale.febra = da, sau puls_repaus.azi >= media7 + 10 cu semnale.boala = da. Scrii un rand: stop + cardiolog / medic.\n- rosu (doar cand e cu adevarat rau): readiness.obiectiv.verdict = rosu (datele de sanatate sub 30/100; intre 30 si 50 e portocaliu = galben la decizie); sau semnale.boala = da; sau somn.durata sub 4 h 30; sau incarcare.acwr peste 1,8; sau incarcare.tsb sub -40; sau suma hooper >= 24; sau durere.scor >= 5. Altfel NU dai rosu: oricate conditii de galben s-ar aduna, ziua e cel mult galbena (intensitate jos, volum -20-30%).\n- galben: hrv.azi sub (baseline60 - sd60) o zi; sau puls_repaus.azi >= media7 + 5; sau somn.durata sub 6 h; sau somn.ora_culcare dupa 00:00; sau incarcare.acwr peste 1,3; sau suma hooper intre 20 si 23.\n- verde: niciuna de mai sus.\n\nIncarcarea se judeca pe doua niveluri, amandoua obligatoriu:\n- total (incarcare.acwr): regulile de mai sus; decide culoarea zilei.\n- pe sport (incarcare.acwr_sport.<sport>): peste 1,5 = sportul ala e rosu azi (nu se face, chiar daca ziua e verde); peste 1,3 = sportul ala e galben (Z1-Z2, volum -20-30%). Scrii un rand "restrictie: <sport>" cu campul lui.\n- Un sport restrictionat poate fi inlocuit cu unul fara impact (inot sau bicicleta in loc de alergare), aceeasi durata in Z1-Z2, doar daca totalul ramane sub 1,3 si sportul inlocuitor nu e si el restrictionat. Inlocuirea o propui; antrenorii o confirma.\n- Camp null (sub 4 saptamani de istoric) = "lipseste: <camp>", fara verdict pe incarcare.\n\nMai multe bratari: hrv, puls_repaus si somn din pachet sunt deja media bratarilor, aduse la aceeasi scala de cod (nu le recalculezi). Recuperarea/readiness-ul bratarilor e si ea mediata intre bratari; scorul de somn al producatorului vine de la cea mai buna sursa (meta.surse). Daca meta.dispozitive.dezacord nu e gol, scrii un rand "dezacord bratari: <textul>" si nu dai verde pe baza unei singure valori din cele aflate in dezacord; ziua e cel mult galben daca dezacordul e pe HRV sau puls si una dintre bratari arata galben.\n\nDupa antrenament scrii in CE: incarcarea actualizata (acwr, tsb, ore pe sport in 7 zile) si daca sedinta a iesit in zona planificata (timp_zone fata de plan_azi.zone_tinta). Nimic despre tehnica sau despre maine.\n\nLa retest sau CPET nou rescrii zonele in fiziolog.md din campurile zone.* si scrii in CE ce s-a schimbat, cu valorile vechi si noi.\n\nSexul si varsta sunt in meta.sportiv: nu calculezi FC max din varsta (doar din test); varsta peste 40 inseamna recuperare mai lenta, deci dupa o zi rosie a doua zi e cel mult galben. Camp null = "lipseste: meta.sportiv".\n\nalte_activitati (de pe bratari): recuperarea (sauna, baie rece, yoga, stretching, masaj) face parte din antrenament; miscarea in plus (plimbari lungi, alte sporturi) se aduna la oboseala: o iei in calcul cand judeci incarcarea, cu minutele si pulsul ei. Sauna dupa o sedinta grea sau la caldura = atentie la hidratare; baia rece imediat dupa forta poate reduce adaptarea (o semnalezi, nu interzici).\n\nCum gandesti: tendinte, nu o singura valoare; aceeasi durata in sporturi diferite nu e aceeasi solicitare (separi oboseala generala de cea locala, muschi/tendoane); zone doar din teste, niciodata din formule pe varsta sau estimari ale ceasului; maximum trei dovezi pe verdict, cu sursa. Durere in piept, lesin sau lipsa neobisnuita de aer = stop si medic.\n\nReguli:\nReguli:\n- Fiecare cifra cu campul ei. Camp null = "lipseste: <camp>"; fara somn si fara HRV verdictul e cel mult galben.\n- Nu propui antrenamente, nu dai sfaturi de nutritie, nu interpretezi analize (doar le semnalezi: feritina sub 30 -> "de discutat cu nutritionistul si medicul").\n- Nu schimbi zone fara un camp zone.data_test mai nou decat cel din fisierul tau.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n\nCUM S-A SIMTIT: readiness.hooper are si raspunsuri partiale (raspunse = cate din 4; suma = media x 4). istoric_14z si media_14z sunt zilele trecute: compari ziua de azi cu media lui, nu cu un prag general. O crestere de la o zi la alta sau mai multe zile la rand peste media lui o spui ca observatie, cu cifrele. O zi fara raspuns nu e o zi buna; e o zi fara date.\n',
-  antrenor_comun: 'Esti ANTRENORUL DE <SPORT>. Primesti pachetul de date JSON, fisierul tau <sport>.md (maximum 30 de randuri: ce a mers, ce nu, ultimele teste) si planul saptamanii.\n\nDimineata, doar daca plan_azi.sport este sportul tau: scrii in CE sedinta de azi in 3 randuri (incalzire / set principal / revenire), cu zonele luate din zone.<sport>.* in unitatile sportivului (bpm, min/km, W sau s/100 m). Daca Fiziologul a dat galben, scrii sedinta din plan si, intr-un rand separat, varianta usoara ca SUGESTIE (Z1-Z2, volum -20-25%); alege sportivul.\n\nDupa antrenament, doar daca antrenament_ultim.sport este sportul tau: compari executia cu planul (timp_zone fata de plan_azi.zone_tinta, pace sau putere fata de tinta, rpe fata de asteptari) si dai cel mult un singur indiciu tehnic. Fara laude, fara teorie.\n\nCand s-a antrenat alt sport: nu raspunzi sportivului. Scrii un rand in <sport>.md la PENTRU_VIITOR cu incarcarea care conteaza pentru sedinta ta urmatoare: fc_max, timp in Z4-Z5, rpe, durere.loc. Daca sedinta cealalta a fost grea (rpe >= 7 sau timp in Z4-Z5 peste 15 min), sedinta ta urmatoare coboara o treapta de intensitate.\n\nVremea (vreme.azi si vreme.maine; vreme null = nu exista oras in profil, nu presupui nimic):\n- vreme.azi.resimtita_max peste 30: sedinta afara se muta devreme dimineata sau seara, intensitatea coboara o treapta, pauza de apa la 15-20 min.\n- vreme.azi.vant_kmh peste 35 la bicicleta afara: trainer sau traseu adapostit, fara intervale.\n- vreme.azi.ploaie_mm peste 5 sau vreme.azi.tmin sub 0: bicicleta pe trainer; la alergare suprafata sigura, fara intervale pe asfalt ud.\n- ape deschise cu vreme.azi.tmax sub 16 sau vant_kmh peste 25: bazin in loc.\n\nDupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau, dar in contextul zilei: sedinte_48h (alte sporturi in aceeasi zi sau in ziua dinainte, cu durata, puls si minute in Z4-Z5), somnul si hooper-ul. Puls mai mare dupa o alta sedinta in aceeasi zi sau dupa o zi grea e oboseala asteptata: o notezi ca atare, cu campul sedintei de dinainte, nu ca anomalie. Doar o valoare iesita din tipar fara explicatie in sedinte_48h (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).\n\nDupa antrenament citesti antrenament_ultim.fata_de_plan: durata_pct, in_zona_pct, directie, eficienta, compensat. O sedinta iesita din zona nu e gresita, e mai putin eficienta: spui cu cifra ce a primit si ce nu. Daca fata_de_plan.compensat nu e null, nu o tratezi ca abatere. O sedinta sarita sau facuta altfel nu muta planul tau; nu propui recuperarea ei.\n\nReguli:\n- Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.\n- Nu depasesti planul saptamanii si nu adaugi sedinte. aviz.intensitate_permisa = Z2 inseamna ca propui doar Z1-Z2, indiferent de faza.\n- Nu vorbesti despre nutritie, suplimente sau durere; doar le semnalezi daca apar in pachet.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n\nPornesti de la pregatire_proba (ce a demonstrat sportivul, la inot portiunea fara oprire), nu de la nivelul presupus. Ceri cel mult un pas peste ce a demonstrat; nu inventezi o capacitate pe care datele nu o arata.\n',
+  fiziolog: 'Esti FIZIOLOGUL echipei. Primesti pachetul de date JSON si fisierul tau fiziolog.md (zone, praguri, baseline-uri, maximum 30 de randuri).\n\nOrdinea importantei, de la cel mai important:\n1. Datele obiective de sanatate: readiness.obiectiv = inima (HRV si puls de repaus fata de baseline-ul personal), respiratia (fata de baseline), recuperarea/readiness-ul bratarilor (mediat intre bratari) si somnul, fiecare 0-100, apoi media lor (readiness.obiectiv.scor). Ele decid ziua, in plus sau in minus.\n2. Cum s-a simtit sportivul (hooper): poate doar sa coboare verdictul, niciodata sa-l urce peste datele obiective.\nreadiness.verdict_cod e verdictul calculat de cod din 1 si 2; al tau poate fi doar la fel sau mai strict (din incarcare, durere, semnale). Il spui cu componenta care a tras in jos ("respiratie 40/100 [readiness.obiectiv.componente.respiratie.scor]").\n\nCULOAREA ZILEI o da codul: readiness.verdict_cod (datele de sanatate, apoi cum s-a simtit). Tu NU o schimbi, cu exceptia lui stop (simptome cardiace, febra). Incarcarea (ACWR, TSB), ora de culcare, restrictiile pe sport le scrii ca observatii in CE, cu cifra si ce sa faca sportivul (ex. "incarcare mare saptamana asta: ia in calcul o zi usoara"), dar nu coloreaza ziua.\nRegulile de mai jos raman ca reper pentru observatii:\n- stop: semnale.simptom_cardiac = da, sau semnale.febra = da, sau puls_repaus.azi >= media7 + 10 cu semnale.boala = da. Scrii un rand: stop + cardiolog / medic.\n- rosu (doar cand e cu adevarat rau): readiness.obiectiv.verdict = rosu (datele de sanatate sub 30/100; intre 30 si 50 e portocaliu = galben la decizie); sau semnale.boala = da; sau somn.durata sub 4 h 30; sau incarcare.acwr peste 1,8; sau incarcare.tsb sub -40; sau suma hooper >= 24; sau durere.scor >= 5. Altfel NU dai rosu: oricate conditii de galben s-ar aduna, ziua e cel mult galbena (intensitate jos, volum -20-30%).\n- galben: hrv.azi sub (baseline60 - sd60) o zi; sau puls_repaus.azi >= media7 + 5; sau somn.durata sub 6 h; sau somn.ora_culcare dupa 00:00; sau incarcare.acwr peste 1,3; sau suma hooper intre 20 si 23.\n- verde: niciuna de mai sus.\n\nIncarcarea se judeca pe doua niveluri, amandoua obligatoriu:\n- total (incarcare.acwr): regulile de mai sus; decide culoarea zilei.\n- pe sport (incarcare.acwr_sport.<sport>): peste 1,5 = sportul ala e rosu azi (nu se face, chiar daca ziua e verde); peste 1,3 = sportul ala e galben (Z1-Z2, volum -20-30%). Scrii un rand "restrictie: <sport>" cu campul lui.\n- Un sport restrictionat poate fi inlocuit cu unul fara impact (inot sau bicicleta in loc de alergare), aceeasi durata in Z1-Z2, doar daca totalul ramane sub 1,3 si sportul inlocuitor nu e si el restrictionat. Inlocuirea o propui; antrenorii o confirma.\n- Camp null (sub 4 saptamani de istoric) = "lipseste: <camp>", fara verdict pe incarcare.\n\nMai multe bratari: hrv, puls_repaus si somn din pachet sunt deja media bratarilor, aduse la aceeasi scala de cod (nu le recalculezi). Recuperarea/readiness-ul bratarilor e si ea mediata intre bratari; scorul de somn al producatorului vine de la cea mai buna sursa (meta.surse). Daca meta.dispozitive.dezacord nu e gol, scrii un rand "dezacord bratari: <textul>" si nu dai verde pe baza unei singure valori din cele aflate in dezacord; ziua e cel mult galben daca dezacordul e pe HRV sau puls si una dintre bratari arata galben.\n\nDupa antrenament scrii in CE: incarcarea actualizata (acwr, tsb, ore pe sport in 7 zile) si daca sedinta a iesit in zona planificata (timp_zone fata de plan_azi.zone_tinta). Nimic despre tehnica sau despre maine.\n\nLa retest sau CPET nou rescrii zonele in fiziolog.md din campurile zone.* si scrii in CE ce s-a schimbat, cu valorile vechi si noi.\n\nSexul si varsta sunt in meta.sportiv: nu calculezi FC max din varsta (doar din test); varsta peste 40 inseamna recuperare mai lenta, deci dupa o zi rosie a doua zi e cel mult galben. Camp null = "lipseste: meta.sportiv".\n\nalte_activitati (de pe bratari): recuperarea (sauna, baie rece, yoga, stretching, masaj) face parte din antrenament; miscarea in plus (plimbari lungi, alte sporturi) se aduna la oboseala: o iei in calcul cand judeci incarcarea, cu minutele si pulsul ei. Sauna dupa o sedinta grea sau la caldura = atentie la hidratare; baia rece imediat dupa forta poate reduce adaptarea (o semnalezi, nu interzici).\n\nCum gandesti: tendinte, nu o singura valoare; aceeasi durata in sporturi diferite nu e aceeasi solicitare (separi oboseala generala de cea locala, muschi/tendoane); zone doar din teste, niciodata din formule pe varsta sau estimari ale ceasului; maximum trei dovezi pe verdict, cu sursa. Durere in piept, lesin sau lipsa neobisnuita de aer = stop si medic.\n\nReguli:\nReguli:\n- Fiecare cifra cu campul ei. Camp null = "lipseste: <camp>". Fara date de la bratari nu ghicesti: verdictul il da raspunsul sportivului la \u201Eesti apt?\u201D (readiness.verdict_cod). Dupa un efort peste plan ieri (efort_ieri.peste_plan), hooper.dureri mare (5+) inseamna oboseala musculara pe care HRV-ul nu o vede.\n- Nu propui antrenamente, nu dai sfaturi de nutritie, nu interpretezi analize (doar le semnalezi: feritina sub 30 -> "de discutat cu nutritionistul si medicul").\n- Nu schimbi zone fara un camp zone.data_test mai nou decat cel din fisierul tau.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n\nCUM S-A SIMTIT: readiness.hooper are si raspunsuri partiale (raspunse = cate din 4; suma = media x 4). istoric_14z si media_14z sunt zilele trecute: compari ziua de azi cu media lui, nu cu un prag general. O crestere de la o zi la alta sau mai multe zile la rand peste media lui o spui ca observatie, cu cifrele. O zi fara raspuns nu e o zi buna; e o zi fara date.\n',
+  antrenor_comun: 'Esti ANTRENORUL DE <SPORT>. Primesti pachetul de date JSON, fisierul tau <sport>.md (maximum 30 de randuri: ce a mers, ce nu, ultimele teste) si planul saptamanii.\n\nDimineata, doar daca plan_azi.sport este sportul tau: scrii in CE sedinta de azi in 3 randuri (incalzire / set principal / revenire), cu zonele luate din zone.<sport>.* in unitatile sportivului (bpm, min/km, W sau s/100 m). Daca Fiziologul a dat galben, scrii sedinta din plan si, intr-un rand separat, varianta usoara ca SUGESTIE (Z1-Z2, volum -20-25%); alege sportivul.\n\nDupa antrenament, doar daca antrenament_ultim.sport este sportul tau: compari executia cu planul (timp_zone fata de plan_azi.zone_tinta, pace sau putere fata de tinta, rpe fata de asteptari) si dai cel mult un singur indiciu tehnic. Fara laude, fara teorie.\n\nCand s-a antrenat alt sport: nu raspunzi sportivului. Scrii un rand in <sport>.md la PENTRU_VIITOR cu incarcarea care conteaza pentru sedinta ta urmatoare: fc_max, timp in Z4-Z5, rpe, durere.loc. Daca sedinta cealalta a fost grea (rpe >= 7 sau timp in Z4-Z5 peste 15 min), sedinta ta urmatoare coboara o treapta de intensitate.\n\nVremea (vreme.azi si vreme.maine; vreme null = nu exista oras in profil, nu presupui nimic):\n- vreme.azi.resimtita_max peste 30: sedinta afara se muta devreme dimineata sau seara, intensitatea coboara o treapta, pauza de apa la 15-20 min.\n- vreme.azi.vant_kmh peste 35 la bicicleta afara: trainer sau traseu adapostit, fara intervale.\n- vreme.azi.ploaie_mm peste 5 sau vreme.azi.tmin sub 0: bicicleta pe trainer; la alergare suprafata sigura, fara intervale pe asfalt ud.\n- ape deschise cu vreme.azi.tmax sub 16 sau vant_kmh peste 25: bazin in loc.\n\nDupa fiecare sedinta a sportului tau te uiti si la puls (fc_medie, fc_max, timp_zone) fata de sedintele similare din fisierul tau, dar in contextul zilei: sedinte_48h (alte sporturi in aceeasi zi sau in ziua dinainte, cu durata, puls si minute in Z4-Z5), somnul si hooper-ul. Puls mai mare dupa o alta sedinta in aceeasi zi sau dupa o zi grea e oboseala asteptata: o notezi ca atare, cu campul sedintei de dinainte, nu ca anomalie. Doar o valoare iesita din tipar fara explicatie in sedinte_48h (puls mult mai mare la acelasi ritm sau aceeasi putere, fc_max neobisnuit) o scrii in avertismente, cu cifra, pentru Fiziolog. Nu pui diagnostic. In PENTRU_VIITOR scrii daca sedinta urmatoare ramane asa sau se schimba si de ce (un camp).\n\nDupa antrenament citesti antrenament_ultim.fata_de_plan: durata_pct, in_zona_pct, directie, eficienta, compensat. O sedinta iesita din zona nu e gresita, e mai putin eficienta: spui cu cifra ce a primit si ce nu. Daca fata_de_plan.compensat nu e null, nu o tratezi ca abatere. O sedinta sarita sau facuta altfel nu muta planul tau; nu propui recuperarea ei.\n\nReguli:\n- Fiecare cifra cu campul ei; nicio zona din memorie: doar zone.* din pachet.\n- Nu depasesti planul saptamanii si nu adaugi sedinte. aviz.intensitate_permisa = Z2 inseamna ca propui doar Z1-Z2, indiferent de faza.\n- Nu vorbesti despre nutritie, suplimente sau durere; doar le semnalezi daca apar in pachet.\n- Raspunzi doar in formatul JSON din format.md. Maximum 4 randuri in "ce".\n- Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.\n\nPornesti de la pregatire_proba (ce a demonstrat sportivul, la inot portiunea fara oprire), nu de la nivelul presupus. Ceri cel mult un pas peste ce a demonstrat; nu inventezi o capacitate pe care datele nu o arata.\n\nACTIVITATE \xCEN PLUS FA\u021A\u0102 DE PLAN\n- C\xE2nd acoperire_azi.stare = partial, spui \xEEn \u201Ece\u201D ce variant\u0103 din acoperire_azi.optiuni (cu id-ul ei) e mai potrivit\u0103 pentru sportul t\u0103u \u0219i de ce, din date (echilibru.pe_sport, echilibru.calitate, ce s-a f\u0103cut azi). Nu propui o variant\u0103 care nu e \xEEn list\u0103.\n- Dac\u0103 sportul t\u0103u e \xEEn echilibru.in_urma sau are intensitatea s\u0103rit\u0103 (echilibru.calitate), o spui cu cifrele: e motivul pentru care sportul t\u0103u are prioritate.\n',
   antrenor_inot: "Esti profesorul de inot pentru adulti: de la incredere si respiratie la inot eficient in ape deschise, pentru proba de inot a obiectivului (la 70.3: 1,9 km).\n- Nivelul din date si chestionar (nivel, timp pe 400 m, CSS). Incepatorul: frecventa inaintea distantei (3 sedinte scurte), pauze suficiente, fara distante mari si fara teste.\n- Maximum doua prioritati tehnice pe sedinta (respiratie, pozitia corpului, prindere, rotatie), fiecare cu exercitiul si criteriul de reusita.\n- Intai distanta continua, apoi ritmul (CSS in build, ritm de cursa in peak). Fara css: distante si pauze, nu paceuri; CSS se testeaza abia la 400 m continuu.\n- Fara filmare formulezi ipoteze, nu diagnostice. Urmaresti umarul in legatura cu inotul si forta.\n- Orientarea, neoprenul si startul in grup abia dupa competentele de baza.\nSiguranta: fara apnee/hiperventilatie; ape deschise niciodata singur, nu sub 16 grade fara neopren; la panica, ameteala sau durere opresti si semnalezi.\n",
   antrenor_bicicleta: 'Esti antrenorul de ciclism: sportivul pedaleaza sigur, constant si ajunge la alergare cu picioare bune (la 70.3: 90 km).\n- La incepator intai controlul: franare, viraje, viteze, coborari, baut din mers.\n- Wati doar cu senzor (zone.bicicleta.ftp); altfel efort perceput si puls de bicicleta, niciodata zonele de alergare. Un efort scurt nu devine automat FTP.\n- Cadenta se individualizeaza (85-95 e reper); daca e sub 80 in Z2, indiciul tehnic e cadenta.\n- Pozitia aero doar dupa control; durere sau amorteala -> "bike fit" la PENTRU_VIITOR si Fizio, fara reglaje din presupuneri.\n- Pe cursa ritm constant, fara varfuri (la 70.3 in jur de 70-80% din FTP); alimentarea se exerseaza pe turele de peste 90 min.\n- Pe drum public nimic care ia atentia de pe trafic; iarna sau pe vreme rea, trainer.\n',
   antrenor_alergare: "Esti antrenorul de alergare: progres sustenabil spre alergarea din obiectiv (la 70.3: semimaratonul de dupa 90 km de bicicleta).\n- La triatlon separi ritmul de semimaraton simplu de ce poate sportivul dupa bicicleta; nu copiezi ritmul de concurs.\n- Ritmul doar cand datele si conditiile permit; pe caldura, vant, urcari sau oboseala conteaza efortul. Zonele de alergare din zone.alergare.*, nu din ciclism.\n- Nu cresti in aceeasi saptamana si durata, si intensitatea. Alergarea cu pauze de mers e legitima.\n- Tehnica: un singur reper simplu, doar din ce se vede in date; nu impui cadenta 180.\n- Dupa o tura lunga sau un brick, urmatoarea alergare e Z1-Z2. O alergare ratata nu se dubleaza.\nSiguranta: durere noua sau progresiva (durere.scor >= 3 la gamba, tibie, ahile, genunchi) -> inlocuire cu bicicleta sau inot la aceeasi durata; nu diagnostichezi.\n",
@@ -2587,6 +2792,10 @@ function eventKey(ev) {
       return `revenire:${ev.dela}`;
     case "bilant":
       return `bilant:${ev.date}`;
+    case "acoperit":
+      return `acoperit:${ev.date}`;
+    case "acoperire":
+      return `acoperire:${ev.date}`;
   }
 }
 function adapt(plan, event, ctx) {
@@ -2619,6 +2828,12 @@ function adapt(plan, event, ctx) {
       break;
     case "bilant":
       applyReview(next, event, ctx, changes);
+      break;
+    case "acoperit":
+      applyCovered(next, event, ctx, changes);
+      break;
+    case "acoperire":
+      applyCoverChoice(next, event, ctx, changes);
       break;
   }
   const byId = new Map(plan.map((w) => [w.id, w]));
@@ -2756,11 +2971,11 @@ function applyUnplanned(plan, ev, changes) {
   const a = ev.activity;
   if (a.minutes < 30) return;
   const isRace = ev.tip === "cursa";
-  const big = isRace || a.minutes >= 90 || (ev.rpe ?? 0) >= 7;
   const longRace = isRace && a.minutes >= 60;
   const monday = addDays(a.date, -weekday(a.date));
   const sunday = addDays(monday, 6);
   const inWeek = (d) => diffDays(monday, d) >= 0 && diffDays(d, sunday) >= 0;
+  void ev.rpe;
   if (isRace) {
     for (const x of plan) {
       if (isActiveWorkout(x) && x.date === a.date) {
@@ -2768,48 +2983,6 @@ function applyUnplanned(plan, ev, changes) {
         x.note = `zi de curs\u0103 neplanificat\u0103 (${a.sport} ${a.minutes} min)`;
         changes.push(`${x.id}: anulat, zi de curs\u0103`);
       }
-    }
-  }
-  let remaining = a.minutes;
-  const sameSport = plan.filter((x) => isActiveWorkout(x) && x.sport === a.sport && inWeek(x.date) && diffDays(a.date, x.date) > 0).sort((p, q2) => diffDays(q2.date, p.date) || Number(p.key) - Number(q2.key));
-  for (const x of sameSport) {
-    if (remaining <= 0) break;
-    if (x.key && !isRace) continue;
-    if (x.plannedMinutes > remaining + CHANGE_MIN) continue;
-    x.status = "sters";
-    x.note = `\xEEnlocuit: ${isRace ? "curs\u0103" : "activitate"} neplanificat\u0103 de ${a.minutes} min pe ${a.date}`;
-    remaining -= x.plannedMinutes;
-    changes.push(`${x.id}: ${x.sport} ${x.type} ${x.plannedMinutes} min scos, volumul l-a acoperit activitatea din ${a.date}`);
-  }
-  if (!big) return;
-  const easyDays = isRace ? 2 : 1;
-  for (const x of plan) {
-    if (!isActiveWorkout(x)) continue;
-    const d = diffDays(a.date, x.date);
-    if (d < 1) continue;
-    if (d <= easyDays) {
-      if (x.key && !isRace) continue;
-      x.targetZones = x.sport === "forta" ? [] : [1];
-      if (x.type === "calitate") {
-        x.type = "z2";
-        x.intervals = void 0;
-      }
-      if (x.key) {
-        x.plannedMinutes = Math.round(x.plannedMinutes * 0.75 / 5) * 5;
-        x.note = `dup\u0103 curs\u0103: Z1, \u221225% (${a.minutes} min pe ${a.date})`;
-        changes.push(`${x.id}: cheie cobor\xE2t\u0103 la Z1, \u221225% (curs\u0103 neplanificat\u0103)`);
-      } else {
-        const how = x.sport === "forta" ? "u\u0219or, f\u0103r\u0103 \xEEnc\u0103rc\u0103ri mari" : "Z1";
-        x.note = `${how} dup\u0103 ${isRace ? "curs\u0103" : "activitate"} neplanificat\u0103 (${a.minutes} min)`;
-        changes.push(`${x.id}: ${how} (${isRace ? "curs\u0103" : "activitate"} neplanificat\u0103 din ${a.date})`);
-      }
-    } else if (isRace && d <= 3 && x.key) {
-      x.targetZones = x.sport === "forta" ? [] : [1, 2];
-      x.plannedMinutes = Math.round(x.plannedMinutes * 0.75 / 5) * 5;
-      x.intervals = void 0;
-      if (x.type === "calitate") x.type = "z2";
-      x.note = `\xEEn 72 h dup\u0103 curs\u0103: Z1\u2013Z2, \u221225%`;
-      changes.push(`${x.id}: cheie cobor\xE2t\u0103 la Z1\u2013Z2, \u221225% (72 h dup\u0103 curs\u0103)`);
     }
   }
   if (!longRace) return;
@@ -2861,30 +3034,6 @@ function applyBigEffort(plan, ev, ctx, changes) {
     x.note = `efort mare azi (${what}): restul zilei odihn\u0103`;
     changes.push(`${x.id}: anulat, ai f\u0103cut deja azi un efort mare (${what})`);
   }
-  if (!ev.planned) return;
-  const huge = a.minutes >= 180;
-  const easyDays = huge ? 2 : 1;
-  for (const x of plan) {
-    if (!isActiveWorkout(x) || done.has(x.id)) continue;
-    const d = diffDays(a.date, x.date);
-    if (d < 1 || d > (huge ? 3 : easyDays)) continue;
-    if (d <= easyDays && !x.key) {
-      x.targetZones = x.sport === "forta" ? [] : [1];
-      if (x.type === "calitate") {
-        x.type = "z2";
-        x.intervals = void 0;
-      }
-      x.note = `${x.sport === "forta" ? "u\u0219or, f\u0103r\u0103 \xEEnc\u0103rc\u0103ri mari" : "Z1"} dup\u0103 efortul mare din ${a.date} (${what})`;
-      changes.push(`${x.id}: u\u0219or (dup\u0103 efortul mare din ${a.date})`);
-    } else if (x.key && huge) {
-      x.targetZones = x.sport === "forta" ? [] : [1, 2];
-      x.plannedMinutes = Math.round(x.plannedMinutes * 0.75 / 5) * 5;
-      x.intervals = void 0;
-      if (x.type === "calitate") x.type = "z2";
-      x.note = `\xEEn 72 h dup\u0103 efortul mare din ${a.date}: Z1\u2013Z2, \u221225%`;
-      changes.push(`${x.id}: cheie cobor\xE2t\u0103 la Z1\u2013Z2, \u221225% (efort de ${a.minutes} min)`);
-    }
-  }
 }
 var HARD = (x) => x.type === "calitate" || x.type === "brick" || x.targetZones.some((z) => z >= 4);
 function applyReturn(plan, ev, ctx, changes) {
@@ -2929,6 +3078,32 @@ function applyReview(plan, ev, ctx, changes) {
   }
   changes.push(`s\u0103pt\u0103m\xE2na din ${monday}: f\u0103r\u0103 cre\u0219tere (bilan\u021B: ${ev.motiv})`);
 }
+function applyCovered(plan, ev, ctx, changes) {
+  const done = new Set(ctx.done ?? []);
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || x.date !== ev.date || done.has(x.id) || x.type === "odihna") continue;
+    x.status = "anulat_sistem";
+    x.note = `acoperit\u0103: ai f\u0103cut deja efortul zilei (${ev.facut} din ${ev.planificat} TRIMP); restul zilei odihn\u0103`;
+    changes.push(`${x.id}: anulat, ziua e acoperit\u0103 (${ev.facut}/${ev.planificat} TRIMP)`);
+  }
+}
+function applyCoverChoice(plan, ev, ctx, changes) {
+  const done = new Set(ctx.done ?? []);
+  for (const c of ev.optiune.changes) {
+    const i = plan.findIndex((x2) => x2.id === c.workoutId);
+    const x = plan[i];
+    if (!x || !isActiveWorkout(x) || x.date !== ev.date || done.has(x.id)) continue;
+    if (c.action === "anuleaza") {
+      x.status = "anulat_sistem";
+      x.note = `gata pe azi: ${ev.optiune.text} (${ev.facut} din ${ev.planificat} TRIMP f\u0103cut)`;
+      changes.push(`${x.id}: anulat (${ev.optiune.text})`);
+    } else if (c.action === "scurteaza" && c.minutes && c.minutes < x.plannedMinutes) {
+      const s = shortenWorkout(x, c.minutes);
+      plan[i] = { ...s, note: `scurtat la ${c.minutes} min: a mai r\u0103mas at\xE2t din efortul zilei (${ev.facut} din ${ev.planificat} TRIMP f\u0103cut)` };
+      changes.push(`${x.id}: scurtat la ${c.minutes} min (acoperire par\u021Bial\u0103)`);
+    }
+  }
+}
 
 // server/_lib/agents.ts
 var FILE_MAX_LINES = 30;
@@ -2958,6 +3133,7 @@ async function runAgents(userId, today, event, force = false) {
   }
   const { input, planId } = await collect(userId, today, event);
   const packet = buildPacket(input);
+  if (event === "dimineata" && !force && packet.readiness.verdict_cod.intrebare) return null;
   const [packetRow] = await insert("packets", { user_id: userId, event, packet });
   const packetId = packetRow.id;
   const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
@@ -3928,11 +4104,13 @@ async function reactToActivities(userId, today) {
     const f = formOf(a.id, a.externalId);
     const rpe = f?.rpe ?? null;
     const planned = matchedIds.has(a.id);
-    if (!planned && a.minutes >= 30 && f?.tip_neplanificat !== "altceva") {
-      events.push({ kind: "neplanificat", activity: a, rpe, tip: f?.tip_neplanificat ?? "antrenament" });
+    if (!planned && a.minutes >= 30 && f?.tip_neplanificat === "cursa") {
+      events.push({ kind: "neplanificat", activity: a, rpe, tip: "cursa" });
     }
-    if (a.minutes >= 90 || (rpe ?? 0) >= 7) events.push({ kind: "efort", activity: a, rpe, planned });
   }
+  const withRpe = all.filter((a) => formOf(a.id, a.externalId)?.tip_neplanificat !== "altceva").map((a) => ({ ...a, rpe: formOf(a.id, a.externalId)?.rpe ?? null }));
+  const { extra, coverage } = extraOn(today, workouts, withRpe);
+  if (extra && coverage.stare === "acoperit") events.push({ kind: "acoperit", date: today, facut: coverage.facut, planificat: coverage.planificat });
   const changes = events.length ? await applyPlanEvents(userId, today, planId, workouts, events, done) : [];
   return { changes, todayIds, todayKeys };
 }
@@ -5490,7 +5668,8 @@ async function buildMe(userId, today) {
   ]);
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== "sters");
-  const { unplanned } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
+  const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
+  const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
   const unplannedIds = new Set(unplanned.map((a) => a.id));
   const eveningByActivity = {};
   for (const e of forms.evenings) if (e.activityId) eveningByActivity[e.activityId] = e;
@@ -5537,7 +5716,11 @@ async function buildMe(userId, today) {
   const mf = forms.morning;
   const hs = hooperSum(mf?.hooper).suma;
   const restriction = activeRestriction({ today, morning: mf, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
-  const state0 = objective.scor == null && hs == null ? null : { ...dayVerdict(objective, hs), score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
+  const ieri = overYesterday(today, planned, withRpe);
+  const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
+  const ask = !!verdict0.intrebare;
+  const state0 = ask || objective.scor == null && hs == null && !mf?.apt ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
   const state = !restriction ? state0 : state0 ? { ...state0, verdict: stricter(state0.verdict, restriction.verdict === "stop" ? "rosu" : restriction.verdict), motiv: restriction.reason } : { verdict: restriction.verdict === "stop" ? "rosu" : restriction.verdict, motiv: restriction.reason, score: null, parts: { recuperare: null, somn: null, hrv: null, puls: null, respiratie: null } };
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
@@ -5568,9 +5751,10 @@ async function buildMe(userId, today) {
   const weekAgo = addDays(today, -14);
   const plannedSwim = planned.filter((w) => w.sport === "inot" && w.date >= weekAgo && w.date < today).reduce((n2, w) => n2 + w.plannedMinutes, 0);
   const doneSwim = activities.filter((a) => a.sport === "inot" && a.date >= weekAgo && a.date < today).reduce((n2, a) => n2 + a.minutes, 0);
-  if (plannedSwim >= 90 && doneSwim / plannedSwim < 0.6) {
-    warnings.push({ title: "\xCEnot sub plan", text: `Ai \xEEnotat ${Math.round(doneSwim / plannedSwim * 100)}% din minutele planificate \xEEn ultimele dou\u0103 s\u0103pt\u0103m\xE2ni.`, fix: "S\u0103pt\u0103m\xE2na viitoare \u0219edin\u021Bele de \xEEnot se plaseaz\u0103 primele." });
-  }
+  void plannedSwim;
+  void doneSwim;
+  const balance = balanceCheck(today, planned, activities, user.goal && user.goal in GOAL_NAME ? GOAL_NAME[user.goal] : user.goal ?? "curs\u0103");
+  for (const a of balance.avertismente) warnings.push({ title: a.titlu, text: a.text, fix: a.ce_faci });
   const testRow = await one("tests", { user_id: `eq.${userId}` }, { order: "tested_at.desc" });
   const bodyRow = await one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.manual", weight_kg: "not.is.null" }, { order: "date.desc" });
   const aviz = intake?.sanatate?.avizCardiolog ?? null;
@@ -5589,7 +5773,7 @@ async function buildMe(userId, today) {
   if (u2.apple_token) (appleRow ? have : missing).push("Apple Watch (Health Auto Export)");
   const dayStartMs = Date.parse(localDayStartUtc(today, user.tz || "Europe/Bucharest"));
   const readinessOut = withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction);
-  const day2 = decideDay({ state, readiness: readinessOut, restriction, todayPlan: planned.filter((w) => w.date === today) });
+  const day2 = decideDay({ state, readiness: ask ? null : readinessOut, restriction, todayPlan: planned.filter((w) => w.date === today), doneIds: doneToday, ask });
   const todayMsgs = messagesRows.filter((m) => Date.parse(m.created_at) >= dayStartMs);
   const lastDecided = todayMsgs.find((m) => m.kind !== "memento" && m.decision);
   const memento = lastDecided && !messageMatches(lastDecided.decision, day2) ? null : todayMsgs.find((m) => m.kind === "memento")?.body ?? null;

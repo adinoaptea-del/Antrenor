@@ -3,6 +3,7 @@ import { Avatar, Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from '.
 import { useData, useMe } from '../data/store';
 import { SPORT_LABEL, TYPE_LABEL, cleanRefs, dayOf, fmtMinutes, todayMessage, workoutsOn } from '../data/model';
 import { DayDecisionView } from './Day';
+import { AptQuestion } from './Today';
 
 // Antrenorul, redus la ce contează: ce faci azi, ce ți-a scris azi, și un singur buton.
 // Mesajele vechi stau strânse, la cerere.
@@ -58,6 +59,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
         <Card>
           <Label>Azi</Label>
           {day && <DayDecisionView day={day} compact />}
+          {day?.ask && <AptQuestion />}
           {plan.length === 0 ? (
             <div className="small muted" style={{ marginTop: 6 }}>{me.plan.length ? 'Odihnă în plan.' : 'Planul apare după chestionarul de intrare.'}</div>
           ) : (

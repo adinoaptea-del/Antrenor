@@ -1,7 +1,8 @@
 // Calendarul viu: regulile de adaptare din protocol, aplicate determinist pe antrenamentele viitoare.
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
-import { fitStructure } from './validate.js';
+import { fitStructure, shortenWorkout } from './validate.js';
+import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 
@@ -30,7 +31,11 @@ export type AdaptEvent =
    */
   | { kind: 'revenire'; date: string; zile: number; /** ultima activitate dinainte de pauză: cheia evenimentului */ dela: string }
   /** Bilanțul de duminică: obosit (sau efort 9–10 la ședințele grele) = săptămâna viitoare fără creștere, o intensitate mai puțin. */
-  | { kind: 'bilant'; date: string; obosit: boolean; motiv: string };
+  | { kind: 'bilant'; date: string; obosit: boolean; motiv: string }
+  /** Ce ai făcut azi a acoperit efortul planificat al zilei (TRIMP): restul zilei odihnă. */
+  | { kind: 'acoperit'; date: string; facut: number; planificat: number }
+  /** Ziua e acoperită parțial: varianta aleasă (de agenți sau implicit) dintre cele calculate de cod. */
+  | { kind: 'acoperire'; date: string; optiune: CoverOption; facut: number; planificat: number };
 
 export interface AdaptContext {
   today: string;
@@ -76,6 +81,10 @@ export function eventKey(ev: AdaptEvent): string {
       return `revenire:${ev.dela}`;
     case 'bilant':
       return `bilant:${ev.date}`;
+    case 'acoperit':
+      return `acoperit:${ev.date}`;
+    case 'acoperire':
+      return `acoperire:${ev.date}`;
   }
 }
 
@@ -110,6 +119,12 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
       break;
     case 'bilant':
       applyReview(next, event, ctx, changes);
+      break;
+    case 'acoperit':
+      applyCovered(next, event, ctx, changes);
+      break;
+    case 'acoperire':
+      applyCoverChoice(next, event, ctx, changes);
       break;
   }
 
@@ -277,11 +292,11 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   const a = ev.activity;
   if (a.minutes < 30) return;
   const isRace = ev.tip === 'cursa';
-  const big = isRace || a.minutes >= 90 || (ev.rpe ?? 0) >= 7;
   const longRace = isRace && a.minutes >= 60;
   const monday = addDays(a.date, -weekday(a.date));
   const sunday = addDays(monday, 6);
   const inWeek = (d: string) => diffDays(monday, d) >= 0 && diffDays(d, sunday) >= 0;
+  void ev.rpe;
 
   // 1. Ziua cursei: restul ședințelor planificate se anulează (sportivul a făcut cursa în locul lor).
   if (isRace) {
@@ -294,55 +309,8 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
     }
   }
 
-  // 1b. Volumul înlocuiește ședințele aceluiași sport din aceeași săptămână, de după activitate.
-  let remaining = a.minutes;
-  const sameSport = plan
-    .filter((x) => isActiveWorkout(x) && x.sport === a.sport && inWeek(x.date) && diffDays(a.date, x.date) > 0)
-    .sort((p, q) => diffDays(q.date, p.date) || Number(p.key) - Number(q.key));
-  for (const x of sameSport) {
-    if (remaining <= 0) break;
-    if (x.key && !isRace) continue;
-    if (x.plannedMinutes > remaining + CHANGE_MIN) continue;
-    x.status = 'sters';
-    x.note = `înlocuit: ${isRace ? 'cursă' : 'activitate'} neplanificată de ${a.minutes} min pe ${a.date}`;
-    remaining -= x.plannedMinutes;
-    changes.push(`${x.id}: ${x.sport} ${x.type} ${x.plannedMinutes} min scos, volumul l-a acoperit activitatea din ${a.date}`);
-  }
-
-  if (!big) return;
-
-  // 2. Zilele următoare: Z1, fără calitate; după cursă și cheile din 72 h coboară.
-  const easyDays = isRace ? 2 : 1;
-  for (const x of plan) {
-    if (!isActiveWorkout(x)) continue;
-    const d = diffDays(a.date, x.date);
-    if (d < 1) continue;
-    if (d <= easyDays) {
-      if (x.key && !isRace) continue;
-      x.targetZones = x.sport === 'forta' ? [] : [1];
-      if (x.type === 'calitate') {
-        x.type = 'z2';
-        x.intervals = undefined;
-      }
-      if (x.key) {
-        x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
-        x.note = `după cursă: Z1, −25% (${a.minutes} min pe ${a.date})`;
-        changes.push(`${x.id}: cheie coborâtă la Z1, −25% (cursă neplanificată)`);
-      } else {
-        const how = x.sport === 'forta' ? 'ușor, fără încărcări mari' : 'Z1';
-        x.note = `${how} după ${isRace ? 'cursă' : 'activitate'} neplanificată (${a.minutes} min)`;
-        changes.push(`${x.id}: ${how} (${isRace ? 'cursă' : 'activitate'} neplanificată din ${a.date})`);
-      }
-    } else if (isRace && d <= 3 && x.key) {
-      x.targetZones = x.sport === 'forta' ? [] : [1, 2];
-      x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
-      x.intervals = undefined;
-      if (x.type === 'calitate') x.type = 'z2';
-      x.note = `în 72 h după cursă: Z1–Z2, −25%`;
-      changes.push(`${x.id}: cheie coborâtă la Z1–Z2, −25% (72 h după cursă)`);
-    }
-  }
-
+  // Volumul nu mai înlocuiește automat ședințe din săptămână, iar zilele următoare nu se ușurează din prima:
+  // ziua o echivalează regula „acoperit/acoperire” (efort, nu minute), iar ziua de mâine o decid datele de dimineață.
   // 3. Cursă lungă: săptămâna următoare nu progresează.
   if (!longRace) return;
   const nextMonday = addDays(monday, 7);
@@ -410,30 +378,6 @@ function applyBigEffort(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
     x.note = `efort mare azi (${what}): restul zilei odihnă`;
     changes.push(`${x.id}: anulat, ai făcut deja azi un efort mare (${what})`);
   }
-  if (!ev.planned) return;
-  const huge = a.minutes >= 180;
-  const easyDays = huge ? 2 : 1;
-  for (const x of plan) {
-    if (!isActiveWorkout(x) || done.has(x.id)) continue;
-    const d = diffDays(a.date, x.date);
-    if (d < 1 || d > (huge ? 3 : easyDays)) continue;
-    if (d <= easyDays && !x.key) {
-      x.targetZones = x.sport === 'forta' ? [] : [1];
-      if (x.type === 'calitate') {
-        x.type = 'z2';
-        x.intervals = undefined;
-      }
-      x.note = `${x.sport === 'forta' ? 'ușor, fără încărcări mari' : 'Z1'} după efortul mare din ${a.date} (${what})`;
-      changes.push(`${x.id}: ușor (după efortul mare din ${a.date})`);
-    } else if (x.key && huge) {
-      x.targetZones = x.sport === 'forta' ? [] : [1, 2];
-      x.plannedMinutes = Math.round((x.plannedMinutes * 0.75) / 5) * 5;
-      x.intervals = undefined;
-      if (x.type === 'calitate') x.type = 'z2';
-      x.note = `în 72 h după efortul mare din ${a.date}: Z1–Z2, −25%`;
-      changes.push(`${x.id}: cheie coborâtă la Z1–Z2, −25% (efort de ${a.minutes} min)`);
-    }
-  }
 }
 
 const HARD = (x: PlannedWorkout) => x.type === 'calitate' || x.type === 'brick' || x.targetZones.some((z) => z >= 4);
@@ -481,4 +425,34 @@ function applyReview(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'bi
     changes.push(`${first.id}: ${first.sport} ${first.date} devine ușoară (bilanț: ${ev.motiv})`);
   }
   changes.push(`săptămâna din ${monday}: fără creștere (bilanț: ${ev.motiv})`);
+}
+
+/** Efortul zilei e acoperit (TRIMP făcut ≥ planificat): ce mai era azi se anulează; mâine decid datele de dimineață. */
+function applyCovered(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'acoperit' }>, ctx: AdaptContext, changes: string[]): void {
+  const done = new Set(ctx.done ?? []);
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || x.date !== ev.date || done.has(x.id) || x.type === 'odihna') continue;
+    x.status = 'anulat_sistem';
+    x.note = `acoperită: ai făcut deja efortul zilei (${ev.facut} din ${ev.planificat} TRIMP); restul zilei odihnă`;
+    changes.push(`${x.id}: anulat, ziua e acoperită (${ev.facut}/${ev.planificat} TRIMP)`);
+  }
+}
+
+/** Varianta aleasă pentru restul zilei: doar schimbările calculate de cod (anulează / scurtează). */
+function applyCoverChoice(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'acoperire' }>, ctx: AdaptContext, changes: string[]): void {
+  const done = new Set(ctx.done ?? []);
+  for (const c of ev.optiune.changes) {
+    const i = plan.findIndex((x) => x.id === c.workoutId);
+    const x = plan[i];
+    if (!x || !isActiveWorkout(x) || x.date !== ev.date || done.has(x.id)) continue;
+    if (c.action === 'anuleaza') {
+      x.status = 'anulat_sistem';
+      x.note = `gata pe azi: ${ev.optiune.text} (${ev.facut} din ${ev.planificat} TRIMP făcut)`;
+      changes.push(`${x.id}: anulat (${ev.optiune.text})`);
+    } else if (c.action === 'scurteaza' && c.minutes && c.minutes < x.plannedMinutes) {
+      const s = shortenWorkout(x, c.minutes);
+      plan[i] = { ...s, note: `scurtat la ${c.minutes} min: a mai rămas atât din efortul zilei (${ev.facut} din ${ev.planificat} TRIMP făcut)` };
+      changes.push(`${x.id}: scurtat la ${c.minutes} min (acoperire parțială)`);
+    }
+  }
 }
