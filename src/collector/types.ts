@@ -51,7 +51,7 @@ export interface EveningForm {
   rpe: number | null; // 0–10
   fata_de_asteptari: 'mai_usor' | 'la_fel' | 'mai_greu' | null;
   durere: { scor: number | null; loc: string | null };
-  ce_a_incurcat: 'nimic' | 'somn' | 'mancare' | 'stres' | 'vreme' | 'timp' | null;
+  ce_a_incurcat: 'nimic' | 'somn' | 'mancare' | 'stres' | 'vreme' | 'timp' | 'traseu' | null;
   fueling_conform: 'da' | 'partial' | 'nu' | null;
   comentariu: string | null;
   /** Dacă activitatea a fost în afara planului: ce a fost. */

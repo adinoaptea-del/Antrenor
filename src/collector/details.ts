@@ -186,3 +186,18 @@ export function mergeDetails(a: ActivityDetails | null | undefined, b: ActivityD
   for (const [k, v] of Object.entries(a)) if (v != null) (out as Record<string, unknown>)[k] = v;
   return out;
 }
+
+/**
+ * Căderea pe final la o ieșire lungă: ritmul mediu din a doua jumătate față de prima (pe kilometri întregi).
+ * Pozitiv = mai lent în a doua parte (cădere); negativ = final mai rapid. null = prea puțini kilometri (sub 6).
+ * Pe teren cu urcări mari rezultatul nu e comparabil; apelantul decide dacă îl folosește.
+ */
+export function fadePct(splits: number[] | null | undefined): number | null {
+  const xs = (splits ?? []).filter((x) => Number.isFinite(x) && x > 0);
+  if (xs.length < 6) return null;
+  const half = Math.floor(xs.length / 2);
+  const avg = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
+  const first = avg(xs.slice(0, half));
+  const second = avg(xs.slice(xs.length - half));
+  return Math.round(((second / first) - 1) * 1000) / 10;
+}

@@ -14,9 +14,10 @@ import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, runAgents } from '../_lib/agents.js';
-import { loadPlan } from '../_lib/collect.js';
+import { loadForms, loadPlan } from '../_lib/collect.js';
 import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, localDayStartUtc } from '../../src/util/dates.js';
+import { shortenWorkout } from '../../src/calendar/validate.js';
 
 /**
  * POST /api/forms/intrare   → salvează chestionarul, programul, avizul, consimțământul; generează planul.
@@ -70,9 +71,20 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'saptamanal') {
-      const weekStart = typeof body.weekStart === 'string' ? body.weekStart : today;
+      const weekStart = typeof body.weekStart === 'string' && isDate(body.weekStart) ? body.weekStart : today;
       await upsert('questionnaires', { user_id: u.id, kind, for_date: weekStart, activity_id: null, answers: body }, 'user_id,kind,for_date,activity_id');
-      json(res, 200, { ok: true });
+      // Bilanțul de duminică, pe reguli: obosit (energie 1–2 din 5, „oboseala” a oprit săptămâna sau efort 9–10 la o
+      // ședință) = săptămâna viitoare fără creștere și o intensitate mai puțin. Altfel planul merge înainte.
+      const forms = await loadForms(u.id, today);
+      const hardRpe = forms.evenings.filter((e) => e.date >= weekStart && e.date <= today && (e.rpe ?? 0) >= 9);
+      const energie = typeof body.energie === 'number' ? body.energie : null;
+      const motiv = energie != null && energie <= 2 ? `energie ${energie}/5` : body.aOprit === 'oboseala' ? 'oboseala a oprit săptămâna' : hardRpe.length ? `efort ${hardRpe[0]!.rpe}/10 la o ședință` : null;
+      let changes: string[] = [];
+      if (motiv) {
+        const { planId, workouts } = await loadPlan(u.id, addDays(today, -7), addDays(today, 14));
+        if (planId) changes = await applyPlanEvents(u.id, today, planId, workouts, [{ kind: 'bilant', date: today, obosit: true, motiv }]);
+      }
+      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false } });
       return;
     }
     if (kind === 'analize') {
@@ -233,6 +245,23 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       }
       await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === 'timp') {
+      // „Am doar X minute azi”: scurtează ședința de azi corect; restul săptămânii nu se încarcă în plus.
+      const id = String(body.workoutId ?? '');
+      const minutes = Number(body.minutes);
+      const row = await one<Record<string, unknown> & { id: string; date: string; status: string; planned_minutes: number; type: string; structure: string | null; note: string | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      if (!row) throw new HttpError(404, 'ședință inexistentă');
+      if (row.status !== 'planificat' && row.status !== 'mutat') throw new HttpError(409, 'ședința nu mai e activă');
+      if (row.date !== today) throw new HttpError(409, 'se poate scurta doar ședința de azi');
+      if (!Number.isInteger(minutes) || minutes < 15 || minutes >= row.planned_minutes) throw new HttpError(400, `alege între 15 și ${row.planned_minutes - 5} min`);
+      const { workouts } = await loadPlan(u.id, today, today);
+      const w = workouts.find((x) => x.id === id);
+      if (!w) throw new HttpError(404, 'ședință inexistentă');
+      const shorter = shortenWorkout(w, minutes);
+      await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: shorter.plannedMinutes, type: shorter.type, target_zones: shorter.targetZones, intervals: shorter.intervals ?? null, structure: shorter.structure ?? null, note: shorter.note ?? null, is_key: shorter.key });
+      json(res, 200, { ok: true, structura: shorter.structure ?? null });
       return;
     }
     if (kind === 'deconectare') {

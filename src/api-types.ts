@@ -127,6 +127,8 @@ export interface Me {
   readiness: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; acwr: number | null; hooperSum: number | null } | null;
   /** Cât din fiecare probă a cursei ai demonstrat în ultimele 6 săptămâni (toate ședințele de pe brățări). */
   sportReady?: SportReady[];
+  /** Eficiența aerobă la același puls (vezi src/collector/efficiency.ts). */
+  efficiency?: import('./collector/efficiency.js').EffTrend[];
   bar: BarResult | null;
   messages: MeMessage[];
   memento: string | null;

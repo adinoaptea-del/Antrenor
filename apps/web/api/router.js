@@ -639,6 +639,42 @@ function bigEffort(acts) {
   return `${SPORT_WORD[a.sport] ?? a.sport} ${h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`}${(a.rpe ?? 0) >= 7 ? `, efort ${a.rpe}/10` : ""}`;
 }
 
+// src/collector/efficiency.ts
+var RECENT_DAYS = 21;
+var BEFORE_DAYS = 63;
+var MIN_N = 3;
+function aerobicEfficiency(acts, today) {
+  const window = acts.filter((a) => {
+    const d = diffDays(a.date, today);
+    return d >= 0 && d < BEFORE_DAYS && a.minutes >= 30 && a.avgHr != null && a.avgHr > 60;
+  });
+  const out = [];
+  for (const sport of ["alergare", "bicicleta"]) {
+    const xs = window.filter((a) => a.sport === sport);
+    if (!xs.length) continue;
+    const hrCap = Math.max(...xs.map((a) => a.maxHr ?? a.avgHr ?? 0)) * 0.82;
+    const easy = xs.filter((a) => (a.avgHr ?? 999) <= hrCap);
+    const value = (a) => {
+      if (sport === "alergare") {
+        if (!a.distanceKm) return null;
+        const elev = a.details?.elevGainM;
+        if (elev != null && elev / a.distanceKm > 10) return null;
+        return a.distanceKm * 1e3 / a.minutes / a.avgHr;
+      }
+      return a.avgWatts ? a.avgWatts / a.avgHr : null;
+    };
+    const pts = easy.map((a) => ({ d: diffDays(a.date, today), v: value(a) })).filter((p) => p.v != null);
+    const rec = pts.filter((p) => p.d < RECENT_DAYS);
+    const bef = pts.filter((p) => p.d >= RECENT_DAYS);
+    if (rec.length < MIN_N || bef.length < MIN_N) continue;
+    const avg = (p) => p.reduce((s, x) => s + x.v, 0) / p.length;
+    const r2 = avg(rec);
+    const b = avg(bef);
+    out.push({ sport, unitate: sport === "alergare" ? "metri pe b\u0103taie de inim\u0103" : "wa\u021Bi pe b\u0103taie de inim\u0103", recent: Math.round(r2 * 1e3) / 1e3, inainte: Math.round(b * 1e3) / 1e3, schimbare_pct: Math.round((r2 / b - 1) * 1e3) / 10, sedinte: { recent: rec.length, inainte: bef.length } });
+  }
+  return out;
+}
+
 // src/collector/details.ts
 var DETAILS_V = 2;
 var MIN_SWIM_SEC_100 = 45;
@@ -738,6 +774,15 @@ function mergeDetails(a, b) {
   for (const [k, v] of Object.entries(a)) if (v != null) out[k] = v;
   return out;
 }
+function fadePct(splits) {
+  const xs = (splits ?? []).filter((x) => Number.isFinite(x) && x > 0);
+  if (xs.length < 6) return null;
+  const half = Math.floor(xs.length / 2);
+  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  const first2 = avg(xs.slice(0, half));
+  const second = avg(xs.slice(xs.length - half));
+  return Math.round((second / first2 - 1) * 1e3) / 10;
+}
 
 // src/types.ts
 function isActiveWorkout(w) {
@@ -783,6 +828,13 @@ function scoreWorkout(input) {
   const compensat = other ? `${directie === "mai_usor" ? "mai u\u0219or" : "mai tare"} aici, ${other.directie === "mai_tare" ? "mai tare" : "mai u\u0219or"} la ${other.sport} \xEEn aceea\u0219i zi` : null;
   const metrics = { durationPct, zonePct, rpeDelta, pain, cardiacDriftPct, directie, compensat };
   if (pain != null && pain >= 5) flags.escalate = true;
+  const LOGISTIC = { timp: "timpul", vreme: "vremea", traseu: "traseul" };
+  const logistic = questionnaire?.whatInterfered ? LOGISTIC[questionnaire.whatInterfered] : void 0;
+  if (logistic && durationPct != null && durationPct < 90 && !(pain != null && pain >= 3)) {
+    reasons.push(`scurtat\u0103 din cauza: ${logistic} (nu oboseal\u0103; nu schimb\u0103 estimarea capacit\u0103\u021Bii)`);
+    metrics.eficienta = efficiency({ ...metrics, durationPct: 100 }, activity, false);
+    return { color: "galben", reasons, metrics, flags: { ...flags, logistic: true }, final: isFinal(flags, planned, today) };
+  }
   if (durationPct != null && durationPct < 50) {
     if (flags.escalate) reasons.push(`durere ${pain}/10: escaladare la fizioterapeut`);
     reasons.push(`durat\u0103 ${durationPct}% din plan (sub 50%)`);
@@ -816,6 +868,11 @@ function scoreWorkout(input) {
   if (activity.mainSetAbandoned) bump(2, "set principal abandonat");
   else if ((activity.intervalsAbandoned ?? 0) >= 1) bump(1, `${activity.intervalsAbandoned} interval(e) abandonat(e)`);
   if (flags.cardiacDrift) bump(1, `deriva\u021Bie cardiac\u0103 ${cardiacDriftPct}% (peste 8%)`);
+  const det = activity.details;
+  const hilly = det?.elevGainM != null && activity.distanceKm ? det.elevGainM / activity.distanceKm > 15 : false;
+  const fade = planned.type === "lung" && planned.sport === "alergare" && !hilly ? fadePct(det?.splitsSecPerKm) : null;
+  if (fade != null && fade > 5) bump(1, `a c\u0103zut pe final: a doua jum\u0103tate cu ${fade}% mai lent\u0103 (porne\u0219te mai u\u0219or data viitoare)`);
+  else if (fade != null && fade <= -2) reasons.push(`final mai rapid cu ${Math.abs(fade)}%: exact cum trebuie`);
   metrics.eficienta = efficiency(metrics, activity, false);
   const color = level === 0 ? "verde" : level === 1 ? "galben" : "portocaliu";
   if (color === "verde") reasons.unshift(["durat\u0103 \xEEn \u021Bint\u0103", zonePct != null ? "zone \xEEn \u021Bint\u0103" : null, rpeDelta != null ? "RPE \xEEn \u021Bint\u0103" : null].filter(Boolean).join(", "));
@@ -1350,6 +1407,7 @@ function buildPacket(input) {
       data_masurare: lastWeight?.date ?? null
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
+    eficienta_aeroba: aerobicEfficiency(acts, today),
     restrictie_activa: (() => {
       const r2 = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r2 ? { verdict: r2.verdict, motiv: r2.reason } : null;
@@ -2214,7 +2272,7 @@ Reguli:
 - Fara citate motivationale. Raspunzi doar in formatul JSON din format.md, maximum 2 randuri in "ce".
 - Daca nu esti rutat (nu e sportul tau / nu e declansatorul tau / nu e duminica): verdict "tacere", ce gol. Nu scrii nimic pentru sportiv.
 `,
-  ghid: "GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)\n\nIRONMAN 70.3 (jumatate de Ironman)\n- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.\n- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.\n- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.\n\nCUM ARATA ANUL (incepator, 40-50 de saptamani)\n1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.\n2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.\n3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.\n4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.\n5. Peak (3-4 sapt.): ritmul de cursa, simulari (o \u201Ecursa de proba\u201D sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.\n6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.\n\nCE CONTEAZA CEL MAI MULT LA UN INCEPATOR\n- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.\n- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.\n- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.\n- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.\n- Forta: picioare, core, sold; protejeaza de accidentari.\n- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.\n- Somnul si zilele usoare fac adaptarea.\n- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.\n\nGRESELI TIPICE DE EVITAT\n- Prea tare in zilele usoare, prea usor in cele tari (\u201Ezona gri\u201D).\n- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.\n- Prima iesire in ape deschise in ziua cursei.\n- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.\n- Alimentare netestata, deshidratare la caldura.\n\nSEMIMARATON / MARATON (doar alergare)\n- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.\n- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.\n- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.\n\nMETODA NORVEGIANA (de stiut, de explicat, de propus doar unde se potriveste)\n- 4x4 (studiile NTNU, Helgerud si Hoff, 2007): incalzire 10-15 min, apoi 4 repetari de 4 min la 90-95% din pulsul maxim (Z5: respiratie grea, poti spune doar 2-3 cuvinte), 3 min usor intre ele (mers sau pedalat usor, ~70% din pulsul maxim), revenire 5-10 min. Tinta: VO2max (motorul aerob la varf). Merge la alergare (ideal in panta usoara) si pe bicicleta.\n- Ritmul corect: a patra repetare trebuie sa se poata termina la fel ca prima; daca ultima e mult mai lenta, primele au fost prea tari. Pulsul urca in primele 1-2 minute ale fiecarei repetari; nu forta de la prima secunda.\n- Metoda Ingebrigtsen / Blummenfelt (triatlon de elita): mult volum usor si \u201Edouble threshold\u201D (doua sedinte la prag in aceeasi zi, controlate cu lactatul, 2-3 mmol/L). E pentru profesionisti cu 20-30 h pe saptamana; pentru un amator cu job ideea care ramane e: volum mare usor, intensitate controlata, nu \u201Ela maxim\u201D. Nu propui double threshold.\n- In planul AIRON, 4x4 apare la alergare in build (o saptamana din doua, alternativ cu pragul) si in peak, doar cu aviz cardiologic (aviz.intensitate_permisa = toate) si fara limita de varsta pentru Z5.\n- Cand il propui tu ca alternativa (doar in text; calendarul il schimba codul): numai daca azi e verde, plan_azi este o sedinta de calitate (tip calitate) la alergare sau bicicleta, faza (meta.faza) e build sau peak, aviz.intensitate_permisa = toate, restrictie_activa e null si in ultimele 48 h nu a fost alt efort mare (sedinte_48h). Altfel nu il propui, chiar daca sportivul il cere: spui ce lipseste (aviz, faza, zi verde) si cand devine posibil.\n- Nu inlocuieste niciodata iesirea lunga sau brick-ul si nu se adauga peste plan: o singura sedinta tare pe zi, cel mult una de 4x4 pe saptamana.\n"
+  ghid: "GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)\n\nIRONMAN 70.3 (jumatate de Ironman)\n- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.\n- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.\n- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.\n\nCUM ARATA ANUL (incepator, 40-50 de saptamani)\n1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.\n2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.\n3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.\n4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.\n5. Peak (3-4 sapt.): ritmul de cursa, simulari (o \u201Ecursa de proba\u201D sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.\n6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.\n\nCE CONTEAZA CEL MAI MULT LA UN INCEPATOR\n- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.\n- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.\n- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.\n- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.\n- Forta: picioare, core, sold; protejeaza de accidentari.\n- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.\n- Somnul si zilele usoare fac adaptarea.\n- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.\n\nGRESELI TIPICE DE EVITAT\n- Prea tare in zilele usoare, prea usor in cele tari (\u201Ezona gri\u201D).\n- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.\n- Prima iesire in ape deschise in ziua cursei.\n- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.\n- Alimentare netestata, deshidratare la caldura.\n\nSEMIMARATON / MARATON (doar alergare)\n- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.\n- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.\n- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.\n\nMETODA NORVEGIANA (de stiut, de explicat, de propus doar unde se potriveste)\n- 4x4 (studiile NTNU, Helgerud si Hoff, 2007): incalzire 10-15 min, apoi 4 repetari de 4 min la 90-95% din pulsul maxim (Z5: respiratie grea, poti spune doar 2-3 cuvinte), 3 min usor intre ele (mers sau pedalat usor, ~70% din pulsul maxim), revenire 5-10 min. Tinta: VO2max (motorul aerob la varf). Merge la alergare (ideal in panta usoara) si pe bicicleta.\n- Ritmul corect: a patra repetare trebuie sa se poata termina la fel ca prima; daca ultima e mult mai lenta, primele au fost prea tari. Pulsul urca in primele 1-2 minute ale fiecarei repetari; nu forta de la prima secunda.\n- Metoda Ingebrigtsen / Blummenfelt (triatlon de elita): mult volum usor si \u201Edouble threshold\u201D (doua sedinte la prag in aceeasi zi, controlate cu lactatul, 2-3 mmol/L). E pentru profesionisti cu 20-30 h pe saptamana; pentru un amator cu job ideea care ramane e: volum mare usor, intensitate controlata, nu \u201Ela maxim\u201D. Nu propui double threshold.\n- In planul AIRON, 4x4 apare la alergare in build (o saptamana din doua, alternativ cu pragul) si in peak, doar cu aviz cardiologic (aviz.intensitate_permisa = toate) si fara limita de varsta pentru Z5.\n- Cand il propui tu ca alternativa (doar in text; calendarul il schimba codul): numai daca azi e verde, plan_azi este o sedinta de calitate (tip calitate) la alergare sau bicicleta, faza (meta.faza) e build sau peak, aviz.intensitate_permisa = toate, restrictie_activa e null si in ultimele 48 h nu a fost alt efort mare (sedinte_48h). Altfel nu il propui, chiar daca sportivul il cere: spui ce lipseste (aviz, faza, zi verde) si cand devine posibil.\n- Nu inlocuieste niciodata iesirea lunga sau brick-ul si nu se adauga peste plan: o singura sedinta tare pe zi, cel mult una de 4x4 pe saptamana.\n\nPRINCIPIILE SANG / KAPTAGAT, ADAPTATE LA TRIATLON (codul le aplica; tu le explici)\n- Zi tare, zi usoara, pe toate sporturile la un loc: cel mult 3 sedinte grele pe saptamana (intensitate sau brick), niciodata doua zile grele la rand. Restul e usor de-adevaratelea: la alergarea usoara pornesti foarte incet si abia apoi te asezi in Z2.\n- Ziua tare se face la ~80%, nu la maxim (\u201Enu pleca tare ca sa cazi\u201D): prima repetare putin mai usor, ultimele cele mai bune. Daca ultima e mult mai slaba decat prima, ai pornit prea tare: spui asta in debrief.\n- Iesirea lunga alterneaza: o saptamana mai scurta si constanta, una plina cu ultimele 15-20 min progresiv (sus in Z2). A doua jumatate nu are voie sa fie mai lenta: daca scorul spune \u201Ea cazut pe final\u201D, explici sa porneasca mai usor data viitoare.\n- Fartlek dupa timp (ex. 8 x 3 min tare / 1 min usor, pauza la trap) si alergarea progresiva (pornesti usor, termini in Z3) sunt in biblioteca planului.\n- Eficienta la acelasi puls (eficienta_aeroba): cat de repede mergi sau cati wati scoti la aceeasi bataie de inima, pe sedinte usoare si plate. Creste = progres real, il spui cu cifra. Scade cu peste 3% = oboseala, caldura sau boala: nu impingi.\n- Revenire dupa pauza (nota \u201Erevenire dupa X zile de pauza\u201D in plan): doua saptamani, prima fara intensitate la 60%, a doua la 80%. Nu recuperezi ce s-a pierdut.\n- Bilantul de duminica: obosit (energie 1-2, oboseala, efort 9-10) = saptamana viitoare fara crestere si o intensitate mai putin; altfel planul merge inainte.\n- Sedinta scurtata pentru timp, vreme sau traseu nu e oboseala si nu e esec: nu o tratezi ca atare.\n- Ce s-a ratat nu se dubleaza si nu se muta peste alte zile.\n"
 };
 
 // src/calendar/validate.ts
@@ -2271,6 +2329,84 @@ function fitStructure(w) {
   }
   return { ...w, structure: w.structure.replace(m[0], `${n2} \xD7 ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n2 } : void 0 };
 }
+function isHard(w) {
+  return w.status !== "anulat_sistem" && w.status !== "sters" && (w.type === "calitate" || w.type === "brick");
+}
+var EASY_NOTE = "u\u0219or: l\xE2ng\u0103 alt\u0103 \u0219edin\u021B\u0103 grea (zi tare, zi u\u0219oar\u0103)";
+function soften(w, why) {
+  return { ...w, type: w.sport === "inot" ? "tehnica" : "z2", key: false, targetZones: w.sport === "inot" ? [1, 2] : [2], intervals: void 0, structure: w.sport === "inot" ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : void 0, note: why };
+}
+var SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 5 : 0);
+function enforceSpacing(workouts, maxHardPerWeek = 3) {
+  const notes = [];
+  let out = workouts.map((w) => ({ ...w }));
+  const weeks = /* @__PURE__ */ new Map();
+  for (const w of out) {
+    const d = /* @__PURE__ */ new Date(`${w.date}T00:00:00Z`);
+    const monday = new Date(d.getTime() - (d.getUTCDay() + 6) % 7 * 864e5).toISOString().slice(0, 10);
+    if (!weeks.has(monday)) weeks.set(monday, []);
+    weeks.get(monday).push(w);
+  }
+  const softened = /* @__PURE__ */ new Map();
+  for (const ws of weeks.values()) {
+    const hard = ws.filter(isHard);
+    const softenable = hard.filter((w) => !(w.key && w.type === "brick")).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
+    for (const w of softenable.slice(0, Math.max(0, hard.length - maxHardPerWeek))) {
+      softened.set(w.id, soften(w, `u\u0219or: deja ${maxHardPerWeek} \u0219edin\u021Be grele s\u0103pt\u0103m\xE2na asta`));
+      notes.push(`${w.id}: ${w.sport} ${w.type} devine u\u0219or (peste ${maxHardPerWeek} \u0219edin\u021Be grele pe s\u0103pt\u0103m\xE2n\u0103)`);
+    }
+  }
+  out = out.map((w) => softened.get(w.id) ?? w);
+  const days = [...new Set(out.filter(isHard).map((w) => w.date))].sort();
+  for (let i = 1; i < days.length; i++) {
+    const prev = days[i - 1];
+    const cur = days[i];
+    if (((/* @__PURE__ */ new Date(`${cur}T00:00:00Z`)).getTime() - (/* @__PURE__ */ new Date(`${prev}T00:00:00Z`)).getTime()) / 864e5 !== 1) continue;
+    const both = out.filter((w) => isHard(w) && (w.date === prev || w.date === cur)).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
+    const victim = both.find((w) => !(w.key && w.type === "brick") && !(w.structure ?? "").startsWith("TEST"));
+    if (!victim || both.filter((w) => w.date === victim.date).length === 0) continue;
+    const swap = swapTarget(out, victim);
+    if (swap) {
+      const vDate = victim.date;
+      const vMin = Math.min(victim.plannedMinutes, swap.plannedMinutes);
+      const sMin = Math.min(swap.plannedMinutes, victim.plannedMinutes);
+      out = out.map((w) => w.id === victim.id ? fitStructure({ ...w, date: swap.date, plannedMinutes: vMin }) : w.id === swap.id ? { ...w, date: vDate, plannedMinutes: sMin } : w);
+      notes.push(`${victim.id}: ${victim.sport} mutat pe ${swap.date} (zi tare, zi u\u0219oar\u0103)`);
+      i = 0;
+      days.splice(0, days.length, ...[...new Set(out.filter(isHard).map((w) => w.date))].sort());
+      continue;
+    }
+    out = out.map((w) => w.id === victim.id ? soften(w, EASY_NOTE) : w);
+    notes.push(`${victim.id}: ${victim.sport} ${victim.date} devine u\u0219or (zi grea \u0219i ziua de dinainte/dup\u0103)`);
+    if (!out.some((w) => isHard(w) && w.date === cur)) days.splice(i, 1), i -= 1;
+  }
+  return { workouts: out, notes };
+}
+function swapTarget(all, victim) {
+  const dayMs = (d) => (/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getTime() / 864e5;
+  const monday = (d) => Math.floor((dayMs(d) + 3) / 7);
+  const hardDays = new Set(all.filter((w) => isHard(w) && w.id !== victim.id).map((w) => dayMs(w.date)));
+  const okDay = (d) => !hardDays.has(dayMs(d)) && !hardDays.has(dayMs(d) - 1) && !hardDays.has(dayMs(d) + 1);
+  const candidates = all.filter((w) => w.id !== victim.id && !isHard(w) && w.type !== "lung" && w.sport !== "forta" && w.status === "planificat" && monday(w.date) === monday(victim.date) && w.plannedMinutes >= Math.min(45, victim.plannedMinutes) && okDay(w.date)).sort((a, b) => Number(b.sport === victim.sport) - Number(a.sport === victim.sport) || b.plannedMinutes - a.plannedMinutes);
+  return candidates[0] ?? null;
+}
+function shortenWorkout(w, minutes) {
+  const before = w.plannedMinutes;
+  let out = { ...w, plannedMinutes: minutes };
+  if (w.type === "brick") {
+    const m = /tură (\d+) min(.*)alergare (\d+) min/.exec(w.structure ?? "");
+    if (minutes < 30) {
+      out = { ...out, type: "z2", key: false, structure: `${minutes} min biciclet\u0103 u\u0219or (prea pu\u021Bin timp pentru brick)` };
+    } else if (m) {
+      const bike = Math.min(minutes - 10, Math.max(15, Math.round(Number(m[1]) * minutes / before / 5) * 5));
+      out.structure = (w.structure ?? "").replace(m[0], `tur\u0103 ${bike} min${m[2]}alergare ${minutes - bike} min`);
+    }
+  } else {
+    out = fitStructure(out);
+  }
+  out.note = `scurtat la cererea ta: ${minutes} min \xEEn loc de ${before}; ce nu se face azi nu se recupereaz\u0103`;
+  return out;
+}
 
 // src/calendar/adapt.ts
 var CHANGE_MIN = 10;
@@ -2292,6 +2428,10 @@ function eventKey(ev) {
       return `progres:${ev.date}`;
     case "efort":
       return `efort:${ev.activity.date}:${ev.activity.sport}`;
+    case "revenire":
+      return `revenire:${ev.dela}`;
+    case "bilant":
+      return `bilant:${ev.date}`;
   }
 }
 function adapt(plan, event, ctx) {
@@ -2318,6 +2458,12 @@ function adapt(plan, event, ctx) {
       break;
     case "efort":
       applyBigEffort(next, event, ctx, changes);
+      break;
+    case "revenire":
+      applyReturn(next, event, ctx, changes);
+      break;
+    case "bilant":
+      applyReview(next, event, ctx, changes);
       break;
   }
   const byId = new Map(plan.map((w) => [w.id, w]));
@@ -2415,12 +2561,12 @@ function applyPain(plan, ev, _ctx, changes) {
       x.key = false;
       x.intervals = void 0;
       x.structure = void 0;
-      x.note = `f\u0103r\u0103 impact: durere ${ev.score}/10 la ${ev.loc}`;
+      x.note = `f\u0103r\u0103 impact: durere ${ev.score}/10 la ${ev.loc}; temporar, p\xE2n\u0103 pe ${until} (se reevalueaz\u0103 cu chestionarul)`;
       changes.push(`${x.id}: alergarea devine biciclet\u0103 Z2 (${x.plannedMinutes} min)`);
     } else if (x.type === "brick") {
       x.type = "lung";
       x.structure = "tura lung\u0103 f\u0103r\u0103 alergarea de dup\u0103";
-      x.note = `brick f\u0103r\u0103 alergare: durere ${ev.score}/10 la ${ev.loc}`;
+      x.note = `brick f\u0103r\u0103 alergare: durere ${ev.score}/10 la ${ev.loc}; temporar, p\xE2n\u0103 pe ${until}`;
       changes.push(`${x.id}: brick f\u0103r\u0103 alergare`);
     }
   }
@@ -2530,6 +2676,7 @@ function applyUnplanned(plan, ev, changes) {
 function applyProgress(plan, ev, ctx, changes) {
   const monday = addDays(ev.date, 7 - weekday(ev.date));
   const week = plan.filter((w) => isActiveWorkout(w) && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
+  if (week.some((w) => (w.note ?? "").startsWith("bilan\u021B de duminic\u0103"))) return;
   const total = week.reduce((n2, w) => n2 + w.plannedMinutes, 0);
   const thisWeek = plan.filter((w) => isActiveWorkout(w) && diffDays(addDays(monday, -7), w.date) >= 0 && diffDays(addDays(monday, -7), w.date) < 7).reduce((n2, w) => n2 + w.plannedMinutes, 0);
   if (thisWeek > 0 && (total > thisWeek * 1.02 || total < thisWeek * 0.9)) return;
@@ -2583,6 +2730,49 @@ function applyBigEffort(plan, ev, ctx, changes) {
       changes.push(`${x.id}: cheie cobor\xE2t\u0103 la Z1\u2013Z2, \u221225% (efort de ${a.minutes} min)`);
     }
   }
+}
+var HARD = (x) => x.type === "calitate" || x.type === "brick" || x.targetZones.some((z) => z >= 4);
+function applyReturn(plan, ev, ctx, changes) {
+  const done = new Set(ctx.done ?? []);
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || done.has(x.id) || x.type === "odihna") continue;
+    const d = diffDays(ev.date, x.date);
+    if (d < 0 || d > 13) continue;
+    const factor = d <= 6 ? 0.6 : 0.8;
+    const before = x.plannedMinutes;
+    x.plannedMinutes = Math.max(20, Math.round(x.plannedMinutes * factor / 5) * 5);
+    if (d <= 6) {
+      x.key = false;
+      if (HARD(x) && x.sport !== "forta") {
+        if (x.type === "calitate") x.type = "z2";
+        if (x.type === "brick") {
+          x.type = "lung";
+          x.structure = "tur\u0103 u\u0219oar\u0103, f\u0103r\u0103 alergarea de dup\u0103";
+        }
+        x.targetZones = [1, 2];
+        x.intervals = void 0;
+        if (x.type === "z2") x.structure = void 0;
+      }
+    }
+    x.note = `revenire dup\u0103 ${ev.zile} zile de pauz\u0103: ${d <= 6 ? "prima s\u0103pt\u0103m\xE2n\u0103 u\u0219or, 60%" : "a doua s\u0103pt\u0103m\xE2n\u0103 80%"}; se reevalueaz\u0103 pe ${addDays(ev.date, 14)}`;
+    changes.push(`${x.id}: ${x.sport} ${before} \u2192 ${x.plannedMinutes} min (revenire dup\u0103 pauz\u0103)`);
+  }
+}
+function applyReview(plan, ev, ctx, changes) {
+  if (!ev.obosit) return;
+  const monday = addDays(ev.date, 7 - weekday(ev.date));
+  const week = plan.filter((x) => isActiveWorkout(x) && !(ctx.done ?? []).includes(x.id) && diffDays(monday, x.date) >= 0 && diffDays(monday, x.date) < 7).sort((a, b) => diffDays(b.date, a.date));
+  const first2 = week.find((x) => x.type === "calitate" && x.sport !== "forta");
+  if (first2) {
+    first2.type = "z2";
+    first2.key = false;
+    first2.targetZones = [1, 2];
+    first2.intervals = void 0;
+    first2.structure = void 0;
+    first2.note = `bilan\u021B de duminic\u0103: ${ev.motiv}; \u0219edin\u021B\u0103 u\u0219oar\u0103 \xEEn loc de intensitate`;
+    changes.push(`${first2.id}: ${first2.sport} ${first2.date} devine u\u0219oar\u0103 (bilan\u021B: ${ev.motiv})`);
+  }
+  changes.push(`s\u0103pt\u0103m\xE2na din ${monday}: f\u0103r\u0103 cre\u0219tere (bilan\u021B: ${ev.motiv})`);
 }
 
 // server/_lib/agents.ts
@@ -3542,11 +3732,29 @@ async function handler5(req, res) {
   }
 }
 
+// src/calendar/pause.ts
+var PAUSE_MIN_DAYS = 10;
+var PAUSE_MIN_BASE_WEEKLY = 90;
+function detectReturn(acts, today) {
+  const real = acts.filter((a) => a.minutes >= 20 && a.date <= today).sort((a, b) => a.date < b.date ? 1 : -1);
+  const latest = real[0];
+  if (!latest || diffDays(latest.date, today) > 1) return null;
+  const prev = real.find((a) => a.date < latest.date);
+  if (!prev) return null;
+  const gap = diffDays(prev.date, latest.date) - 1;
+  if (gap < PAUSE_MIN_DAYS) return null;
+  const from = addDays(prev.date, -27);
+  const before = real.filter((a) => a.date >= from && a.date <= prev.date).reduce((n2, a) => n2 + a.minutes, 0) / 4;
+  if (before < PAUSE_MIN_BASE_WEEKLY) return null;
+  return { zile: gap, dela: prev.date };
+}
+
 // server/_lib/react.ts
 async function reactToActivities(userId, today) {
   const from = addDays(today, -1);
-  const [{ planId, workouts }, raw, forms] = await Promise.all([loadPlan(userId, addDays(today, -7), addDays(today, 14)), loadActivities(userId, from), loadForms(userId, today)]);
-  const acts = dedupeActivities(raw).filter((a) => a.date >= from && a.date <= today);
+  const [{ planId, workouts }, rawLong, forms] = await Promise.all([loadPlan(userId, addDays(today, -7), addDays(today, 21)), loadActivities(userId, addDays(today, -80)), loadForms(userId, today)]);
+  const all = dedupeActivities(rawLong);
+  const acts = all.filter((a) => a.date >= from && a.date <= today);
   const todayIds = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => a.id);
   const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => `${a.date}:${a.sport}`);
   if (!planId || !acts.length) return { changes: [], todayIds, todayKeys };
@@ -3555,6 +3763,8 @@ async function reactToActivities(userId, today) {
   const done = m.matches.filter((x) => x.activity).map((x) => x.planned.id);
   const formOf = (id, ext) => forms.evenings.find((e) => e.activityId === id || e.activityId === ext) ?? null;
   const events = [];
+  const back = detectReturn(all, today);
+  if (back) events.push({ kind: "revenire", date: today, zile: back.zile, dela: back.dela });
   for (const a of acts) {
     const f = formOf(a.id, a.externalId);
     const rpe = f?.rpe ?? null;
@@ -4237,12 +4447,26 @@ function generatePlan(input) {
   }
   assignStrengthDays(out);
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
+  const spaced = enforceSpacing(out.flatMap((w) => w.workouts));
+  const byId = new Map(spaced.workouts.map((w) => [w.id, w]));
+  for (const w of out) {
+    w.workouts = w.workouts.map((x) => byId.get(x.id) ?? x);
+    const own = spaced.notes.filter((n2) => w.workouts.some((x) => n2.startsWith(`${x.id}:`)));
+    if (own.length) w.notes.push(...own);
+  }
   for (const w of out) {
     const v = enforceLimits(w.workouts, limits);
     w.workouts = v.workouts.filter((x) => x.date < input.raceDate).map(fitStructure);
     if (v.notes.length) w.notes.push(...v.notes);
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
+}
+function longRunOf(pw, minutes, easyText) {
+  const alternate = !pw.recovery && pw.phase !== "evaluare" && pw.phase !== "taper";
+  if (alternate && pw.weekInPhase % 2 === 1) {
+    return { sport: "alergare", type: "lung", minutes: Math.max(30, Math.round(minutes * 0.85 / 5) * 5), zones: [2], key: true, priority: 2, structure: `${easyText}, constant de la \xEEnceput la sf\xE2r\u0219it (s\u0103pt\u0103m\xE2na scurt\u0103)` };
+  }
+  return { sport: "alergare", type: "lung", minutes, zones: [2], key: true, priority: 2, structure: alternate ? `${easyText}; ultimele 15\u201320 min progresiv, \xEEn partea de sus a Z2, f\u0103r\u0103 s\u0103 cazi pe final` : `${easyText}, constant` };
 }
 function strengthMinutes(p) {
   return p === "taper" ? 35 : p === "peak" ? 40 : p === "build" ? 50 : 55;
@@ -4335,11 +4559,7 @@ function runWeekTemplate(pw, input, prog) {
     s.push({
       sport: "alergare",
       type: "lung",
-      minutes: prog.longRun,
-      zones: [2],
-      key: true,
-      priority: 1,
-      structure: specific ? `u\u0219or, cu ultimele ${race === "maraton" ? 30 : 20} min la ritm de curs\u0103 (${fmtPace3(pace)})` : "u\u0219or, conversa\u021Bional"
+      ...specific ? { minutes: prog.longRun, zones: [2], key: true, priority: 1, structure: `u\u0219or, cu ultimele ${race === "maraton" ? 30 : 20} min la ritm de curs\u0103 (${fmtPace3(pace)})` } : { ...longRunOf(pw, prog.longRun, "u\u0219or, conversa\u021Bional"), priority: 1 }
     });
   }
   for (const t of fieldTests(pw, input, ["alergare"])) {
@@ -4375,9 +4595,9 @@ function weekTemplate(pw, input, prog) {
     else if (p === "peak" && i === 0) s.push({ sport: "inot", type: "lung", minutes: 60, zones: [2, 3], key: false, priority: 5, structure: "distan\u021Ba de curs\u0103 continuu" });
     else s.push({ sport: "inot", type: "tehnica", minutes: p === "taper" ? 35 : swimMin, zones: [1, 2], key: false, priority: 5, structure: "un element de tehnic\u0103" });
   }
-  if (p === "baza2" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [3], key: false, priority: 5.5, structure: "3 \xD7 10 min sweet spot (Z3), 5 min u\u0219or \xEEntre" });
-  else if (p === "build" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [4], key: false, priority: 5.5, structure: "2 \xD7 15 min la prag (Z4), 5 min u\u0219or \xEEntre" });
-  else if (p === "peak" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [3, 4], key: false, priority: 5.5, structure: "3 \xD7 15 min la ritm de curs\u0103, 5 min u\u0219or \xEEntre" });
+  if (p === "baza2" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [3], key: false, priority: 3.5, structure: "3 \xD7 10 min sweet spot (Z3), 5 min u\u0219or \xEEntre" });
+  else if (p === "build" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [4], key: false, priority: 3.5, structure: "2 \xD7 15 min la prag (Z4), 5 min u\u0219or \xEEntre" });
+  else if (p === "peak" && input.intensityAllowed !== "Z2") s.push({ sport: "bicicleta", type: "calitate", minutes: 75, zones: [3, 4], key: false, priority: 3.5, structure: "3 \xD7 15 min la ritm de curs\u0103, 5 min u\u0219or \xEEntre" });
   else s.push({ sport: "bicicleta", type: "z2", minutes: p === "baza1" || p === "evaluare" ? 60 : p === "taper" ? 45 : 75, zones: [2], key: false, priority: 5.8 });
   if (p === "evaluare" || p === "baza1") {
     s.push({ sport: "bicicleta", type: "lung", minutes: prog.longRide, zones: [2], key: true, priority: 1 });
@@ -4397,7 +4617,7 @@ function weekTemplate(pw, input, prog) {
   s.push({ sport: "alergare", type: "z2", minutes: p === "baza1" || p === "evaluare" ? 45 : p === "taper" ? 30 : 50, zones: [2], key: false, priority: 6 });
   s.push(quality(p === "taper" ? 30 : p === "baza1" || p === "evaluare" ? 50 : 55));
   if (!(p === "taper" && pw.weekInPhase > 0)) {
-    s.push({ sport: "alergare", type: "lung", minutes: prog.longRun, zones: [2], key: true, priority: 2 });
+    s.push(longRunOf(pw, prog.longRun, "u\u0219or"));
   }
   for (const t of fieldTests(pw, input, ["inot", "bicicleta", "alergare"])) {
     const easy = s.findIndex((x) => x.sport === t.sport && (x.type === "z2" || x.type === "tehnica") && !x.key);
@@ -4427,10 +4647,17 @@ function qualitySession(allowed, phase, age = null, weekInPhase = 0) {
     if (allowed === "Z2") return { sport: "alergare", type: "z2", minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: "calitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic" };
     if (phase === "evaluare") return { sport: "alergare", type: "z2", minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: "u\u0219or + 6 acceler\u0103ri de 20 s (f\u0103r\u0103 calitate \xEEn evaluare)" };
     const capZ4 = allowed === "pana_la_Z4" || age != null && age >= 55;
-    if (phase === "baza1") return { sport: "alergare", type: "calitate", minutes, zones: [3], key: true, priority: 3, structure: "2 \xD7 8 min tempo (Z3), 3 min u\u0219or \xEEntre", intervals: { count: 2, minutes: 8, zone: 3 } };
-    if (phase === "baza2" || phase === "taper") return { sport: "alergare", type: "calitate", minutes, zones: [3, 4], key: true, priority: 3, structure: "3 \xD7 10 min tempo (Z3\u2013Z4), 3 min u\u0219or \xEEntre", intervals: { count: 3, minutes: 10, zone: 4 } };
-    const prag = { sport: "alergare", type: "calitate", minutes, zones: [4], key: true, priority: 3, structure: "4\u20135 \xD7 6 min la prag (Z4), 2 min u\u0219or \xEEntre", intervals: { count: 5, minutes: 6, zone: 4 } };
-    const fourByFour = { sport: "alergare", type: "calitate", minutes: Math.max(minutes, 45), zones: [5], key: true, priority: 3, structure: "4 \xD7 4 min la 90\u201395% din pulsul maxim (4\xD74 norvegian, Z5), 3 min u\u0219or \xEEntre", intervals: { count: 4, minutes: 4, zone: 5 } };
+    const CTRL = " \xB7 prima repetare pu\u021Bin mai u\u0219or, ultimele cele mai bune";
+    if (phase === "baza1") {
+      if (weekInPhase % 2 === 1) return { sport: "alergare", type: "calitate", minutes, zones: [2, 3], key: true, priority: 3, structure: "progresiv: primele dou\u0103 treimi u\u0219or (Z2), apoi cre\u0219ti treptat p\xE2n\u0103 \xEEn Z3 \xEEn ultimele 10\u201315 min" };
+      return { sport: "alergare", type: "calitate", minutes, zones: [3], key: true, priority: 3, structure: `2 \xD7 8 min tempo (Z3), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 2, minutes: 8, zone: 3 } };
+    }
+    if (phase === "baza2" && weekInPhase % 2 === 1) {
+      return { sport: "alergare", type: "calitate", minutes: Math.max(minutes, 45), zones: [3, 4], key: true, priority: 3, structure: `8 \xD7 3 min tare, 1 min u\u0219or \xEEntre (fartlek, Z3\u2013Z4, pauza la trap)${CTRL}`, intervals: { count: 8, minutes: 3, zone: 4 } };
+    }
+    if (phase === "baza2" || phase === "taper") return { sport: "alergare", type: "calitate", minutes, zones: [3, 4], key: true, priority: 3, structure: `3 \xD7 10 min tempo (Z3\u2013Z4), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 3, minutes: 10, zone: 4 } };
+    const prag = { sport: "alergare", type: "calitate", minutes, zones: [4], key: true, priority: 3, structure: `5 \xD7 6 min la prag (Z4), 2 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 5, minutes: 6, zone: 4 } };
+    const fourByFour = { sport: "alergare", type: "calitate", minutes: Math.max(minutes, 45), zones: [5], key: true, priority: 3, structure: `4 \xD7 4 min la 90\u201395% din pulsul maxim (4\xD74 norvegian, Z5), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 4, minutes: 4, zone: 5 } };
     if (capZ4) return prag;
     if (phase === "build") return weekInPhase % 2 === 1 ? fourByFour : prag;
     return fourByFour;
@@ -4503,6 +4730,12 @@ function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}) {
   const ordered = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
   let n2 = 0;
   for (const s of ordered) {
+    let spaced2 = function(c) {
+      const heavy = (x) => !!x && (x.hard > 0 || !!x.hasBrick);
+      const hardSession = s.type === "calitate" || s.type === "brick";
+      return score(c, s) - (hardSession && (heavy(days[c.d - 1]) || heavy(days[c.d + 1])) ? 1e3 : 0);
+    };
+    var spaced = spaced2;
     let need = s.minutes + CHANGE_MIN2;
     const findCandidates = () => days.map((st2, d) => ({ st: st2, d })).filter(({ st: st2, d }) => {
       if (st2.count >= 2) return false;
@@ -4527,7 +4760,7 @@ function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}) {
         if (prev && prev.hasForta || next && next.hasForta) return false;
       }
       return true;
-    }).sort((a, b) => score(b, s) - score(a, s));
+    }).sort((a, b) => spaced2(b) - spaced2(a));
     let candidates = findCandidates();
     if (!candidates.length && !s.key) {
       const biggest = Math.max(0, ...days.flatMap((st2) => st2.blocks));
@@ -4559,6 +4792,7 @@ function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}) {
     }
     if (s.type === "lung" && s.sport === "alergare") st.hasLongRun = true;
     if (s.type === "lung" || s.type === "brick") st.hasLong = true;
+    if (s.type === "brick") st.hasBrick = true;
     if (s.type === "forta") st.hasForta = true;
     n2 += 1;
     workouts.push({
@@ -4745,9 +4979,18 @@ async function handler8(req, res) {
       return;
     }
     if (kind === "saptamanal") {
-      const weekStart2 = typeof body.weekStart === "string" ? body.weekStart : today;
+      const weekStart2 = typeof body.weekStart === "string" && isDate(body.weekStart) ? body.weekStart : today;
       await upsert("questionnaires", { user_id: u.id, kind, for_date: weekStart2, activity_id: null, answers: body }, "user_id,kind,for_date,activity_id");
-      json(res, 200, { ok: true });
+      const forms = await loadForms(u.id, today);
+      const hardRpe = forms.evenings.filter((e) => e.date >= weekStart2 && e.date <= today && (e.rpe ?? 0) >= 9);
+      const energie = typeof body.energie === "number" ? body.energie : null;
+      const motiv = energie != null && energie <= 2 ? `energie ${energie}/5` : body.aOprit === "oboseala" ? "oboseala a oprit s\u0103pt\u0103m\xE2na" : hardRpe.length ? `efort ${hardRpe[0].rpe}/10 la o \u0219edin\u021B\u0103` : null;
+      let changes = [];
+      if (motiv) {
+        const { planId, workouts } = await loadPlan(u.id, addDays(today, -7), addDays(today, 14));
+        if (planId) changes = await applyPlanEvents(u.id, today, planId, workouts, [{ kind: "bilant", date: today, obosit: true, motiv }]);
+      }
+      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false } });
       return;
     }
     if (kind === "analize") {
@@ -4895,6 +5138,22 @@ async function handler8(req, res) {
       }
       await rescore(u.id, today, user.goal ?? "70.3").catch(() => void 0);
       json(res, 200, { ok: true });
+      return;
+    }
+    if (kind === "timp") {
+      const id = String(body.workoutId ?? "");
+      const minutes = Number(body.minutes);
+      const row = await one("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      if (!row) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
+      if (row.status !== "planificat" && row.status !== "mutat") throw new HttpError(409, "\u0219edin\u021Ba nu mai e activ\u0103");
+      if (row.date !== today) throw new HttpError(409, "se poate scurta doar \u0219edin\u021Ba de azi");
+      if (!Number.isInteger(minutes) || minutes < 15 || minutes >= row.planned_minutes) throw new HttpError(400, `alege \xEEntre 15 \u0219i ${row.planned_minutes - 5} min`);
+      const { workouts } = await loadPlan(u.id, today, today);
+      const w = workouts.find((x) => x.id === id);
+      if (!w) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
+      const shorter = shortenWorkout(w, minutes);
+      await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: shorter.plannedMinutes, type: shorter.type, target_zones: shorter.targetZones, intervals: shorter.intervals ?? null, structure: shorter.structure ?? null, note: shorter.note ?? null, is_key: shorter.key });
+      json(res, 200, { ok: true, structura: shorter.structure ?? null });
       return;
     }
     if (kind === "deconectare") {
@@ -5078,6 +5337,7 @@ async function buildMe(userId, today) {
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num2(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction),
+    efficiency: aerobicEfficiency(activities, today),
     sportReady: user.goal ? sportReadiness(user.goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),

@@ -79,7 +79,7 @@ export interface EveningQuestionnaire {
   /** 0–10 */
   painScore?: number | null;
   painLoc?: string | null;
-  whatInterfered?: 'nimic' | 'somn' | 'mancare' | 'stres' | 'vreme' | 'timp' | null;
+  whatInterfered?: 'nimic' | 'somn' | 'mancare' | 'stres' | 'vreme' | 'timp' | 'traseu' | null;
   fuelingOk?: 'da' | 'partial' | 'nu' | null;
   comment?: string | null;
 }

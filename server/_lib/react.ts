@@ -8,6 +8,7 @@ import { addDays } from '../../src/util/dates.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { AdaptEvent } from '../../src/calendar/adapt.js';
+import { detectReturn } from '../../src/calendar/pause.js';
 import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
 import { todayIn } from './auth.js';
 import { applyPlanEvents } from './agents.js';
@@ -22,8 +23,9 @@ export interface Reaction {
 
 export async function reactToActivities(userId: string, today: string): Promise<Reaction> {
   const from = addDays(today, -1);
-  const [{ planId, workouts }, raw, forms] = await Promise.all([loadPlan(userId, addDays(today, -7), addDays(today, 14)), loadActivities(userId, from), loadForms(userId, today)]);
-  const acts = dedupeActivities(raw).filter((a) => a.date >= from && a.date <= today);
+  const [{ planId, workouts }, rawLong, forms] = await Promise.all([loadPlan(userId, addDays(today, -7), addDays(today, 21)), loadActivities(userId, addDays(today, -80)), loadForms(userId, today)]);
+  const all = dedupeActivities(rawLong);
+  const acts = all.filter((a) => a.date >= from && a.date <= today);
   const todayIds = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => a.id);
   const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => `${a.date}:${a.sport}`);
   if (!planId || !acts.length) return { changes: [], todayIds, todayKeys };
@@ -34,6 +36,9 @@ export async function reactToActivities(userId: string, today: string): Promise<
   const formOf = (id: string, ext: string) => forms.evenings.find((e) => e.activityId === id || e.activityId === ext) ?? null;
 
   const events: AdaptEvent[] = [];
+  // Prima activitate după o pauză lungă: două săptămâni de revenire, înaintea oricărei alte reguli.
+  const back = detectReturn(all, today);
+  if (back) events.push({ kind: 'revenire', date: today, zile: back.zile, dela: back.dela });
   for (const a of acts) {
     const f = formOf(a.id, a.externalId);
     const rpe = f?.rpe ?? null;

@@ -131,7 +131,7 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
           )}
         </Q>
         <Q title="Ce a încurcat?">
-          <Chips value={e.ce_a_incurcat} options={[{ id: 'nimic', label: 'Nimic' }, { id: 'somn', label: 'Somnul' }, { id: 'mancare', label: 'Mâncarea' }, { id: 'stres', label: 'Stresul' }, { id: 'vreme', label: 'Vremea' }, { id: 'timp', label: 'Timpul' }]} onChange={(ce_a_incurcat) => setE({ ...e, ce_a_incurcat })} />
+          <Chips value={e.ce_a_incurcat} options={[{ id: 'nimic', label: 'Nimic' }, { id: 'somn', label: 'Somnul' }, { id: 'mancare', label: 'Mâncarea' }, { id: 'stres', label: 'Stresul' }, { id: 'vreme', label: 'Vremea' }, { id: 'timp', label: 'Timpul' }, { id: 'traseu', label: 'Traseul' }]} onChange={(ce_a_incurcat) => setE({ ...e, ce_a_incurcat })} />
         </Q>
         <Q title="Ai mâncat și băut cum era planul?">
           <Chips value={e.fueling_conform} options={[{ id: 'da', label: 'Da' }, { id: 'partial', label: 'Parțial' }, { id: 'nu', label: 'Nu' }]} onChange={(fueling_conform) => setE({ ...e, fueling_conform })} />

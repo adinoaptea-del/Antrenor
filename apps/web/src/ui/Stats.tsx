@@ -2,13 +2,14 @@ import { weekday } from '@core/util/dates.js';
 import { AreaChart, Avatar, Card, CircleBtn, Ecg, Icons, Ring, Spark, Stat, fmtDate } from './common';
 import { SyncButton } from './SyncButton';
 import { useMe } from '../data/store';
-import { DAY_NAMES, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm } from '../data/model';
+import { DAY_NAMES, SPORT_LABEL, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm } from '../data/model';
+import { GOAL_NAME, overallReady } from '@core/bar/sport-readiness.js';
+import type { Goal } from '@core/calendar/phases.js';
 import { cleanRefs } from '../data/model';
 import { levelFromScore, sleepScore } from '@core/collector/readiness.js';
 
 const LEVEL_LABEL: Record<string, string> = { verde: 'verde', galben: 'galben', portocaliu: 'portocaliu', rosu: 'roșu' };
 
-const COMPONENT_LABEL: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', consistenta: 'Consistență', forma: 'Formă' };
 
 export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
   const me = useMe();
@@ -20,7 +21,6 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
   const runKm = weeklyKm(me, 'alergare');
   const w = me.wellnessToday;
   const recovery = w?.recoveryScore ?? null;
-  const bar = me.bar;
   const parts = me.state?.parts;
   const sleepSc = parts?.somn ?? (w?.sleepMin != null ? Math.round(sleepScore(w.sleepMin)) : null);
   const chips = [
@@ -129,44 +129,46 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
           {exec.length ? <AreaChart values={exec.map((e) => e.pct)} labels={exec.map((e) => e.label)} max={100} ticks={[0, 50, 100]} height={130} tag={(v) => `${Math.round(v)}`} /> : <div className="small muted">Apare după prima săptămână de plan executată.</div>}
         </Card>
 
+        {/* Aceeași bară ca pe Acasă (o singură formulă); vechiul calcul nu mai apare. */}
+        {me.sportReady && me.sportReady.length > 0 && (
+          <Card>
+            <div className="chart-h">
+              <div className="title">Pregătit pentru {me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă'}</div>
+              <span className="num md">{overallReady(me.sportReady)}%</span>
+            </div>
+            <div className="bar-legend">
+              {me.sportReady.map((r) => (
+                <span key={r.sport}>
+                  <b>{r.value == null ? 'fără date' : `${r.value}%`}</b>
+                  {SPORT_LABEL[r.sport]}
+                </span>
+              ))}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 10 }}>Indice după regulile noastre de antrenor, nu probabilitate de a termina. Detaliile pe fiecare probă: Acasă → detalii.</div>
+          </Card>
+        )}
+
         <Card>
           <div className="chart-h">
-            <div className="title">Pregătit pentru {me.user.goal ?? 'cursă'}</div>
-            <span className="num md">{!bar ? 'fără date' : bar.blocked ? 'blocată' : bar.total == null ? 'fără date' : `${Math.round(bar.total)}%`}</span>
+            <div className="title">Eficiența la același puls</div>
+            <span className="small muted">ședințe ușoare, plate</span>
           </div>
-          {bar && (
-            <>
-              <div className="bar-track" aria-hidden="true">
-                {bar.components.map((c) => (
-                  <div key={c.name} className={`bar-seg ${c.value == null ? 'empty' : ''}`} style={{ flexGrow: c.weight * 100 }}>
-                    {c.value != null && <i style={{ width: `${c.value}%` }} />}
-                  </div>
-                ))}
-              </div>
-              <div className="bar-legend">
-                {bar.components.map((c) => (
-                  <span key={c.name}>
-                    <b>{c.value == null ? '–' : `${Math.round(c.value)}%`}</b>
-                    {COMPONENT_LABEL[c.name]}
+          {me.efficiency && me.efficiency.length ? (
+            <div className="stack" style={{ gap: 8 }}>
+              {me.efficiency.map((e) => (
+                <div key={e.sport} className="row between">
+                  <span>{SPORT_LABEL[e.sport]}</span>
+                  <span className={`num md ${e.schimbare_pct >= 1 ? 'lvl-txt-verde' : e.schimbare_pct <= -3 ? 'lvl-txt-portocaliu' : ''}`}>
+                    {e.schimbare_pct > 0 ? '+' : ''}
+                    {e.schimbare_pct.toLocaleString('ro-RO')}%
                   </span>
-                ))}
-              </div>
-              <div className="tiny muted" style={{ marginTop: 10 }}>
-                {bar.blocked ? `Blocată: ${bar.blocked}` : bar.basis}. Contează doar ultimele 6 săptămâni; bara scade dacă te oprești.
-              </div>
-              <details className="formula">
-                <summary>Cum e calculată</summary>
-                <ul>
-                  {bar.components.map((c) => (
-                    <li key={c.name}>
-                      <b style={{ color: 'var(--fg)' }}>{COMPONENT_LABEL[c.name]}</b> ({Math.round(c.weight * 100)}%): {c.detail}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </>
+                </div>
+              ))}
+              <div className="tiny muted">Ultimele 3 săptămâni față de cele 6 dinainte: cât de repede mergi (sau câți wați scoți) la aceeași bătaie de inimă. Crește = progres real. Scade = oboseală, căldură sau boală; nu forța.</div>
+            </div>
+          ) : (
+            <div className="small muted">Apare după cel puțin 3 ședințe ușoare în ultimele 3 săptămâni și 3 în cele 6 dinainte, cu puls (la bicicletă și cu putere).</div>
           )}
-          {!bar && <div className="small muted">Bara se calculează la prima sincronizare cu activități.</div>}
         </Card>
 
         {runKm.length > 0 && (

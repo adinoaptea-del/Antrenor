@@ -1,6 +1,7 @@
 import { sportReadiness } from '../bar/sport-readiness.js';
 import { hooperSum } from './readiness.js';
 import { activeRestriction } from '../calendar/safety.js';
+import { aerobicEfficiency, type EffTrend } from './efficiency.js';
 import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
@@ -123,6 +124,8 @@ export interface Packet {
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
   /** Restricția activă din cod (febră, simptom cardiac, boală, durere în ultimele 2 zile); null = niciuna. */
   restrictie_activa: { verdict: 'stop' | 'rosu' | 'galben'; motiv: string } | null;
+  /** Eficiența aerobă la același puls (ședințe ușoare, plate): ultimele 3 săptămâni față de cele 6 dinainte. */
+  eficienta_aeroba: EffTrend[];
   analize: CollectorInput['labs'] | null;
   aviz: CollectorInput['aviz'];
 }
@@ -650,6 +653,7 @@ export function buildPacket(input: CollectorInput): Packet {
       data_masurare: lastWeight?.date ?? null,
     },
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
+    eficienta_aeroba: aerobicEfficiency(acts, today),
     restrictie_activa: (() => {
       const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;

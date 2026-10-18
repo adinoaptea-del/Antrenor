@@ -23,7 +23,14 @@ export type AdaptEvent =
    * Efort mare făcut (≥ 90 min sau RPE ≥ 7), planificat sau nu: restul zilei se închide, zilele următoare se ușurează.
    * `planned` = activitatea a acoperit o ședință din plan (atunci partea „în afara planului” n-a mai aplicat nimic).
    */
-  | { kind: 'efort'; activity: Activity; rpe?: number | null; planned: boolean };
+  | { kind: 'efort'; activity: Activity; rpe?: number | null; planned: boolean }
+  /**
+   * Revenire după pauză: ultimele zile au avut mult mai puțin antrenament decât de obicei (boală, concediu, viață).
+   * Calendarul nu continuă faza ca și cum nimic nu s-ar fi întâmplat: 7 zile fără intensitate, la 60%, apoi 7 zile la 80%.
+   */
+  | { kind: 'revenire'; date: string; zile: number; /** ultima activitate dinainte de pauză: cheia evenimentului */ dela: string }
+  /** Bilanțul de duminică: obosit (sau efort 9–10 la ședințele grele) = săptămâna viitoare fără creștere, o intensitate mai puțin. */
+  | { kind: 'bilant'; date: string; obosit: boolean; motiv: string };
 
 export interface AdaptContext {
   today: string;
@@ -65,6 +72,10 @@ export function eventKey(ev: AdaptEvent): string {
       return `progres:${ev.date}`;
     case 'efort':
       return `efort:${ev.activity.date}:${ev.activity.sport}`;
+    case 'revenire':
+      return `revenire:${ev.dela}`;
+    case 'bilant':
+      return `bilant:${ev.date}`;
   }
 }
 
@@ -93,6 +104,12 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
       break;
     case 'efort':
       applyBigEffort(next, event, ctx, changes);
+      break;
+    case 'revenire':
+      applyReturn(next, event, ctx, changes);
+      break;
+    case 'bilant':
+      applyReview(next, event, ctx, changes);
       break;
   }
 
@@ -207,12 +224,12 @@ function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'dure
       x.key = false;
       x.intervals = undefined;
       x.structure = undefined;
-      x.note = `fără impact: durere ${ev.score}/10 la ${ev.loc}`;
+      x.note = `fără impact: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until} (se reevaluează cu chestionarul)`;
       changes.push(`${x.id}: alergarea devine bicicletă Z2 (${x.plannedMinutes} min)`);
     } else if (x.type === 'brick') {
       x.type = 'lung';
       x.structure = 'tura lungă fără alergarea de după';
-      x.note = `brick fără alergare: durere ${ev.score}/10 la ${ev.loc}`;
+      x.note = `brick fără alergare: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until}`;
       changes.push(`${x.id}: brick fără alergare`);
     }
   }
@@ -352,6 +369,8 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
 function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'progres' }>, ctx: AdaptContext, changes: string[]): void {
   const monday = addDays(ev.date, 7 - weekday(ev.date));
   const week = plan.filter((w) => isActiveWorkout(w) && diffDays(monday, w.date) >= 0 && diffDays(monday, w.date) < 7);
+  // Bilanțul de duminică a spus „obosit”: săptămâna viitoare nu crește.
+  if (week.some((w) => (w.note ?? '').startsWith('bilanț de duminică'))) return;
   const total = week.reduce((n, w) => n + w.plannedMinutes, 0);
   // Generatorul are deja progresia lui: dacă săptămâna viitoare e deja mai mare decât cea curentă (creștere planificată)
   // sau mai mică (descărcare / taper), nu se mai adaugă nimic peste. Un singur mecanism de creștere pe săptămână.
@@ -415,4 +434,51 @@ function applyBigEffort(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
       changes.push(`${x.id}: cheie coborâtă la Z1–Z2, −25% (efort de ${a.minutes} min)`);
     }
   }
+}
+
+const HARD = (x: PlannedWorkout) => x.type === 'calitate' || x.type === 'brick' || x.targetZones.some((z) => z >= 4);
+
+function applyReturn(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'revenire' }>, ctx: AdaptContext, changes: string[]): void {
+  const done = new Set(ctx.done ?? []);
+  for (const x of plan) {
+    if (!isActiveWorkout(x) || done.has(x.id) || x.type === 'odihna') continue;
+    const d = diffDays(ev.date, x.date);
+    if (d < 0 || d > 13) continue;
+    const factor = d <= 6 ? 0.6 : 0.8;
+    const before = x.plannedMinutes;
+    x.plannedMinutes = Math.max(20, Math.round((x.plannedMinutes * factor) / 5) * 5);
+    if (d <= 6) {
+      x.key = false;
+      if (HARD(x) && x.sport !== 'forta') {
+        if (x.type === 'calitate') x.type = 'z2';
+        if (x.type === 'brick') {
+          x.type = 'lung';
+          x.structure = 'tură ușoară, fără alergarea de după';
+        }
+        x.targetZones = [1, 2];
+        x.intervals = undefined;
+        if (x.type === 'z2') x.structure = undefined;
+      }
+    }
+    x.note = `revenire după ${ev.zile} zile de pauză: ${d <= 6 ? 'prima săptămână ușor, 60%' : 'a doua săptămână 80%'}; se reevaluează pe ${addDays(ev.date, 14)}`;
+    changes.push(`${x.id}: ${x.sport} ${before} → ${x.plannedMinutes} min (revenire după pauză)`);
+  }
+}
+
+function applyReview(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'bilant' }>, ctx: AdaptContext, changes: string[]): void {
+  if (!ev.obosit) return;
+  const monday = addDays(ev.date, 7 - weekday(ev.date));
+  const week = plan.filter((x) => isActiveWorkout(x) && !(ctx.done ?? []).includes(x.id) && diffDays(monday, x.date) >= 0 && diffDays(monday, x.date) < 7).sort((a, b) => diffDays(b.date, a.date));
+  // O singură intensitate se transformă în ușor: prima din săptămână (cea mai apropiată de oboseala de acum).
+  const first = week.find((x) => x.type === 'calitate' && x.sport !== 'forta');
+  if (first) {
+    first.type = 'z2';
+    first.key = false;
+    first.targetZones = [1, 2];
+    first.intervals = undefined;
+    first.structure = undefined;
+    first.note = `bilanț de duminică: ${ev.motiv}; ședință ușoară în loc de intensitate`;
+    changes.push(`${first.id}: ${first.sport} ${first.date} devine ușoară (bilanț: ${ev.motiv})`);
+  }
+  changes.push(`săptămâna din ${monday}: fără creștere (bilanț: ${ev.motiv})`);
 }

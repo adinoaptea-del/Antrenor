@@ -14,6 +14,7 @@
 
 import type { Activity, Color, EveningQuestionnaire, PlannedWorkout, WorkoutType, Zone } from '../types.js';
 import { addDays, diffDays } from '../util/dates.js';
+import { fadePct } from '../collector/details.js';
 
 export const EXPECTED_RPE: Record<WorkoutType, number> = {
   odihna: 0,
@@ -57,7 +58,7 @@ export interface ScoreResult {
   color: Color;
   reasons: string[];
   metrics: ScoreMetrics;
-  flags: { noQuestionnaire: boolean; noZoneData: boolean; cardiacDrift: boolean; escalate: boolean; missed?: boolean };
+  flags: { noQuestionnaire: boolean; noZoneData: boolean; cardiacDrift: boolean; escalate: boolean; missed?: boolean; /** Scurtată din motive logistice (timp, vreme, traseu), nu din oboseală. */ logistic?: boolean };
   /** false = se mai poate schimba o dată (chestionarul poate veni în 24 h sau fereastra nu s-a închis). */
   final: boolean;
 }
@@ -101,6 +102,16 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   // Siguranța înaintea oricărui scor: durerea mare se escaladează și când ședința a fost oprită devreme (des, chiar din cauza ei).
   if (pain != null && pain >= 5) flags.escalate = true;
 
+  // Motivul abaterii: scurtată din cauza timpului, vremii sau traseului nu e oboseală și nu e eșec. Fără durere,
+  // durata nu mai coboară culoarea sub galben și nu se pune la „nereușite” (regula treptei repetate).
+  const LOGISTIC: Record<string, string> = { timp: 'timpul', vreme: 'vremea', traseu: 'traseul' };
+  const logistic = questionnaire?.whatInterfered ? LOGISTIC[questionnaire.whatInterfered] : undefined;
+  if (logistic && durationPct != null && durationPct < 90 && !(pain != null && pain >= 3)) {
+    reasons.push(`scurtată din cauza: ${logistic} (nu oboseală; nu schimbă estimarea capacității)`);
+    metrics.eficienta = efficiency({ ...metrics, durationPct: 100 }, activity, false);
+    return { color: 'galben', reasons, metrics, flags: { ...flags, logistic: true }, final: isFinal(flags, planned, today) };
+  }
+
   // Roșu: executat sub jumătate.
   if (durationPct != null && durationPct < 50) {
     if (flags.escalate) reasons.push(`durere ${pain}/10: escaladare la fizioterapeut`);
@@ -143,6 +154,13 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   else if ((activity.intervalsAbandoned ?? 0) >= 1) bump(1, `${activity.intervalsAbandoned} interval(e) abandonat(e)`);
 
   if (flags.cardiacDrift) bump(1, `derivație cardiacă ${cardiacDriftPct}% (peste 8%)`);
+
+  // Ieșirea lungă nu are voie să cadă pe final (regula Sang): a doua jumătate cu peste 5% mai lentă = galben.
+  const det = (activity as Activity & { details?: { splitsSecPerKm?: number[] | null; elevGainM?: number | null } | null }).details;
+  const hilly = det?.elevGainM != null && activity.distanceKm ? det.elevGainM / activity.distanceKm > 15 : false;
+  const fade = planned.type === 'lung' && planned.sport === 'alergare' && !hilly ? fadePct(det?.splitsSecPerKm) : null;
+  if (fade != null && fade > 5) bump(1, `a căzut pe final: a doua jumătate cu ${fade}% mai lentă (pornește mai ușor data viitoare)`);
+  else if (fade != null && fade <= -2) reasons.push(`final mai rapid cu ${Math.abs(fade)}%: exact cum trebuie`);
 
   metrics.eficienta = efficiency(metrics, activity, false);
   const color: Color = level === 0 ? 'verde' : level === 1 ? 'galben' : 'portocaliu';

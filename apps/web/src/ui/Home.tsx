@@ -172,6 +172,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       </div>
 
       <Suggestions />
+      <ShortOnTime />
 
       <div className="sports">
         {SPORTS.filter((s) => !isRunGoal(me.user.goal) || s.id === 'alergare').map((s) => {
@@ -260,6 +261,63 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </Card>
       ))}
     </>
+  );
+}
+
+/**
+ * „Am doar X minute azi”: ședința de azi se scurtează corect (încălzire, partea principală cu repetările care încap,
+ * revenire). Restul săptămânii nu se încarcă în plus: ce nu s-a făcut azi nu se recuperează.
+ */
+function ShortOnTime() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const today = me.plan.filter((w) => w.date === me.today && (w.status === 'planificat' || w.status === 'mutat') && w.sport !== 'forta' && w.type !== 'odihna' && w.plannedMinutes > 25);
+  const done = me.activities.some((a) => a.date === me.today);
+  if (!today.length || done) return null;
+  const w = today.sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0]!;
+  const options = [20, 30, 45, 60, 75].filter((m) => m <= w.plannedMinutes - 10);
+  if (!options.length) return null;
+  const pick = async (minutes: number) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await submitForm('timp', { workoutId: w.id, minutes });
+      const d = r.data as { structura?: string } | undefined;
+      setMsg(`Gata: ${SPORT_LABEL[w.sport].toLowerCase()} ${minutes} min${d?.structura ? ` · ${d.structura}` : ''}.`);
+      setOpen(false);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="suggest">
+      {!open ? (
+        <button className="pill" onClick={() => setOpen(true)}>
+          Am mai puțin timp azi
+        </button>
+      ) : (
+        <>
+          <div className="sg-k">Cât timp ai pentru {SPORT_LABEL[w.sport].toLowerCase()}?</div>
+          <div className="sg-s">În plan: {fmtMinutes(w.plannedMinutes)}. Păstrez partea importantă a ședinței; ce rămâne nu se adaugă în alte zile.</div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {options.map((m) => (
+              <button key={m} className="pill on" disabled={busy} onClick={() => void pick(m)}>
+                {m} min
+              </button>
+            ))}
+            <button className="pill" disabled={busy} onClick={() => setOpen(false)}>
+              Renunț
+            </button>
+          </div>
+        </>
+      )}
+      {msg && <div className="tiny muted" style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
   );
 }
 
