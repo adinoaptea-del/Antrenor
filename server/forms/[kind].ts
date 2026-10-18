@@ -12,7 +12,7 @@ import { disconnect } from '../_lib/tokens.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
 import { loadUser } from '../_lib/collect.js';
-import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
+import { generateAndStore, reevaluateAfterImport, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
@@ -420,6 +420,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const n = (b.exercise?.length ?? 0) + (b.sleep?.length ?? 0) + (b.weight?.length ?? 0);
       if (n > 5000) throw new HttpError(413, 'prea multe înregistrări într-o singură trimitere');
       const r = await ingestAndroid({ id: u.id, tz: user.tz ?? null }, { ...body, app_version: 'samsung-health-export', timezone: user.tz || 'Europe/Bucharest' }, { history: true });
+      json(res, 200, { ok: true, ...r });
+      return;
+    }
+    if (kind === 'reevaluare') {
+      // După un import de istoric: nivelul se recalculează și planul se reface de la luni doar dacă diferența contează.
+      const r = await reevaluateAfterImport(u.id, today);
       json(res, 200, { ok: true, ...r });
       return;
     }

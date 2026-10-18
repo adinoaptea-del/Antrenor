@@ -158,6 +158,8 @@ function hcWebhookRecords(body: Rec): { recs: { type: string; rec: Rec }[]; unkn
         exerciseType: e.type,
         title: e.title,
         distanceMeters: e.distance_meters,
+        // Timpul activ, fără pauze, când sursa îl dă (exportul Samsung Health; HC Webhook poate trimite active_seconds).
+        activeSeconds: num(e.active_seconds ?? e.active_duration_seconds),
         // Pulsul din eșantioane; altfel cel din înregistrarea antrenamentului (exportul Samsung Health îl are).
         averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : num(e.avg_heart_rate),
         maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : num(e.max_heart_rate),
@@ -237,7 +239,11 @@ export function parseHealthConnect(body: unknown, tz: string): HealthConnectPars
       const kind = sportOfExercise(rec) ?? '';
       const sport = sportOf(kind);
       const title = str(rec.title) ?? str(rec.name) ?? kind;
-      const sec = (end - start) / 1000;
+      const elapsedSec = (end - start) / 1000;
+      // Timpul activ (fără pauze) dacă îl avem și are sens; altfel start→stop. Durata și ritmul se calculează pe el,
+      // ca o alergare cu opriri să nu pară lentă; durata totală rămâne în detalii (elapsedMin).
+      const activeSec = pick(rec, ['activeSeconds', 'activeDurationSeconds', 'active_seconds'], ['value']);
+      const sec = activeSec != null && activeSec >= 60 && activeSec <= elapsedSec + 30 ? Math.min(activeSec, elapsedSec) : elapsedSec;
       const l = local(start, tz);
       const distM = pick(rec, ['distance', 'distanceMeters', 'totalDistance', 'distance_m'], ['inMeters', 'value']);
       const distKm = distM != null && distM > 0 ? Math.round(distM / 10) / 100 : null; // metri → km cu 2 zecimale
@@ -246,7 +252,7 @@ export function parseHealthConnect(body: unknown, tz: string): HealthConnectPars
       const id = (str(rec.id) ?? str((rec.metadata as Rec | undefined)?.id) ?? `${start}-${kind}`).replace(/[^a-zA-Z0-9-]/g, '');
       if (sport) {
         if (sec < 60) continue;
-        const details: ActivityDetails = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(sec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round((distKm / (sec / 3600)) * 10) / 10 : null };
+        const details: ActivityDetails = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(elapsedSec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round((distKm / (sec / 3600)) * 10) / 10 : null };
         if (sport === 'inot' && distKm) details.pace100mSec = swimPace100(sec, distKm * 1000);
         workouts.push({ id: `android-${id}`, date: l.date, start_local: l.hm, sport, minutes: Math.round(sec / 60), distance_km: distKm, avg_hr: avg == null ? null : Math.round(avg), max_hr: max == null ? null : Math.round(max), avg_pace_min_km: sport === 'alergare' && distKm && distKm > 0.2 ? Math.round((sec / 60 / distKm) * 100) / 100 : null, name: `${title} · Samsung Health`, details });
       } else {

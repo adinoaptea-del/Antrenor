@@ -5,7 +5,7 @@ import { CONFIG, SERVER, captureSessionFromUrl, getSession, isNetworkError, load
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'apple-arata' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp' | 'actiune' | 'plecat' | 'fixe' | 'insigne-vazute' | 'recuperare' | 'ore-sport' | 'inot-mediu' | 'samsung-import';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'apple-arata' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp' | 'actiune' | 'plecat' | 'fixe' | 'insigne-vazute' | 'recuperare' | 'ore-sport' | 'inot-mediu' | 'samsung-import' | 'reevaluare';
 
 export interface Data {
   status: Status;

@@ -35,7 +35,13 @@ export function SamsungImport() {
         zile += Number(r.data?.zile ?? 0);
         antr += Number(r.data?.antrenamente ?? 0);
       }
-      setMsg(`Gata: ${antr} antrenamente și ${zile} zile cu somn sau greutate, din ${imp.read.map((x) => `${x.file.split('.')[3] ?? x.file} (${x.rows})`).join(', ')}.${imp.unknownExercise.length ? ` Tipuri de exercițiu necunoscute (nu le-am importat): ${imp.unknownExercise.join(', ')}.` : ''}`);
+      const dates = imp.body.exercise.map((e) => e.start_time.slice(0, 10)).sort();
+      const range = dates.length ? ` (${dates[0]!.slice(8, 10)}.${dates[0]!.slice(5, 7)}.${dates[0]!.slice(0, 4)} – ${dates[dates.length - 1]!.slice(8, 10)}.${dates[dates.length - 1]!.slice(5, 7)}.${dates[dates.length - 1]!.slice(0, 4)})` : '';
+      const head = `Gata: ${antr} antrenamente${range} și ${zile} zile cu somn sau greutate.${imp.unknownExercise.length ? ` Tipuri necunoscute, neimportate: ${imp.unknownExercise.join(', ')}.` : ''}`;
+      setMsg(`${head} Recalculez nivelul…`);
+      // Istoricul contează imediat: nivelul se recalculează și planul se reface de la luni, dacă diferența contează.
+      const re = await submitForm('reevaluare', {});
+      setMsg(`${head} ${String(re.data?.message ?? '')}`);
       await refresh();
     } catch (e) {
       setMsg(null);

@@ -19,7 +19,7 @@ export interface SamsungImport {
     timestamp: string;
     app_version: string;
     timezone: string;
-    exercise: { start_time: string; end_time: string; type: string; title: string; distance_meters: number | null; avg_heart_rate: number | null; max_heart_rate: number | null; metadata: { id: string } }[];
+    exercise: { start_time: string; end_time: string; type: string; title: string; distance_meters: number | null; active_seconds?: number | null; avg_heart_rate: number | null; max_heart_rate: number | null; metadata: { id: string } }[];
     sleep: { start_time: string; session_end_time: string; duration_seconds: number; stages: { stage: string; start_time: string; end_time: string }[] }[];
     weight: { time: string; kilograms: number }[];
   };
@@ -156,12 +156,18 @@ export function samsungExport(files: SamsungFile[], timezone = 'Europe/Bucharest
           continue;
         }
         const dist = num(r.distance);
+        // Timpul activ: „duration” din Samsung Health exclude pauzele; dacă lipsește, din distanță / viteza medie.
+        // Diferența față de start→stop sunt pauzele (opriri, mers): ritmul se calculează pe timpul activ.
+        const elapsed = (Date.parse(end) - Date.parse(start)) / 1000;
+        const speed = num(r.mean_speed);
+        const active = dur != null && dur / 1000 >= 60 && dur / 1000 <= elapsed + 30 ? dur / 1000 : speed && speed > 0 && dist && dist > 0 ? dist / speed : null;
         body.exercise.push({
           start_time: start,
           end_time: end,
           type: name,
           title: name === 'running' ? 'Alergare' : name === 'cycling' ? 'Bicicletă' : name === 'swimming' ? 'Înot' : name === 'strength' ? 'Forță' : name === 'walking' ? 'Mers' : 'Drumeție',
           distance_meters: dist != null && dist > 0 ? dist : null,
+          active_seconds: active != null && active >= 60 && active <= elapsed + 30 ? Math.round(active) : null,
           avg_heart_rate: num(r.mean_heart_rate),
           max_heart_rate: num(r.max_heart_rate),
           metadata: { id: `sh-${(r.datauuid ?? start).replace(/[^a-zA-Z0-9-]/g, '')}` },

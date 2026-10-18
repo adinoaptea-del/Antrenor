@@ -16,6 +16,7 @@ import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } f
 const runBranch = (intake: { alergare?: { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } }): 'finalizare' | 'timp' => intake.alergare?.ramura ?? (intake.alergare?.tinta ? 'timp' : 'finalizare');
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import { parsePace, type RunResult } from '../../src/util/run.js';
+import { decideReplan } from '../../src/calendar/reevaluate.js';
 
 export interface IntakeLike {
   nume?: string;
@@ -138,6 +139,24 @@ export function labsGateFrom(rows: { drawn_at: string; feritina: number | string
 }
 
 /** Generează (sau regenerează) planul activ de la lunea următoare. Planul vechi rămâne în istoric, inactiv. */
+/**
+ * După un import de istoric: recalculează doza de start din istoricul nou și reface planul de la lunea viitoare doar
+ * dacă diferența contează (src/calendar/reevaluate.ts). Sportivul nu mai trebuie să știe de „Refă planul”.
+ */
+export async function reevaluateAfterImport(userId: string, today: string): Promise<{ changed: boolean; message: string }> {
+  const intake = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+  if (!intake) return { changed: false, message: 'Istoricul e salvat; planul se face după chestionarul de intrare.' };
+  const preview = await generateAndStore(userId, today, intake.answers, { preview: true });
+  if (!preview.ok || !preview.preview) return { changed: false, message: `Istoricul e salvat. Planul rămâne: ${preview.ok ? 'nu s-a putut calcula o variantă nouă' : preview.reason}` };
+  const from = preview.from!;
+  const plan = await one<{ id: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' });
+  const cur = plan ? await select<{ planned_minutes: number }>('workouts_planned', { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lt.${addDays(from, 7)}`] }, { select: 'planned_minutes', limit: 50 }) : [];
+  const d = decideReplan({ currentWeekH: plan && cur.length ? cur.reduce((n, w) => n + w.planned_minutes, 0) / 60 : null, proposedWeekH: preview.firstWeekHours ?? 0, historyH: await historyHours(userId, today), from: `luni, ${Number(from.slice(8, 10))}.${from.slice(5, 7)}` });
+  if (!d.apply) return { changed: false, message: d.message };
+  const r = await generateAndStore(userId, today, intake.answers);
+  return r.ok ? { changed: true, message: d.message } : { changed: false, message: `Istoricul e salvat, dar planul nu s-a putut reface: ${r.reason}` };
+}
+
 export async function generateAndStore(userId: string, today: string, intake: IntakeLike, opts: { preview?: boolean } = {}): Promise<PlanOutcome> {
   if (intake.obiectiv === 'full') {
     return { ok: false, reason: 'Ironman complet nu e în versiunea asta a planului; alege 70.3 pentru acum.', budgetHours: 0 };

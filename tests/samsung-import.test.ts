@@ -68,3 +68,26 @@ test('arhiva .zip se citește fără bibliotecă', async () => {
   assert.equal(files.length, 1);
   assert.equal(parseSamsungCsv(files[0]!.text).length, 3);
 });
+
+test('alergare cu pauze: durata și ritmul pe timpul activ, totalul rămâne în detalii', () => {
+  const csv = `com.samsung.shealth.exercise,1,1
+com.samsung.health.exercise.datauuid,com.samsung.health.exercise.start_time,com.samsung.health.exercise.end_time,com.samsung.health.exercise.time_offset,com.samsung.health.exercise.exercise_type,com.samsung.health.exercise.duration,com.samsung.health.exercise.distance
+p1,2026-10-04 06:00:00.000,2026-10-04 07:26:00.000,UTC+0300,1002,2760000,7640
+`;
+  const p = parseHealthConnect(samsungExport([{ name: 'com.samsung.shealth.exercise.1.csv', text: csv }]).body, 'Europe/Bucharest');
+  const run = p.workouts[0]!;
+  assert.equal(run.minutes, 46); // timpul activ, nu 86
+  assert.equal(run.details?.elapsedMin, 86);
+  assert.ok(run.avg_pace_min_km! > 5.9 && run.avg_pace_min_km! < 6.1); // ~6:01/km, nu 11:15/km
+});
+
+test('fără durată activă: viteza medie dă timpul activ; fără niciuna, rămâne start→stop', () => {
+  const csv = `com.samsung.shealth.exercise,1,2
+com.samsung.health.exercise.datauuid,com.samsung.health.exercise.start_time,com.samsung.health.exercise.end_time,com.samsung.health.exercise.time_offset,com.samsung.health.exercise.exercise_type,com.samsung.health.exercise.distance,com.samsung.health.exercise.mean_speed
+q1,2026-10-05 06:00:00.000,2026-10-05 07:00:00.000,UTC+0300,1002,6000,2.5
+q2,2026-10-06 06:00:00.000,2026-10-06 07:00:00.000,UTC+0300,1002,6000,
+`;
+  const p = parseHealthConnect(samsungExport([{ name: 'com.samsung.shealth.exercise.1.csv', text: csv }]).body, 'Europe/Bucharest');
+  assert.equal(p.workouts.find((w) => w.date === '2026-10-05')!.minutes, 40);
+  assert.equal(p.workouts.find((w) => w.date === '2026-10-06')!.minutes, 60);
+});

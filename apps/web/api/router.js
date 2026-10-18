@@ -114,9 +114,9 @@ var HttpError = class extends Error {
   status;
 };
 function bearer(req) {
-  const h = req.headers.authorization;
-  if (!h || !h.toLowerCase().startsWith("bearer ")) return null;
-  return h.slice(7).trim();
+  const h2 = req.headers.authorization;
+  if (!h2 || !h2.toLowerCase().startsWith("bearer ")) return null;
+  return h2.slice(7).trim();
 }
 async function requireUser(req) {
   const token = bearer(req);
@@ -799,10 +799,10 @@ function fmtPaceSec(sec) {
 }
 function fmtDuration(sec) {
   const r2 = Math.round(sec);
-  const h = Math.floor(r2 / 3600);
+  const h2 = Math.floor(r2 / 3600);
   const mm = String(Math.floor(r2 % 3600 / 60)).padStart(2, "0");
   const ss = String(r2 % 60).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${Number(mm)}:${ss}`;
+  return h2 > 0 ? `${h2}:${mm}:${ss}` : `${Number(mm)}:${ss}`;
 }
 function paceFromResult(r2, distanceKm) {
   if (!r2) return null;
@@ -828,10 +828,10 @@ function riegel(sec, fromKm, toKm) {
 }
 function fmtTime(sec) {
   const r2 = Math.round(sec);
-  const h = Math.floor(r2 / 3600);
+  const h2 = Math.floor(r2 / 3600);
   const m = Math.floor(r2 % 3600 / 60);
   const s = r2 % 60;
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  return h2 ? `${h2}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 }
 var fmtPace2 = (secKm) => `${Math.floor(secKm / 60)}:${String(Math.round(secKm % 60)).padStart(2, "0")}/km`;
 function runTarget(i) {
@@ -1084,8 +1084,8 @@ function dayVerdict(obj, hooperSum2, ctx = {}) {
   }
   return intrebare ? { verdict: v, motiv, intrebare } : { verdict: v, motiv };
 }
-function hooperSum(h) {
-  const xs = h ? [h.somn, h.oboseala, h.stres, h.dureri].filter((x) => typeof x === "number") : [];
+function hooperSum(h2) {
+  const xs = h2 ? [h2.somn, h2.oboseala, h2.stres, h2.dureri].filter((x) => typeof x === "number") : [];
   if (xs.length < 3) return { suma: null, raspunse: xs.length };
   return { suma: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 4), raspunse: xs.length };
 }
@@ -1497,9 +1497,9 @@ function bestRunEffort(runs, raceKm) {
 }
 var fmtT = (sec) => {
   const r2 = Math.round(sec);
-  const h = Math.floor(r2 / 3600);
+  const h2 = Math.floor(r2 / 3600);
   const m = Math.floor(r2 % 3600 / 60);
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(r2 % 60).padStart(2, "0")}` : `${m}:${String(r2 % 60).padStart(2, "0")}`;
+  return h2 ? `${h2}:${String(m).padStart(2, "0")}:${String(r2 % 60).padStart(2, "0")}` : `${m}:${String(r2 % 60).padStart(2, "0")}`;
 };
 var pct2 = (x) => Math.round(Math.max(0, Math.min(1, x)) * 100);
 function raceReady(input) {
@@ -2553,8 +2553,8 @@ function longestByDay(blocks) {
 function combos(xs, k) {
   if (k === 0) return [[]];
   if (xs.length < k) return [];
-  const [h, ...t] = xs;
-  return [...combos(t, k - 1).map((c) => [h, ...c]), ...combos(t, k)];
+  const [h2, ...t] = xs;
+  return [...combos(t, k - 1).map((c) => [h2, ...c]), ...combos(t, k)];
 }
 function minGap(days) {
   if (days.length < 2) return 7;
@@ -2658,7 +2658,7 @@ function generatePlan(input) {
       ]
     };
   }
-  const history = input.historyHoursPerWeek.filter((h) => h > 0);
+  const history = input.historyHoursPerWeek.filter((h2) => h2 > 0);
   const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
   const firstPhase = weeks[0].phase;
   let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
@@ -3477,13 +3477,13 @@ function minutesToHm(min) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 function hoursBySport(acts, from, to) {
-  const h = { inot: 0, bicicleta: 0, alergare: 0, forta: 0 };
+  const h2 = { inot: 0, bicicleta: 0, alergare: 0, forta: 0 };
   for (const a of acts) {
     if (diffDays(from, a.date) < 0 || diffDays(a.date, to) < 0) continue;
-    h[a.sport] += a.minutes / 60;
+    h2[a.sport] += a.minutes / 60;
   }
-  for (const s of SPORTS) h[s] = Math.round(h[s] * 10) / 10;
-  return h;
+  for (const s of SPORTS) h2[s] = Math.round(h2[s] * 10) / 10;
+  return h2;
 }
 function acwr(acts, today, sport) {
   const sel = sport ? acts.filter((a) => a.sport === sport) : acts;
@@ -3625,8 +3625,8 @@ function buildPacket(input) {
     recovery: todayRow?.recoveryScore ?? null,
     sleepMin: todayRow?.sleepMin ?? null
   });
-  const h = input.morning?.hooper;
-  const hooper = hooperSum(h);
+  const h2 = input.morning?.hooper;
+  const hooper = hooperSum(h2);
   const todayList = input.plan.filter((w) => w.date === today && isActiveWorkout(w)).sort((a, b) => Number(b.key) - Number(a.key));
   const planToday = todayList[0] ?? null;
   const tomorrow = addDays(today, 1);
@@ -3767,9 +3767,9 @@ function buildPacket(input) {
       greutate_azi: todayRow?.weightKg ?? null,
       greutate_media7: weights.length ? round(mean2(weights.map((r2) => r2.weightKg)), 1) : null,
       imc: (() => {
-        const h2 = input.athlete.inaltimeCm;
+        const h3 = input.athlete.inaltimeCm;
         const w = weights.length ? mean2(weights.map((r2) => r2.weightKg)) : lastWeight?.weightKg ?? null;
-        return h2 && w ? round(w / (h2 / 100) ** 2, 1) : null;
+        return h3 && w ? round(w / (h3 / 100) ** 2, 1) : null;
       })(),
       cantariri_7z: weights.length,
       grasime_pct: lastWeight?.bodyFatPct ?? null,
@@ -3798,23 +3798,23 @@ function buildPacket(input) {
   };
 }
 function progresStatus(input, acwrTotal, bySport, aderenta) {
-  const h = input.history ?? null;
-  const base = { zile_verzi_la_rand: h ? h.greenStreak : null, ultima_crestere: h?.lastIncrease ?? null };
+  const h2 = input.history ?? null;
+  const base = { zile_verzi_la_rand: h2 ? h2.greenStreak : null, ultima_crestere: h2?.lastIncrease ?? null };
   const no = (motiv) => ({ ...base, eligibil: false, motiv });
-  if (!h) return no("f\u0103r\u0103 istoric de readiness");
-  if (h.greenStreak < 7) return no(`${h.greenStreak} zile verzi la r\xE2nd (trebuie 7)`);
+  if (!h2) return no("f\u0103r\u0103 istoric de readiness");
+  if (h2.greenStreak < 7) return no(`${h2.greenStreak} zile verzi la r\xE2nd (trebuie 7)`);
   if (acwrTotal == null) return no("\xEEnc\u0103rcare necunoscut\u0103 (sub 4 s\u0103pt\u0103m\xE2ni de istoric)");
   if (acwrTotal >= 1.3) return no("\xEEnc\u0103rcare total\u0103 peste 1,3");
   const hot = Object.entries(bySport).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
   if (hot.length) return no(`\xEEnc\u0103rcare peste 1,3 la ${hot.join(", ")}`);
   if (!aderenta || aderenta.planificate === 0 || aderenta.facute / aderenta.planificate < 0.8) return no("aderen\u021B\u0103 sub 80% \xEEn 14 zile");
-  if (h.lastIncrease && diffDays(h.lastIncrease, input.today) < 13) return no(`cre\u0219tere deja pe ${h.lastIncrease}`);
+  if (h2.lastIncrease && diffDays(h2.lastIncrease, input.today) < 13) return no(`cre\u0219tere deja pe ${h2.lastIncrease}`);
   return { ...base, eligibil: true, motiv: "7 zile verzi, \xEEnc\u0103rcare sub 1,3, aderen\u021B\u0103 bun\u0103" };
 }
 function momentOfDay(hm3) {
   if (!hm3 || !/^\d{2}:\d{2}/.test(hm3)) return null;
-  const h = Number(hm3.slice(0, 2));
-  return h >= 22 || h < 5 ? "noapte" : h < 11 ? "dimineata" : h < 17 ? "zi" : "seara";
+  const h2 = Number(hm3.slice(0, 2));
+  return h2 >= 22 || h2 < 5 ? "noapte" : h2 < 11 ? "dimineata" : h2 < 17 ? "zi" : "seara";
 }
 
 // server/_lib/weather.ts
@@ -4530,15 +4530,15 @@ async function getJson(url, accessToken2) {
 }
 function localHm(iso, tzOffset) {
   const sign = tzOffset.startsWith("-") ? -1 : 1;
-  const [h, m] = tzOffset.slice(1).split(":").map(Number);
-  const t = new Date(iso).getTime() + sign * ((h ?? 0) * 60 + (m ?? 0)) * 6e4;
+  const [h2, m] = tzOffset.slice(1).split(":").map(Number);
+  const t = new Date(iso).getTime() + sign * ((h2 ?? 0) * 60 + (m ?? 0)) * 6e4;
   const d = new Date(t);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 function localDate(iso, tzOffset) {
   const sign = tzOffset.startsWith("-") ? -1 : 1;
-  const [h, m] = tzOffset.slice(1).split(":").map(Number);
-  const t = new Date(iso).getTime() + sign * ((h ?? 0) * 60 + (m ?? 0)) * 6e4;
+  const [h2, m] = tzOffset.slice(1).split(":").map(Number);
+  const t = new Date(iso).getTime() + sign * ((h2 ?? 0) * 60 + (m ?? 0)) * 6e4;
   return new Date(t).toISOString().slice(0, 10);
 }
 
@@ -5255,8 +5255,8 @@ function numbersIn(text) {
   }
   const durations = text.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
   for (const d of durations) {
-    const [h, m] = d.split(":").map(Number);
-    const ih = out.indexOf(h);
+    const [h2, m] = d.split(":").map(Number);
+    const ih = out.indexOf(h2);
     if (ih >= 0) out.splice(ih, 1);
     const im = out.indexOf(m);
     if (im >= 0) out.splice(im, 1);
@@ -6188,18 +6188,18 @@ async function handler3(_req, res) {
       ready = r2.ok;
       users = Number(r2.headers.get("content-range")?.split("/")[1] ?? 0) || 0;
       if (ready) {
-        const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
+        const h2 = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
         const [c, t, l, o, w, a, ov, ev, a2, sm] = await Promise.all([
-          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm,calendar_prefs&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/other_activities?select=id&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=suggestion&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/schema_meta?select=value&key=eq.version`, h)
+          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm,calendar_prefs&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/other_activities?select=id&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=suggestion&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/badges_earned?select=badge_id&limit=1`, h2),
+          fetch(`${supabaseUrl}/rest/v1/schema_meta?select=value&key=eq.version`, h2)
         ]);
         upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok || !await schemaOk(sm);
       }
@@ -7305,7 +7305,7 @@ function hcWebhookRecords(body) {
   const recs = [];
   const unknown = [];
   const arr = (k) => Array.isArray(body[k]) ? body[k] : [];
-  const hr = arr("heart_rate").map((h) => ({ t: whenMs(h.time), avg: num3(h.avg ?? h.bpm), max: num3(h.max ?? h.bpm) })).filter((h) => h.t != null && h.avg != null && h.max != null);
+  const hr = arr("heart_rate").map((h2) => ({ t: whenMs(h2.time), avg: num3(h2.avg ?? h2.bpm), max: num3(h2.max ?? h2.bpm) })).filter((h2) => h2.t != null && h2.avg != null && h2.max != null);
   for (const s of arr("sleep")) {
     const end = whenMs(s.session_end_time ?? s.end_time);
     const dur = num3(s.duration_seconds);
@@ -7313,13 +7313,13 @@ function hcWebhookRecords(body) {
     if (start == null || end == null) continue;
     recs.push({ type: "sleepsession", rec: { startTime: start, endTime: end, stages: (Array.isArray(s.stages) ? s.stages : []).map((st) => ({ stage: st.stage, startTime: st.start_time, endTime: st.end_time })) } });
   }
-  for (const h of arr("heart_rate_variability")) recs.push({ type: "hrv", rec: { time: h.time, value: h.avg ?? h.rmssd_millis } });
+  for (const h2 of arr("heart_rate_variability")) recs.push({ type: "hrv", rec: { time: h2.time, value: h2.avg ?? h2.rmssd_millis } });
   for (const r2 of arr("resting_heart_rate")) recs.push({ type: "restingheartrate", rec: { time: r2.time, value: r2.bpm } });
   for (const w of arr("weight")) recs.push({ type: "weight", rec: { time: w.time, value: w.kilograms } });
   for (const e of arr("exercise")) {
     const s0 = whenMs(e.start_time);
     const s1 = whenMs(e.end_time);
-    const inside = s0 != null && s1 != null ? hr.filter((h) => h.t >= s0 && h.t <= s1) : [];
+    const inside = s0 != null && s1 != null ? hr.filter((h2) => h2.t >= s0 && h2.t <= s1) : [];
     recs.push({
       type: "exercisesession",
       rec: {
@@ -7328,9 +7328,11 @@ function hcWebhookRecords(body) {
         exerciseType: e.type,
         title: e.title,
         distanceMeters: e.distance_meters,
+        // Timpul activ, fără pauze, când sursa îl dă (exportul Samsung Health; HC Webhook poate trimite active_seconds).
+        activeSeconds: num3(e.active_seconds ?? e.active_duration_seconds),
         // Pulsul din eșantioane; altfel cel din înregistrarea antrenamentului (exportul Samsung Health îl are).
-        averageHeartRate: inside.length ? inside.reduce((a, h) => a + h.avg, 0) / inside.length : num3(e.avg_heart_rate),
-        maxHeartRate: inside.length ? Math.max(...inside.map((h) => h.max)) : num3(e.max_heart_rate),
+        averageHeartRate: inside.length ? inside.reduce((a, h2) => a + h2.avg, 0) / inside.length : num3(e.avg_heart_rate),
+        maxHeartRate: inside.length ? Math.max(...inside.map((h2) => h2.max)) : num3(e.max_heart_rate),
         id: e.metadata?.id ?? null
       }
     });
@@ -7402,7 +7404,9 @@ function parseHealthConnect(body, tz) {
       const kind = sportOfExercise(rec) ?? "";
       const sport = sportOf2(kind);
       const title = str(rec.title) ?? str(rec.name) ?? kind;
-      const sec = (end - start) / 1e3;
+      const elapsedSec = (end - start) / 1e3;
+      const activeSec = pick(rec, ["activeSeconds", "activeDurationSeconds", "active_seconds"], ["value"]);
+      const sec = activeSec != null && activeSec >= 60 && activeSec <= elapsedSec + 30 ? Math.min(activeSec, elapsedSec) : elapsedSec;
       const l = local(start, tz);
       const distM = pick(rec, ["distance", "distanceMeters", "totalDistance", "distance_m"], ["inMeters", "value"]);
       const distKm = distM != null && distM > 0 ? Math.round(distM / 10) / 100 : null;
@@ -7411,7 +7415,7 @@ function parseHealthConnect(body, tz) {
       const id = (str(rec.id) ?? str(rec.metadata?.id) ?? `${start}-${kind}`).replace(/[^a-zA-Z0-9-]/g, "");
       if (sport) {
         if (sec < 60) continue;
-        const details = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(sec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round(distKm / (sec / 3600) * 10) / 10 : null };
+        const details = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(elapsedSec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round(distKm / (sec / 3600) * 10) / 10 : null };
         if (sport === "inot" && distKm) details.pace100mSec = swimPace100(sec, distKm * 1e3);
         workouts.push({ id: `android-${id}`, date: l.date, start_local: l.hm, sport, minutes: Math.round(sec / 60), distance_km: distKm, avg_hr: avg == null ? null : Math.round(avg), max_hr: max == null ? null : Math.round(max), avg_pace_min_km: sport === "alergare" && distKm && distKm > 0.2 ? Math.round(sec / 60 / distKm * 100) / 100 : null, name: `${title} \xB7 Samsung Health`, details });
       } else {
@@ -7502,6 +7506,18 @@ async function ingestAndroid(user, body, opts = {}) {
   return { zile: parsed.days.length, antrenamente: workouts.length, recuperare: parsed.others.length, tipuri_necunoscute: parsed.unknownTypes };
 }
 
+// src/calendar/reevaluate.ts
+var h = (x) => `${(Math.round(x * 10) / 10).toString().replace(".", ",")} h`;
+function decideReplan(input) {
+  const hist = input.historyH.length ? `istoricul de ${input.historyH.length} ${input.historyH.length === 1 ? "s\u0103pt\u0103m\xE2n\u0103" : "s\u0103pt\u0103m\xE2ni"} (\xEEn medie ${h(input.historyH.reduce((a, b) => a + b, 0) / input.historyH.length)} pe s\u0103pt\u0103m\xE2n\u0103)` : "f\u0103r\u0103 istoric \xEEn ultimele 8 s\u0103pt\u0103m\xE2ni";
+  if (input.currentWeekH == null) return { apply: true, message: `Am f\u0103cut planul din ${hist}: s\u0103pt\u0103m\xE2na de la ${input.from} are ${h(input.proposedWeekH)}.` };
+  const diff = input.proposedWeekH - input.currentWeekH;
+  if (Math.abs(diff) >= 0.5 && Math.abs(diff) >= 0.15 * Math.max(input.currentWeekH, 0.1)) {
+    return { apply: true, message: `Am recalculat nivelul din ${hist}. S\u0103pt\u0103m\xE2na de la ${input.from}: ${h(input.proposedWeekH)} \xEEn loc de ${h(input.currentWeekH)}. S\u0103pt\u0103m\xE2na asta r\u0103m\xE2ne cum e.` };
+  }
+  return { apply: false, message: `Am citit ${hist}. Planul r\u0103m\xE2ne: s\u0103pt\u0103m\xE2na de la ${input.from} are deja ${h(input.currentWeekH)}, iar istoricul nou ar schimba-o cu mai pu\u021Bin de 15%.` };
+}
+
 // server/_lib/plan.ts
 var runBranch = (intake) => intake.alergare?.ramura ?? (intake.alergare?.tinta ? "timp" : "finalizare");
 async function historyHours(userId, today) {
@@ -7554,6 +7570,19 @@ function labsGateFrom(rows, today) {
   const old = (d) => labsExpired(d, today) ? `, din ${d}; limita r\u0103m\xE2ne p\xE2n\u0103 la o analiz\u0103 nou\u0103` : "";
   const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} \xB5g/L (sub 30${old(fer.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb.drawn_at)}` : null;
   return { valid, limitIntensity: !!why, why };
+}
+async function reevaluateAfterImport(userId, today) {
+  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+  if (!intake) return { changed: false, message: "Istoricul e salvat; planul se face dup\u0103 chestionarul de intrare." };
+  const preview = await generateAndStore(userId, today, intake.answers, { preview: true });
+  if (!preview.ok || !preview.preview) return { changed: false, message: `Istoricul e salvat. Planul r\u0103m\xE2ne: ${preview.ok ? "nu s-a putut calcula o variant\u0103 nou\u0103" : preview.reason}` };
+  const from = preview.from;
+  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
+  const cur = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lt.${addDays(from, 7)}`] }, { select: "planned_minutes", limit: 50 }) : [];
+  const d = decideReplan({ currentWeekH: plan && cur.length ? cur.reduce((n2, w) => n2 + w.planned_minutes, 0) / 60 : null, proposedWeekH: preview.firstWeekHours ?? 0, historyH: await historyHours(userId, today), from: `luni, ${Number(from.slice(8, 10))}.${from.slice(5, 7)}` });
+  if (!d.apply) return { changed: false, message: d.message };
+  const r2 = await generateAndStore(userId, today, intake.answers);
+  return r2.ok ? { changed: true, message: d.message } : { changed: false, message: `Istoricul e salvat, dar planul nu s-a putut reface: ${r2.reason}` };
 }
 async function generateAndStore(userId, today, intake, opts = {}) {
   if (intake.obiectiv === "full") {
@@ -7827,9 +7856,9 @@ async function handler9(req, res) {
       const maxYear = Number(today.slice(0, 4)) - 18;
       if (!sex) throw new HttpError(400, "alege sexul");
       if (!Number.isInteger(year) || year < 1930 || year > maxYear) throw new HttpError(400, `anul na\u0219terii \xEEntre 1930 \u0219i ${maxYear}`);
-      const h = Number(body.inaltime);
-      if (body.inaltime != null && body.inaltime !== "" && (!Number.isFinite(h) || h < 120 || h > 230)) throw new HttpError(400, "\xEEn\u0103l\u021Bimea \xEEn cm, \xEEntre 120 \u0219i 230");
-      await update("users", { id: `eq.${u.id}` }, { sex, birth_year: year, ...Number.isFinite(h) && h >= 120 && h <= 230 ? { height_cm: Math.round(h) } : {} });
+      const h2 = Number(body.inaltime);
+      if (body.inaltime != null && body.inaltime !== "" && (!Number.isFinite(h2) || h2 < 120 || h2 > 230)) throw new HttpError(400, "\xEEn\u0103l\u021Bimea \xEEn cm, \xEEntre 120 \u0219i 230");
+      await update("users", { id: `eq.${u.id}` }, { sex, birth_year: year, ...Number.isFinite(h2) && h2 >= 120 && h2 <= 230 ? { height_cm: Math.round(h2) } : {} });
       const intakeRow = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
       const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
       json(res, 200, { ok: true, plan });
@@ -8016,6 +8045,11 @@ async function handler9(req, res) {
       const n2 = (b.exercise?.length ?? 0) + (b.sleep?.length ?? 0) + (b.weight?.length ?? 0);
       if (n2 > 5e3) throw new HttpError(413, "prea multe \xEEnregistr\u0103ri \xEEntr-o singur\u0103 trimitere");
       const r2 = await ingestAndroid({ id: u.id, tz: user.tz ?? null }, { ...body, app_version: "samsung-health-export", timezone: user.tz || "Europe/Bucharest" }, { history: true });
+      json(res, 200, { ok: true, ...r2 });
+      return;
+    }
+    if (kind === "reevaluare") {
+      const r2 = await reevaluateAfterImport(u.id, today);
       json(res, 200, { ok: true, ...r2 });
       return;
     }
@@ -8455,13 +8489,13 @@ async function handler14(req, res) {
   }
 }
 async function hasUpgrade() {
-  const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
+  const h2 = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
   const [r2, t, e, a2, sm] = await Promise.all([
-    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/schema_meta?select=value&key=eq.version`, h)
+    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h2),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h2),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h2),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/badges_earned?select=badge_id&limit=1`, h2),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/schema_meta?select=value&key=eq.version`, h2)
   ]);
   return r2.ok && t.ok && e.ok && a2.ok && await schemaOk(sm);
 }
