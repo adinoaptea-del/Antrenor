@@ -202,7 +202,17 @@ export function NewBadge({ onOpen }: { onOpen: (s: string) => void }) {
 export function BadgesTeaser({ onOpen }: { onOpen: (s: string) => void }) {
   const me = useMe();
   const d = me.badges;
-  if (!d) return null;
+  if (!d)
+    return (
+      <button className="badge-teaser" onClick={() => onOpen('insigne')}>
+        <span className="lvl-dot" />
+        <span>
+          <b>Insigne</b>
+          <small>se calculează după prima sincronizare</small>
+        </span>
+        {Icons.chevronRight}
+      </button>
+    );
   const earned = d.badges.filter((b) => b.earnedAt).length;
   return (
     <button className="badge-teaser" onClick={() => onOpen('insigne')}>

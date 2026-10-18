@@ -36,7 +36,6 @@ export async function loadBadges(userId: string, today: string, o: { goal: strin
     select<{ activity_id: string | null; answers: { tip_neplanificat?: string | null } }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${since}` }, { select: 'activity_id,answers', limit: 1000 }),
     select<{ badge_id: string; earned_at: string; seen: boolean }>('badges_earned', { user_id: `eq.${userId}` }, { limit: 500 }).catch(() => null),
   ]);
-  if (stored === null) return null; // schemă veche: fără insigne până la actualizare
   const acts = dedupeActivities(
     applyOverrides(
       rows.map((r) => ({ id: r.id, source: r.source, externalId: r.external_id, date: r.date, startLocal: r.start_local, sport: r.sport, minutes: r.minutes, distanceKm: r.distance_km == null ? null : Number(r.distance_km), avgHr: r.avg_hr, timeInZonesMin: r.time_in_zones_min, name: r.name })),
@@ -60,9 +59,10 @@ export async function loadBadges(userId: string, today: string, o: { goal: strin
   });
 
   // Odată câștigată, insigna rămâne: ce e salvat bate calculul de acum.
-  const have = new Map(stored.map((s) => [s.badge_id, s]));
+  // Tabelul lipsește (actualizarea bazei n-a rulat încă): insignele se arată oricum, doar nu se salvează.
+  const have = new Map((stored ?? []).map((s) => [s.badge_id, s]));
   const newly = result.badges.filter((b) => b.earnedAt && !have.has(b.id));
-  if (newly.length) {
+  if (newly.length && stored !== null) {
     const rowsIn = await insertIgnore<{ badge_id: string; earned_at: string; seen: boolean }>('badges_earned', newly.map((b) => ({ user_id: userId, badge_id: b.id, earned_at: b.earnedAt, seen: false })), 'user_id,badge_id').catch(() => []);
     for (const r of rowsIn) have.set(r.badge_id, r);
   }

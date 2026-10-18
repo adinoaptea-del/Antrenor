@@ -68,7 +68,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return;
         }
         // Actualizarea bazei rulează în fundal; nu ține aplicația pe loc.
-        if (c.upgrade) void runSetup().catch(() => undefined);
+        // După actualizare, datele se recitesc (ce depinde de schema nouă apare fără repornirea aplicației).
+        if (c.upgrade) void runSetup().then(() => load()).catch(() => undefined);
       } catch (e) {
         if (fallback(e)) return;
         setError(e instanceof Error ? e.message : String(e));

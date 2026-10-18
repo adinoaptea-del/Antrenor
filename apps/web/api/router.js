@@ -5465,7 +5465,6 @@ async function loadBadges(userId, today, o) {
     select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: `gte.${since}` }, { select: "activity_id,answers", limit: 1e3 }),
     select("badges_earned", { user_id: `eq.${userId}` }, { limit: 500 }).catch(() => null)
   ]);
-  if (stored === null) return null;
   const acts = dedupeActivities(
     applyOverrides(
       rows.map((r2) => ({ id: r2.id, source: r2.source, externalId: r2.external_id, date: r2.date, startLocal: r2.start_local, sport: r2.sport, minutes: r2.minutes, distanceKm: r2.distance_km == null ? null : Number(r2.distance_km), avgHr: r2.avg_hr, timeInZonesMin: r2.time_in_zones_min, name: r2.name })),
@@ -5487,9 +5486,9 @@ async function loadBadges(userId, today, o) {
     zonesTested: o.zonesTested,
     efficiencyPct: o.efficiencyPct
   });
-  const have = new Map(stored.map((s) => [s.badge_id, s]));
+  const have = new Map((stored ?? []).map((s) => [s.badge_id, s]));
   const newly = result.badges.filter((b) => b.earnedAt && !have.has(b.id));
-  if (newly.length) {
+  if (newly.length && stored !== null) {
     const rowsIn = await insertIgnore("badges_earned", newly.map((b) => ({ user_id: userId, badge_id: b.id, earned_at: b.earnedAt, seen: false })), "user_id,badge_id").catch(() => []);
     for (const r2 of rowsIn) have.set(r2.badge_id, r2);
   }
