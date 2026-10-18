@@ -21,13 +21,13 @@ describe('un singur sport: alergare 5 / 10 km', () => {
     assert.ok(isGoal('5k') && !isGoal('full'));
   });
 
-  it('5 km cu ritm-țintă: doar alergare și forță, repetări la ritmul de 5 km în build, ieșirea lungă nu trece de 75 min', () => {
+  it('5 km cu ritm-țintă: doar alergare și forță, modulul V5 la ritmul de 5 km, ieșirea lungă nu trece de 75 min', () => {
     const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-03-14', goal: '5k', freeBlocks: blocks, historyHoursPerWeek: [3, 3, 3], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 300, canDoDistance: true, longestRunKm: 8 } });
     assert.ok(r.ok);
     if (!r.ok) return;
     const all = r.weeks.flatMap((w) => w.workouts);
     assert.ok(all.every((w) => w.sport === 'alergare' || w.sport === 'forta'));
-    assert.ok(all.some((w) => /ritm de 5 km \(5:00\/km\)/.test(w.structure ?? '')), 'repetări la ritmul de 5 km');
+    assert.ok(all.some((w) => /^V5b? · .*orientativ 5:00\/km/.test(w.structure ?? '')), 'V5 la ritmul de 5 km');
     assert.ok(all.filter((w) => w.type === 'lung').every((w) => w.plannedMinutes <= 75));
     assert.ok(all.filter((w) => w.type === 'lung').every((w) => !/ritm de cursă/.test(w.structure ?? '')), 'la 5 km ieșirea lungă rămâne ușoară');
   });
@@ -59,12 +59,52 @@ describe('un singur sport: alergare 5 / 10 km', () => {
     assert.ok(forta.length > 0 && forta.every((w) => !/bicicleta/.test(w.structure ?? '')));
   });
 
-  it('10 km: bucăți de 6–8 min la ritmul de 10 km', () => {
+  it('10 km: V10 (4 × 5 min solicitant controlat) la ritmul de 10 km, alternat cu tempo fragmentat', () => {
     const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-04-18', goal: '10k', freeBlocks: blocks, historyHoursPerWeek: [3, 3, 3], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 330, canDoDistance: true, longestRunKm: 10 } });
     assert.ok(r.ok);
     if (!r.ok) return;
     const all = r.weeks.flatMap((w) => w.workouts);
-    assert.ok(all.some((w) => /la ritm de 10 km \(5:30\/km\)/.test(w.structure ?? '')));
+    assert.ok(all.some((w) => /^V10 · .*× \(5 min solicitant controlat, RPE 7 \(orientativ 5:30\/km\)/.test(w.structure ?? '')));
+    assert.ok(all.some((w) => /^T[12] · /.test(w.structure ?? '')));
+    // Modulele: toate minutele (încălzire + repetări + pauze + revenire) încap în durata ședinței.
+    for (const w of all.filter((x) => /^(V|T|H|M|R)\w* · /.test(x.structure ?? ''))) {
+      const nums = /^\w+ · (\d+) min .*?\+ (\d+) × \(([\d:]+)(?: min| s) .*?\+ ([\d:]+)(?: min| s) ușor\) \+ (\d+) min revenire/.exec(w.structure!);
+      assert.ok(nums, w.structure ?? "");
+    }
+  });
+
+  it('ramura „finalizare” la 5 km: 3 ieșiri pe săptămână, fără intervale; debutantul pornește cu mers-alergare', () => {
+    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-04-18', goal: '5k', freeBlocks: blocks, historyHoursPerWeek: [], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: null, canDoDistance: false, longestRunKm: 1, branch: 'finalizare', beginner: true } });
+    assert.ok(r.ok, r.ok ? '' : r.reason);
+    if (!r.ok) return;
+    const runs = (w: (typeof r.weeks)[number]) => w.workouts.filter((x) => x.sport === 'alergare');
+    assert.ok(r.weeks.every((w) => runs(w).length <= 3), 'cel mult 3 ieșiri');
+    const all = r.weeks.flatMap((w) => w.workouts);
+    assert.ok(!all.some((w) => /^V5|^V10|4 × 4/.test(w.structure ?? '')), 'fără intervale pe ramura finalizare');
+    assert.ok(/mers-alergare: 5 min mers \+ \d+ × \(1 min alergare ușoară/.test(runs(r.weeks[0]!)[0]!.structure ?? ''), runs(r.weeks[0]!)[0]!.structure ?? "");
+    assert.ok(!all.some((w) => /orientativ \d/.test(w.structure ?? '')), 'fără ritmuri fictive fără date');
+  });
+
+  it('ieșirea lungă nu sare: crește după două expuneri, cu cel mult 10 min', () => {
+    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-06-13', goal: 'semimaraton', freeBlocks: blocks, historyHoursPerWeek: [4, 4, 4], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 330, canDoDistance: false, longestRunKm: 12 } });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const longs = r.weeks.filter((w) => !w.recovery && w.phase !== 'taper').map((w) => w.workouts.find((x) => x.type === 'lung')?.plannedMinutes ?? 0).filter((x) => x > 0);
+    let max = longs[0]!;
+    for (const m of longs.slice(1)) {
+      assert.ok(m - max <= 10, `salt ${max} → ${m}`);
+      max = Math.max(max, m);
+    }
+  });
+
+  it('semimaraton / maraton pe „timp”: în săptămâna cu final la efort de cursă nu mai e altă calitate', () => {
+    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-06-13', goal: 'maraton', freeBlocks: blocks, historyHoursPerWeek: [5, 5, 5], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 330, canDoDistance: false, longestRunKm: 20 } });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const withFinish = r.weeks.filter((w) => w.workouts.some((x) => x.type === 'lung' && /efort de cursă/.test(x.structure ?? '')));
+    assert.ok(withFinish.length > 0);
+    for (const w of withFinish) assert.ok(!w.workouts.some((x) => x.type === 'calitate'), w.weekStart);
+    assert.ok(r.weeks.some((w) => w.workouts.some((x) => /^M · /.test(x.structure ?? ''))));
   });
 });
 
@@ -114,11 +154,14 @@ describe('ținta la alergare: realistă, ambițioasă sau nerealistă', () => {
     assert.ok(t.adjusted);
     assert.ok(t.planSec! > 24 * 60 && t.planSec! < 25.5 * 60, `planSec=${t.planSec}`);
     assert.ok(Math.abs(t.paceSecKm! - t.planSec! / 5) < 0.01);
-    // Țintă ambițioasă: planul rămâne pe țintă.
+    // Țintă ambițioasă: ținta rămâne, dar ritmurile de antrenament pornesc din ce poate acum (nu din timpul dorit).
     const a = planTarget('5k', { mod: 'timp', valoare: '24:00' }, { km: 5, sec: 27 * 60 }, 15);
     assert.equal(a.verdict!.verdict, 'ambitios');
-    assert.equal(a.planSec, 24 * 60);
+    assert.equal(a.targetSec, 24 * 60);
+    assert.ok(a.planSec! > 24 * 60 && a.planSec! < 27 * 60, `planSec=${a.planSec}`);
     assert.ok(!a.adjusted);
+    // Fără niciun rezultat: fără ritm în plan.
+    assert.equal(planTarget('5k', { mod: 'timp', valoare: '25:00' }, null, 15).paceSecKm, null);
     // Sub podeaua de elită, fără rezultat: fără ritm de cursă în plan.
     const e = planTarget('10k', { mod: 'ritm', valoare: '1:20' }, null, 30);
     assert.equal(e.verdict!.verdict, 'nerealist');
@@ -183,5 +226,25 @@ describe('un singur sport: înot și bicicletă', () => {
     const r2 = raceReady({ goal: '10k', today: '2026-10-18', acts: [] as never[], plan: [], fueledDates: [], targetSec: 55 * 60 });
     assert.equal(r2.links.find((l) => l.name === 'Ritm')?.pct, null);
     assert.equal(r2.ready, null);
+  });
+});
+
+describe('alergare: taper după distanță și distanța înaintea timpului', () => {
+  it('taper: 5 km o săptămână, semimaraton două, maraton trei', async () => {
+    const { phaseWeeks } = await import('../src/calendar/phases.js');
+    const t = (g: string) => phaseWeeks('2026-10-19', '2027-09-12', 4, g).filter((w) => w.phase === 'taper').length;
+    assert.equal(t('5k'), 1);
+    assert.equal(t('10k'), 1);
+    assert.equal(t('semimaraton'), 2);
+    assert.equal(t('maraton'), 3);
+    assert.equal(t('70.3'), 2);
+  });
+  it('debutant cu 2 km și maraton în 20 de săptămâni: avertisment, propune semimaratonul', async () => {
+    const { distanceFeasibility } = await import('../src/goals/run-target.js');
+    const f = distanceFeasibility('maraton', 2, 20);
+    assert.equal(f.ok, false);
+    assert.equal(f.suggest, 'semimaraton');
+    assert.ok(distanceFeasibility('maraton', 18, 30).ok);
+    assert.ok(distanceFeasibility('5k', 0, 6).ok);
   });
 });

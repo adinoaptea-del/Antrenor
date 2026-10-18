@@ -331,7 +331,7 @@ function swimStructure(type: string, planned: string | null, bestM: number | nul
 /** Prescripția de forță a unei ședințe: din textul din plan sau, la planurile vechi, recalculată cu aceeași regulă. */
 function strengthFor(me: Me, w: PlannedWorkout): Prescription | null {
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-  const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4);
+  const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
   return spec ? prescribe(spec, w.plannedMinutes) : null;
 }
 

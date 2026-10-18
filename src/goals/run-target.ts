@@ -190,10 +190,42 @@ export function planTarget(goal: RunGoal, tinta: RunResult | null | undefined, c
   if (!targetSec) return { targetSec: null, planSec: null, paceSecKm: null, adjusted: false, verdict: null };
   const dist = RUN_DISTANCE_KM[goal];
   const verdict = runTarget({ goal, targetSec, current, weeks });
-  if (verdict.verdict !== 'nerealist') return { targetSec, planSec: targetSec, paceSecKm: targetSec / dist, adjusted: false, verdict };
+  if (verdict.verdict === 'realist') return { targetSec, planSec: targetSec, paceSecKm: targetSec / dist, adjusted: false, verdict };
+  if (verdict.verdict === 'ambitios') {
+    // Ritmul de antrenament e ancorat în ce poate sportivul acum (plus câștigul realist), nu în timpul dorit; testele
+    // din plan îl recalibrează. Ținta rămâne ținta.
+    const realistic = verdict.equivalentNowSec && verdict.feasiblePct != null ? Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100)) : targetSec;
+    const planSec = Math.max(targetSec, realistic);
+    return { targetSec, planSec, paceSecKm: planSec / dist, adjusted: false, verdict };
+  }
+  // Fără niciun rezultat: nu apar ritmuri fictive; ședințele merg pe efort (RPE) până la primul test.
+  if (verdict.verdict === 'necunoscut') return { targetSec, planSec: null, paceSecKm: null, adjusted: false, verdict };
   if (verdict.equivalentNowSec && verdict.feasiblePct != null) {
     const planSec = Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100));
     return { targetSec, planSec, paceSecKm: planSec / dist, adjusted: true, verdict };
   }
   return { targetSec, planSec: null, paceSecKm: null, adjusted: true, verdict };
+}
+
+/**
+ * Distanța însăși, înaintea timpului: un debutant fără bază nu primește maraton în câteva luni doar pentru că s-a înscris.
+ * Reguli AIRON (orientative, nu dintr-un studiu): ce a alergat recent față de distanță și câte săptămâni are.
+ */
+export function distanceFeasibility(goal: RunGoal, longestRunKm: number | null, weeks: number): { ok: boolean; message: string | null; suggest: RunGoal | null } {
+  const long = longestRunKm ?? 0;
+  if (goal === 'maraton' && (long < 10 || (long < 16 && weeks < 26) || weeks < 16)) {
+    return { ok: false, message: `Cu ${long ? `${long} km cea mai lungă alergare recentă` : 'fără alergări lungi recente'} și ${Math.round(weeks)} săptămâni, maratonul e riscant: baza nu se poate recupera înghesuind. Ia în calcul întâi un semimaraton sau o dată mai târzie.`, suggest: 'semimaraton' };
+  }
+  if (goal === 'semimaraton' && (long < 5 || (long < 8 && weeks < 12))) {
+    return { ok: false, message: `Cu ${long ? `${long} km` : 'nicio alergare lungă'} recent și ${Math.round(weeks)} săptămâni, semimaratonul cere o bază pe care n-o ai încă. Un 10 km întâi sau o dată mai târzie e mai sigur.`, suggest: '10k' };
+  }
+  if (goal === '10k' && long < 3 && weeks < 8) {
+    return { ok: false, message: 'Până la 10 km e drum lung pentru câteva săptămâni pornind aproape de la zero; 5 km întâi e mai realist.', suggest: '5k' };
+  }
+  return { ok: true, message: null, suggest: null };
+}
+
+/** Debutant sau revenire: aproape fără alergare recentă (sub 3 km cea mai lungă) — mers-alergare la început, fără ședințe rapide în bază. */
+export function isBeginnerRunner(longestRunKm: number | null | undefined): boolean {
+  return longestRunKm != null && longestRunKm < 3;
 }

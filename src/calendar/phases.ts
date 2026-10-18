@@ -203,10 +203,19 @@ const DESIRED: Record<Exclude<Phase, 'baza1'>, number> = { evaluare: 3, baza2: 8
 const RATIO: Record<Phase, number> = { evaluare: 0.09, baza1: 0.25, baza2: 0.22, build: 0.3, peak: 0.09, taper: 0.05 };
 const MIN_WEEKS: Record<Phase, number> = { evaluare: 0, baza1: 1, baza2: 1, build: 1, peak: 1, taper: 1 };
 
-export function phaseLengths(totalWeeks: number): Record<Phase, number> {
-  const fixed = DESIRED.evaluare + DESIRED.baza2 + DESIRED.build + DESIRED.peak + DESIRED.taper;
+/**
+ * Reducerea dinaintea cursei, în săptămâni (săptămâna cursei inclusă), după distanță: 5–10 km ~5–10 zile, semimaraton
+ * ~10–14 zile, maraton ~14–21 zile (documentul antrenorului de alergare); triatlonul păstrează 2.
+ */
+export function taperWeeksFor(goal: string | null | undefined): number {
+  return goal === '5k' || goal === '10k' ? 1 : goal === 'maraton' ? 3 : 2;
+}
+
+export function phaseLengths(totalWeeks: number, taperWeeks?: number): Record<Phase, number> {
+  const desired = { ...DESIRED, taper: taperWeeks ?? DESIRED.taper };
+  const fixed = desired.evaluare + desired.baza2 + desired.build + desired.peak + desired.taper;
   if (totalWeeks >= fixed + 4) {
-    return { ...DESIRED, baza1: totalWeeks - fixed };
+    return { ...desired, baza1: totalWeeks - fixed };
   }
   // Orizont scurt: proporțional, cu minimum 1 săptămână pe fiecare fază în afara evaluării.
   const out = {} as Record<Phase, number>;
@@ -214,6 +223,12 @@ export function phaseLengths(totalWeeks: number): Record<Phase, number> {
   for (const p of ORDER) {
     out[p] = Math.max(MIN_WEEKS[p], Math.floor(totalWeeks * RATIO[p]));
     used += out[p];
+  }
+  // Pe orizont scurt, taper-ul distanței dacă încape (cel mult ~12% din plan), altfel o săptămână.
+  if (taperWeeks != null) {
+    const shortTaper = Math.max(1, Math.min(taperWeeks, Math.floor(totalWeeks * 0.12)));
+    used += shortTaper - out.taper;
+    out.taper = shortTaper;
   }
   let rest = totalWeeks - used;
   const fill: Phase[] = ['build', 'baza2', 'baza1', 'peak'];
@@ -236,12 +251,12 @@ export function phaseLengths(totalWeeks: number): Record<Phase, number> {
 }
 
 /** recoveryEvery: a câta săptămână din fază e descărcare (4 implicit; 3 de la 40 de ani, recuperarea e mai lentă). */
-export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4): PhaseWeek[] {
+export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4, goal?: string | null): PhaseWeek[] {
   const first = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first, raceWeek) / 7) + 1;
   if (total < 4) throw new Error(`Prea puține săptămâni până la cursă (${total}); planul are nevoie de minimum 4.`);
-  const lengths = phaseLengths(total);
+  const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined);
   const weeks: PhaseWeek[] = [];
   let index = 0;
   for (const phase of ORDER) {

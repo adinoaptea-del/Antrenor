@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { weeklyBudget } from '@core/calendar/budget.js';
-import { currentFromIntake, fmtTime, planTarget } from '@core/goals/run-target.js';
+import { currentFromIntake, distanceFeasibility, fmtTime, planTarget } from '@core/goals/run-target.js';
 import { AvailabilityDays } from '../ui/Availability';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
@@ -60,6 +60,24 @@ function TargetVerdict({ a }: { a: IntakeAnswers }) {
         <p key={i}>{r}</p>
       ))}
       {v.verdict === 'nerealist' && <p>{t.planSec ? `Poți continua, dar planul se construiește pe ~${fmtTime(t.planSec)} (${fmtPaceSec(t.paceSecKm!)}/km), nu pe ținta asta; ținta rămâne notată și o rejudecăm la fiecare test.` : 'Poți continua, dar planul nu primește bucăți la ritmul ăsta; primul test din plan dă ritmurile.'}</p>}
+    </div>
+  );
+}
+
+/** Ramura de alergare: aleasă explicit; la chestionarele vechi, „timp” dacă există o țintă. */
+const ramuraOf = (a: IntakeAnswers): 'finalizare' | 'timp' | null => a.alergare.ramura ?? (a.alergare.tinta ? 'timp' : null);
+
+/** Întâi distanța, apoi timpul: avertisment când distanța aleasă cere o bază pe care sportivul n-o are încă. */
+function DistanceCheck({ a }: { a: IntakeAnswers }) {
+  if (!isRunGoal(a.obiectiv)) return null;
+  const weeks = Math.max(0, (Date.parse(`${a.dataCursa}T12:00:00Z`) - Date.now()) / (7 * 86_400_000));
+  const f = distanceFeasibility(a.obiectiv, a.alergare.ceaMaiLungaKm, weeks);
+  if (f.ok) return null;
+  return (
+    <div className="verdict v-ambitios" role="status">
+      <b>Distanța, înainte de timp</b>
+      <p>{f.message}</p>
+      <p>Poți continua; planul pornește de la nivelul tău și o rejudecăm la fiecare test.</p>
     </div>
   );
 }
@@ -158,7 +176,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
       case 'Alergare':
         return a.alergare.ceaMaiLungaKm != null && a.alergare.curseRecente != null;
       case 'Ținta':
-        return runResultOk(a.alergare.tinta);
+        return ramuraOf(a) === 'finalizare' || (ramuraOf(a) === 'timp' && runResultOk(a.alergare.tinta));
       case 'Nivelul acum':
         return parsePace(a.alergare.ritmActual) != null && a.alergare.poateDistanta != null && (!a.alergare.poateDistanta || runResultOk(a.alergare.rezultatActual)) && a.alergare.ceaMaiLungaKm != null;
       case 'Echipament':
@@ -233,10 +251,26 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
         {STEPS[step] === 'Ținta' && (
           <>
-            <Q title="Ce vrei să reușești?" hint={`În cât timp vrei să alergi ${raceWord}, sau cu ce ritm. Judecăm ținta pe loc, față de nivelul de acum și de timpul rămas; din ea ies ritmurile de la antrenamentele specifice.`}>
-              <RunResultInput value={a.alergare.tinta} distanceKm={dist} onChange={(tinta) => set({ alergare: { ...a.alergare, tinta } })} />
+            <DistanceCheck a={a} />
+            <Q title="Ce urmărești?" hint="Planul are două ramuri: rezistență (să termini distanța, fără grabă) sau timp (păstrezi baza și adaugi ședințe specifice distanței).">
+              <Chips
+                value={ramuraOf(a)}
+                options={[
+                  { id: 'finalizare', label: 'Să termin distanța', sub: 'rezistență, regularitate' },
+                  { id: 'timp', label: 'Un timp mai bun', sub: 'cu timp-țintă' },
+                ]}
+                onChange={(ramura) => set({ alergare: { ...a.alergare, ramura, tinta: ramura === 'finalizare' ? null : a.alergare.tinta } })}
+              />
             </Q>
-            <TargetVerdict a={a} />
+            {ramuraOf(a) === 'timp' && (
+              <>
+                <Q title="Ce timp vrei?" hint={`În cât timp vrei să alergi ${raceWord}, sau cu ce ritm. Judecăm ținta pe loc, față de nivelul de acum și de timpul rămas. Ritmurile de antrenament pornesc de la ce poți acum, nu de la timpul dorit.`}>
+                  <RunResultInput value={a.alergare.tinta} distanceKm={dist} onChange={(tinta) => set({ alergare: { ...a.alergare, tinta } })} />
+                </Q>
+                <TargetVerdict a={a} />
+              </>
+            )}
+            {ramuraOf(a) === 'finalizare' && <p className="small muted">Fără timp-țintă: ieșiri ușoare, regularitate și durata care crește treptat{(a.alergare.ceaMaiLungaKm ?? 0) < 3 ? ', începând cu mers-alergare' : ''}. Poți trece oricând pe „timp” din Profil.</p>}
           </>
         )}
 

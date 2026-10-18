@@ -409,7 +409,7 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
   let weeks: ReturnType<typeof phaseWeeks>;
   try {
     const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-    weeks = phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4);
+    weeks = phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4, me.user.goal);
   } catch {
     return null;
   }

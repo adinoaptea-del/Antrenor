@@ -241,7 +241,7 @@ export function computeBadges(i: BadgesInput): BadgesResult {
   if (i.planStart && i.raceDate) {
     let pw: ReturnType<typeof phaseWeeks> = [];
     try {
-      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4);
+      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4, i.goal);
     } catch {
       pw = [];
     }

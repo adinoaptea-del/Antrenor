@@ -7,7 +7,7 @@ import { computeBar } from '@core/bar/bar.js';
 import { generatePlan } from '@core/calendar/generate.js';
 import { weeklyBudget } from '@core/calendar/budget.js';
 import { GOAL_LABEL, isRunGoal } from '@core/calendar/phases.js';
-import { currentFromIntake, planTarget } from '@core/goals/run-target.js';
+import { currentFromIntake, isBeginnerRunner, planTarget } from '@core/goals/run-target.js';
 import { declaredSwimM } from '@core/bar/sport-readiness.js';
 import { parsePace } from '@core/util/run.js';
 import type { PlannedWorkout } from '@core/types.js';
@@ -143,7 +143,7 @@ export const localServer = {
         swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
         level: { longestRideH: intake.bicicleta.ceaMaiLungaOre, longestRunKm: intake.alergare.ceaMaiLungaKm, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare.ritmActual ?? null) },
         swim: { continuousM: declaredSwimM(intake.inot.nivel, !!intake.evaluare?.inot400) },
-        run: isRunGoal(intake.obiectiv) ? { goalPaceSecKm: planTarget(intake.obiectiv, intake.alergare.tinta, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm, canDoDistance: intake.alergare.poateDistanta ?? null, longestRunKm: intake.alergare.ceaMaiLungaKm } : undefined,
+        run: isRunGoal(intake.obiectiv) ? { goalPaceSecKm: (intake.alergare.ramura ?? (intake.alergare.tinta ? 'timp' : 'finalizare')) === 'finalizare' ? null : planTarget(intake.obiectiv, intake.alergare.tinta, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm, canDoDistance: intake.alergare.poateDistanta ?? null, longestRunKm: intake.alergare.ceaMaiLungaKm, branch: intake.alergare.ramura ?? (intake.alergare.tinta ? 'timp' : 'finalizare'), beginner: isBeginnerRunner(intake.alergare.ceaMaiLungaKm) } : undefined,
       });
       if (!r.ok) {
         state = { ...state, intake, plan: [], budgetHours: r.budgetHours, planStart: null };

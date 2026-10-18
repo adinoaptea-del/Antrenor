@@ -54,6 +54,8 @@ export interface Packet {
     sporturi: string[];
     /** La alergare cu timp-țintă. */
     tinta: CollectorInput['athlete']['tinta'] | null;
+    /** Alergare: ramura planului („finalizare” sau „timp”). */
+    ramura_alergare?: 'finalizare' | 'timp' | null;
     zile_pana_la_cursa: number;
     /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
     bilant_lunar: boolean;
@@ -120,6 +122,8 @@ export interface Packet {
   /** Toate ședințele zilei (plan_azi / plan_maine sunt doar cea principală). */
   plan_azi_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
   plan_maine_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  /** Ieșirea lungă de alergare din următoarele 7 zile față de cea mai lungă alergare reală din ultimele 30 de zile: peste +10% cere revizuire (asociere observațională, nu prag sigur). */
+  alergare_lunga?: { data: string; planificat_min: number; cea_mai_lunga_30_zile_min: number | null; salt_pct: number | null; revizuire: boolean } | null;
   /** Forța: prescripția motorului pentru următoarea ședință și cât s-a făcut din ce era planificat (21 de zile). */
   forta?: { urmatoarea: { data: string; sedinta: string; bloc: string; durata_min: number; exercitii: string[]; note: string[] } | null; expuneri_21_zile: { planificate: number; facute: number } } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
@@ -462,6 +466,17 @@ function planLabel(w: PlannedWorkout): string {
 
 const brief = (w: PlannedWorkout) => ({ sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
 
+/** Saltul ieșirii lungi: planificat față de maximul real din ultimele 30 de zile (fără istoric: necunoscut, nu procent din zero). */
+function longRunJump(input: CollectorInput, acts: SourceActivity[]): Packet['alergare_lunga'] {
+  const { today } = input;
+  const next = input.plan.filter((w) => w.sport === 'alergare' && w.type === 'lung' && isActiveWorkout(w) && w.date >= today && w.date <= addDays(today, 7)).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
+  if (!next) return null;
+  const recent = acts.filter((a) => a.sport === 'alergare' && a.date >= addDays(today, -30) && a.date < today).map((a) => a.minutes);
+  const max = recent.length ? Math.max(...recent) : null;
+  const jump = max ? Math.round(((next.plannedMinutes - max) / max) * 100) : null;
+  return { data: next.date, planificat_min: next.plannedMinutes, cea_mai_lunga_30_zile_min: max, salt_pct: jump, revizuire: max == null || (jump ?? 0) > 10 };
+}
+
 /** Ședința de forță următoare (azi sau mai târziu), cu prescripția motorului și expunerile din ultimele 21 de zile. */
 function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['forta'] {
   const { today } = input;
@@ -627,6 +642,7 @@ export function buildPacket(input: CollectorInput): Packet {
       obiectiv_cod: input.athlete.goal ?? null,
       sporturi: goalSports(input.athlete.goal ?? null),
       tinta,
+      ramura_alergare: input.athlete.ramura ?? null,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
       bilant_lunar: input.event === 'saptamanal' && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
       surse_nevazute: input.hiddenSources ?? [],
@@ -717,6 +733,7 @@ export function buildPacket(input: CollectorInput): Packet {
       : null,
     plan_azi_toate: todayList.map(brief),
     forta: strengthBrief(input, acts),
+    alergare_lunga: longRunJump(input, acts),
     plan_maine_toate: tomorrowList.map(brief),
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },

@@ -1,3 +1,4 @@
+import { MODULE_PURPOSE, moduleSteps, parseModule } from '@core/calendar/run-modules.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -239,6 +240,9 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
       { label: 'Revenire', text: `${cool} min întinderi ușoare` },
     ];
   }
+  const mod = moduleSteps(w.structure, m);
+  if (mod) return mod;
+  if (/^mers-alergare/.test(w.structure ?? '')) return [{ label: 'Ședința', text: w.structure! }];
   if (w.type === 'calitate' && w.intervals) {
     const iv = w.intervals;
     const restMatch = /(\d+)\s*min ușor între/.exec(w.structure ?? '');
@@ -287,6 +291,9 @@ export function purposeOf(w: PlannedWorkout): string {
   if (w.status === 'anulat_sistem') return 'Anulată: corpul are nevoie de odihnă sau ziua nu permite.';
   if (/TEST/i.test(w.structure ?? '')) return 'Test: din el ies zonele tale, ca intensitatea să fie pe corpul tău.';
   if (/4\s*×\s*4/.test(w.structure ?? '')) return 'Metoda norvegiană 4×4: ridică VO2max, plafonul motorului.';
+  const mod = parseModule(w.structure);
+  if (mod) return MODULE_PURPOSE[mod.id];
+  if (/^mers-alergare/.test(w.structure ?? '')) return 'Mers-alergare: toleranța la alergare crește treptat, fără grabă.';
   switch (w.type) {
     case 'z2':
       return w.sport === 'inot' ? 'Înot ușor: volum aerob fără oboseală.' : 'Bază aerobă: inima și mușchii învață să ardă grăsimi, fără să te obosească.';

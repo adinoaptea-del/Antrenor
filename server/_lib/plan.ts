@@ -9,7 +9,10 @@ import { generatePlan, type GenerateResult } from '../../src/calendar/generate.j
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
 import { GOAL_LABEL, isRunGoal, type Goal } from '../../src/calendar/phases.js';
-import { currentFromIntake, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
+import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
+
+/** Ramura de alergare: aleasă în chestionar; la cele vechi, „timp” dacă există o țintă. */
+const runBranch = (intake: { alergare?: { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } }): 'finalizare' | 'timp' => intake.alergare?.ramura ?? (intake.alergare?.tinta ? 'timp' : 'finalizare');
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import { parsePace, type RunResult } from '../../src/util/run.js';
 
@@ -22,7 +25,7 @@ export interface IntakeLike {
   dataCursa: string;
   inot?: { nivel: string | null };
   bicicleta?: { ceaMaiLungaOre?: number | null };
-  alergare?: { ceaMaiLungaKm?: number | null; tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
+  alergare?: { ceaMaiLungaKm?: number | null; ramura?: 'finalizare' | 'timp' | null; tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
   program: FreeBlock[];
   /** Ore pe săptămână pentru sport, declarate. */
   oreSport?: number | null;
@@ -143,9 +146,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
     run: isRunGoal(intake.obiectiv)
       ? {
           // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
-          goalPaceSecKm: planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake as RunIntakeLike), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
+          goalPaceSecKm: runBranch(intake) === 'finalizare' ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake as RunIntakeLike), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
           canDoDistance: intake.alergare?.poateDistanta ?? null,
           longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
+          branch: runBranch(intake),
+          beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm),
         }
       : undefined,
   });

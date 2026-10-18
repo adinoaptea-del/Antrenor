@@ -206,7 +206,8 @@ export function raceReady(input: {
     const weeks = Math.max(0, diffDays(today, until) / 7);
     const verdict = runTarget({ goal, targetSec: input.targetSec, current: eff ? { km: eff.km, sec: eff.sec, date: eff.date, label: eff.label } : null, weeks });
     // La o țintă nerealistă planul nu se face pe ea, ci pe timpul realist de acum (vezi planTarget); aici doar îl arătăm.
-    const planSec = verdict.verdict === 'nerealist' ? (verdict.equivalentNowSec && verdict.feasiblePct != null ? Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100)) : null) : input.targetSec;
+    const realistic = verdict.equivalentNowSec && verdict.feasiblePct != null ? Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100)) : null;
+    const planSec = verdict.verdict === 'realist' ? input.targetSec : verdict.verdict === 'ambitios' ? Math.max(input.targetSec, realistic ?? input.targetSec) : verdict.verdict === 'nerealist' ? realistic : null;
     target = { targetSec: input.targetSec, planSec, adjusted: verdict.verdict === 'nerealist', best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
   }
 

@@ -118,6 +118,8 @@ export interface CollectorInput {
     inaltimeCm?: number | null;
     /** La alergare cu timp-țintă: timpul-țintă (s) din chestionar; verdictul se calculează în pachet din ceas. */
     targetSec?: number | null;
+    /** Alergare: „finalizare” (rezistență) sau „timp”. */
+    ramura?: 'finalizare' | 'timp' | null;
     tinta?: { timp_tinta_s: number; ritm_tinta_s_km: number; verdict: 'realist' | 'ambitios' | 'nerealist' | 'necunoscut'; motive: string[]; timp_estimat_s: number | null; cel_mai_bun_efort: string | null } | null;
   };
   wellness: SourceDaily[];

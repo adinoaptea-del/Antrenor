@@ -1,3 +1,4 @@
+import { moduleStructure, parseModule } from './run-modules.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -73,6 +74,13 @@ export function limitViolations(workouts: PlannedWorkout[], lim: PlanLimits): st
  * (după pauză), iar dacă nu încape nicio repetare, devine ședință ușoară.
  */
 export function fitStructure(w: PlannedWorkout): PlannedWorkout {
+  // Modulele de alergare (V5, T1, H …): se rescriu întregi pentru minutele finale, cu încălzirea și revenirea incluse.
+  const mod = parseModule(w.structure);
+  if (mod) {
+    const b = moduleStructure(mod.id, w.plannedMinutes, mod.paceSecKm);
+    const tail = (w.structure ?? '').includes('deschidere, nu antrenament') ? ' · deschidere, nu antrenament' : '';
+    return { ...w, structure: b.text + tail, intervals: w.intervals ? { ...w.intervals, count: b.count } : undefined };
+  }
   const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? '');
   if (!m || w.type === 'brick') return w;
   const count = Number(m[1]);

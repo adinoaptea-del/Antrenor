@@ -207,7 +207,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
     today,
-    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today) : null,
+    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal) : null,
     budgetHours: planRow?.budget_hours ?? null,
     availability: (() => {
       const prog = (intake?.program as FreeBlock[] | undefined) ?? [];

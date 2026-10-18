@@ -22,7 +22,9 @@ export interface IntakeAnswers {
   alergare: {
     ceaMaiLungaKm: number | null;
     curseRecente: 'niciuna' | '5-10' | 'semimaraton' | 'maraton' | null;
-    /** Doar la semimaraton / maraton: ținta (ritm sau timp final). */
+    /** Ramura: „finalizare” (rezistență) sau „timp” (cu timp-țintă). */
+    ramura?: 'finalizare' | 'timp' | null;
+    /** Ținta (ritm sau timp final), doar pe ramura „timp”. */
     tinta?: RunResult | null;
     /** Ritmul cu care aleargă acum de obicei, „m:ss” pe km. */
     ritmActual?: string | null;

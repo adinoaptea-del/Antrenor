@@ -268,9 +268,9 @@ export async function loadClearance(userId: string): Promise<{ cardiolog: string
   return { cardiolog: c.cardiology ? (c.cleared_at ?? 'da') : 'nu', intensitate_permisa: c.intensity_allowed };
 }
 
-export function phaseAt(startDate: string, raceDate: string, today: string): Phase | null {
+export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4): Phase | null {
   try {
-    const weeks = phaseWeeks(startDate, raceDate);
+    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal);
     const w = [...weeks].reverse().find((x) => x.weekStart <= today);
     return w?.phase ?? null;
   } catch {
@@ -291,7 +291,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     loadClearance(userId),
   ]);
   const planRow = planRes.planId ? await one<{ start_date: string; race_date: string }>('plans', { id: `eq.${planRes.planId}` }) : null;
-  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today) ?? 'evaluare') : 'evaluare';
+  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today, user.goal) ?? 'evaluare') : 'evaluare';
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),
@@ -309,6 +309,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
       declaredSwimM: swimDeclared(forms.intake),
       obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`,
       targetSec: targetSecFromIntake(user.goal, (forms.intake?.alergare as { tinta?: RunResult | null } | undefined)?.tinta ?? null),
+      ramura: isRunGoal(user.goal) ? ((forms.intake?.alergare as { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } | undefined)?.ramura ?? ((forms.intake?.alergare as { tinta?: unknown } | undefined)?.tinta ? 'timp' : 'finalizare')) : null,
       raceDate: user.race_date ?? addDays(today, 365),
       phase,
       sex: user.sex ?? null,
