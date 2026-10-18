@@ -349,8 +349,12 @@ export function sameSession(a: SourceActivity, b: SourceActivity): boolean {
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
-    const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
-    return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
+    // Intervalul ședinței = de la start la stop (cu pauze), nu timpul în mișcare: altfel un înot de 50 de minute cu
+    // 5 minute de lungimi înotate nu s-ar suprapune cu aceeași ședință văzută de altă brățară.
+    const da = a.details?.elapsedMin ?? a.minutes;
+    const db = b.details?.elapsedMin ?? b.minutes;
+    const overlap = Math.min(sa + da, sb + db) - Math.max(sa, sb);
+    return overlap >= 0.6 * Math.max(1, Math.min(da, db));
   }
   return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
 }

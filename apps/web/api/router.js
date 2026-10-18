@@ -1521,8 +1521,10 @@ function sameSession(a, b) {
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
-    const overlap = Math.min(sa + a.minutes, sb + b.minutes) - Math.max(sa, sb);
-    return overlap >= 0.6 * Math.max(1, Math.min(a.minutes, b.minutes));
+    const da = a.details?.elapsedMin ?? a.minutes;
+    const db = b.details?.elapsedMin ?? b.minutes;
+    const overlap = Math.min(sa + da, sb + db) - Math.max(sa, sb);
+    return overlap >= 0.6 * Math.max(1, Math.min(da, db));
   }
   return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
 }
@@ -2778,7 +2780,7 @@ function normalizeStravaOther(a) {
 function normalizeStravaActivity(a) {
   const sport = STRAVA_SPORT[a.sport_type];
   if (!sport) return null;
-  const minutes = Math.round(a.moving_time / 60);
+  const minutes = Math.round((sport === "inot" ? a.elapsed_time ?? a.moving_time : a.moving_time) / 60);
   const km2 = a.distance > 0 ? Math.round(a.distance / 1e3 * 10) / 10 : null;
   return {
     id: `strava-${a.id}`,

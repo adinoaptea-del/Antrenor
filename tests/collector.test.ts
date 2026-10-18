@@ -235,6 +235,17 @@ describe('aceeași ședință pe două brățări', () => {
     const l = run({ id: 'l', source: 'apple', minutes: 135, distanceKm: 21.5 });
     assert.equal(pickRecording(s, l).id, 's');
   });
+  it('înotul de luni 12 oct: Garmin (prin Strava) 19:36, 50 min cu pauze, 450 m; WHOOP pornit la 20:02, 29 min → o singură ședință, cu distanța', () => {
+    // Strava pune în moving_time doar lungimile înotate (≈ 5 min); intervalul ședinței e cel de la start la stop.
+    const strava = run({ id: 'st', sport: 'inot', startLocal: '19:36', minutes: 50, distanceKm: 0.45, avgHr: 113, details: { movingMin: 5, elapsedMin: 50 } as never });
+    const whoop = run({ id: 'wh', source: 'whoop', sport: 'inot', startLocal: '20:02', minutes: 29, distanceKm: null, avgHr: 113 });
+    assert.ok(sameSession(strava, whoop));
+    const kept = dedupeActivities([whoop, strava]);
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]!.distanceKm, 0.45);
+    assert.equal(kept[0]!.minutes, 50);
+    assert.deepEqual(kept[0]!.mergedSources, ['whoop', 'strava']);
+  });
   it('două alergări diferite în aceeași zi (dimineața și seara) nu se unesc', () => {
     assert.equal(sameSession(run({ startLocal: '07:00', minutes: 40 }), run({ startLocal: '19:00', minutes: 40 })), false);
   });

@@ -62,6 +62,11 @@ describe('adaptoare de producător', () => {
     assert.equal(a.avgHr, 165);
     assert.equal(a.avgPaceMinKm, 5.93);
     assert.equal(normalizeStravaActivity({ id: 1, name: 'Walk', sport_type: 'Walk', start_date_local: '2026-10-11T18:00:00Z', elapsed_time: 1800, moving_time: 1700, distance: 2000 }), null);
+    // Înot în bazin: ședința e de la start la stop (cu pauzele de la perete), nu cele 5 minute de lungimi din moving_time.
+    const swim = normalizeStravaActivity({ id: 2, name: 'Înot în bazin', sport_type: 'Swim', start_date_local: '2026-10-12T19:36:45Z', elapsed_time: 2992, moving_time: 300, distance: 450 })!;
+    assert.equal(swim.minutes, 50);
+    assert.equal(swim.details?.movingMin, 5);
+    assert.equal(swim.details?.elapsedMin, 50);
   });
 
   it('noaptea Oura → rând normalizat; naps ignorate', () => {

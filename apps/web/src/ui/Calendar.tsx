@@ -42,6 +42,11 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
   const weekW = me.plan.filter((w) => w.date >= ws && w.date <= addDays(ws, 6) && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna');
   const weekMin = weekW.reduce((n, w) => n + w.plannedMinutes, 0);
   const weekHard = weekW.filter((w) => w.type === 'calitate' || w.type === 'brick').length;
+  const weekUn = days.flatMap((d) => activitiesOn(me, d).filter((a) => a.unplanned));
+  const beforePlan = !!me.planStart && addDays(ws, 6) < me.planStart;
+  const weekSummary = beforePlan
+    ? `înainte de plan · ${weekUn.length} ${weekUn.length === 1 ? 'activitate înregistrată' : 'activități înregistrate'}`
+    : `${weekW.length} ședințe · ${fmtMinutes(weekMin)} · ${weekHard} ${weekHard === 1 ? 'grea' : 'grele'}${weekUn.length ? ` · +${weekUn.length} în afara planului` : ''}`;
   const away = (me.prefs?.plecari ?? []).find((a) => selected >= a.dela && selected <= a.panala);
 
   return (
@@ -61,7 +66,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
             <CircleBtn icon={Icons.chevronLeft} label="Săptămâna anterioară" onClick={() => pick(addDays(ws, -7))} />
             <div className="wk-range">
               <b>{rangeLabel(ws)}</b>
-              <small>{weekW.length} ședințe · {fmtMinutes(weekMin)} · {weekHard} {weekHard === 1 ? 'grea' : 'grele'}</small>
+              <small>{weekSummary}</small>
             </div>
             <CircleBtn icon={Icons.chevronRight} label="Săptămâna următoare" onClick={() => pick(addDays(ws, 7))} />
           </div>
@@ -97,7 +102,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
               );
             })}
           </div>
-          <div className="tiny muted" style={{ marginTop: 8 }}>Chenarul roșu = ședință grea. Punctul albastru = actualizată. Culoarea = cum a ieșit.</div>
+          <div className="tiny muted" style={{ marginTop: 8 }}>Contur lime = ședință grea · punct albastru = actualizată · albastru = înregistrată de brățară, în afara planului · culoarea = cum a ieșit (după sincronizare).</div>
         </Card>
       ) : (
         <Card>

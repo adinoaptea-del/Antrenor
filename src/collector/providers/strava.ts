@@ -94,7 +94,10 @@ export function normalizeStravaOther(a: StravaActivity): OtherActivity | null {
 export function normalizeStravaActivity(a: StravaActivity): SourceActivity | null {
   const sport = STRAVA_SPORT[a.sport_type];
   if (!sport) return null;
-  const minutes = Math.round(a.moving_time / 60);
+  // Durata ședinței. La alergare și bicicletă, timpul în mișcare (fără opririle la semafor). La înot în bazin, Strava pune
+  // în moving_time doar lungimile înotate (450 m = „5 minute”), iar pauzele de la perete, care sunt parte din ședință,
+  // dispar: acolo ședința e timpul de la start la stop. Timpul în mișcare rămâne în detalii (ritmul se calculează pe el).
+  const minutes = Math.round((sport === 'inot' ? (a.elapsed_time ?? a.moving_time) : a.moving_time) / 60);
   const km = a.distance > 0 ? Math.round((a.distance / 1000) * 10) / 10 : null;
   return {
     id: `strava-${a.id}`,
