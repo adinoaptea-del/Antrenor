@@ -32,16 +32,21 @@ export interface Benchmark {
 
 export interface Link {
   name: string;
-  pct: number;
+  /** Indicele față de reperele probei (0–100); null = fără date pentru proba asta (nu 0). */
+  pct: number | null;
+  /** Ce s-a măsurat, separat de indice (ex. „21,4 km, cea mai lungă ședință”). */
+  measured: string | null;
   detail: string;
 }
 
 export interface RaceReady {
   /** Pe drum (0–100) sau null fără plan în ultimele 4 săptămâni. */
   onTrack: { pct: number; volumePct: number; keyDone: number; keyPlanned: number } | null;
-  /** Gata de cursă = cea mai slabă verigă. */
-  ready: number;
-  weakest: string;
+  /** Gata de cursă = cea mai slabă verigă; null = evaluare incompletă (o probă fără date). */
+  ready: number | null;
+  weakest: string | null;
+  /** Câte probe au date, din câte. */
+  coverage: { withData: number; total: number; missing: string[] };
   links: Link[];
   benchmarks: Benchmark[];
   /** Timpul estimat (min) cu marjă și limitele; null când lipsesc ritmurile. */
@@ -132,7 +137,7 @@ export function raceReady(input: {
     const cont = swims.filter((a) => (a.details?.continuousM ?? 0) >= d.swim! * 1000);
     const sess = swims.filter((a) => (a.distanceKm ?? 0) >= d.swim!);
     const bestM = Math.max(0, ...swims.map((a) => a.details?.continuousM ?? 0));
-    benchmarks.push({ id: 'inot-continuu', title: `${Math.round(d.swim * 1000)} m înot fără oprire`, how: 'Distanța cursei, continuu (din turele ceasului)', done: cont.length > 0, best: bestM ? `${bestM} m fără oprire` : sess.length ? `${Math.round((sess[0]!.distanceKm ?? 0) * 1000)} m cu pauze` : null, date: firstDate(cont) });
+    benchmarks.push({ id: 'inot-continuu', title: `${Math.round(d.swim * 1000).toLocaleString('ro-RO')} m înot fără oprire`, how: 'Distanța cursei, continuu (din turele ceasului)', done: cont.length > 0, best: bestM ? `${bestM.toLocaleString('ro-RO')} m fără oprire` : sess.length ? `${Math.round((sess[0]!.distanceKm ?? 0) * 1000).toLocaleString('ro-RO')} m cu pauze` : null, date: firstDate(cont) });
     const cut = CUTOFFS[goal]?.swim;
     if (cut) {
       const need = (cut * 60) / (d.swim * 10);
@@ -177,23 +182,29 @@ export function raceReady(input: {
     const cut = CUTOFFS[goal]?.swim;
     const swimMin = estimate?.swim ?? null;
     const paceOk = cut && swimMin ? Math.min(1, cut / swimMin) : 1;
-    links.push({ name: 'Înot', pct: pct((bestM / (d.swim * 1000)) * paceOk), detail: `${bestM} m ${contM ? 'fără oprire' : 'într-o ședință, cu pauze'} din ${Math.round(d.swim * 1000)}${cut && swimMin ? `; estimat ${fmtH(swimMin)} față de limita ${fmtH(cut)}` : ''}` });
+    links.push({ name: 'Înot', pct: swims.length ? pct((bestM / (d.swim * 1000)) * paceOk) : null, measured: swims.length ? `${bestM.toLocaleString('ro-RO')} m ${contM ? 'fără oprire' : 'într-o ședință'}` : null, detail: `${bestM.toLocaleString('ro-RO')} m ${contM ? 'fără oprire (segment continuu din turele ceasului)' : 'distanță totală într-o ședință, cu pauze (fără ture de la ceas)'} · proba: ${Math.round(d.swim * 1000).toLocaleString('ro-RO')} m${cut && swimMin ? `; estimat ${fmtH(swimMin)} față de limita ${fmtH(cut)}` : ''}` });
   }
   if (tri && d.bike) {
     const km = longest('bicicleta')?.distanceKm ?? 0;
     const cut = CUTOFFS[goal];
     const sb = estimate?.swim != null && estimate.bike != null ? estimate.swim + estimate.bike + 5 : null;
     const timeOk = cut && sb ? Math.min(1, cut.swimBike / sb) : 1;
-    links.push({ name: 'Bicicletă', pct: pct((km / d.bike) * timeOk), detail: `${Math.round(km)} km din ${d.bike}${cut && sb ? `; înot + bicicletă estimat ${fmtH(sb)} față de ${fmtH(cut.swimBike)}` : ''}` });
+    const hasBike = of('bicicleta').some((a) => (a.distanceKm ?? 0) > 0);
+    links.push({ name: 'Bicicletă', pct: hasBike ? pct((km / d.bike) * timeOk) : null, measured: hasBike ? `${Math.round(km)} km, cea mai lungă tură` : null, detail: `cea mai lungă tură: ${Math.round(km)} km · proba: ${d.bike} km${cut && sb ? `; înot + bicicletă estimat ${fmtH(sb)} față de ${fmtH(cut.swimBike)}` : ''}` });
   }
   {
     const km = longest('alergare')?.distanceKm ?? 0;
-    links.push({ name: 'Alergare', pct: pct(km / d.longRun), detail: `${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km din reperul de ${d.longRun}` });
+    const hasRun = of('alergare').some((a) => (a.distanceKm ?? 0) > 0);
+    links.push({ name: 'Alergare', pct: hasRun ? pct(km / d.longRun) : null, measured: hasRun ? `${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km, cea mai lungă ieșire` : null, detail: `cea mai lungă ieșire: ${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km · reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString('ro-RO')} km; în pregătire nu se aleargă toată distanța)` });
   }
   if (tri) {
     const need = estimate?.total ? estimate.total * 0.65 : (d.bigDayH ?? 4) * 60;
-    links.push({ name: 'Cumul', pct: pct((bestDay?.min ?? 0) / need), detail: `cea mai lungă zi în mai multe sporturi: ${bestDay ? fmtH(bestDay.min) : 'niciuna'}, față de ~${fmtH(need)} (65% din cursă)` });
+    links.push({ name: 'Cumul', pct: pct((bestDay?.min ?? 0) / need), measured: bestDay ? fmtH(bestDay.min) : 'nicio zi cu mai multe sporturi', detail: `cea mai lungă zi în mai multe sporturi: ${bestDay ? fmtH(bestDay.min) : 'niciuna'}, față de ~${fmtH(need)} (65% din cursă)` });
   }
-  const weakestLink = links.reduce((a, b) => (b.pct < a.pct ? b : a), links[0]!);
-  return { onTrack, ready: weakestLink.pct, weakest: weakestLink.name, links, benchmarks, estimate };
+  // Null rămâne null: o probă fără date nu devine 0 și nici nu e scoasă în tăcere din calcul.
+  const missing = links.filter((l) => l.pct == null).map((l) => l.name);
+  const legs = links.filter((l) => l.name !== 'Cumul');
+  const coverage = { withData: legs.filter((l) => l.pct != null).length, total: legs.length, missing };
+  const weakestLink = missing.length ? null : links.reduce((a, b) => ((b.pct ?? 0) < (a.pct ?? 0) ? b : a), links[0]!);
+  return { onTrack, ready: weakestLink?.pct ?? null, weakest: weakestLink?.name ?? null, coverage, links, benchmarks, estimate };
 }

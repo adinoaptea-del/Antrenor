@@ -43,7 +43,7 @@ describe('insigne', () => {
     assert.equal(get('inot-dist-2').progress.have, 1200);
   });
   it('nivel pe orele din toate sporturile; provocarea lunii pe sportul rămas în urmă', () => {
-    assert.equal(r.level.name, 'Portocaliu');
+    assert.equal(r.level.name, 'Pornit'); // A34: fără culorile semaforului
     assert.ok(r.challenge);
   });
   it('fără zile roșii respectate dacă te-ai antrenat în ele', () => {

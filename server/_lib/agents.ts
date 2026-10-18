@@ -170,6 +170,25 @@ export async function claimEvent(userId: string, key: string): Promise<boolean> 
   }
 }
 
+/** Încuietoare pe (sportiv, cheie): true dacă am luat-o; una mai veche de `staleMs` se consideră rămasă de la o rulare căzută. */
+export async function acquireLock(userId: string, key: string, staleMs: number): Promise<boolean> {
+  try {
+    const rows = await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key');
+    if (rows.length > 0) return true;
+    const old = await one<{ applied_at: string }>('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` });
+    if (old && Date.now() - Date.parse(old.applied_at) > staleMs) {
+      await remove('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` });
+      return (await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key')).length > 0;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+export async function releaseLock(userId: string, key: string): Promise<void> {
+  await remove('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` }).catch(() => undefined);
+}
+
 /** Ședințele din ultimele zile care au deja activitate asociată (aceeași asociere ca la scor). */
 export async function executedIds(userId: string, today: string, plan: PlannedWorkout[]): Promise<string[]> {
   const acts = dedupeActivities(await loadActivities(userId, addDays(today, -3)));

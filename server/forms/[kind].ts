@@ -356,6 +356,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
       return;
     }
+    if (kind === 'inot-mediu') {
+      // Bazin | Ape libere: se salvează explicit; schimbă ședințele viitoare de înot afișate, nu istoricul.
+      const mediu = body.mediu === 'ape' ? 'ape' : body.mediu === 'bazin' ? 'bazin' : null;
+      if (!mediu) throw new HttpError(400, 'mediu: bazin sau ape');
+      const prefs = await loadPrefs(u.id);
+      await savePrefs(u.id, { ...prefs, mediuInot: mediu });
+      json(res, 200, { ok: true, mediu });
+      return;
+    }
     if (kind === 'ore-sport') {
       // Câte ore pe săptămână are sportivul pentru sport (separat de timpul liber). Nu reface planul singur:
       // planul se reface din Profil, după previzualizare.

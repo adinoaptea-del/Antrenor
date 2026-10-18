@@ -14,10 +14,19 @@ describe('gata de cursă: cea mai slabă verigă', () => {
     A({ id: 's2', date: '2026-10-13', sport: 'inot', minutes: 54, distanceKm: 0.45 }),
   ];
   const r = raceReady({ goal: '70.3', today: '2026-10-18', acts, plan: [], fueledDates: [] });
-  it('alergarea nu ascunde bicicleta lipsă: veriga slabă decide', () => {
+  it('A04: alergarea nu ascunde bicicleta lipsă: fără date ≠ 0, evaluarea e incompletă', () => {
     assert.equal(r.links.find((l) => l.name === 'Alergare')!.pct, 100);
-    assert.equal(r.weakest, 'Bicicletă');
-    assert.equal(r.ready, 0);
+    assert.equal(r.links.find((l) => l.name === 'Bicicletă')!.pct, null);
+    assert.equal(r.ready, null);
+    assert.equal(r.weakest, null);
+    assert.deepEqual(r.coverage, { withData: 2, total: 3, missing: ['Bicicletă'] });
+  });
+  it('cu o tură scurtă de bicicletă, veriga slabă decide (nu media)', () => {
+    const more = [...acts, A({ id: 'b0', date: '2026-10-03', sport: 'bicicleta', minutes: 40, distanceKm: 9 })];
+    const r2 = raceReady({ goal: '70.3', today: '2026-10-18', acts: more, plan: [], fueledDates: [] });
+    assert.equal(r2.weakest, 'Cumul');
+    assert.equal(r2.ready, 0);
+    assert.equal(r2.links.find((l) => l.name === 'Bicicletă')!.pct, 10);
   });
   it('ședințe-reper: alergarea lungă trecută, restul nu', () => {
     assert.equal(r.benchmarks.find((b) => b.id === 'alergare-lunga')!.done, true);

@@ -1,56 +1,128 @@
+import { useState } from 'react';
 import type { Sport } from '@core/types.js';
+import type { Me } from '@core/api-types.js';
 import { Icons, fmtDayMonth } from './common';
 import { useMe } from '../data/store';
 
 const fmtH = (min: number) => `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`;
+const SPORT_OF: Record<string, Sport> = { Înot: 'inot', Bicicletă: 'bicicleta', Alergare: 'alergare' };
 
-/**
- * Două cifre: „Pe drum” (ești unde trebuie în faza de acum) și „Gata de cursă” (cea mai slabă verigă). Detaliile:
- * verigile, ședințele-reper și timpul estimat cu marjă.
- */
-export function RaceReadyBar({ onOpen, goalName, open, setOpen }: { onOpen: (s: string, o?: { sport?: Sport }) => void; goalName: string; open: boolean; setOpen: (v: boolean) => void }) {
-  const me = useMe();
-  const r = me.raceReady!;
-  const on = r.onTrack;
-  const sportOf: Record<string, Sport> = { Înot: 'inot', Bicicletă: 'bicicleta', Alergare: 'alergare' };
+type RR = NonNullable<Me['raceReady']>;
+
+/** Titlul evaluării: incompletă când o probă n-are date (fără procent global), altfel veriga slabă. */
+function headline(r: RR, goalName: string): { title: string; sub: string } {
+  if (r.ready == null) {
+    const miss = r.coverage.missing.filter((m) => m !== 'Cumul');
+    return {
+      title: 'Evaluare incompletă',
+      sub: `${r.coverage.withData} din ${r.coverage.total} probe au date${miss.length ? ` · lipsește ${miss.join(', ').toLowerCase()}` : ''}. Nu afișăm un procent global.`,
+    };
+  }
+  return { title: `Gata de ${goalName}: ${r.ready}%`, sub: `Cea mai slabă verigă: ${(r.weakest ?? '').toLowerCase()}. Indice față de reperele probei, nu probabilitate de a termina.` };
+}
+
+function Legs({ r }: { r: RR }) {
+  const legs = r.links.filter((l) => l.name !== 'Cumul');
   return (
-    <div className="progress rr">
-      <div className="rr-row">
-        <div className="ready-title">
-          Pe drum: <b>{on ? `${on.pct}%` : '–'}</b>
+    <div className="legs" style={{ gridTemplateColumns: `repeat(${legs.length}, minmax(0, 1fr))` }}>
+      {legs.map((l) => (
+        <div key={l.name} className={`leg ${l.pct == null ? 'none' : ''}`}>
+          <div className="leg-v">
+            {l.pct == null ? '—' : l.pct}
+            {l.pct != null && <small>%</small>}
+          </div>
+          <div className="leg-n">{l.name}</div>
+          <div className="leg-s">{l.pct == null ? 'fără date' : (l.measured ?? '')}</div>
+          <div className={`leg-bar ${l.pct == null ? 'dashed' : ''}`}>{l.pct != null && <i style={{ width: `${Math.max(2, l.pct)}%` }} />}</div>
         </div>
-        <div className="track">
-          <div className={`fill ${on?.pct ? '' : 'empty'}`} style={on?.pct ? { width: `${Math.max(3, on.pct)}%` } : undefined} />
-        </div>
-        <span className="tiny muted">{on ? `ultimele 4 săptămâni: ${on.volumePct}% din volumul planificat, ${on.keyDone} din ${on.keyPlanned} ședințe-cheie` : 'apare după primele săptămâni de plan'}</span>
-      </div>
-      <div className="rr-row">
-        <div className="ready-title small-t">
-          Gata de {goalName}: <b>{r.ready}%</b> <span className="muted">· veriga slabă: {r.weakest.toLowerCase()}</span>
-        </div>
-        <div className="track thin">
-          <div className={`fill ${r.ready ? '' : 'empty'}`} style={r.ready ? { width: `${Math.max(3, r.ready)}%` } : undefined} />
-        </div>
-      </div>
-      <div className="meta">
-        <span className="tiny muted">{r.links.map((l) => `${l.name} ${l.pct}%`).join('  ·  ')}</span>
-        <button className="pill" onClick={() => setOpen(!open)} style={{ height: 28 }} aria-expanded={open}>
-          detalii {Icons.chevronRight}
+      ))}
+    </div>
+  );
+}
+
+/** Pe Acasă: „Repere pentru cursă”, compact. Detaliile sunt în Evoluție → Obiectiv. */
+export function RacePanel({ goalName, onOpen }: { goalName: string; onOpen: (s: string) => void }) {
+  const me = useMe();
+  const r = me.raceReady;
+  if (!r) return null;
+  const h = headline(r, goalName);
+  return (
+    <section className="card race-panel">
+      <div className="rp-head">
+        <h2>Repere pentru cursă</h2>
+        <button className="link-btn" onClick={() => onOpen('obiectiv')}>
+          Vezi reperele {Icons.chevronRight}
         </button>
       </div>
-      {open && (
-        <div className="bar-info">
+      <p className="muted small">{r.ready == null ? `Evaluare incompletă · ${r.coverage.withData} din ${r.coverage.total} probe au date` : h.title}</p>
+      <Legs r={r} />
+    </section>
+  );
+}
+
+/** În Evoluție → Obiectiv: evaluarea completă, cu verigile, reperele și timpul estimat. */
+export function RaceDetail({ goalName, onOpen }: { goalName: string; onOpen: (s: string, o?: { sport?: Sport }) => void }) {
+  const me = useMe();
+  const r = me.raceReady;
+  const [how, setHow] = useState(false);
+  if (!r) return null;
+  const h = headline(r, goalName);
+  const on = r.onTrack;
+  return (
+    <>
+      <section className="card">
+        <div className="eyebrow">{me.user.raceName ?? goalName}</div>
+        <h2 className="h-xl">{h.title}</h2>
+        <p className="muted small">{h.sub}</p>
+        <Legs r={r} />
+        <button className="link-btn" style={{ marginTop: 12 }} onClick={() => setHow(!how)} aria-expanded={how}>
+          {how ? 'Ascunde calculul' : 'Cum se calculează?'}
+        </button>
+        {how && (
+          <div className="how small muted">
+            Fiecare probă are un indice față de reperele ei (distanța demonstrată în ultimele 8 săptămâni și, unde există, ritmul față de timpul-limită). Nu e procent din distanța cursei și nici probabilitate de a termina. „Gata de cursă” e cea mai slabă verigă, nu o medie. O probă fără date rămâne „fără date”: nu devine 0 și nu e scoasă din calcul.
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h3 className="h-md">Verigile</h3>
+        <div className="list-rows">
           {r.links.map((l) => (
-            <button key={l.name} className="bi-row bi-btn" onClick={() => sportOf[l.name] && onOpen('antrenament', { sport: sportOf[l.name] })}>
-              <span className="bi-k">{l.name}</span>
-              <span className="bi-v">{l.pct}%</span>
-              <span className="bi-d">{l.detail}</span>
+            <button key={l.name} className="row-btn" onClick={() => SPORT_OF[l.name] && onOpen('antrenament', { sport: SPORT_OF[l.name] })} disabled={!SPORT_OF[l.name]}>
+              <span className="rb-main">
+                <b>{l.name}</b>
+                <small>{l.pct == null ? 'fără date în ultimele 8 săptămâni' : l.detail}</small>
+              </span>
+              <span className="rb-v">{l.pct == null ? '—' : `${l.pct}%`}</span>
             </button>
           ))}
-          <div className="rr-k">Ședințe-reper (ultimele 8 săptămâni)</div>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3 className="h-md">Pe drum</h3>
+        {on ? (
+          <>
+            <div className="big-num">
+              {on.pct}
+              <small>%</small>
+            </div>
+            <p className="small muted">
+              Ultimele 4 săptămâni: {on.volumePct}% din volumul planificat, {on.keyDone} din {on.keyPlanned} ședințe-cheie.
+            </p>
+          </>
+        ) : (
+          <p className="small muted">{me.planStart && me.planStart > me.today ? `Planul începe pe ${fmtDayMonth(me.planStart)}. „Pe drum” apare după primele săptămâni.` : 'Apare după primele săptămâni de plan.'}</p>
+        )}
+      </section>
+
+      <section className="card">
+        <h3 className="h-md">Ședințe-reper · ultimele 8 săptămâni</h3>
+        <div className="bm-list">
           {r.benchmarks.map((b) => (
-            <div key={b.id} className={`rr-bm ${b.done ? 'ok' : ''}`}>
-              {b.done ? Icons.check : <span className="rr-dot" />}
+            <div key={b.id} className={`bm ${b.done ? 'ok' : ''}`}>
+              <span className="bm-ic">{b.done ? Icons.check : <i />}</span>
               <span>
                 <b>{b.title}</b>
                 <small>
@@ -61,23 +133,22 @@ export function RaceReadyBar({ onOpen, goalName, open, setOpen }: { onOpen: (s: 
               </span>
             </div>
           ))}
-          {r.estimate?.total != null && (
-            <div className="rr-est">
-              <div className="rr-k">Timp estimat</div>
-              <div className="small">
-                <b>
-                  {fmtH(r.estimate.low!)} – {fmtH(r.estimate.high!)}
-                </b>
-                {r.estimate.cutoffs ? ` · limita totală ${fmtH(r.estimate.cutoffs.total)}` : ''}
-              </div>
-              <div className="tiny muted">
-                {[r.estimate.swim != null ? `înot ${fmtH(r.estimate.swim)}` : '', r.estimate.bike != null ? `bicicletă ${fmtH(r.estimate.bike)}` : '', r.estimate.run != null ? `alergare ${fmtH(r.estimate.run)}` : ''].filter(Boolean).join(' · ')}. Ipoteze: {r.estimate.assumptions.join('; ')}. Marjă ±10%: apa deschisă, traseul și căldura schimbă tot. Limitele sunt cele uzuale; verifică regulamentul cursei tale.
-              </div>
-            </div>
-          )}
-          <div className="tiny muted">„Gata de cursă” e cea mai slabă verigă, nu o medie: o probă slabă te scoate din cursă oricât de bune ar fi celelalte. Departe de cursă, contează „pe drum”.</div>
         </div>
+      </section>
+
+      {r.estimate?.total != null && (
+        <section className="card">
+          <h3 className="h-md">Timp estimat</h3>
+          <div className="big-num sm">
+            {fmtH(r.estimate.low!)} – {fmtH(r.estimate.high!)}
+          </div>
+          <p className="small muted">
+            {[r.estimate.swim != null ? `înot ${fmtH(r.estimate.swim)}` : '', r.estimate.bike != null ? `bicicletă ${fmtH(r.estimate.bike)}` : '', r.estimate.run != null ? `alergare ${fmtH(r.estimate.run)}` : ''].filter(Boolean).join(' · ')}
+            {r.estimate.cutoffs ? ` · limita totală ${fmtH(r.estimate.cutoffs.total)}` : ''}
+          </p>
+          <p className="tiny muted">Ipoteze: {r.estimate.assumptions.join('; ')}. Marjă ±10%: apa deschisă, traseul și căldura schimbă tot. Limitele sunt cele uzuale; verifică regulamentul cursei tale.</p>
+        </section>
       )}
-    </div>
+    </>
   );
 }

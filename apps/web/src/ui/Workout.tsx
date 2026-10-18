@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import { changeSummary, moveOptions } from '@core/calendar/actions.js';
 import { addDays, weekday } from '@core/util/dates.js';
-import { Dot, Icons } from './common';
+import { Dot, Icons, fmtDayMonth } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf, sessionSteps } from '../data/model';
@@ -83,6 +83,20 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
             {act && <span className="muted">· {fmtMinutes(act.minutes)}{act.distanceKm ? ` · ${act.distanceKm.toFixed(1)} km` : ''}{act.avgHr ? ` · FC ${act.avgHr}` : ''}</span>}
           </div>
           {reasons.length > 0 && <div className="wk-note">{reasons.slice(0, 2).join(' · ')}</div>}
+          {onOpen && (
+            <div className="wk-btns" style={{ marginTop: 6 }}>
+              {(() => {
+                const fid = act?.id ?? `plan-${w.id}`;
+                const ev = me.forms.evening[fid];
+                const complete = !!ev && ev.rpe != null;
+                return (
+                  <button className={`pill ${complete ? '' : 'on'}`} onClick={() => onOpen('seara', { activityId: fid })}>
+                    {complete ? `Feedback dat${ev?.date ? ` · ${fmtDayMonth(ev.date)}` : ''} · editează` : 'Cum a fost? Dă feedback'}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
           {debrief && (
             <div className="wk-msg">
               {firstSentences(debrief.body, 2)}{' '}

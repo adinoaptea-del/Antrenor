@@ -14,6 +14,8 @@ import { LabsGate } from './ui/LabsGate';
 import { Tour, tourSeen } from './ui/Tour';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
+import { Ambient, AppHeader, PageTitle, SubTabs, ambientOn } from './ui/Shell';
+import { Goal } from './ui/Goal';
 import { Intake } from './forms/Intake';
 import { Evening, Morning, Weekly } from './forms/Daily';
 import { Body, Labs, Tests } from './forms/Baseline';
@@ -21,14 +23,19 @@ import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
 import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
-// Trei ecrane principale în bara de jos (Acasă la mijloc); restul se deschid din butoane și se închid cu săgeata.
-type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
-const MAIN: { id: Screen; label: string; icon: keyof typeof Icons }[] = [
-  { id: 'antrenament', label: 'Antrenament', icon: 'target' },
-  { id: 'acasa', label: 'Acasă', icon: 'home' },
-  { id: 'recuperare', label: 'Recuperare', icon: 'pulse' },
+// Patru taburi egale jos: Acasă, Plan (Calendar | Sporturi), Evoluție (Starea de azi | Obiectiv), Coach.
+// Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
+type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
+type Tab = 'acasa' | 'plan' | 'evolutie' | 'coach';
+const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; screens: Screen[] }[] = [
+  { id: 'acasa', label: 'Acasă', icon: 'home', go: 'acasa', screens: ['acasa'] },
+  { id: 'plan', label: 'Plan', icon: 'calendar', go: 'calendar', screens: ['calendar', 'antrenament'] },
+  { id: 'evolutie', label: 'Evoluție', icon: 'trend', go: 'recuperare', screens: ['recuperare', 'obiectiv', 'insigne'] },
+  { id: 'coach', label: 'Coach', icon: 'chat', go: 'antrenor', screens: ['antrenor'] },
 ];
-const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
+const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))?.id ?? null;
+const MAIN = TABS.flatMap((t) => t.screens.filter((x) => x !== 'insigne').map((id) => ({ id })));
+const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -59,6 +66,7 @@ function Shell() {
   const [countdown, setCountdown] = useState(false);
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
+  const [ambient, setAmbient] = useState(ambientOn);
   const hiddenAt = useRef<number | null>(null);
   // Gestul de „înapoi” ca pe iPhone: tragi din marginea stângă; ecranul te urmărește cu degetul, cu umbră,
   // iar la eliberare fie iese spre dreapta (și apare ecranul de dinainte), fie revine elastic.
@@ -244,7 +252,7 @@ function Shell() {
       )}
       {tour && screen === 'acasa' && <Tour onClose={() => setTour(false)} />}
       {memento && !countdown && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
-      {level && <div className={`edge edge-${level}`} aria-hidden="true" />}
+      {ambient && <Ambient level={level} />}
       {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
           <i /> previzualizare fără server · datele rămân în telefon
@@ -267,12 +275,25 @@ function Shell() {
       ) : (
         <div key={screen} className={`screen nav-${navDir}`}>
           {screen === 'acasa' && <Home onOpen={go} />}
-          {screen === 'antrenament' && <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
-          {screen === 'recuperare' && <Stats onOpen={go} />}
-          {screen === 'calendar' && <Calendar onBack={back} onOpen={go} />}
+          {(screen === 'calendar' || screen === 'antrenament') && (
+            <>
+              <AppHeader name={me.user.name} onProfile={() => go('profil')} />
+              <PageTitle title="Planul tău" sub={planSub(me.today)} />
+              <SubTabs label="Planul" value={screen === 'calendar' ? 'calendar' : 'sporturi'} onChange={(v) => go(v === 'calendar' ? 'calendar' : 'antrenament')} items={[{ id: 'calendar', label: 'Calendar' }, { id: 'sporturi', label: 'Sporturi' }]} />
+              {screen === 'calendar' ? <Calendar onBack={back} onOpen={go} /> : <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
+            </>
+          )}
+          {(screen === 'recuperare' || screen === 'obiectiv') && (
+            <>
+              <AppHeader name={me.user.name} onProfile={() => go('profil')} />
+              <PageTitle title="Evoluția ta" sub={screen === 'recuperare' ? 'Datele corpului de azi, cu sursa și ora.' : 'Repere măsurate, cu limite explicite.'} />
+              <SubTabs label="Evoluția" value={screen === 'recuperare' ? 'azi' : 'obiectiv'} onChange={(v) => go(v === 'azi' ? 'recuperare' : 'obiectiv')} items={[{ id: 'azi', label: 'Starea de azi' }, { id: 'obiectiv', label: 'Obiectiv' }]} />
+              {screen === 'recuperare' ? <Stats onOpen={go} /> : <Goal onOpen={go} />}
+            </>
+          )}
           {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
-          {screen === 'profil' && <Profile onBack={back} onOpen={go} />}
-          {screen === 'insigne' && <BadgesScreen onBack={back} onOpen={go} />}
+          {screen === 'profil' && <Profile onBack={back} onOpen={go} ambient={ambient} onAmbient={setAmbient} />}
+          {screen === 'insigne' && <BadgesScreen onBack={() => go('obiectiv')} onOpen={go} />}
           {screen === 'prieteni' && me.admin && <Admin onBack={() => go('profil')} />}
           {screen === 'intake' && (
             <Intake
@@ -297,15 +318,29 @@ function Shell() {
 
 
       {!isForm && !gateIntake && !labsGate && (
-        <nav className="nav" aria-label="Navigare">
-          {[...MAIN, { id: 'antrenor' as Screen, label: 'Antrenor', icon: 'chat' as const }].map((t) => (
-            <button key={t.id} className={`${screen === t.id ? 'on' : ''} ${t.id === 'acasa' ? 'home' : ''}`} onClick={() => go(t.id)} aria-current={screen === t.id ? 'page' : undefined} aria-label={t.label}>
-              {t.id === 'acasa' ? <span className="home-ic">{Icons[t.icon]}</span> : Icons[t.icon]}
-              <span>{t.label}</span>
-            </button>
-          ))}
+        <nav className="tabbar" aria-label="Navigare">
+          {TABS.map((t) => {
+            const on = tabOf(screen) === t.id;
+            return (
+              <button key={t.id} className={on ? 'on' : ''} onClick={() => go(t.go)} aria-current={on ? 'page' : undefined}>
+                <span className="tb-ic">{Icons[t.icon]}</span>
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
         </nav>
       )}
     </div>
   );
+}
+
+/** „19–25 octombrie 2026”: săptămâna curentă. */
+function planSub(today: string): string {
+  const M = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
+  const d = new Date(`${today}T12:00:00Z`);
+  const dow = (d.getUTCDay() + 6) % 7;
+  const mon = new Date(d.getTime() - dow * 86400000);
+  const sun = new Date(mon.getTime() + 6 * 86400000);
+  const a = `${mon.getUTCDate()}${mon.getUTCMonth() !== sun.getUTCMonth() ? ` ${M[mon.getUTCMonth()]}` : ''}`;
+  return `Săptămâna ${a}–${sun.getUTCDate()} ${M[sun.getUTCMonth()]} ${sun.getUTCFullYear()}`;
 }

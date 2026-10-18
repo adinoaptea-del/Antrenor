@@ -109,7 +109,8 @@ export interface Me {
   /** Doar pentru admin (primul cont): ce producători au cheile puse și adresele de copiat la ei. */
   admin: { providers: Record<'whoop' | 'strava' | 'oura', boolean>; appUrl: string } | null;
   /** Totaluri de la începutul pregătirii (data planului). null fără plan. */
-  totals: { since: string; bySport: Record<Sport, SportTotal> } | null;
+  /** Totalurile de la începutul planului (`since`) și, separat, istoricul dinainte (din `beforeFrom` până la start). */
+  totals: { since: string; bySport: Record<Sport, SportTotal>; before?: Record<Sport, SportTotal>; beforeFrom?: string } | null;
   user: MeUser;
   consent: boolean;
   intakeComplete: boolean;
@@ -151,7 +152,7 @@ export interface Me {
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */
   sources?: MeSource[];
   /** Plecări anunțate și întâlniri fixe. */
-  prefs?: { plecari: { dela: string; panala: string; ce: 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic' }[]; fixe: { zi: number; sport: 'inot' | 'bicicleta' | 'alergare'; tip: 'lung' | 'calitate' | 'usor'; eticheta?: string }[] };
+  prefs?: { plecari: { dela: string; panala: string; ce: 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic' }[]; fixe: { zi: number; sport: 'inot' | 'bicicleta' | 'alergare'; tip: 'lung' | 'calitate' | 'usor'; eticheta?: string }[]; mediuInot?: 'bazin' | 'ape' };
 }
 
 export interface MeSource {
@@ -165,4 +166,10 @@ export interface MeSource {
   lastData: string | null;
   /** Brățară de recuperare (WHOOP, Oura, Apple) fără somn/recuperare pentru azi: decizia zilei nu poate fi verde. */
   noRecoveryToday?: boolean;
+  /** Când a fost conectată. */
+  connectedAt?: string | null;
+  /** Ultima încercare de citire (reușită sau nu). */
+  lastAttempt?: string | null;
+  /** Câmpurile care lipsesc pentru azi (somn, recuperare, puls de repaus, HRV). */
+  missingToday?: string[];
 }

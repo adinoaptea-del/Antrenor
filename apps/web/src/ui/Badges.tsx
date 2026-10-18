@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CATEGORY_LABEL, type Badge, type BadgeCategory } from '@core/badges/badges.js';
-import { Avatar, Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
+import { Card, Icons, Label, fmtDayMonth } from './common';
+import { BackHeader } from './Shell';
 import { useData, useMe } from '../data/store';
 import { SPORT_LABEL, fmtMinutes } from '../data/model';
 
@@ -73,8 +74,8 @@ export function BadgesScreen({ onBack, onOpen }: { onBack: () => void; onOpen: (
               </span>
             </span>
             <div className="lvl-t">
-              <div className="lvl-name">Nivel {level.name}</div>
-              <div className="small muted">{level.next ? `Încă ${Math.max(0, Math.round((level.next.hours - level.hours) * 10) / 10).toLocaleString('ro-RO')} ore până la ${level.next.name}. Orele din toate sporturile, de la începutul planului.` : 'Ultimul nivel. Orele din toate sporturile, de la începutul planului.'}</div>
+              <div className="lvl-name">Nivelul: {level.name}</div>
+              <div className="small muted">{level.next ? `Încă ${Math.max(0, Math.round((level.next.hours - level.hours) * 10) / 10).toLocaleString('ro-RO')} ore până la ${level.next.name}. Orele înregistrate de brățări, din toate sporturile, de la începutul planului${me.planStart ? ` (${fmtDayMonth(me.planStart)})` : ''}. Realizările nu sunt starea zilei.` : 'Ultimul nivel. Orele din toate sporturile, de la începutul planului.'}</div>
               <div className="small" style={{ marginTop: 6 }}>
                 <b>{earned}</b> din {badges.length} insigne
               </div>
@@ -159,21 +160,8 @@ function fmtNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toLocaleString('ro-RO', { maximumFractionDigits: 1 });
 }
 
-function Head({ onBack, onOpen }: { onBack: () => void; onOpen: (s: string) => void }) {
-  const me = useMe();
-  return (
-    <header className="top">
-      <div className="top-l">
-        <CircleBtn icon={Icons.arrowLeft} label="Înapoi" onClick={onBack} />
-      </div>
-      <div className="top-c">
-        <LiveTitle>Insigne</LiveTitle>
-      </div>
-      <div className="top-r">
-        <Avatar name={me.user.name || 'S'} onClick={() => onOpen('profil')} />
-      </div>
-    </header>
-  );
+function Head({ onBack }: { onBack: () => void; onOpen: (s: string) => void }) {
+  return <BackHeader title="Realizări" onBack={onBack} />;
 }
 
 /** Pe Acasă: o insignă nouă, o singură dată (până intri în Insigne). */
@@ -198,7 +186,7 @@ export function NewBadge({ onOpen }: { onOpen: (s: string) => void }) {
   );
 }
 
-/** În Profil: nivelul și intrarea în Insigne. */
+/** În Evoluție → Obiectiv: nivelul și intrarea în Realizări. */
 export function BadgesTeaser({ onOpen }: { onOpen: (s: string) => void }) {
   const me = useMe();
   const d = me.badges;
@@ -207,7 +195,7 @@ export function BadgesTeaser({ onOpen }: { onOpen: (s: string) => void }) {
       <button className="badge-teaser" onClick={() => onOpen('insigne')}>
         <span className="lvl-dot" />
         <span>
-          <b>Insigne</b>
+          <b>Realizări</b>
           <small>se calculează după prima sincronizare</small>
         </span>
         {Icons.chevronRight}
@@ -218,9 +206,9 @@ export function BadgesTeaser({ onOpen }: { onOpen: (s: string) => void }) {
     <button className="badge-teaser" onClick={() => onOpen('insigne')}>
       <span className="lvl-dot" style={{ background: d.level.color }} />
       <span>
-        <b>Nivel {d.level.name}</b>
+        <b>Realizări · {d.level.name}</b>
         <small>
-          {earned} din {d.badges.length} insigne · {d.level.hours.toLocaleString('ro-RO')} ore
+          {earned} din {d.badges.length} insigne · {d.level.hours.toLocaleString('ro-RO')} ore {me.planStart && me.planStart > me.today ? '(se numără de la startul planului)' : 'de la startul planului'}
         </small>
       </span>
       {Icons.chevronRight}

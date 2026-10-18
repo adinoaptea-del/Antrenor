@@ -1,7 +1,7 @@
 import { fail, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { loadUser } from '../_lib/collect.js';
-import { runAgents } from '../_lib/agents.js';
+import { acquireLock, releaseLock, runAgents } from '../_lib/agents.js';
 
 /**
  * POST /api/agents/run { event: 'dimineata' | 'dupa_antrenament' | 'saptamanal' } — rulare manuală.
@@ -25,11 +25,20 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!res.writableEnded) res.write(' ');
     }, 5000);
     let out: unknown;
-    try {
-      out = (await runAgents(u.id, todayIn(user.tz), body.event ?? 'dimineata', body.force ?? true)) ?? { skipped: 'există deja o rulare azi pentru evenimentul ăsta' };
-    } catch (e) {
-      out = { error: e instanceof Error ? e.message : String(e) };
-    }
+    const event = body.event ?? 'dimineata';
+    // Două apăsări una după alta nu pornesc două rulări: o încuietoare pe sportiv + eveniment, cât ține rularea
+    // (una rămasă de la o rulare căzută expiră după 5 minute).
+    const lockKey = `rulare:${event}`;
+    const lock = await acquireLock(u.id, lockKey, 5 * 60_000);
+    if (!lock) out = { skipped: 'antrenorul scrie deja mesajul; apare în câteva clipe' };
+    else
+      try {
+        out = (await runAgents(u.id, todayIn(user.tz), event, body.force ?? true)) ?? { skipped: 'nimic nou: mesajul de azi e scris pe datele de acum' };
+      } catch (e) {
+        out = { error: e instanceof Error ? e.message : String(e) };
+      } finally {
+        await releaseLock(u.id, lockKey);
+      }
     clearInterval(beat);
     res.end(JSON.stringify(out));
   } catch (e) {

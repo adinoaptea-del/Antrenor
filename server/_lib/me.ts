@@ -182,7 +182,22 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
     profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })() },
-    totals,
+    totals: totals
+      ? {
+          ...totals,
+          // Istoricul dinaintea planului (ultimele 6 săptămâni încărcate aici), separat de execuția planului.
+          before: (() => {
+            const out = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+            for (const a of activities.filter((x) => x.date < totals.since)) {
+              out[a.sport].km = Math.round((out[a.sport].km + (a.distanceKm ?? 0)) * 10) / 10;
+              out[a.sport].ore = Math.round((out[a.sport].ore + a.minutes / 60) * 10) / 10;
+              out[a.sport].sedinte += 1;
+            }
+            return out;
+          })(),
+          beforeFrom: from,
+        }
+      : null,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
@@ -224,7 +239,9 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       ...tokens.map((t) => {
         const ok = lastSyncRows.find((r) => r.provider === t.provider && r.ok);
         const last = lastSyncRows.find((r) => r.provider === t.provider);
-        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== 'strava' && !wellnessRows.some((r) => r.source === t.provider && String(r.date) === today) };
+        const todayRow = wellnessRows.find((r) => r.source === t.provider && String(r.date) === today);
+        const missingToday = t.provider === 'strava' ? [] : [['sleep_min', 'somn'], ['recovery_score', 'recuperare'], ['rhr', 'puls de repaus'], ['hrv', 'HRV']].filter(([k]) => todayRow?.[k!] == null).map(([, n]) => n!);
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== 'strava' && !todayRow, connectedAt: t.connected_at ?? null, lastAttempt: last?.ran_at ?? null, missingToday };
       }),
       ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
     ],

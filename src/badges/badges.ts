@@ -91,12 +91,13 @@ export interface BadgesInput {
 }
 
 const LEVELS: { name: string; color: string; hours: number }[] = [
-  { name: 'Galben', color: '#facc15', hours: 0 },
-  { name: 'Portocaliu', color: '#fb923c', hours: 25 },
-  { name: 'Verde', color: '#4ade80', hours: 100 },
-  { name: 'Albastru', color: '#60a5fa', hours: 250 },
-  { name: 'Mov', color: '#a78bfa', hours: 450 },
-  { name: 'Negru', color: '#0a0a0b', hours: 700 },
+  // Fără culorile semaforului (verde/galben/roșu sunt starea zilei): nume de drum și nuanțe neutre.
+  { name: 'La început', color: '#7d878b', hours: 0 },
+  { name: 'Pornit', color: '#a7b1b5', hours: 25 },
+  { name: 'Constant', color: '#c9d3cf', hours: 100 },
+  { name: 'Rezistent', color: '#e3ead9', hours: 250 },
+  { name: 'Anduranță', color: '#b8d94a', hours: 450 },
+  { name: 'Finisher', color: '#d4fa3a', hours: 700 },
 ];
 
 const TRI = (goal: string | null) => goal === '70.3' || goal === 'olimpic' || goal === 'sprint';

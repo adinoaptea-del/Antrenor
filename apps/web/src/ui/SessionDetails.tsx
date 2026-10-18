@@ -306,7 +306,7 @@ function Origin({ act }: { act: MeActivity }) {
         {act.name ? `Înregistrat ca „${act.name.split(' · ')[0]!.split(';')[0]}” · ` : 'Înregistrat de '}{SOURCE_NAME[act.source] ?? act.source}
         {' · '}
         <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {open ? 'închide' : 'nu e corect?'}
+          {open ? 'Renunț' : 'Corectează activitatea'}
         </button>
       </div>
       {open && (

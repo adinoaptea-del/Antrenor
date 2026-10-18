@@ -1,6 +1,6 @@
-import { BadgesTeaser } from './Badges';
 import { useEffect, useState } from 'react';
-import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
+import { Card, Icons, Label, fmtDayMonth } from './common';
+import { BackHeader, setAmbientOn } from './Shell';
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
@@ -15,15 +15,21 @@ const DEVICES: { provider: 'whoop' | 'strava' | 'oura'; name: string; note: stri
   { provider: 'oura', name: 'Oura', note: 'somn, HRV, readiness' },
 ];
 
-export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
+type Section = 'index' | 'obiectiv' | 'dispozitive' | 'chestionare' | 'sanatate' | 'preferinte' | 'cont' | 'admin';
+const SECTIONS: { id: Exclude<Section, 'index' | 'admin'>; title: string; sub: string; icon: keyof typeof Icons }[] = [
+  { id: 'obiectiv', title: 'Obiectiv și disponibilitate', sub: 'cursa, orele pentru sport, refacerea planului', icon: 'flag' },
+  { id: 'dispozitive', title: 'Dispozitive', sub: 'starea conexiunii și prospețimea datelor', icon: 'watch' },
+  { id: 'chestionare', title: 'Chestionare', sub: 'inițial · dimineața · după ședință', icon: 'edit' },
+  { id: 'sanatate', title: 'Date de sănătate', sub: 'analize, test de efort, aviz · la cerere', icon: 'heart' },
+  { id: 'preferinte', title: 'Preferințe', sub: 'lumină, despre tine, oraș', icon: 'sliders' },
+  { id: 'cont', title: 'Cont', sub: 'consimțământ, ghid, ieșire', icon: 'user' },
+];
+
+/** Profilul: un index de ecrane scurte. Administrarea (chei, prieteni) e separată și apare doar proprietarului. */
+export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void; ambient: boolean; onAmbient: (v: boolean) => void }) {
   const me = useMe();
-  const { connect, logout, local, submitForm } = useData();
-  const [confirmOff, setConfirmOff] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const lastDone = lastDoneWorkout(me);
-  const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
-  const morning = me.forms.morning as MorningForm | null;
-  const connected = (p: string) => me.devices.find((d) => d.provider === p);
+  const { local } = useData();
+  const [section, setSection] = useState<Section>(() => (new URLSearchParams(location.hash.split('?')[1] ?? '').get('conectat') || new URLSearchParams(location.hash.split('?')[1] ?? '').get('eroare') ? 'dispozitive' : 'index'));
   // Revenirea de la producător: #profil?conectat=whoop sau #profil?eroare=...
   const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(() => {
     const qs = new URLSearchParams(location.hash.split('?')[1] ?? '');
@@ -35,103 +41,138 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
     if (oauthMsg) history.replaceState(null, '', '#profil');
   }, [oauthMsg]);
 
+  if (section !== 'index') {
+    const title = section === 'admin' ? 'Administrare' : SECTIONS.find((x) => x.id === section)!.title;
+    return (
+      <>
+        <BackHeader title={title} onBack={() => setSection('index')} />
+        <div className="stack">
+          {oauthMsg && section === 'dispozitive' && (
+            <button type="button" className={oauthMsg.ok ? 'labs-alert ok-alert' : 'labs-alert'} onClick={() => setOauthMsg(null)}>
+              <b>{oauthMsg.text}</b>
+              <span>Atinge ca să închizi.</span>
+            </button>
+          )}
+          {section === 'obiectiv' && <GoalSection onOpen={onOpen} />}
+          {section === 'dispozitive' && <DevicesSection />}
+          {section === 'chestionare' && <FormsSection onOpen={onOpen} />}
+          {section === 'sanatate' && <HealthSection onOpen={onOpen} />}
+          {section === 'preferinte' && <PrefsSection ambient={ambient} onAmbient={onAmbient} />}
+          {section === 'cont' && <AccountSection onOpen={onOpen} />}
+          {section === 'admin' && me.admin && !local && (
+            <>
+              <AdminKeys />
+              <Card tight>
+                <Label icon={Icons.users}>Prietenii</Label>
+                <div className="small muted">Starea fiecărui sportiv și trei reparații (citire, plan, parolă temporară). Serverul refuză ruta fără rolul de admin.</div>
+                <button className="pill on" style={{ marginTop: 10 }} onClick={() => onOpen('prieteni')}>
+                  Deschide lista
+                </button>
+              </Card>
+            </>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <header className="top">
-        <div className="top-l">
-          <CircleBtn icon={Icons.arrowLeft} label="Înapoi" onClick={onBack} />
-        </div>
-        <div className="top-c">
-          <LiveTitle>Profil</LiveTitle>
-        </div>
-        <div className="top-r">
-          <span className="avatar" aria-hidden="true">
-            {(me.user.name || 'S').slice(0, 1)}
-          </span>
-        </div>
-      </header>
-
+      <BackHeader title="Profilul tău" onBack={onBack} />
       <div className="stack">
-        {oauthMsg && (
-          <button type="button" className={oauthMsg.ok ? 'labs-alert ok-alert' : 'labs-alert'} onClick={() => setOauthMsg(null)}>
-            <b>{oauthMsg.text}</b>
-            <span>Atinge ca să închizi.</span>
-          </button>
-        )}
         <Card tight>
-          <div className="row" style={{ gap: 12 }}>
-            <span className="avatar" style={{ width: 56, height: 56, fontSize: 20 }} aria-hidden="true">
-              {(me.user.name || 'S').slice(0, 1)}
-            </span>
+          <div className="row between" style={{ gap: 12 }}>
             <div style={{ minWidth: 0 }}>
-              <div className="num md">{me.user.name || me.user.email}</div>
-              <div className="small muted">{me.user.raceName ? `${me.user.raceName}${me.user.raceDate ? ` · ${me.user.raceDate.split('-').reverse().join('.')}` : ''}` : me.user.email}</div>
+              <div className="h-md">{me.user.name || me.user.email}</div>
+              <div className="small muted">{me.user.raceDate ? `${me.user.raceName ?? 'Cursa'} · ${me.user.raceDate.split('-').reverse().join('.')}` : 'fără cursă încă'}</div>
             </div>
+            {me.user.goal && <span className="chip-lime">{me.user.goal}</span>}
           </div>
         </Card>
 
-        <BadgesTeaser onOpen={onOpen} />
-
-        <Card>
-          <Label icon={Icons.edit}>Chestionare</Label>
-          <div className="kv">
-            <div>
-              <div style={{ fontWeight: 700 }}>De intrare</div>
-              <div className="tiny muted">nivel, echipament, program, sănătate</div>
-            </div>
-            <button className={`pill ${me.intakeComplete ? '' : 'on'}`} onClick={() => onOpen('intake')}>
-              {me.intakeComplete ? 'Editează' : 'Completează'}
+        <section className="card tight">
+          {SECTIONS.map((sec) => (
+            <button key={sec.id} className="exp-row" onClick={() => setSection(sec.id)}>
+              <span className="row" style={{ gap: 12 }}>
+                <span className="row-ic">{Icons[sec.icon]}</span>
+                <span>
+                  <b>{sec.title}</b>
+                  <small>{sec.sub}</small>
+                </span>
+              </span>
+              {Icons.chevronRight}
             </button>
-            <div>
-              <div style={{ fontWeight: 700 }}>Dimineața</div>
-              <div className="tiny muted">4 note + semnale · {fmtDayMonth(me.today)}</div>
-            </div>
-            <button className={`pill ${morningComplete(morning ?? undefined) ? '' : 'on'}`} onClick={() => onOpen('dimineata')}>
-              {morningComplete(morning ?? undefined) ? 'Modifică' : 'Completează'}
-            </button>
-            {lastDone && lastDoneId && (
-              <>
-                <div>
-                  <div style={{ fontWeight: 700 }}>După antrenament</div>
-                  <div className="tiny muted">RPE, așteptări, durere · ultima ședință</div>
-                </div>
-                <button className={`pill ${eveningComplete(me.forms.evening[lastDoneId]) ? '' : 'on'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
-                  {eveningComplete(me.forms.evening[lastDoneId]) ? 'Modifică' : 'Completează'}
-                </button>
-              </>
-            )}
-            <div>
-              <div style={{ fontWeight: 700 }}>Săptămânal</div>
-              <div className="tiny muted">duminica, 3 întrebări</div>
-            </div>
-            <button className="pill" onClick={() => onOpen('saptamanal')}>
-              {me.forms.weeklyDone ? 'Modifică' : 'Deschide'}
-            </button>
-          </div>
-          <div className="tiny muted" style={{ marginTop: 10 }}>
-            Niciunul nu e obligatoriu. Fără cel de dimineață, decizia zilei e cel mult galbenă; fără cel de seară, antrenorii nu au RPE și durere.
-          </div>
-        </Card>
+          ))}
+        </section>
 
-        <Card>
-          <Label icon={Icons.pulse}>Date de bază</Label>
-          <BaselineList onOpen={(s) => onOpen(s)} />
-        </Card>
+        {me.admin && !local && (
+          <section className="card tight">
+            <button className="exp-row" onClick={() => setSection('admin')}>
+              <span className="row" style={{ gap: 12 }}>
+                <span className="row-ic">{Icons.shield}</span>
+                <span>
+                  <b>Administrare</b>
+                  <small>numai pentru proprietar · chei, prieteni</small>
+                </span>
+              </span>
+              {Icons.chevronRight}
+            </button>
+          </section>
+        )}
+      </div>
+    </>
+  );
+}
 
-        <Card>
-          <div className="row between" style={{ marginBottom: 8 }}>
-            <Label icon={Icons.watch}>Brățări</Label>
-            <SyncButton compact />
-          </div>
-          <div className="kv">
-            {DEVICES.map((d) => {
-              const c = connected(d.provider);
-              return (
-                <div key={d.provider} style={{ display: 'contents' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700 }}>{d.name}</div>
-                    <div className="tiny muted">{c ? `conectat · ultima citire ${c.lastSync ? fmtTime(c.lastSync) : '–'}${c.lastOk === false ? ` · eroare: ${c.detail ?? ''}` : ''}` : d.note}</div>
-                  </div>
+function GoalSection({ onOpen }: { onOpen: (screen: string) => void }) {
+  const me = useMe();
+  const { local } = useData();
+  return (
+    <>
+      <Card tight>
+        <Label icon={Icons.flag}>Cursa</Label>
+        <div className="h-md">{me.user.raceName ?? 'fără cursă'}</div>
+        <div className="small muted">{me.user.raceDate ? `${me.user.raceDate.split('-').reverse().join('.')} · ${daysTo(me.today, me.user.raceDate)} zile` : 'Data cursei vine din chestionarul de intrare.'}</div>
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => onOpen('intake')}>
+          {me.intakeComplete ? 'Editează chestionarul de intrare' : 'Completează chestionarul'}
+        </button>
+      </Card>
+      <Card tight>
+        <Label>Disponibilitatea și programul</Label>
+        <ProgramCard />
+        {!local && me.intakeComplete && <RegenPlan />}
+      </Card>
+    </>
+  );
+}
+
+function daysTo(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+}
+
+/** Dispozitive: conexiune, ultima încercare, ultima citire reușită, ultima zi cu date și ce lipsește azi — separat. */
+function DevicesSection() {
+  const me = useMe();
+  const { connect, local, submitForm } = useData();
+  const [confirmOff, setConfirmOff] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const srcOf = (p: string) => me.sources?.find((s) => s.id === p);
+  const connected = (p: string) => me.devices.find((d) => d.provider === p);
+  return (
+    <>
+      <Card>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <Label icon={Icons.watch}>Brățări</Label>
+          <SyncButton compact />
+        </div>
+        <div className="dev-list">
+          {DEVICES.map((d) => {
+            const c = connected(d.provider);
+            const s = srcOf(d.provider);
+            return (
+              <div key={d.provider} className="dev">
+                <div className="row between" style={{ gap: 10 }}>
+                  <b>{d.name}</b>
                   {c ? (
                     <button
                       className="pill"
@@ -160,76 +201,171 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
                     </button>
                   )}
                 </div>
-              );
-            })}
-          </div>
-          {err && (
-            <div className="small" style={{ marginTop: 8, color: 'var(--c-rosu)' }}>
-              {err}
-            </div>
-          )}
-          <div className="tiny muted" style={{ marginTop: 10 }}>
-            „Conectează” te duce la pagina producătorului; te loghezi acolo, apeși „Allow” și te întorci aici cu ultimele 5 săptămâni citite. Citirea continuă singură: la deschidere, la revenire, la 15 minute, plus când brățara anunță o noapte sau o ședință nouă.
-          </div>
-        </Card>
-
-        {!local && me.admin && <AdminKeys />}
-
-        {!local && <AppleCard />}
-
-        {!local && <AboutCard />}
-        {!local && <CityCard />}
-
-        <Card>
-          <Label>Date disponibile</Label>
-          <div className="kv">
-            {me.dataAvailability.have.map((x) => (
-              <div key={x} style={{ display: 'contents' }}>
-                <div className="k">{x}</div>
-                <span className="ok">{Icons.check}</span>
+                {c && s ? (
+                  <div className="kv dev-kv">
+                    <span>Conexiune</span>
+                    <b>{s.error ? 'conectat · ultima citire a eșuat' : 'conectat'}</b>
+                    <span>Ultima încercare</span>
+                    <b>{s.lastAttempt ? fmtTime(s.lastAttempt) : '—'}</b>
+                    <span>Ultima citire reușită</span>
+                    <b>{s.lastSync ? fmtTime(s.lastSync) : '—'}</b>
+                    <span>Ultima zi cu date</span>
+                    <b>{s.lastData ? fmtDayMonth(s.lastData) : 'nicio observație încă'}</b>
+                    {s.missingToday && s.missingToday.length > 0 && (
+                      <>
+                        <span>Lipsește azi</span>
+                        <b>{s.missingToday.join(', ')}</b>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="tiny muted">{d.note}</div>
+                )}
+                {c && s && !s.error && s.lastSync && s.missingToday?.length === 4 && <div className="tiny muted">Conectat; datele de azi nu au sosit încă. O citire fără date noi nu schimbă data observațiilor.</div>}
+                {s?.error && <div className="tiny" style={{ color: 'var(--c-rosu)' }}>Eroare la ultima citire: {s.error}</div>}
               </div>
-            ))}
-            {me.dataAvailability.missing.map((x) => (
-              <div key={x} style={{ display: 'contents' }}>
-                <div className="k">{x}</div>
-                <div className="no">lipsește</div>
-              </div>
-            ))}
+            );
+          })}
+        </div>
+        {err && (
+          <div className="small" style={{ marginTop: 8, color: 'var(--c-rosu)' }}>
+            {err}
           </div>
-          <div className="tiny muted" style={{ marginTop: 10 }}>
-            Ce lipsește rămâne „fără date”, nu se estimează.
-          </div>
-        </Card>
-
-        <Card tight>
-          <Label>Program</Label>
-          <ProgramCard />
-          {!local && me.intakeComplete && <RegenPlan />}
-        </Card>
-
-        <Card tight>
-          <Label>Cont și consimțământ</Label>
-          <div className="small">18+ · date de sănătate · nu e serviciu medical · ștergerea contului la cerere</div>
-          <div className="tiny muted" style={{ marginTop: 6 }}>Dacă ceva nu merge: „Repornește aplicația” șterge doar fișierele din telefon, nu datele tale.</div>
-          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
-            <button className="pill" onClick={() => onOpen('ghid')}>
-              Arată ghidul
-            </button>
-            <button className="pill" onClick={() => void hardReload()}>
-              Repornește aplicația
-            </button>
-            {me.admin && (
-              <button className="pill on" onClick={() => onOpen('prieteni')}>
-                Prieteni (admin)
-              </button>
-            )}
-            <button className="pill" onClick={() => void logout()}>
-              {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
-            </button>
-          </div>
-        </Card>
-      </div>
+        )}
+        <div className="tiny muted" style={{ marginTop: 10 }}>
+          „Conectează” te duce la pagina producătorului; te loghezi acolo, apeși „Allow” și te întorci aici. Serverul citește brățările singur: la deschiderea aplicației, la 15 minute și când brățara anunță o noapte sau o ședință nouă. Ecranul se actualizează la deschidere și când apeși butonul de citire.
+        </div>
+      </Card>
+      {!local && <AppleCard />}
     </>
+  );
+}
+
+function FormsSection({ onOpen }: { onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
+  const me = useMe();
+  const lastDone = lastDoneWorkout(me);
+  const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
+  const morning = me.forms.morning as MorningForm | null;
+  return (
+    <Card>
+      <Label icon={Icons.edit}>Chestionare</Label>
+      <div className="kv">
+        <div>
+          <div style={{ fontWeight: 700 }}>De intrare</div>
+          <div className="tiny muted">nivel, echipament, program, sănătate</div>
+        </div>
+        <button className={`pill ${me.intakeComplete ? '' : 'on'}`} onClick={() => onOpen('intake')}>
+          {me.intakeComplete ? 'Editează' : 'Completează'}
+        </button>
+        <div>
+          <div style={{ fontWeight: 700 }}>Check-in de dimineață</div>
+          <div className="tiny muted">4 note + semnale · {fmtDayMonth(me.today)}{morningComplete(morning ?? undefined) ? ' · completat' : ''}</div>
+        </div>
+        <button className={`pill ${morningComplete(morning ?? undefined) ? '' : 'on'}`} onClick={() => onOpen('dimineata')}>
+          {morningComplete(morning ?? undefined) ? 'Editează check-in-ul' : 'Completează'}
+        </button>
+        {lastDone && lastDoneId && (
+          <>
+            <div>
+              <div style={{ fontWeight: 700 }}>După ședință</div>
+              <div className="tiny muted">efort perceput, durere, comentariu · {lastDone.sport} {fmtDayMonth(lastDone.date)}{eveningComplete(me.forms.evening[lastDoneId]) ? ' · completat' : ''}</div>
+            </div>
+            <button className={`pill ${eveningComplete(me.forms.evening[lastDoneId]) ? '' : 'on'}`} onClick={() => onOpen('seara', { activityId: lastDoneId })}>
+              {eveningComplete(me.forms.evening[lastDoneId]) ? 'Editează' : 'Completează'}
+            </button>
+          </>
+        )}
+        <div>
+          <div style={{ fontWeight: 700 }}>Săptămânal</div>
+          <div className="tiny muted">duminica, 3 întrebări{me.forms.weeklyDone ? ' · completat' : ''}</div>
+        </div>
+        <button className="pill" onClick={() => onOpen('saptamanal')}>
+          {me.forms.weeklyDone ? 'Editează' : 'Deschide'}
+        </button>
+      </div>
+      <div className="tiny muted" style={{ marginTop: 10 }}>
+        Niciunul nu e obligatoriu. Fără check-in-ul de dimineață, decizia zilei e cel mult galbenă; fără feedback după ședință, antrenorii nu au efortul perceput și durerea. Lipsa unui răspuns nu e „răspuns zero”.
+      </div>
+    </Card>
+  );
+}
+
+/** Sănătate: documente primite vs. declarații, cu data; o bifă nu e autorizare universală. */
+function HealthSection({ onOpen }: { onOpen: (screen: string) => void }) {
+  const me = useMe();
+  return (
+    <>
+      <Card>
+        <Label icon={Icons.pulse}>Date de bază</Label>
+        <BaselineList onOpen={(s) => onOpen(s)} />
+        <div className="tiny muted" style={{ marginTop: 10 }}>
+          Avizul cardiologic e declarat de tine în chestionar; documentul urcat și restricțiile din analize sunt stări separate. Un document nou nu produce o prescripție medicală: planul urmează regulile de siguranță existente și orice interpretare e cu medicul tău.
+        </div>
+      </Card>
+      <Card>
+        <Label>Date disponibile</Label>
+        <div className="kv">
+          {me.dataAvailability.have.map((x) => (
+            <div key={x} style={{ display: 'contents' }}>
+              <div className="k">{x}</div>
+              <span className="ok">{Icons.check}</span>
+            </div>
+          ))}
+          {me.dataAvailability.missing.map((x) => (
+            <div key={x} style={{ display: 'contents' }}>
+              <div className="k">{x}</div>
+              <div className="no">lipsește</div>
+            </div>
+          ))}
+        </div>
+        <div className="tiny muted" style={{ marginTop: 10 }}>
+          Ce lipsește rămâne „fără date”, nu se estimează.
+        </div>
+      </Card>
+    </>
+  );
+}
+
+function PrefsSection({ ambient, onAmbient }: { ambient: boolean; onAmbient: (v: boolean) => void }) {
+  const { local } = useData();
+  return (
+    <>
+      <Card tight>
+        <Label icon={Icons.sun}>Lumina ambientală</Label>
+        <div className="row between" style={{ gap: 10 }}>
+          <div className="small">Fundalul se colorează discret după decizia zilei (verde, galben, roșu; neutru fără date). Statică, fără animații.</div>
+          <button className={`switch ${ambient ? 'on' : ''}`} style={{ width: 'auto' }} role="switch" aria-checked={ambient} aria-label="Lumina ambientală" onClick={() => { onAmbient(!ambient); setAmbientOn(!ambient); }}>
+            <span className="knob" />
+          </button>
+        </div>
+      </Card>
+      {!local && <AboutCard />}
+      {!local && <CityCard />}
+    </>
+  );
+}
+
+function AccountSection({ onOpen }: { onOpen: (screen: string) => void }) {
+  const me = useMe();
+  const { logout, local } = useData();
+  return (
+    <Card tight>
+      <Label icon={Icons.user}>Cont și consimțământ</Label>
+      <div className="small">{me.user.email}</div>
+      <div className="small" style={{ marginTop: 6 }}>18+ · date de sănătate cu consimțământ · nu e serviciu medical · ștergerea contului la cerere, din aplicație sau pe e-mail</div>
+      <div className="tiny muted" style={{ marginTop: 6 }}>„Repornește aplicația” șterge doar fișierele aplicației salvate în telefon (cache) și reîncarcă pagina; datele tale rămân pe server, iar răspunsurile netrimise se trimit la următoarea conexiune.</div>
+      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+        <button className="pill" onClick={() => onOpen('ghid')}>
+          Arată ghidul
+        </button>
+        <button className="pill" onClick={() => void hardReload()}>
+          Repornește aplicația
+        </button>
+        <button className="pill" onClick={() => void logout()}>
+          {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
+        </button>
+      </div>
+    </Card>
   );
 }
 

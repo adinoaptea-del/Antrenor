@@ -5,7 +5,7 @@ import { CONFIG, SERVER, captureSessionFromUrl, getSession, isNetworkError, load
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp' | 'actiune' | 'plecat' | 'fixe' | 'insigne-vazute' | 'recuperare' | 'ore-sport';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp' | 'actiune' | 'plecat' | 'fixe' | 'insigne-vazute' | 'recuperare' | 'ore-sport' | 'inot-mediu';
 
 export interface Data {
   status: Status;
@@ -19,7 +19,7 @@ export interface Data {
   submitForm: (kind: FormKind, body: unknown) => Promise<{ ok: boolean; info?: string; data?: Record<string, unknown> }>;
   sync: () => Promise<string | null>;
   connect: (provider: 'whoop' | 'strava' | 'oura') => Promise<void>;
-  runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => Promise<string>;
+  runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force?: boolean) => Promise<string>;
   /** Fără semnal: datele afișate sunt cele salvate la ora asta (ISO). null = date live. */
   offline: string | null;
 }
@@ -160,10 +160,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const runAgents = useCallback(
-    async (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => {
+    async (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = true) => {
       const started = Date.now();
       try {
-        const r = (await backend.runAgents(event)) as { skipped?: string; decision?: string; changes?: string[] };
+        const r = (await backend.runAgents(event, force)) as { skipped?: string; decision?: string; changes?: string[] };
         await load();
         return r.skipped ?? 'Gata.';
       } catch (e) {

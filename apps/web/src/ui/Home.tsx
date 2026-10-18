@@ -1,241 +1,135 @@
-import { GOAL_NAME, overallReady } from '@core/bar/sport-readiness.js';
+import { GOAL_NAME } from '@core/bar/sport-readiness.js';
 import type { Goal } from '@core/calendar/phases.js';
-import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
-import { isRunGoal } from '@core/calendar/phases.js';
-import { BikeArt, Card, CircleBtn, Icons, RunArt, SwimArt, fmtDayMonth } from './common';
+import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
-import { useData, useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorkout, nextWorkout, workoutsOn } from '../data/model';
+import { useMe } from '../data/store';
+import { DAY_NAMES, SPORT_LABEL, colorOf, daysToRace, fmtMinutes, lastDoneWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
-import { BaselineList } from '../forms/Baseline';
 import { Today } from './Today';
-import { BadgesTeaser, NewBadge } from './Badges';
-import { RaceReadyBar } from './RaceReady';
+import { RacePanel } from './RaceReady';
+import { AppHeader } from './Shell';
 
-// Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
-// zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
-const SPORTS: { id: Sport; art: JSX.Element }[] = [
-  { id: 'inot', art: <SwimArt /> },
-  { id: 'bicicleta', art: <BikeArt /> },
-  { id: 'alergare', art: <RunArt /> },
-];
+const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
+const longDate = (iso: string) => `${DAY_NAMES[weekday(iso)]!.replace(/^./, (c) => c.toUpperCase())}, ${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
 
-const BAR_PARTS = [
-  { name: 'inot', label: 'Înot', weight: 0.2, how: 'cea mai lungă distanță înotată în 6 săptămâni, față de 1.900 m (și ritmul, după test)' },
-  { name: 'bicicleta', label: 'Bicicletă', weight: 0.25, how: 'cea mai lungă tură în 6 săptămâni, față de 90 km' },
-  { name: 'alergare', label: 'Alergare', weight: 0.25, how: 'cea mai lungă alergare în 6 săptămâni, față de 18 km (plus alergarea după bicicletă)' },
-  { name: 'consistenta', label: 'Consecvență', weight: 0.15, how: 'câte ședințe din plan ai făcut în ultimele 4 săptămâni' },
-  { name: 'forma', label: 'Formă', weight: 0.15, how: 'încărcarea de antrenament acumulată față de ce cere faza în care ești' },
-] as const;
-
-const RUN_BAR_PARTS = (goal: 'semimaraton' | 'maraton') =>
-  [
-    { name: 'alergare', label: 'Alergare', weight: 0.5, how: `cea mai lungă alergare în 6 săptămâni, față de ${goal === 'maraton' ? 32 : 18} km` },
-    { name: 'consistenta', label: 'Consecvență', weight: 0.25, how: 'câte ședințe din plan ai făcut în ultimele 4 săptămâni' },
-    { name: 'forma', label: 'Formă', weight: 0.25, how: 'încărcarea de antrenament acumulată față de ce cere faza în care ești' },
-  ] as const;
-
+/**
+ * Acasă: o singură decizie pentru azi și un singur buton principal; apoi ce urmează și reperele cursei.
+ * Realizările stau în Evoluție, detaliile pe sport în Plan.
+ */
 export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
   const me = useMe();
-  const { local } = useData();
-  const bar = me.bar;
-  const [barInfo, setBarInfo] = useState(false);
-  const total = !bar || bar.blocked || bar.total == null ? null : Math.round(bar.total);
-  const known = bar?.components.filter((c) => c.value != null).length ?? 0;
   const morning = me.forms.morning as MorningForm | null;
   const lastDone = lastDoneWorkout(me);
   const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && (a.date === lastDone.date || a.date > lastDone.date) && !a.unplanned) : null;
   const lastDoneId = lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null);
   const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
-  const isSunday = weekday(me.today) === 6;
-  const strength = nextWorkout(me, 'forta');
-  const todayCount = workoutsOn(me, me.today).length;
-  const yesterday = addDays(me.today, -1);
-  const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}, ${fmtDayMonth(d)}`);
   const days = daysToRace(me);
-  const overall = me.sportReady ? overallReady(me.sportReady) : null;
-  const limiting = me.sportReady && me.sportReady.length > 1 ? [...me.sportReady].sort((a, b) => (a.value ?? -1) - (b.value ?? -1))[0]! : null;
   const goalName = me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă';
+  const yesterday = addDays(me.today, -1);
+  const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}`);
+  const hour = new Date().getHours();
+  const todayUpcoming = workoutsOn(me, me.today).filter((w) => w.type !== 'odihna' && colorOf(me, w) === 'asteptare' && w.status !== 'anulat_sistem');
+
+  // Un singur buton principal, în ordinea în care contează pentru decizia de azi.
+  const cta: { label: string; go: () => void } | null =
+    !morningComplete(morning ?? undefined) && hour >= 4 && hour < 14
+      ? { label: 'Cum te simți?', go: () => onOpen('dimineata') }
+      : lastDone && lastDoneId && !eveningComplete(evening)
+        ? { label: `Cum a fost ${SPORT_LABEL[lastDone.sport].toLowerCase()} ${dayLabel(lastDone.date)}?`, go: () => onOpen('seara', { activityId: lastDoneId }) }
+        : todayUpcoming.length
+          ? { label: 'Vezi ședința în plan', go: () => onOpen('calendar') }
+          : { label: 'De ce? Întreabă antrenorul', go: () => onOpen('antrenor') };
+
+  const next = me.plan
+    .filter((w) => (w.status === 'planificat' || w.status === 'mutat') && w.date > me.today && w.type !== 'odihna')
+    .sort((a, b) => (a.date < b.date ? -1 : 1))[0];
 
   return (
     <>
-      <div className="topline">
-        <CircleBtn icon={Icons.calendar} label="Calendar" onClick={() => onOpen('calendar')} />
-        <SyncButton />
-      </div>
-      <div className="hub-name">
-        <button className="name-ring" onClick={() => onOpen('profil')} aria-label="Profil">
-          {me.user.name || 'Sportiv'}
-        </button>
-        <div className="sub">{me.user.raceDate ? `${fmtDayMonth(me.user.raceDate)} ${me.user.raceDate.slice(0, 4)}` : 'completează chestionarul ca să pornească planul'}</div>
-      </div>
-
-      <div className="forms-row">
-        {!me.intakeComplete && (
-          <button className="form-tile todo" onClick={() => onOpen('intake')}>
-            <span className="k">Chestionar</span>
-            <span className="v">3 minute</span>
-          </button>
-        )}
-        {/* Chestionarul de dimineață contează doar pentru decizia zilei: după 14:00 nu mai apare. */}
-        {!morningComplete(morning ?? undefined) && new Date().getHours() >= 4 && new Date().getHours() < 14 && (
-          <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
-            <span className="k">Dimineața</span>
-            <span className="v">{morning && Object.values(morning.hooper).some((v) => v != null) ? `Completează (${Object.values(morning.hooper).filter((v) => v != null).length} din 4)` : 'Cum te simți azi? · 20 de secunde'}</span>
-          </button>
-        )}
-        {lastDone && lastDoneId && !eveningComplete(evening) && (
-          <button className="form-tile todo" onClick={() => onOpen('seara', { activityId: lastDoneId })}>
-            <span className="k">Cum a fost</span>
-            <span className="v">{`${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
-          </button>
-        )}
-        {isSunday && !me.forms.weeklyDone && (
-          <button className="form-tile todo" onClick={() => onOpen('saptamanal')}>
-            <span className="k">Săptămâna</span>
-            <span className="v">3 întrebări</span>
-          </button>
-        )}
-      </div>
-
-
-      <NewBadge onOpen={onOpen} />
-      <Today onOpen={onOpen} />
-
-      {me.raceReady ? (
-        <RaceReadyBar onOpen={onOpen} goalName={goalName} open={barInfo} setOpen={setBarInfo} />
-      ) : (
-        <div className="progress" role="img" aria-label={total == null ? 'Bara de pregătire: fără date' : `Pregătit ${total}% pentru cursă`}>
-          <div className="track">
-            {total == null ? <div className="fill empty" /> : <div className="fill" style={{ width: `${Math.max(3, total)}%` }} />}
-            <div className="ticks" aria-hidden="true">
-              {(bar?.components ?? [1, 1, 1, 1, 1].map((_, i) => ({ name: String(i), weight: 0.2 }))).map((c) => (
-                <i key={c.name} style={{ flexGrow: c.weight * 100 }} />
-              ))}
-            </div>
-          </div>
-          <div className="meta">
+      <AppHeader name={me.user.name} onProfile={() => onOpen('profil')} right={<SyncButton compact />} />
+      <div className="hello">
+        <h1>Salut, {(me.user.name || 'sportivule').split(' ')[0]}.</h1>
+        <p>{longDate(me.today)}</p>
+        {me.user.raceDate && (
+          <div className="race-chip">
+            <b>{days} zile</b>
             <span>
-              <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> progres față de repere
+              {me.user.raceName ?? goalName} · {fmtDayMonth(me.user.raceDate)} {me.user.raceDate.slice(0, 4)}
             </span>
-            <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
-              {bar && bar.components.length ? `măsurat ${known}/${bar.components.length}` : 'detalii'} {Icons.chevronRight}
-            </button>
           </div>
-          {barInfo && (
-            <div className="bar-info">
-              {(isRunGoal(me.user.goal) ? RUN_BAR_PARTS(me.user.goal) : BAR_PARTS).map((p) => {
-                const c = bar?.components.find((x) => x.name === p.name);
-                return (
-                  <div key={p.name} className="bi-row">
-                    <span className="bi-k">
-                      {p.label} <small>{Math.round(p.weight * 100)}%</small>
-                    </span>
-                    <span className={`bi-v ${c?.value == null ? 'none' : ''}`}>{c?.value == null ? 'fără date' : `${Math.round(c.value)}%`}</span>
-                    <span className="bi-d">{c?.value == null ? p.how : c.detail}</span>
-                  </div>
-                );
-              })}
-              <div className="tiny muted">Bara se calculează doar din ce s-a măsurat. Fără date de la brățări în ultimele 6 săptămâni, rămâne goală; nu ghicește.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <BadgesTeaser onOpen={onOpen} />
-
-      <p className="daymsg">{greeting(me)}</p>
-
-
-      <div className="sports">
-        {SPORTS.filter((s) => !isRunGoal(me.user.goal) || s.id === 'alergare').map((s) => {
-          const next = nextWorkout(me, s.id);
-          const isToday = next?.date === me.today;
-          return (
-            <button key={s.id} className={`sport-card ${isToday ? 'today' : ''}`} onClick={() => onOpen('antrenament', { sport: s.id })}>
-              {isToday && <span className="badge">azi</span>}
-              {s.art}
-              <div>
-                <div className="nm">{SPORT_LABEL[s.id]}</div>
-                <div className="nx">{next ? `${isToday ? 'azi' : DAY_NAMES[weekday(next.date)]} · ${fmtMinutes(next.plannedMinutes)}` : me.plan.length ? 'nimic planificat' : 'fără plan încă'}</div>
-              </div>
-            </button>
-          );
-        })}
+        )}
       </div>
 
-      {me.intakeComplete && (!me.profile.sex || !me.profile.birthYear || !me.profile.heightCm) && (
-        <button className="labs-alert" onClick={() => onOpen('profil')}>
-          <b>Completează sexul, vârsta și înălțimea</b>
-          <span>Contează pentru analize, nutriție și recuperare. Completează-le în Profil → Despre tine.</span>
-        </button>
-      )}
+      <div className="stack">
+        {!me.intakeComplete && (
+          <button className="row-card todo" onClick={() => onOpen('intake')}>
+            <span>
+              <b>Chestionarul de intrare</b>
+              <small>3 minute · fără el nu există plan</small>
+            </span>
+            {Icons.chevronRight}
+          </button>
+        )}
 
-      {me.intakeComplete && (!me.baseline.labs || me.baseline.labs.expirat) && (
-        <button className="labs-alert" onClick={() => onOpen('analize')}>
-          <b>Planul nu e 100% pe corpul tău</b>
-          <span>{me.baseline.labs?.expirat ? 'Analizele urcate sunt mai vechi de 12 luni.' : 'Lipsesc analizele de sânge.'} Urcă-le acum: PDF sau poză.</span>
-        </button>
-      )}
+        <Today onOpen={onOpen} cta={cta} />
 
-      {(!me.baseline.labs || me.baseline.labs.expirat || !me.baseline.tests || !me.baseline.body || me.baseline.cardiolog !== 'da') && (
-        <Card tight style={{ marginTop: 12 }}>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <div className="title">Date de bază</div>
-            <span className="small muted">{[me.baseline.labs && !me.baseline.labs.expirat, me.baseline.tests, me.baseline.body, me.baseline.cardiolog === 'da'].filter(Boolean).length} din 4 completate</span>
-          </div>
-          <BaselineList onlyMissing onOpen={(s) => onOpen(s)} />
-          <div className="tiny muted" style={{ marginTop: 8 }}>Ce ai completat găsești în Profil.</div>
-        </Card>
-      )}
+        {next && (
+          <button className="row-card" onClick={() => onOpen('calendar')}>
+            <span>
+              <small className="eyebrow">
+                Urmează · {DAY_NAMES[weekday(next.date)]}, {fmtDayMonth(next.date)}
+              </small>
+              <b>
+                {SPORT_LABEL[next.sport]} · {fmtMinutes(next.plannedMinutes)}
+              </b>
+            </span>
+            {Icons.chevronRight}
+          </button>
+        )}
 
-      <div className="countdown">
-        <span className="num">{days == null ? '–' : days}</span>
-        <span className="lb">zile până la cursă</span>
-        <span className="sub">{me.user.raceDate ? `${fmtDayMonth(me.user.raceDate)} ${me.user.raceDate.slice(0, 4)} · ${me.user.raceName ?? ''}` : 'data cursei vine din chestionar'}</span>
+        <RacePanel goalName={goalName} onOpen={onOpen} />
+
+        {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
+          <button className="row-card" onClick={() => onOpen('saptamanal')}>
+            <span>
+              <b>Check-in-ul săptămânii</b>
+              <small>3 întrebări despre săptămâna care se încheie</small>
+            </span>
+            {Icons.chevronRight}
+          </button>
+        )}
+
+        {me.intakeComplete && (!me.profile.sex || !me.profile.birthYear || !me.profile.heightCm) && (
+          <button className="row-card" onClick={() => onOpen('profil')}>
+            <span>
+              <b>Completează sexul, vârsta și înălțimea</b>
+              <small>Contează pentru analize, nutriție și recuperare.</small>
+            </span>
+            {Icons.chevronRight}
+          </button>
+        )}
+
+        {me.intakeComplete && (!me.baseline.labs || me.baseline.labs.expirat) && (
+          <button className="row-card" onClick={() => onOpen('analize')}>
+            <span>
+              <b>{me.baseline.labs?.expirat ? 'Analizele au peste 12 luni' : 'Lipsesc analizele de sânge'}</b>
+              <small>Urcă-le ca PDF sau poză; planul le folosește după regulile de siguranță.</small>
+            </span>
+            {Icons.chevronRight}
+          </button>
+        )}
+
+        {me.warnings.map((w) => (
+          <section key={w.title} className="card note-card">
+            <b>{w.title}</b>
+            <p className="small">{w.text}</p>
+            <p className="small muted">Corecția: {w.fix}</p>
+          </section>
+        ))}
       </div>
-
-      <div className="boxes">
-        <button className="box" onClick={() => onOpen('recuperare')}>
-          <span className="ic">{Icons.pulse}</span>
-          <div>
-            <div className="nm">Recuperare</div>
-            <div className="v">{me.wellnessToday?.recoveryScore != null ? <><b>{me.wellnessToday.recoveryScore}</b>{me.wellnessToday.sleepMin != null ? ` · somn ${fmtMinutes(me.wellnessToday.sleepMin)}` : ''}</> : me.wellnessToday?.sleepMin != null ? `somn ${fmtMinutes(me.wellnessToday.sleepMin)}` : 'fără date azi'}</div>
-          </div>
-        </button>
-        <button className="box" onClick={() => onOpen('antrenament', { sport: 'forta' })}>
-          <span className="ic">{Icons.dumbbell}</span>
-          <div>
-            <div className="nm">Forța</div>
-            <div className="v">{strength ? `${strength.date === me.today ? 'azi' : DAY_NAMES[weekday(strength.date)]} · ${fmtMinutes(strength.plannedMinutes)}` : 'nimic planificat'}</div>
-          </div>
-        </button>
-        <button className="box" onClick={() => onOpen('calendar')}>
-          <span className="ic">{Icons.calendar}</span>
-          <div>
-            <div className="nm">Calendar</div>
-            <div className="v">
-              <b>{fmtDayMonth(me.today)}</b> · {todayCount} {todayCount === 1 ? 'ședință' : 'ședințe'}
-            </div>
-          </div>
-        </button>
-      </div>
-
-
-      {me.warnings.map((w) => (
-        <Card key={w.title} className="warn" tight style={{ marginTop: 12 }}>
-          <div className="title">{w.title}</div>
-          <div className="small" style={{ marginTop: 4 }}>
-            {w.text}
-          </div>
-          <div className="small muted" style={{ marginTop: 6 }}>
-            Corecția: {w.fix}
-          </div>
-        </Card>
-      ))}
     </>
   );
 }

@@ -70,17 +70,19 @@ export function RecoveryCard() {
           {r.sessions.map((s) => (
             <div key={s.id} className="rec-row">
               <span>
-                <b>{s.name}</b> · {fmtMinutes(s.minutes)}
+                <span className="rec-name">
+                  <b>{s.name}</b> · {fmtMinutes(s.minutes)}
+                </span>
                 <small>
                   {fmtDayMonth(s.date)} · {SRC[s.source] ?? s.source}
-                  {s.avgHr ? ` · puls mediu ${s.avgHr}` : ''}
+                  {s.avgHr ? ` · puls mediu în sesiune ${s.avgHr}` : ''}
                 </small>
               </span>
               <span className="rec-next">
                 {s.nextHrvPct != null ? (
                   <>
                     <b className={s.nextHrvPct >= 0 ? 'up' : 'down'}>HRV {sign(s.nextHrvPct)}%</b>
-                    <small>dimineața de după{s.nextRhrDelta != null ? `, puls ${sign(s.nextRhrDelta)}` : ''}</small>
+                    <small>dimineața de după{s.nextRhrDelta != null ? (s.nextRhrDelta === 0 ? ', puls neschimbat' : `, puls ${sign(s.nextRhrDelta)}`) : ''}</small>
                   </>
                 ) : (
                   <small>dimineața de după: fără date</small>

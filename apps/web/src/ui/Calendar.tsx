@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Avatar, Card, CircleBtn, Dot, Icons, Label, LiveTitle } from './common';
+import { Card, CircleBtn, Dot, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 import { phaseWeeks } from '@core/calendar/phases.js';
@@ -12,7 +12,7 @@ const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'i
 const DOW = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
+export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
   const me = useMe();
   const [view, setView] = useState<'saptamana' | 'luna'>('saptamana');
   const [year, setYear] = useState(Number(me.today.slice(0, 4)));
@@ -46,18 +46,6 @@ export function Calendar({ onBack, onOpen }: { onBack: () => void; onOpen: (scre
 
   return (
     <>
-      <header className="top">
-        <div className="top-l">
-          <CircleBtn icon={Icons.arrowLeft} label="Înapoi" onClick={onBack} />
-        </div>
-        <div className="top-c">
-          <LiveTitle>Calendar</LiveTitle>
-        </div>
-        <div className="top-r">
-          <Avatar name={me.user.name || 'S'} onClick={() => onOpen('profil')} />
-        </div>
-      </header>
-
       <div className="seg cal-view" role="tablist">
         <button role="tab" aria-selected={view === 'saptamana'} className={view === 'saptamana' ? 'on' : ''} onClick={() => setView('saptamana')}>
           Săptămâna

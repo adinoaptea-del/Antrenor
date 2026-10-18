@@ -255,7 +255,7 @@ export const server = {
   sync: () => api<{ lastSync: string; reports: { provider: string; ok: boolean; rows: number; detail: string | null }[] }>('/api/sync', { method: 'POST' }),
   form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
-  runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force: true }) }),
+  runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = true) => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force }) }),
   adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; inviteUrl?: string }>('/api/admin'),
   newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
   adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
