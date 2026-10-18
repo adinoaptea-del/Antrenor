@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { longestContinuousSwim, mergeDetails, stepsFromCadence, stravaDetails } from '../src/collector/details.js';
+import { swimPace100, longestContinuousSwim, mergeDetails, stepsFromCadence, stravaDetails } from '../src/collector/details.js';
 
 describe('detaliile ședinței', () => {
   it('pași pe km = cadență × ritm; lungimea pasului din ei', () => {
@@ -49,7 +49,17 @@ describe('înot fără oprire', () => {
     // ca la ședința reală din 14 oct: 25 m, pauză, 50 m, pauză, 75 m, pauză, 50 m
     const r = longestContinuousSwim([L(25, 14), L(0, 82), L(50, 41), L(0, 20), L(75, 61), L(0, 79), L(50, 30)]);
     assert.equal(r?.m, 75);
-    assert.equal(r?.pace100, 81);
+    // A03: sub 100 m nu se calculează ritm (o tură scurtă nu spune nimic despre 1.900 m)
+    assert.equal(r?.pace100, null);
+    assert.equal(longestContinuousSwim([L(50, 41), L(50, 40), L(100, 82)])?.pace100, 82);
+  });
+  it('A03: ritmul imposibil (0:53/100 m) nu apare nicăieri', () => {
+    assert.equal(swimPace100(53, 100), null);
+    assert.equal(swimPace100(14, 25), null);
+    assert.equal(swimPace100(1500, 1000), 150);
+    const d = stravaDetails({ sport_type: 'Swim', distance: 1000, moving_time: 530, elapsed_time: 900, laps: [{ distance: 25, moving_time: 14, elapsed_time: 14 }, { distance: 100, moving_time: 110, elapsed_time: 110 }] } as never, 'inot');
+    assert.equal(d.pace100mSec, null);
+    assert.equal(d.fastestLap100mSec, 110);
   });
   it('o tură imposibil de rapidă (atingere de perete) nu se numără și rupe șirul', () => {
     assert.equal(longestContinuousSwim([L(25, 30), L(75, 16), L(25, 30)])?.m, 25);

@@ -46,8 +46,26 @@ export interface ActivityDetails {
 
 export const DETAILS_V = 2;
 
-/** Viteza sub care o tură e o detectare greșită a ceasului (atingere de perete), nu înot: 100 m sub 45 s. */
-const MIN_SWIM_SEC_100 = 45;
+/**
+ * Ritm de înot plauzibil pentru un amator, pe 100 m: sub 60 s e detectare greșită a ceasului (atingere de perete, GPS
+ * în ape libere, distanță în unități greșite); peste 6 min nu mai e înot continuu. În afara intervalului: fără ritm.
+ */
+export const MIN_SWIM_SEC_100 = 60;
+export const MAX_SWIM_SEC_100 = 360;
+/** Sub atâția metri un segment nu dă ritm (o lungime de bazin nu spune nimic despre 1.900 m). */
+export const MIN_SWIM_PACE_M = 100;
+
+/** Ritmul pe 100 m din secunde și metri; null dacă segmentul e prea scurt sau ritmul e imposibil. */
+export function swimPace100(sec: number | null | undefined, meters: number | null | undefined): number | null {
+  if (!sec || !meters || !Number.isFinite(sec) || !Number.isFinite(meters) || sec <= 0 || meters < MIN_SWIM_PACE_M) return null;
+  const p = sec / (meters / 100);
+  return p >= MIN_SWIM_SEC_100 && p <= MAX_SWIM_SEC_100 ? Math.round(p) : null;
+}
+
+/** Un ritm deja calculat (s/100 m) e plauzibil? */
+export function swimPaceOk(p: number | null | undefined): p is number {
+  return p != null && Number.isFinite(p) && p >= MIN_SWIM_SEC_100 && p <= MAX_SWIM_SEC_100;
+}
 
 /**
  * Cea mai lungă porțiune înotată fără oprire: ture consecutive cu distanță; o tură de pauză (fără distanță)
@@ -73,7 +91,7 @@ export function longestContinuousSwim(laps: { distance: number; moving_time: num
     cur = { m: cur.m + l.distance, sec: cur.sec + t };
     if (cur.m > best.m) best = { ...cur };
   }
-  return { m: Math.round(best.m), pace100: best.m > 0 ? Math.round(best.sec / (best.m / 100)) : null };
+  return { m: Math.round(best.m), pace100: swimPace100(best.sec, best.m) };
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -136,7 +154,7 @@ export function stravaDetails(a: StravaSummaryExtra | StravaDetailed, sport: str
     d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
   } else if (sport === 'inot') {
     d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
-    d.pace100mSec = a.distance >= 50 && ok(a.moving_time) ? Math.round(a.moving_time / (a.distance / 100)) : null;
+    d.pace100mSec = swimPace100(a.moving_time, a.distance);
   }
   const det = a as StravaDetailed;
   if (det.splits_metric || det.best_efforts || det.laps) {
@@ -154,12 +172,12 @@ export function stravaDetails(a: StravaSummaryExtra | StravaDetailed, sport: str
       d.fastestKmSec = efforts['1 km'] ?? (splits.length ? Math.min(...splits) : null);
     }
     if (sport === 'inot') {
-      const laps = (det.laps ?? []).filter((l) => l.distance >= 50 && ok(l.moving_time));
+      const lapPaces = (det.laps ?? []).map((l) => swimPace100(l.moving_time, l.distance)).filter(swimPaceOk);
       d.laps = det.laps?.length ?? null;
       const c = longestContinuousSwim(det.laps ?? []);
       d.continuousM = c ? c.m : null;
       d.continuousPace100mSec = c?.pace100 ?? null;
-      d.fastestLap100mSec = laps.length ? Math.min(...laps.map((l) => Math.round(l.moving_time / (l.distance / 100)))) : null;
+      d.fastestLap100mSec = lapPaces.length ? Math.min(...lapPaces) : null;
     }
   }
   return d;

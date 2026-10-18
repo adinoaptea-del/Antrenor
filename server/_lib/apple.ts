@@ -1,4 +1,4 @@
-import { stepsFromCadence, type ActivityDetails } from '../../src/collector/details.js';
+import { stepsFromCadence, swimPace100, type ActivityDetails } from '../../src/collector/details.js';
 import { classifyOther, type OtherActivity } from '../../src/collector/other.js';
 // Apple Watch prin aplicația iPhone „Health Auto Export” (REST API automation, format JSON).
 // Luăm somnul, HRV-ul, pulsul de repaus și antrenamentele (inclusiv cele de pe Garmin, trimise de Garmin Connect în Apple Health).
@@ -202,6 +202,6 @@ function appleDetails(w: Record<string, unknown>, sport: AppleWorkout['sport'], 
       Object.assign(d, stepsFromCadence(spm, sec / 60 / dist));
     }
   }
-  if (sport === 'inot' && dist && dist >= 0.05) d.pace100mSec = Math.round(sec / (dist * 10));
+  if (sport === 'inot' && dist) d.pace100mSec = swimPace100(sec, dist * 1000);
   return d;
 }

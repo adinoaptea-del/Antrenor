@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Sport } from '@core/types.js';
 import type { MeActivity } from '@core/api-types.js';
 import { diffDays, weekday } from '@core/util/dates.js';
+import { swimPace100, swimPaceOk } from '@core/collector/details.js';
 import { Card, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { DAY_NAMES } from '../data/model';
@@ -65,9 +66,9 @@ function metricsFor(sport: Sport, ftp: number | null): Metric[] {
     ];
   if (sport === 'inot')
     return [
-      { k: 'p100', label: 'Ritm mediu', unit: '/100 m', get: (a) => a.details?.pace100mSec ?? (a.distanceKm && a.distanceKm >= 0.05 ? (a.minutes * 60) / (a.distanceKm * 10) : null), fmt: mmss, better: 'low' },
+      { k: 'p100', label: 'Ritm mediu', unit: '/100 m', get: (a) => (swimPaceOk(a.details?.pace100mSec) ? a.details!.pace100mSec : swimPace100(a.minutes * 60, (a.distanceKm ?? 0) * 1000)), fmt: mmss, better: 'low' },
       { k: 'cont', label: 'Cel mai lung fără oprire', unit: 'm', get: (a) => a.details?.continuousM, better: 'high', hint: 'ture legate fără pauză; asta contează pentru proba de cursă' },
-      { k: 'lap', label: 'Cea mai rapidă tură', unit: '/100 m', get: (a) => a.details?.fastestLap100mSec, fmt: mmss, better: 'low' },
+      { k: 'lap', label: 'Cea mai rapidă tură', unit: '/100 m', get: (a) => (swimPaceOk(a.details?.fastestLap100mSec) ? a.details!.fastestLap100mSec : null), fmt: mmss, better: 'low' },
       { k: 'dist', label: 'Distanță', unit: 'm', get: (a) => (a.distanceKm != null ? Math.round(a.distanceKm * 1000) : null), fmt: (v) => v.toLocaleString('ro-RO'), better: 'high' },
       { k: 'cad', label: 'Brațe pe minut', get: (a) => a.cadence ?? a.details?.cadence, better: null },
       { k: 'laps', label: 'Ture', get: (a) => a.details?.laps, better: null },

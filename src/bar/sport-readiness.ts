@@ -1,3 +1,4 @@
+import { swimPace100, swimPaceOk } from '../collector/details.js';
 // PREGĂTIREA PE PROBĂ — algoritmul (același pentru toți sportivii, aceleași date de intrare dau același rezultat).
 //
 // Fereastra: ultimele 6 săptămâni, toate ședințele de pe brățări (și cele din afara planului).
@@ -158,9 +159,9 @@ export function sportReadiness(goal: Goal, activities: SourceActivity[], today: 
     } else if (sport === 'inot') {
       const cutoff = SWIM_CUTOFF_MIN[goal];
       // Ritmul: din porțiunea continuă dacă există ture; altfel ritmul ședinței cea mai lungă, cu pauze (mai sever, dar măsurat).
-      const withLaps = mine.filter((a) => a.details?.continuousPace100mSec != null && (a.details?.continuousM ?? 0) >= 100);
+      const withLaps = mine.filter((a) => swimPaceOk(a.details?.continuousPace100mSec) && (a.details?.continuousM ?? 0) >= 100);
       const longestSwim = mine.reduce<SourceActivity | null>((m, a) => ((a.distanceKm ?? 0) > (m?.distanceKm ?? 0) ? a : m), null);
-      const pace = withLaps.length ? Math.min(...withLaps.map((a) => a.details!.continuousPace100mSec!)) : longestSwim?.distanceKm ? (longestSwim.minutes * 60) / (longestSwim.distanceKm * 10) : null;
+      const pace = withLaps.length ? Math.min(...withLaps.map((a) => a.details!.continuousPace100mSec!)) : longestSwim?.distanceKm ? swimPace100(longestSwim.minutes * 60, longestSwim.distanceKm * 1000) : null;
       if (cutoff) {
         const need = (cutoff * 60) / (leg * 10);
         parts.push({ label: withLaps.length ? 'Ritm față de timpul-limită' : 'Ritm (cu pauze) față de timpul-limită', have: pace ? `${fmtPace(pace)}/100 m` : 'nemăsurat', target: `${fmtPace(need)}/100 m`, // Ritmul contează doar pe distanța pe care o poți acoperi: se scalează cu rezistența (ritm bun pe 50 m nu înseamnă ritm bun pe 1.900 m).

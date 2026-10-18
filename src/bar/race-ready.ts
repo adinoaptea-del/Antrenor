@@ -1,3 +1,4 @@
+import { swimPace100, swimPaceOk } from '../collector/details.js';
 // „Pe drum” și „Gata de cursă”.
 //
 // PE DRUM: ești unde ar trebui să fii în faza de acum? Din execuția planului pe ultimele 4 săptămâni: cât din volumul
@@ -92,8 +93,8 @@ export function raceReady(input: {
 
   // ——— Ritmurile demonstrate ———
   const swims = of('inot');
-  const contPace = swims.filter((a) => a.details?.continuousPace100mSec != null && (a.details?.continuousM ?? 0) >= 400).map((a) => a.details!.continuousPace100mSec!);
-  const sessPace = swims.filter((a) => (a.distanceKm ?? 0) >= 0.4).map((a) => (a.minutes * 60) / ((a.distanceKm ?? 1) * 10));
+  const contPace = swims.filter((a) => (a.details?.continuousM ?? 0) >= 400).map((a) => a.details?.continuousPace100mSec).filter(swimPaceOk);
+  const sessPace = swims.filter((a) => (a.distanceKm ?? 0) >= 0.4).map((a) => swimPace100(a.minutes * 60, (a.distanceKm ?? 0) * 1000)).filter(swimPaceOk);
   const swimPace = contPace.length ? Math.min(...contPace) : sessPace.length ? Math.min(...sessPace) : null; // s/100 m
   const rides = of('bicicleta').filter((a) => a.minutes >= 90 && (a.distanceKm ?? 0) > 0);
   const bikeSpeed = rides.length ? Math.max(...rides.map((a) => (a.distanceKm ?? 0) / (a.minutes / 60))) : null; // km/h
