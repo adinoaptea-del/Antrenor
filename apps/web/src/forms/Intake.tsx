@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { weeklyBudget } from '@core/calendar/budget.js';
+import { AvailabilityDays } from '../ui/Availability';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
 import { useData, useMe } from '../data/store';
@@ -78,7 +79,8 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
     }
   };
   const back = () => (step === 0 ? onBack() : setStep(step - 1));
-  const budget = weeklyBudget(a.program).hours;
+  const bud = weeklyBudget(a.program, undefined, a.oreSport ?? null);
+  const budget = bud.hours;
 
   const canContinue = (() => {
     switch (STEPS[step]) {
@@ -97,7 +99,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
       case 'Echipament':
         return a.echipament.ceas != null;
       case 'Program':
-        return a.program.length > 0;
+        return a.program.length > 0 && a.oreSport != null;
       case 'Sănătate':
         return a.sanatate.avizCardiolog != null && !!a.evaluare?.testEfort;
       case 'Gata':
@@ -271,13 +273,22 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         )}
 
         {STEPS[step] === 'Program' && (
+          <>
           <Q title="Când poți să te antrenezi?" hint="Atinge ferestrele libere dintr-o săptămână obișnuită. Planul se construiește doar în ele, cu 20% rezervă.">
             <ScheduleGrid value={a.program} onChange={(program) => set({ program })} />
+            <AvailabilityDays blocks={a.program} />
+          </Q>
+          <Q title="Câte ore pe săptămână ai, realist, pentru sport?" hint="Timpul liber nu e timp de antrenament: familie, somn, drum. Planul nu trece de cifra asta.">
+            <Chips value={a.oreSport != null ? String(a.oreSport) : null} options={['4', '6', '8', '10', '12', '14', '16', '20'].map((h) => ({ id: h, label: `${h} h` }))} onChange={(h) => set({ oreSport: Number(h) })} />
             <div className="budget">
               <span className="num md">{budget.toLocaleString('ro-RO')}</span>
               <span className="unit">ore pe săptămână pentru plan</span>
             </div>
+            <div className="tiny muted">
+              Timp liber bifat: {bud.freeHours.toLocaleString('ro-RO')} h. Pentru plan: cel mult 5 h pe zi, × 0,8{a.oreSport ? `, plafonat la ${a.oreSport} h` : ''}.
+            </div>
           </Q>
+          </>
         )}
 
         {STEPS[step] === 'Sănătate' && (

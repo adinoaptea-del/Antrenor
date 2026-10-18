@@ -203,13 +203,7 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
 
         <Card tight>
           <Label>Program</Label>
-          <div>
-            <span className="num md">{me.budgetHours == null ? '–' : me.budgetHours.toLocaleString('ro-RO')}</span>
-            <span className="unit">ore pe săptămână pentru plan</span>
-          </div>
-          <div className="tiny muted" style={{ marginTop: 6 }}>
-            Din ferestrele libere de minimum 45 de minute, × 0,8. Se schimbă din chestionar.
-          </div>
+          <ProgramCard />
           {!local && me.intakeComplete && <RegenPlan />}
         </Card>
 
@@ -526,16 +520,91 @@ function AdminKeys() {
 }
 
 /** Reface planul din chestionar: ședințele viitoare se regenerează (ex. forța pe programul Push / Pull / Legs); istoricul rămâne. */
+function ProgramCard() {
+  const me = useMe();
+  const { submitForm, local, refresh } = useData();
+  const av = me.availability;
+  const [busy, setBusy] = useState(false);
+  const fmt = (x: number) => x.toLocaleString('ro-RO', { maximumFractionDigits: 1 });
+  const setHours = async (ore: number) => {
+    setBusy(true);
+    try {
+      await submitForm('ore-sport', { ore });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!av) {
+    return (
+      <div>
+        <span className="num md">{me.budgetHours == null ? '–' : fmt(me.budgetHours)}</span>
+        <span className="unit">ore pe săptămână pentru plan</span>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="row" style={{ gap: 18, flexWrap: 'wrap' }}>
+        <div>
+          <span className="num md">{fmt(av.sportHours)}</span>
+          <span className="unit">h/săpt. pentru sport</span>
+        </div>
+        <div className="muted">
+          <span className="num sm">{fmt(av.freeHours)}</span>
+          <span className="unit">h timp liber bifat</span>
+        </div>
+      </div>
+      <div className="avail-days" aria-label="Ore pentru sport pe zile">
+        {av.perDay.map((m, d) => (
+          <span key={d} className={m ? '' : 'off'}>
+            <small>{['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'][d]}</small>
+            <b>{m ? fmt(m / 60) : '–'}</b>
+          </span>
+        ))}
+      </div>
+      <div className="pref-k" style={{ marginTop: 10 }}>Ore pe săptămână pentru sport</div>
+      <div className="wk-btns">
+        {[4, 6, 8, 10, 12, 14, 16, 20].map((h) => (
+          <button key={h} className={`pill ${av.declaredHours === h ? 'on' : ''}`} disabled={busy || local} onClick={() => void setHours(h)} aria-pressed={av.declaredHours === h}>
+            {h} h
+          </button>
+        ))}
+      </div>
+      {!av.valid && <div className="warn-line">Ai bifat {fmt(av.freeHours)} ore libere. Alege câte ore ai pentru sport; până atunci planul nu se reface.</div>}
+      {av.valid && av.planHours != null && Math.abs(av.planHours - av.sportHours) >= 1 && (
+        <div className="warn-line">Planul activ e făcut pe {fmt(av.planHours)} h/săpt. Disponibilitatea de acum e {fmt(av.sportHours)} h: refă planul ca să se potrivească.</div>
+      )}
+      <div className="tiny muted" style={{ marginTop: 6 }}>Ferestrele de minimum 45 de minute, cel mult 5 h pe zi, × 0,8, plafonat la orele pentru sport. Ferestrele se schimbă din chestionar.</div>
+    </>
+  );
+}
+
 function RegenPlan() {
   const { refresh } = useData();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const run = async () => {
+  const [prev, setPrev] = useState<Awaited<ReturnType<typeof server.regeneratePlan>> | null>(null);
+  const fmt = (x: number) => x.toLocaleString('ro-RO', { maximumFractionDigits: 1 });
+  const preview = async () => {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await server.regeneratePlan();
+      const r = await server.regeneratePlan(true);
+      if (r.ok) setPrev(r);
+      else setMsg(r.reason ?? 'Nu s-a putut reface planul.');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await server.regeneratePlan(false);
       setMsg(r.ok ? 'Planul a fost refăcut.' : r.reason ?? 'Nu s-a putut reface planul.');
+      setPrev(null);
       await refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -545,10 +614,36 @@ function RegenPlan() {
   };
   return (
     <div style={{ marginTop: 10 }}>
-      <button className="pill" disabled={busy} onClick={() => void run()}>
-        {busy ? 'Refac planul…' : 'Refă planul'}
-      </button>
-      <div className="tiny muted" style={{ marginTop: 6 }}>{msg ?? 'Regenerează ședințele viitoare cu regulile de acum; ce ai făcut deja rămâne.'}</div>
+      {!prev ? (
+        <button className="pill" disabled={busy} onClick={() => void preview()}>
+          {busy ? 'Calculez…' : 'Refă planul'}
+        </button>
+      ) : (
+        <div className="regen-preview">
+          <div>
+            <b>Ce se schimbă</b>
+          </div>
+          <div className="small">
+            Buget: {prev.currentBudgetHours != null ? `${fmt(prev.currentBudgetHours)} → ` : ''}
+            <b>{fmt(prev.budgetHours)} h/săpt.</b>
+            {prev.from ? ` · de luni, ${prev.from.split('-').reverse().slice(0, 2).join('.')}` : ''}
+          </div>
+          {prev.firstWeekSessions != null && (
+            <div className="small">
+              Prima săptămână: {prev.firstWeekSessions} ședințe, {fmt(prev.firstWeekHours ?? 0)} h. Ce ai făcut deja și săptămâna asta rămân cum sunt.
+            </div>
+          )}
+          <div className="wk-btns">
+            <button className="btn sm" disabled={busy} onClick={() => void run()}>
+              {busy ? 'Refac…' : 'Confirm'}
+            </button>
+            <button className="pill" disabled={busy} onClick={() => setPrev(null)}>
+              Renunț
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="tiny muted" style={{ marginTop: 6 }}>{msg ?? 'Vezi întâi ce se schimbă, apoi confirmi.'}</div>
     </div>
   );
 }

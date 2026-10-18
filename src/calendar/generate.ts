@@ -14,6 +14,8 @@ export interface GenerateInput {
   raceDate: string;
   goal: Goal;
   freeBlocks: FreeBlock[];
+  /** Orele pe săptămână pe care sportivul le are pentru sport (declarate). null = nedeclarate. */
+  sportHours?: number | null;
   /** Ore totale pe săptămână, ultimele până la 8 săptămâni (din activități). Gol = fără istoric. */
   historyHoursPerWeek: number[];
   intensityAllowed: IntensityAllowed;
@@ -62,7 +64,16 @@ const CHANGE_MIN = 10; // minute de schimbat/duș în jurul unei ședințe
 const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 30 };
 
 export function generatePlan(input: GenerateInput): GenerateResult {
-  const budget = weeklyBudget(input.freeBlocks);
+  const budget = weeklyBudget(input.freeBlocks, undefined, input.sportHours ?? null);
+  if (!budget.valid) {
+    return {
+      ok: false,
+      reason: `Ai bifat ${budget.freeHours} ore libere pe săptămână. Timpul liber nu e timp de sport: spune câte ore pe săptămână poți da, realist, antrenamentului, apoi fac planul.`,
+      budgetHours: budget.hours,
+      minimumHours: 0,
+      options: ['completează „Câte ore pe săptămână ai pentru sport” în chestionar (pasul Program)'],
+    };
+  }
   const age = input.athlete?.age ?? null;
   const weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4);
   const hours = PHASE_HOURS[input.goal];

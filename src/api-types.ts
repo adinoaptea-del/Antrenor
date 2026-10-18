@@ -116,6 +116,8 @@ export interface Me {
   today: string;
   phase: Phase | null;
   budgetHours: number | null;
+  /** Disponibilitatea: timpul liber bifat vs timpul de sport (declarat / numărat). null = fără program. */
+  availability?: { freeHours: number; declaredHours: number | null; sportHours: number; valid: boolean; perDay: number[]; planHours: number | null } | null;
   /** Prima zi a planului activ (luni). */
   planStart?: string | null;
   plan: PlannedWorkout[];

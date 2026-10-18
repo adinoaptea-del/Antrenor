@@ -22,6 +22,8 @@ export interface IntakeLike {
   bicicleta?: { ceaMaiLungaOre?: number | null };
   alergare?: { ceaMaiLungaKm?: number | null; tinta?: RunResult | null; ritmActual?: string | null; poateDistanta?: boolean | null; rezultatActual?: RunResult | null };
   program: FreeBlock[];
+  /** Ore pe săptămână pentru sport, declarate. */
+  oreSport?: number | null;
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null };
   echipament?: { ceas?: string | null; whoop?: boolean; oura?: boolean };
   evaluare?: { inot400?: string | null; ritmUsor?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
@@ -69,6 +71,11 @@ export interface PlanOutcome {
   weeks?: number;
   workouts?: number;
   options?: string[];
+  preview?: boolean;
+  currentBudgetHours?: number | null;
+  from?: string;
+  firstWeekHours?: number;
+  firstWeekSessions?: number;
   /** De ce e planul altfel decât s-ar aștepta sportivul (ex. intensitate limitată din analize). */
   note?: string;
   /** Planul e făcut fără analize valabile (mai noi de 12 luni). */
@@ -102,7 +109,7 @@ export function labsGateFrom(rows: { drawn_at: string; feritina: number | string
 }
 
 /** Generează (sau regenerează) planul activ de la lunea următoare. Planul vechi rămâne în istoric, inactiv. */
-export async function generateAndStore(userId: string, today: string, intake: IntakeLike): Promise<PlanOutcome> {
+export async function generateAndStore(userId: string, today: string, intake: IntakeLike, opts: { preview?: boolean } = {}): Promise<PlanOutcome> {
   if (intake.obiectiv === 'full') {
     return { ok: false, reason: 'Ironman complet nu e în versiunea asta a planului; alege 70.3 pentru acum.', budgetHours: 0 };
   }
@@ -121,6 +128,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
     freeBlocks: intake.program,
+    sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
     intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
@@ -136,6 +144,22 @@ export async function generateAndStore(userId: string, today: string, intake: In
       : undefined,
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
+  if (opts.preview) {
+    // Previzualizare: ce s-ar schimba, fără să atingă planul activ.
+    const fut = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+    const firstWeek = fut.filter((x) => x.date < addDays(nextMonday, 7));
+    return {
+      ok: true,
+      preview: true,
+      budgetHours: result.budgetHours,
+      currentBudgetHours: (await one<{ budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' }))?.budget_hours ?? null,
+      weeks: result.weeks.length,
+      workouts: fut.length,
+      from: nextMonday,
+      firstWeekHours: Math.round((firstWeek.reduce((n, x) => n + x.plannedMinutes, 0) / 60) * 10) / 10,
+      firstWeekSessions: firstWeek.length,
+    };
+  }
 
   // Planul nou se construiește întreg (inactiv), apoi se activează într-o singură tranzacție; un eșec la mijloc lasă
   // planul vechi activ, nu un plan gol sau pe jumătate.

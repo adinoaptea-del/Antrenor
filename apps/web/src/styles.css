@@ -1079,3 +1079,10 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .rr-bm .i { width: 16px; height: 16px; color: var(--c-verde); stroke-width: 2.6; }
 .rr-dot { width: 12px; height: 12px; margin: 3px 2px; border-radius: 50%; border: 2px solid var(--line-2); }
 .rr-est { display: grid; gap: 4px; }
+.avail-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
+.avail-days span { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 10px; background: var(--surface-2); }
+.avail-days span.off { opacity: 0.45; }
+.avail-days small { font-size: 11px; color: var(--muted); }
+.avail-days b { font-variant-numeric: tabular-nums; font-size: 14px; }
+.warn-line { margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--warn, #EFCE68) 14%, transparent); font-size: 13px; }
+.regen-preview { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); font-size: 14px; display: grid; gap: 8px; }

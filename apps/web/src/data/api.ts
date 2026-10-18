@@ -259,7 +259,11 @@ export const server = {
   adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; inviteUrl?: string }>('/api/admin'),
   newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
   adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
-  regeneratePlan: () => api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number }>('/api/plan/generate', { method: 'POST' }),
+  regeneratePlan: (preview = false) =>
+    api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number; preview?: boolean; currentBudgetHours?: number | null; from?: string; firstWeekHours?: number; firstWeekSessions?: number; workouts?: number }>(
+      `/api/plan/generate${preview ? '?preview=1' : ''}`,
+      { method: 'POST' },
+    ),
 };
 
 export interface AdminUser {

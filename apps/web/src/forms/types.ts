@@ -35,6 +35,8 @@ export interface IntakeAnswers {
   evaluare?: { inot400?: string | null; bicicletaViteza?: number | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; ritmUsor?: string | null; testEfort?: 'cpet' | 'lactat' | 'teren' | 'nu' | null };
   echipament: { ceas: 'garmin' | 'apple' | 'altul' | 'nu' | null; whoop: boolean; oura: boolean; cantar: boolean };
   program: FreeBlock[];
+  /** Câte ore pe săptămână are, realist, pentru sport (timpul liber ≠ timp de sport). */
+  oreSport?: number | null;
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string };
   minte: { motiveaza: string; aOprit: string };
   consimtamant: boolean;

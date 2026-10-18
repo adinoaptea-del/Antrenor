@@ -131,6 +131,7 @@ export const localServer = {
         raceDate: intake.dataCursa,
         goal: intake.obiectiv,
         freeBlocks: intake.program,
+        sportHours: intake.oreSport ?? null,
         historyHoursPerWeek: [],
         intensityAllowed: intake.sanatate.avizCardiolog === 'da' ? 'toate' : 'Z2',
         swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
@@ -140,7 +141,7 @@ export const localServer = {
         save(state);
         return { ok: false, plan: { ok: false, reason: r.reason, budgetHours: r.budgetHours } };
       }
-      state = { ...state, intake, plan: r.weeks.flatMap((w) => w.workouts), budgetHours: weeklyBudget(intake.program).hours, planStart: startDate };
+      state = { ...state, intake, plan: r.weeks.flatMap((w) => w.workouts), budgetHours: weeklyBudget(intake.program, undefined, intake.oreSport ?? null).hours, planStart: startDate };
       save(state);
       return { ok: true, plan: { ok: true, budgetHours: r.budgetHours, weeks: r.weeks.length } };
     }
@@ -178,8 +179,9 @@ export const localServer = {
   async runAgents(): Promise<{ skipped: string }> {
     return { skipped: 'Agenții rulează pe server, cu cheia modelului. În previzualizare nu există server.' };
   },
-  async regeneratePlan(): Promise<{ ok: boolean; reason?: string; budgetHours: number }> {
+  async regeneratePlan(preview = false): Promise<{ ok: boolean; reason?: string; budgetHours: number; preview?: boolean }> {
     if (!state.intake) return { ok: false, reason: 'fără chestionar', budgetHours: 0 };
+    if (preview) return { ok: true, preview: true, budgetHours: weeklyBudget(state.intake.program, undefined, state.intake.oreSport ?? null).hours };
     const r = await localServer.form('intrare', state.intake);
     return { ok: r.ok, budgetHours: state.budgetHours ?? 0 };
   },

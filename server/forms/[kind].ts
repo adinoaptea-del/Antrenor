@@ -356,6 +356,17 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
       return;
     }
+    if (kind === 'ore-sport') {
+      // Câte ore pe săptămână are sportivul pentru sport (separat de timpul liber). Nu reface planul singur:
+      // planul se reface din Profil, după previzualizare.
+      const ore = Number(body.ore);
+      if (!Number.isFinite(ore) || ore < 2 || ore > 30) throw new HttpError(400, 'între 2 și 30 de ore pe săptămână');
+      const row = await one<{ id: string; answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      if (!row) throw new HttpError(400, 'fără chestionar de intrare');
+      await update('questionnaires', { id: `eq.${row.id}` }, { answers: { ...row.answers, oreSport: Math.round(ore * 2) / 2 } });
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === 'recuperare') {
       // Adăugare manuală: { tip, minute, date? } sau ștergere: { sterge: id } (doar ce a adăugat sportivul).
       if (body.sterge) {

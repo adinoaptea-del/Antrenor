@@ -1,5 +1,6 @@
 import { GOAL_NAME, swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
 import { balanceCheck } from '../../src/calendar/balance.js';
+import { perDayMinutes, weeklyBudget } from '../../src/calendar/budget.js';
 import { raceReady } from '../../src/bar/race-ready.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
@@ -19,7 +20,7 @@ import { compareLabs } from '../../src/collector/labs-compare.js';
 import { dayVerdict, hooperSum, objectiveReadiness } from '../../src/collector/readiness.js';
 import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import type { Color } from '../../src/types.js';
+import type { Color, FreeBlock } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { activeRestriction, stricter, type Restriction } from '../../src/calendar/safety.js';
@@ -188,6 +189,12 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     today,
     phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today) : null,
     budgetHours: planRow?.budget_hours ?? null,
+    availability: (() => {
+      const prog = (intake?.program as FreeBlock[] | undefined) ?? [];
+      if (!prog.length) return null;
+      const b = weeklyBudget(prog, undefined, (intake?.oreSport as number | null | undefined) ?? null);
+      return { freeHours: b.freeHours, declaredHours: b.declaredHours, sportHours: b.hours, valid: b.valid, perDay: perDayMinutes(prog), planHours: planRow?.budget_hours ?? null };
+    })(),
     planStart: planRow?.start_date ?? null,
     plan: planned,
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
