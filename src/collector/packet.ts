@@ -140,6 +140,11 @@ export interface Packet {
   acoperire_azi: DayCoverage | null;
   /** Ieri: efort peste plan? Dimineața, la decizie contează atunci și durerile musculare (hooper.dureri). */
   efort_ieri: { peste_plan: boolean; trimp_facut: number; trimp_planificat: number };
+  /**
+   * Decizia zilei luată de aplicație din TOATE datele obiective (brățări, ceas, plan, formulare). E decizia: o spui cu
+   * cuvintele ei, nu o schimbi. null = aplicația n-a putut decide (fără date).
+   */
+  decizia_aplicatiei?: { nivel: 'verde' | 'galben' | 'rosu' | 'stop'; titlu: string; ce_faci: string; motiv: string | null } | null;
   /** Echilibrul pe ultimele 3 săptămâni: sporturi rămase în urmă, intensitate sărită. Din date, nu din impresie. */
   echilibru: Balance;
   analize: CollectorInput['labs'] | null;

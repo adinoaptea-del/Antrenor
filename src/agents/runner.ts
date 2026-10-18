@@ -287,6 +287,9 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
   }
   let decision = physVerdict(phys, packet);
   if (RANK[decision] < RANK[safe]) decision = safe;
+  // Decizia aplicației (din toate datele obiective) e decizia zilei; doar stopul de siguranță din cod o poate înăspri.
+  const app = packet.decizia_aplicatiei;
+  if (app) decision = safe === 'stop' ? 'stop' : app.nivel;
   const packetWithVerdict: Packet = { ...packet, verdict_fiziolog: decision };
 
   // 2. Restul, în paralel, cu verdictul Fiziologului în pachet. Unul căzut nu le oprește pe celelalte.

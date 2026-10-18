@@ -105,6 +105,17 @@ describe('runner · piramida', () => {
     assert.ok(ev2 && ev2.kind === 'acoperire' && ev2.optiune.id === 'ajunge', 'o variantă inventată nu trece: se aplică cea din cod');
   });
 
+  it('decizia aplicației e decizia zilei; doar stopul de siguranță o poate înăspri', async () => {
+    const { client } = fakeModel({ head: () => ({ decizie: 'verde', mesaj: 'Ok.', memento: 'Ziua 1.', jurnal: [], intrebare: null, optiune: null }) });
+    const packet = { ...buildPacket(input), decizia_aplicatiei: { nivel: 'galben' as const, titlu: 'Zi galbenă', ce_faci: 'Azi mai ușor: faci varianta ușoară a ședinței.', motiv: null } };
+    const r = await runPyramid({ packet, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
+    assert.equal(r.decision, 'galben');
+    assert.equal(r.head.decizie, 'galben');
+    const sick = { ...buildPacket({ ...input, morning: { ...input.morning!, semnale: { ...input.morning!.semnale, febra: true } } }), decizia_aplicatiei: { nivel: 'verde' as const, titlu: 'Zi verde', ce_faci: 'x', motiv: null } };
+    const r2 = await runPyramid({ packet: sick, files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
+    assert.equal(r2.decision, 'stop');
+  });
+
   it('o cifră inventată de head coach duce la reîncercare, apoi la mesajul din cod', async () => {
     let headCalls = 0;
     const { client } = fakeModel({

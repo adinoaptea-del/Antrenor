@@ -1,3 +1,5 @@
+import { buildMe } from './me.js';
+import { messageMatches } from '../../src/calendar/day.js';
 import { withOriginal } from '../../src/calendar/actions.js';
 import { recordUsage } from './usage.js';
 import { hasConsent } from './consent.js';
@@ -61,6 +63,10 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   }
   const { input, planId } = await collect(userId, today, event);
   const packet: Packet = buildPacket(input);
+  // Aplicația și antrenorul se pun de acord: antrenorul primește decizia zilei luată de aplicație din toate datele.
+  const me = await buildMe(userId, today).catch(() => null);
+  if (me?.day && !me.day.ask) packet.decizia_aplicatiei = { nivel: me.day.level, titlu: me.day.title, ce_faci: me.day.action, motiv: forAI(me.day.reason) };
+  if (event === 'dimineata' && !force && me?.day?.ask) return null;
   // Dimineața fără date de la brățări și fără răspunsul sportivului: nu scriem un mesaj pe o culoare ghicită.
   // Aplicația îl întreabă dacă e apt; după răspuns, mesajul se cere din aplicație.
   if (event === 'dimineata' && !force && packet.readiness.verdict_cod.intrebare) return null;
@@ -170,4 +176,23 @@ export async function executedIds(userId: string, today: string, plan: PlannedWo
   return matchActivities(plan.filter((w) => w.date <= today && w.date >= addDays(today, -3)), acts, today)
     .matches.filter((m) => m.activity)
     .map((m) => m.planned.id);
+}
+
+/** Fără cifrele de efort (TRIMP) în textul trimis la AI: pot veni din activități pe care AI-ul n-are voie să le vadă. */
+function forAI(t: string | null): string | null {
+  return t ? t.replace(/\s*\([^)]*TRIMP[^)]*\)/g, '') : null;
+}
+
+/**
+ * Dacă decizia aplicației s-a schimbat după mesajul de azi (date noi, formular, activitate), mesajul se rescrie,
+ * o singură dată pe fiecare decizie nouă. Așa ce scrie antrenorul e mereu ce decide aplicația.
+ */
+export async function realign(userId: string, today: string): Promise<boolean> {
+  const me = await buildMe(userId, today);
+  if (!me.day || me.day.ask) return false;
+  const latest = me.messages.find((m) => m.kind !== 'memento' && m.decision && Date.parse(m.createdAt) >= Date.parse(localDayStartUtc(today, me.user.tz || 'Europe/Bucharest')));
+  if (!latest || messageMatches(latest.decision, me.day)) return false;
+  if (!(await claimEvent(userId, `realiniere:${today}:${me.day.level}:${me.day.title}`))) return false;
+  await runAgents(userId, today, 'dimineata', true);
+  return true;
 }
