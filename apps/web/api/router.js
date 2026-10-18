@@ -7401,6 +7401,16 @@ async function handler8(req, res) {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === "apple-arata") {
+      const cur = await one("users", { id: `eq.${u.id}` });
+      let token = cur?.apple_token ?? null;
+      if (!token) {
+        token = newAppleToken();
+        await update("users", { id: `eq.${u.id}` }, { apple_token: token });
+      }
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
+      return;
+    }
     if (kind === "apple") {
       const token = newAppleToken();
       await update("users", { id: `eq.${u.id}` }, { apple_token: token });

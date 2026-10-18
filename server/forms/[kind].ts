@@ -408,6 +408,18 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       json(res, 200, { ok: true });
       return;
     }
+    if (kind === 'apple-arata') {
+      // Arată adresa existentă fără s-o schimbe (o creează doar dacă nu există): altfel, o a doua apăsare strica adresa
+      // deja lipită în telefon.
+      const cur = await one<{ apple_token: string | null }>('users', { id: `eq.${u.id}` });
+      let token = cur?.apple_token ?? null;
+      if (!token) {
+        token = newAppleToken();
+        await update('users', { id: `eq.${u.id}` }, { apple_token: token });
+      }
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
+      return;
+    }
     if (kind === 'apple') {
       // Un token personal nou: adresa veche nu mai primește date.
       const token = newAppleToken();

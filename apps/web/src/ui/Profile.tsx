@@ -265,12 +265,13 @@ function SamsungCard() {
   const [url, setUrl] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const make = async () => {
+  const make = async (fresh = false) => {
     setErr(null);
     try {
-      const r = await submitForm('apple', {});
+      const r = await submitForm(fresh ? 'apple' : 'apple-arata', {});
       const u = typeof r.data?.url === 'string' ? r.data.url : null;
       setUrl(u ? u.replace('/api/webhooks/apple?', '/api/webhooks/android?') : null);
+      setCopied(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -316,11 +317,14 @@ function SamsungCard() {
           <button className="pill on" style={{ marginTop: 8 }} onClick={() => void copy()}>
             {copied ? 'Copiat' : 'Copiază adresa'}
           </button>
-          <div className="tiny muted" style={{ marginTop: 8 }}>Aceeași adresă personală servește și Apple Health; dacă o refaci, cea veche nu mai primește date.</div>
+          <div className="tiny muted" style={{ marginTop: 8 }}>Aceeași adresă servește și Apple Health. O schimbi doar dacă a ajuns la altcineva: cea veche nu mai primește date și trebuie lipită din nou în telefon.</div>
+          <button className="link-btn" style={{ marginTop: 4 }} onClick={() => void make(true)}>
+            Fă o adresă nouă
+          </button>
         </>
       ) : (
         <button className="pill" style={{ marginTop: 10 }} onClick={() => void make()}>
-          {me.profile.appleConnected ? 'Arată / refă adresa pentru Android' : 'Conectează Samsung Health'}
+          {me.profile.appleConnected ? 'Arată adresa pentru Android' : 'Conectează Samsung Health'}
         </button>
       )}
       {err && (
