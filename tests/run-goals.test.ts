@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { generatePlan } from '../src/calendar/generate.js';
-import { paceFromResult, parseDuration } from '../src/util/run.js';
+import { fmtDuration, paceFromResult, parseDuration } from '../src/util/run.js';
 import { computeBar } from '../src/bar/bar.js';
 
 const blocks = ([0, 1, 2, 3, 4, 5, 6] as const).map((day) => ({ day, startMin: 6 * 60, endMin: day >= 5 ? 10 * 60 : 8 * 60 }));
@@ -11,6 +11,18 @@ describe('obiective doar de alergare', () => {
     assert.equal(parseDuration('3:30:00'), 12600);
     assert.equal(Math.round(paceFromResult({ mod: 'timp', valoare: '3:30:00' }, 42.195)!), 299);
     assert.equal(paceFromResult({ mod: 'ritm', valoare: '5:30' }, 21.0975), 330);
+  });
+
+  it('timpul cu două părți se citește după distanță: 57:00 pe 10 km sunt minute, 1:45 pe semimaraton sunt ore', () => {
+    assert.equal(parseDuration('57:00', 10), 57 * 60);
+    assert.equal(parseDuration('27:30', 5), 27 * 60 + 30);
+    assert.equal(parseDuration('1:45', 21.0975), 105 * 60);
+    assert.equal(parseDuration('3:30', 42.195), 210 * 60);
+    assert.equal(parseDuration('1:45'), 105 * 60); // fără distanță: ore:minute, ca înainte
+    assert.equal(Math.round(paceFromResult({ mod: 'timp', valoare: '57:00' }, 10)!), 342);
+    assert.equal(fmtDuration(57 * 60), '57:00');
+    assert.equal(fmtDuration(13 * 60 + 20), '13:20');
+    assert.equal(fmtDuration(105 * 60), '1:45:00');
   });
 
   it('maraton: doar alergare și forță, ritmul-țintă apare în ședințele specifice, ieșirea lungă crește până la 3 h', () => {

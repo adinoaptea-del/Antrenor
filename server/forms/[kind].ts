@@ -21,6 +21,7 @@ import { AWAY_LABEL, applyAway, easyWorkout, moveWorkout, restoreAway, type Away
 import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
 import { markBadgesSeen } from '../_lib/badges.js';
 import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
+import { isGoal } from '../../src/calendar/phases.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 
 /**
@@ -43,7 +44,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const intake = body as unknown as IntakeLike & { consimtamant?: boolean };
       if (!intake.consimtamant) throw new HttpError(400, 'fără consimțământ nu se salvează date de sănătate');
       // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
-      if (!['70.3', 'olimpic', 'sprint', 'semimaraton', 'maraton'].includes(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: alege 70.3, olimpic, sprint, semimaraton sau maraton');
+      if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km)');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
       await saveIntake(u.id, today, intake);
       const plan = await generateAndStore(u.id, today, intake);

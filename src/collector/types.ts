@@ -7,7 +7,7 @@ import type { LabsComparison } from './labs-compare.js';
 
 import type { Activity, IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../types.js';
 
-export type Source = 'whoop' | 'garmin' | 'oura' | 'strava' | 'manual' | 'athletedata' | 'apple';
+export type Source = 'whoop' | 'garmin' | 'oura' | 'strava' | 'manual' | 'athletedata' | 'apple' | 'android';
 
 /** O noapte / o zi de la o sursă. `date` = ziua trezirii (YYYY-MM-DD, ora locală a sportivului). */
 export interface SourceDaily {
@@ -106,7 +106,20 @@ export interface CollectorInput {
   event: 'dimineata' | 'dupa_antrenament' | 'saptamanal';
   /** Ora locală a sportivului (HH:MM) când rulează agenții: mesajul se scrie pentru momentul zilei. */
   nowLocal?: string | null;
-  athlete: { obiectiv: string; goal?: Goal | null; declaredSwimM?: number | null; raceDate: string; phase: Phase; weekLabel?: string; sex?: 'm' | 'f' | null; varsta?: number | null; inaltimeCm?: number | null };
+  athlete: {
+    obiectiv: string;
+    goal?: Goal | null;
+    declaredSwimM?: number | null;
+    raceDate: string;
+    phase: Phase;
+    weekLabel?: string;
+    sex?: 'm' | 'f' | null;
+    varsta?: number | null;
+    inaltimeCm?: number | null;
+    /** La alergare cu timp-țintă: timpul-țintă (s) din chestionar; verdictul se calculează în pachet din ceas. */
+    targetSec?: number | null;
+    tinta?: { timp_tinta_s: number; ritm_tinta_s_km: number; verdict: 'realist' | 'ambitios' | 'nerealist' | 'necunoscut'; motive: string[]; timp_estimat_s: number | null; cel_mai_bun_efort: string | null } | null;
+  };
   wellness: SourceDaily[];
   activities: SourceActivity[];
   plan: PlannedWorkout[];

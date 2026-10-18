@@ -3,6 +3,9 @@ import type { Sport } from '@core/types.js';
 import type { Me } from '@core/api-types.js';
 import { Icons, fmtDayMonth } from './common';
 import { useMe } from '../data/store';
+import { fmtTime } from '@core/goals/run-target.js';
+
+const fmtPaceKm = (secKm: number) => `${Math.floor(secKm / 60)}:${String(Math.round(secKm % 60)).padStart(2, '0')}/km`;
 
 const fmtH = (min: number) => `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`;
 const SPORT_OF: Record<string, Sport> = { Înot: 'inot', Bicicletă: 'bicicleta', Alergare: 'alergare' };
@@ -84,6 +87,33 @@ export function RaceDetail({ goalName, onOpen }: { goalName: string; onOpen: (s:
           </div>
         )}
       </section>
+
+      {r.target && (
+        <section className={`card target-card v-${r.target.verdict.verdict}`}>
+          <div className="eyebrow">Ținta ta</div>
+          <div className="row between" style={{ alignItems: 'baseline', gap: 12 }}>
+            <div className="big-num">{fmtTime(r.target.targetSec)}</div>
+            <span className="chip-lime">{fmtPaceKm(r.target.verdict.paceSecKm)}</span>
+          </div>
+          <div className="facts">
+            <div className="fact">
+              <small>Cel mai bun efort recent</small>
+              <b>{r.target.best ? r.target.best.label : 'niciunul pe ceas'}</b>
+            </div>
+            <div className="fact">
+              <small>Timp estimat acum</small>
+              <b>{r.target.predictedSec ? `${fmtTime(r.target.predictedLow!)} – ${fmtTime(r.target.predictedHigh!)}` : '—'}</b>
+            </div>
+          </div>
+          <div className={`verdict v-${r.target.verdict.verdict}`} style={{ marginTop: 10 }}>
+            <b>{{ realist: 'Țintă realistă', ambitios: 'Țintă ambițioasă', nerealist: 'Țintă nerealistă', necunoscut: 'Încă nu putem judeca ținta' }[r.target.verdict.verdict]}</b>
+            {r.target.verdict.reasons.map((x, i) => (
+              <p key={i}>{x}</p>
+            ))}
+          </div>
+          <p className="tiny muted" style={{ marginTop: 8 }}>Estimarea vine din cel mai bun efort de pe ceas din ultimele 8 săptămâni, adus la distanța cursei cu formula lui Riegel (marjă −4% / +8%). Nu e o promisiune: traseul, vremea și ziua schimbă rezultatul.</p>
+        </section>
+      )}
 
       <section className="card">
         <h3 className="h-md">Verigile</h3>

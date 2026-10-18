@@ -24,7 +24,7 @@ import { swimPace100, swimPaceOk } from '../collector/details.js';
 import type { Sport } from '../types.js';
 import type { SourceActivity } from '../collector/types.js';
 import { diffDays } from '../util/dates.js';
-import type { Goal } from '../calendar/phases.js';
+import { GOAL_LABEL, goalKind, type Goal } from '../calendar/phases.js';
 
 export interface ReadyPart {
   label: string;
@@ -56,14 +56,22 @@ const LEGS: Record<Goal, Partial<Record<'inot' | 'bicicleta' | 'alergare', numbe
   sprint: { inot: 0.75, bicicleta: 20, alergare: 5 },
   semimaraton: { alergare: 21.1 },
   maraton: { alergare: 42.2 },
+  '5k': { alergare: 5 },
+  '10k': { alergare: 10 },
+  'inot-1500': { inot: 1.5 },
+  'inot-1900': { inot: 1.9 },
+  'inot-3800': { inot: 3.8 },
+  'bike-50': { bicicleta: 50 },
+  'bike-100': { bicicleta: 100 },
+  'bike-160': { bicicleta: 160 },
 };
 
 /** Timpul-limită uzual pe înot la Ironman 70.3 (70 min la 1,9 km). */
 const SWIM_CUTOFF_MIN: Partial<Record<Goal, number>> = { '70.3': 70 };
 /** Alergarea după bicicletă pe care o cere pregătirea de triatlon. */
 const BRICK_TARGET_KM: Partial<Record<Goal, number>> = { '70.3': 8, olimpic: 4, sprint: 2 };
-/** Ieșirea lungă de referință la maraton (în antrenament nu se aleargă 42 km). */
-const LONG_TARGET_KM: Partial<Record<Goal, number>> = { maraton: 32 };
+/** Ieșirea lungă de referință acolo unde în antrenament nu se aleargă toată distanța (maraton: 32 km) sau se aleargă mai mult (5 km: 8; 10 km: 12). */
+const LONG_TARGET_KM: Partial<Record<Goal, number>> = { maraton: 32, '5k': 8, '10k': 12 };
 const VOLUME_FACTOR = 1.5;
 const W = { rezistenta: 0.6, volum: 0.25, specific: 0.15 };
 
@@ -116,7 +124,8 @@ export function sportReadiness(goal: Goal, activities: SourceActivity[], today: 
   const last4w = recent.filter((a) => diffDays(a.date, today) < 28);
   const out: SportReady[] = [];
   const name = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare' } as const;
-  const runOnly = !legs.inot;
+  // Un singur sport (alergare, înot sau bicicletă): nu există componentă „specifică” de triatlon; ponderea trece în rezistență.
+  const runOnly = goalKind(goal) !== 'tri';
 
   for (const sport of ['inot', 'bicicleta', 'alergare'] as const) {
     const leg = legs[sport];
@@ -196,4 +205,4 @@ export function overallReady(rs: SportReady[]): number | null {
   return Math.round(rs.reduce((s, r) => s + (r.value ?? 0), 0) / rs.length);
 }
 
-export const GOAL_NAME: Record<Goal, string> = { '70.3': 'Ironman 70.3', olimpic: 'triatlon olimpic', sprint: 'triatlon sprint', semimaraton: 'semimaraton', maraton: 'maraton' };
+export const GOAL_NAME: Record<Goal, string> = GOAL_LABEL;

@@ -48,3 +48,16 @@ Ce lipsește pentru a porni: serverul care ține token-urile și rulează colect
 ## Activitățile din afara planului
 
 O ședință venită de pe ceas fără pereche în plan apare albastră și primește întrebarea „ce a fost?” (cursă / antrenament liber / altceva). Regula din `src/calendar/adapt.ts` o cuantifică fără să adauge peste plan: volumul ei înlocuiește ședințele aceluiași sport din săptămână; după cursă, două zile ușoare și cheile din 72 h coboară la Z1–Z2 cu −25%; o cursă de peste 60 min oprește progresia săptămânii următoare. Teste în `tests/adapt.test.ts`.
+
+## Samsung Watch (Galaxy Watch) — adăugat 18 oct 2026
+
+Samsung nu are un API în cloud pentru Samsung Health, deci nu există OAuth ca la Whoop sau Strava. Două căi, amândouă în Profil → Dispozitive → Samsung:
+
+1. **Prin Strava** (cea mai simplă): Samsung Health → Setări → Conturi conectate → Strava. Ajung doar antrenamentele cu GPS (alergare, bicicletă, înot în ape libere); înotul în bazin, somnul și HRV nu trec prin Strava.
+2. **Prin Health Connect** (Android): aplicația „Health Connect Webhook” (`com.hcwebhook.app`) citește din Health Connect (unde scrie Samsung Health) și trimite către `POST /api/webhooks/android?t=<token>`. Token-ul e același cu cel de la Apple Health (`users.apple_token`), afișat în Profil. Serverul (`server/_lib/android.ts`, `server/webhooks/android.ts`) acceptă formate variate (listă de înregistrări sau obiect pe tipuri), scrie wellness cu sursa `android` (somn, HRV nocturn, FC repaus), activități (`android-<user>-…`), și notează în `sync_log` tipurile pe care nu le-a recunoscut, ca să le adăugăm după primul telefon real.
+
+Dedupe: o ședință venită și prin Strava și prin Health Connect e una singură (interval de timp suprapus, aceeași probă); prioritatea surselor e în `src/collector/packet.ts`.
+
+## Obiective pe un singur sport — adăugat 18 oct 2026
+
+`Goal` are acum patru familii: triatlon (`sprint`, `olimpic`, `70.3`), alergare (`5k`, `10k`, `semimaraton`, `maraton`), înot (`inot-1500`, `inot-1900`, `inot-3800`), bicicletă (`bike-50`, `bike-100`, `bike-160`). `goalKind()`/`goalSports()` din `src/calendar/phases.ts` decid: ce sporturi apar în Plan, ce antrenori primesc pachetul (`src/agents/runner.ts` scoate antrenorii sporturilor absente), ce repere intră în „Gata de cursă”, ce insigne există. Chestionarul la alergare: distanța → nivelul de acum (inclusiv „n-am alergat niciodată distanța asta”, cu un timp pe 5/10 km dacă există) → ținta, judecată pe loc (`src/goals/run-target.ts`: praguri de elită, Riegel, ≤1,5 %/lună realist, ≤2,5 %/lună ambițios, altfel nerealist). Biblioteca de antrenamente (`src/knowledge/workouts.ts`) intră în promptul fiecărui antrenor, filtrată pe sport, obiectiv și fază. Baza de date primește constrângerile noi prin `/api/setup` (schema 4).

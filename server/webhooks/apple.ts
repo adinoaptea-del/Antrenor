@@ -76,11 +76,11 @@ const WELLNESS_FIELDS = ['hrv', 'rhr', 'sleep_min', 'bedtime', 'wake_time', 'res
  * Doar măsurătorile prezente în pachet: un export ulterior doar cu HRV nu șterge somnul salvat.
  * Rândurile se grupează după coloanele prezente (o scriere pe grup), ca PostgREST să nu completeze cu null.
  */
-export function wellnessGroups(userId: string, days: Wellness[]): Record<string, unknown>[][] {
+export function wellnessGroups(userId: string, days: Wellness[], source: 'apple' | 'android' = 'apple'): Record<string, unknown>[][] {
   const groups = new Map<string, Record<string, unknown>[]>();
   const now = new Date().toISOString();
   for (const d of days) {
-    const row: Record<string, unknown> = { user_id: userId, date: d.date, source: 'apple', synced_at: now };
+    const row: Record<string, unknown> = { user_id: userId, date: d.date, source, synced_at: now };
     for (const f of WELLNESS_FIELDS) {
       const v = (d as unknown as Record<string, unknown>)[f];
       if (v != null) row[f] = v;

@@ -1,17 +1,78 @@
 import { useState } from 'react';
 import { weeklyBudget } from '@core/calendar/budget.js';
+import { runTarget, targetSecFromIntake } from '@core/goals/run-target.js';
 import { AvailabilityDays } from '../ui/Availability';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
 import { useData, useMe } from '../data/store';
 import { EMPTY_INTAKE, runResultOk, type IntakeAnswers } from './types';
-import { isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
-import { fmtDuration, fmtPaceSec, paceFromResult, parsePace, type RunResult } from '@core/util/run.js';
+import { goalKind, isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
+import { fmtDuration, fmtPaceSec, paceFromResult, parseDuration, parsePace, type RunResult } from '@core/util/run.js';
 
 // Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
 const TRI_STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
-const RUN_STEPS = ['Obiectiv', 'Ținta', 'Nivelul acum', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+// Alergare: distanța → nivelul de acum („n-am alergat niciodată distanța asta” e un răspuns valid) → ținta, judecată pe loc.
+const RUN_STEPS = ['Obiectiv', 'Nivelul acum', 'Ținta', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+const SWIM_STEPS = ['Obiectiv', 'Înot', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+const BIKE_STEPS = ['Obiectiv', 'Bicicletă', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
 type Step = (typeof TRI_STEPS)[number] | (typeof RUN_STEPS)[number];
+
+/** Întâi sportul (sau triatlonul), apoi distanța: la un singur sport, aplicația arată doar sportul acela. */
+type GoalFamily = 'alergare' | 'inot' | 'bicicleta' | 'triatlon';
+const FAMILY_OF = (g: string): GoalFamily => (goalKind(g) === 'run' ? 'alergare' : goalKind(g) === 'swim' ? 'inot' : goalKind(g) === 'bike' ? 'bicicleta' : 'triatlon');
+const GOALS_BY_FAMILY: Record<GoalFamily, { id: IntakeAnswers['obiectiv']; label: string; sub?: string }[]> = {
+  alergare: [
+    { id: '5k', label: '5 km', sub: 'timp mai bun pe 5 km' },
+    { id: '10k', label: '10 km', sub: 'timp mai bun pe 10 km' },
+    { id: 'semimaraton', label: 'Semimaraton', sub: '21,1 km' },
+    { id: 'maraton', label: 'Maraton', sub: '42,2 km' },
+  ],
+  inot: [
+    { id: 'inot-1500', label: '1.500 m', sub: 'fără oprire' },
+    { id: 'inot-1900', label: '1.900 m', sub: 'distanța de 70.3' },
+    { id: 'inot-3800', label: '3.800 m', sub: 'distanța de Ironman' },
+  ],
+  bicicleta: [
+    { id: 'bike-50', label: '50 km', sub: 'o tură' },
+    { id: 'bike-100', label: '100 km', sub: 'o tură' },
+    { id: 'bike-160', label: '160 km', sub: 'o tură' },
+  ],
+  triatlon: [
+    { id: 'sprint', label: 'Sprint', sub: '0,75 · 20 · 5' },
+    { id: 'olimpic', label: 'Olimpic', sub: '1,5 · 40 · 10' },
+    { id: '70.3', label: 'Ironman 70.3', sub: '1,9 km · 90 km · 21 km' },
+    { id: 'full', label: 'Ironman', sub: '3,8 · 180 · 42 · în curând' },
+  ],
+};
+
+/** Verdictul asupra țintei, calculat pe loc: ținta, nivelul de acum (sau un timp pe altă distanță) și săptămânile până la cursă. */
+function TargetVerdict({ a }: { a: IntakeAnswers }) {
+  if (!isRunGoal(a.obiectiv)) return null;
+  const targetSec = targetSecFromIntake(a.obiectiv, a.alergare.tinta);
+  if (!targetSec) return null;
+  const dist = RUN_DISTANCE_KM[a.obiectiv];
+  const weeks = Math.max(0, (Date.parse(`${a.dataCursa}T12:00:00Z`) - Date.now()) / (7 * 86_400_000));
+  let current: { km: number; sec: number; label: string } | null = null;
+  const nowPace = a.alergare.poateDistanta ? paceFromResult(a.alergare.rezultatActual, dist) : null;
+  if (nowPace) current = { km: dist, sec: Math.round(nowPace * dist), label: `${dist.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km în ${fmtDuration(nowPace * dist)}` };
+  else {
+    const t10 = parseDuration(a.evaluare?.alergare10k ?? null, 10);
+    const t5 = parseDuration(a.evaluare?.alergare5k ?? null, 5);
+    if (t10) current = { km: 10, sec: t10, label: `10 km în ${fmtDuration(t10)}` };
+    else if (t5) current = { km: 5, sec: t5, label: `5 km în ${fmtDuration(t5)}` };
+  }
+  const v = runTarget({ goal: a.obiectiv, targetSec, current, weeks });
+  const TITLE = { realist: 'Țintă realistă', ambitios: 'Țintă ambițioasă', nerealist: 'Țintă nerealistă', necunoscut: 'Nu putem judeca ținta încă' } as const;
+  return (
+    <div className={`verdict v-${v.verdict}`} role="status">
+      <b>{TITLE[v.verdict]}</b>
+      {v.reasons.map((r, i) => (
+        <p key={i}>{r}</p>
+      ))}
+      {v.verdict === 'nerealist' && <p>Poți continua, dar planul se face pe timpul estimat, nu pe ținta asta.</p>}
+    </div>
+  );
+}
 
 /**
  * Tastatura de cifre de pe iPhone nu are „:”. Scrii doar cifre și punem noi două puncte:
@@ -35,7 +96,7 @@ function RunResultInput({ value, onChange, distanceKm }: { value: RunResult | nu
         className="date"
         style={{ marginTop: 8 }}
         inputMode="numeric"
-        placeholder={mod === 'timp' ? 'ex. 1:55:00 — scrii 15500' : 'ex. 5:30 — scrii 530'}
+        placeholder={mod === 'timp' ? (distanceKm <= 10 ? 'ex. 57:00 — scrii 5700' : 'ex. 1:55:00 — scrii 15500') : 'ex. 5:30 — scrii 530'}
         value={value?.valoare ?? ''}
         onChange={(e) => onChange({ mod, valoare: autoColon(e.target.value, mod === 'timp') })}
       />
@@ -49,14 +110,28 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const { submitForm } = useData();
   const saved = me.forms.intake as IntakeAnswers | null;
   const [a, setA] = useState<IntakeAnswers>(() => {
-    const base = saved ?? { ...EMPTY_INTAKE, dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa };
+    // Un chestionar salvat mai demult poate să nu aibă câmpurile noi: pornim mereu de la forma goală și punem peste ce există.
+    const base: IntakeAnswers = {
+      ...EMPTY_INTAKE,
+      dataCursa: me.user.raceDate ?? EMPTY_INTAKE.dataCursa,
+      ...(saved ?? {}),
+      inot: { ...EMPTY_INTAKE.inot, ...(saved?.inot ?? {}) },
+      bicicleta: { ...EMPTY_INTAKE.bicicleta, ...(saved?.bicicleta ?? {}) },
+      alergare: { ...EMPTY_INTAKE.alergare, ...(saved?.alergare ?? {}) },
+      echipament: { ...EMPTY_INTAKE.echipament, ...(saved?.echipament ?? {}) },
+      program: Array.isArray(saved?.program) ? saved.program : [],
+      sanatate: { ...EMPTY_INTAKE.sanatate, ...(saved?.sanatate ?? {}) },
+      minte: { ...EMPTY_INTAKE.minte, ...(saved?.minte ?? {}) },
+    };
     return { ...base, sex: base.sex ?? me.profile.sex, anNastere: base.anNastere ?? me.profile.birthYear, inaltime: base.inaltime ?? me.profile.heightCm };
   });
   const [step, setStep] = useState(0);
   const runGoal = isRunGoal(a.obiectiv);
-  const STEPS: readonly Step[] = runGoal ? RUN_STEPS : TRI_STEPS;
-  const dist = runGoal ? RUN_DISTANCE_KM[a.obiectiv as 'semimaraton' | 'maraton'] : 0;
-  const raceWord = a.obiectiv === 'maraton' ? 'un maraton' : 'un semimaraton';
+  const kind = goalKind(a.obiectiv);
+  const STEPS: readonly Step[] = runGoal ? RUN_STEPS : kind === 'swim' ? SWIM_STEPS : kind === 'bike' ? BIKE_STEPS : TRI_STEPS;
+  const dist = runGoal ? RUN_DISTANCE_KM[a.obiectiv] : 0;
+  const raceWord = a.obiectiv === 'maraton' ? 'un maraton' : a.obiectiv === 'semimaraton' ? 'un semimaraton' : a.obiectiv === '10k' ? '10 km' : '5 km';
+  const [family, setFamily] = useState<GoalFamily>(() => FAMILY_OF(a.obiectiv));
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const set = (patch: Partial<IntakeAnswers>) => setA((prev) => ({ ...prev, ...patch }));
@@ -141,30 +216,38 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Înălțimea" hint="În centimetri. Cu greutatea, dă necesarul de energie și indicele de masă corporală.">
               <input className="date" type="number" inputMode="numeric" placeholder="ex. 180" value={a.inaltime ?? ''} onChange={(e) => set({ inaltime: e.target.value ? Number(e.target.value) : null })} />
             </Q>
-            <Q title="Pentru ce te pregătești?" hint="Obiectivul decide fazele, orele și ce înseamnă „gata”.">
+            <Q title="Ce îți propui?" hint="Un singur sport sau triatlon. La un singur sport, aplicația și antrenorul sunt doar pentru sportul acela.">
               <Chips
-                value={a.obiectiv}
+                value={family}
                 options={[
-                  { id: '70.3', label: 'Ironman 70.3', sub: '1,9 km · 90 km · 21 km' },
-                  { id: 'olimpic', label: 'Olimpic', sub: '1,5 · 40 · 10' },
-                  { id: 'sprint', label: 'Sprint', sub: '0,75 · 20 · 5' },
-                  { id: 'full', label: 'Ironman', sub: '3,8 · 180 · 42' },
-                  { id: 'semimaraton', label: 'Semimaraton', sub: 'doar alergare · 21,1 km' },
-                  { id: 'maraton', label: 'Maraton', sub: 'doar alergare · 42,2 km' },
+                  { id: 'alergare', label: 'Alergare', sub: '5 km … maraton' },
+                  { id: 'inot', label: 'Înot', sub: '1.500 … 3.800 m' },
+                  { id: 'bicicleta', label: 'Bicicletă', sub: '50 … 160 km' },
+                  { id: 'triatlon', label: 'Triatlon', sub: 'sprint · olimpic · 70.3' },
                 ]}
-                onChange={(obiectiv) => set({ obiectiv })}
+                onChange={(f) => {
+                  setFamily(f);
+                  const first = GOALS_BY_FAMILY[f][0]!.id;
+                  if (FAMILY_OF(a.obiectiv) !== f) set({ obiectiv: first });
+                }}
               />
             </Q>
-            <Q title="Data cursei">
+            <Q title={family === 'triatlon' ? 'Ce cursă?' : 'Ce distanță?'} hint={family === 'alergare' ? 'Distanța pe care vrei s-o alergi mai bine. Timpul-țintă îl spui la pasul următor.' : family === 'inot' ? 'Distanța pe care vrei s-o înoți fără oprire.' : family === 'bicicleta' ? 'Tura pe care vrei s-o termini.' : 'Obiectivul decide fazele, orele și ce înseamnă „gata”.'}>
+              <Chips value={a.obiectiv} options={GOALS_BY_FAMILY[family]} onChange={(obiectiv) => set({ obiectiv })} />
+            </Q>
+            <Q title={family === 'triatlon' || runGoal ? 'Data cursei' : 'Până când vrei să reușești?'} hint={runGoal ? 'Cât timp ai la dispoziție decide cât de realistă e ținta.' : undefined}>
               <input className="date" type="date" value={a.dataCursa} onChange={(e) => set({ dataCursa: e.target.value })} />
             </Q>
           </>
         )}
 
         {STEPS[step] === 'Ținta' && (
-          <Q title="Ce vrei să reușești?" hint={`Cu ce ritm vrei să alergi ${raceWord}, sau în cât timp. Din asta ies ritmurile de la antrenamentele specifice.`}>
-            <RunResultInput value={a.alergare.tinta} distanceKm={dist} onChange={(tinta) => set({ alergare: { ...a.alergare, tinta } })} />
-          </Q>
+          <>
+            <Q title="Ce vrei să reușești?" hint={`În cât timp vrei să alergi ${raceWord}, sau cu ce ritm. Judecăm ținta pe loc, față de nivelul de acum și de timpul rămas; din ea ies ritmurile de la antrenamentele specifice.`}>
+              <RunResultInput value={a.alergare.tinta} distanceKm={dist} onChange={(tinta) => set({ alergare: { ...a.alergare, tinta } })} />
+            </Q>
+            <TargetVerdict a={a} />
+          </>
         )}
 
         {STEPS[step] === 'Nivelul acum' && (
@@ -172,12 +255,20 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Cu ce ritm alergi acum?" hint="Ritmul obișnuit la o alergare ușoară. Scrii doar cifrele: 615 = 6:15 pe km.">
               <input className="date" inputMode="numeric" placeholder="ex. 6:15" value={a.alergare.ritmActual ?? ''} onChange={(e) => set({ alergare: { ...a.alergare, ritmActual: autoColon(e.target.value, false) } })} />
             </Q>
-            <Q title={`Poți alerga acum ${raceWord}?`}>
-              <Chips value={a.alergare.poateDistanta == null ? null : a.alergare.poateDistanta ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da' }, { id: 'nu', label: 'Nu încă' }]} onChange={(v) => set({ alergare: { ...a.alergare, poateDistanta: v === 'da', rezultatActual: v === 'da' ? a.alergare.rezultatActual ?? null : null } })} />
+            <Q title={`Ai alergat vreodată ${raceWord}?`}>
+              <Chips value={a.alergare.poateDistanta == null ? null : a.alergare.poateDistanta ? 'da' : 'nu'} options={[{ id: 'da', label: 'Da, știu în cât timp' }, { id: 'nu', label: 'Nu, niciodată distanța asta' }]} onChange={(v) => set({ alergare: { ...a.alergare, poateDistanta: v === 'da', rezultatActual: v === 'da' ? a.alergare.rezultatActual ?? null : null } })} />
             </Q>
             {a.alergare.poateDistanta && (
-              <Q title="În cât timp sau cu ce ritm?" hint="Ca să știm de la ce nivel pleci.">
+              <Q title="În cât timp sau cu ce ritm, cel mai recent?" hint="Ca să știm de la ce nivel pleci.">
                 <RunResultInput value={a.alergare.rezultatActual} distanceKm={dist} onChange={(rezultatActual) => set({ alergare: { ...a.alergare, rezultatActual } })} />
+              </Q>
+            )}
+            {a.alergare.poateDistanta === false && (
+              <Q title="Un timp recent pe 5 km sau 10 km (dacă ai)" hint="Opțional: doar cifrele (2730 = 27:30). Din el judecăm ținta; fără el, primul test din plan o calibrează.">
+                <div className="grid-2">
+                  <input className="date" inputMode="numeric" placeholder="5 km, ex. 27:30" value={ev.alergare5k ?? ''} onChange={(e) => setEv({ alergare5k: autoColon(e.target.value, true) || null })} />
+                  <input className="date" inputMode="numeric" placeholder="10 km, ex. 58:00" value={ev.alergare10k ?? ''} onChange={(e) => setEv({ alergare10k: autoColon(e.target.value, true) || null })} />
+                </div>
               </Q>
             )}
             <Q title="Cea mai lungă alergare din ultimele 3 luni">

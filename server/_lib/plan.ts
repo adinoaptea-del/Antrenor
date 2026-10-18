@@ -8,7 +8,8 @@ import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
-import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import { GOAL_LABEL, isRunGoal, RUN_DISTANCE_KM, type Goal } from '../../src/calendar/phases.js';
+import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import { paceFromResult, parsePace, type RunResult } from '../../src/util/run.js';
 
 export interface IntakeLike {
@@ -16,7 +17,7 @@ export interface IntakeLike {
   sex?: 'm' | 'f' | null;
   anNastere?: number | null;
   inaltime?: number | null;
-  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
+  obiectiv: Goal | 'full';
   dataCursa: string;
   inot?: { nivel: string | null };
   bicicleta?: { ceaMaiLungaOre?: number | null };
@@ -61,7 +62,9 @@ export async function saveIntake(userId: string, today: string, intake: IntakeLi
 }
 
 function raceName(goal: IntakeLike['obiectiv']): string {
-  return { '70.3': 'Ironman 70.3', olimpic: 'Triatlon olimpic', sprint: 'Triatlon sprint', semimaraton: 'Semimaraton', maraton: 'Maraton', full: 'Ironman' }[goal];
+  if (goal === 'full') return 'Ironman';
+  const l = GOAL_LABEL[goal];
+  return l.charAt(0).toUpperCase() + l.slice(1);
 }
 
 export interface PlanOutcome {
@@ -135,6 +138,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     athlete: await athleteInfo(userId, today),
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
+    swim: { continuousM: swimDeclared(intake as unknown as Record<string, unknown>) },
     run: isRunGoal(intake.obiectiv)
       ? {
           goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),

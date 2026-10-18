@@ -8,7 +8,7 @@ create unique index if not exists users_apple_token_idx on public.users (apple_t
 -- Apple Health (prin Health Auto Export) ca sursă de somn, HRV și puls de repaus.
 alter table public.wellness_daily drop constraint if exists wellness_daily_source_check;
 alter table public.wellness_daily add constraint wellness_daily_source_check
-  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));
+  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple', 'android'));
 
 -- Setările aplicației introduse de admin din aplicație (cheile aplicațiilor WHOOP / Strava / Oura).
 -- Fără nicio politică RLS: le citește doar serverul (service role).
@@ -228,3 +228,20 @@ create table if not exists public.badges_earned (
 );
 alter table public.badges_earned enable row level security;
 revoke insert, update, delete on public.badges_earned from anon, authenticated;
+
+-- Obiective pe un singur sport (alergare 5 / 10 km, înot 1.500 / 1.900 / 3.800 m, bicicletă 50 / 100 / 160 km).
+alter table public.users drop constraint if exists users_goal_check;
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160'));
+alter table public.plans drop constraint if exists plans_goal_check;
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160'));
+
+-- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
+create table if not exists public.schema_meta (
+  key text primary key,
+  value integer not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.schema_meta enable row level security;
+revoke all on public.schema_meta from anon, authenticated;
+insert into public.schema_meta (key, value) values ('version', 4)
+  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

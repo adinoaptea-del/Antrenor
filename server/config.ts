@@ -28,7 +28,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       if (ready) {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-        const [c, t, l, o, w, a, ov, ev, a2] = await Promise.all([
+        const [c, t, l, o, w, a, ov, ev, a2, sm] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm,calendar_prefs&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
@@ -38,8 +38,9 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
           fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/schema_meta?select=value&key=eq.version`, h),
         ]);
-        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok;
+        upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok || !(await schemaOk(sm));
       }
     } catch {
       ready = false;
@@ -57,5 +58,17 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
     });
   } catch (e) {
     fail(res, e);
+  }
+}
+
+/** Versiunea schemei cerută de codul de acum (vezi 0002_upgrade.sql, schema_meta). */
+export const SCHEMA_VERSION = 4;
+export async function schemaOk(r: Response): Promise<boolean> {
+  if (!r.ok) return false;
+  try {
+    const rows = (await r.json()) as { value?: number }[];
+    return (rows[0]?.value ?? 0) >= SCHEMA_VERSION;
+  } catch {
+    return false;
   }
 }

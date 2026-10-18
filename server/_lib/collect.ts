@@ -6,6 +6,7 @@ import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivit
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
 import { addDays, labsExpired } from '../../src/util/dates.js';
 import type { OtherActivity } from '../../src/collector/other.js';
+import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
@@ -24,7 +25,7 @@ export interface UserRow {
   email: string;
   name: string;
   tz: string;
-  goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null;
+  goal: Goal | 'full' | null;
   race_name: string | null;
   race_date: string | null;
   city?: string | null;
@@ -303,7 +304,17 @@ export async function collect(userId: string, today: string, event: CollectorInp
     today,
     event,
     nowLocal: new Intl.DateTimeFormat('en-GB', { timeZone: user.tz || 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()),
-    athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
+    athlete: {
+      goal: (user.goal as Goal | null) ?? null,
+      declaredSwimM: swimDeclared(forms.intake),
+      obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`,
+      targetSec: targetSecFromIntake(user.goal, (forms.intake?.alergare as { tinta?: RunResult | null } | undefined)?.tinta ?? null),
+      raceDate: user.race_date ?? addDays(today, 365),
+      phase,
+      sex: user.sex ?? null,
+      varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null,
+      inaltimeCm: user.height_cm ?? null,
+    },
     wellness: allowedForAI(wellness),
     activities: allowedForAI(activities),
     trainingHistory: await loadHistorySummary(userId, today).catch(() => null),

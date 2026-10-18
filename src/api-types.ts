@@ -1,3 +1,4 @@
+import type { Goal } from './calendar/phases.js';
 import type { SportReady } from './bar/sport-readiness.js';
 import type { ActivityDetails } from './collector/details.js';
 import type { LabsComparison } from './collector/labs-compare.js';
@@ -12,7 +13,7 @@ export interface MeUser {
   id: string;
   email: string;
   name: string;
-  goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null;
+  goal: Goal | 'full' | null;
   raceName: string | null;
   raceDate: string | null;
   tz: string;
@@ -109,7 +110,10 @@ export interface SportTotal {
 export interface Me {
   baseline: MeBaseline;
   /** Oraș (pentru vreme) și Apple Watch prin Health Auto Export. */
-  profile: { sex: 'm' | 'f' | null; birthYear: number | null; heightCm: number | null; city: string | null; appleConnected: boolean; appleLastSync: string | null; appleLast?: { ok: boolean; detail: string | null; at: string } | null };
+  profile: { sex: 'm' | 'f' | null; birthYear: number | null; heightCm: number | null; city: string | null; appleConnected: boolean; appleLastSync: string | null;
+    /** Samsung Health / Health Connect (Android), prin același token: ultima trimitere și rezultatul ei. */
+    androidLastSync?: string | null;
+    androidLast?: { ok: boolean; detail: string | null; at: string } | null; appleLast?: { ok: boolean; detail: string | null; at: string } | null };
   /** Doar pentru admin (primul cont): ce producători au cheile puse și adresele de copiat la ei. */
   admin: { providers: Record<'whoop' | 'strava' | 'oura', boolean>; appUrl: string } | null;
   /** Totaluri de la începutul pregătirii (data planului). null fără plan. */
@@ -160,7 +164,7 @@ export interface Me {
 }
 
 export interface MeSource {
-  id: 'whoop' | 'strava' | 'oura' | 'apple';
+  id: 'whoop' | 'strava' | 'oura' | 'apple' | 'android';
   name: string;
   /** Ultima citire reușită (ISO), sau null. */
   lastSync: string | null;

@@ -11,6 +11,7 @@ import type { MorningForm } from '../forms/types';
 import { Today } from './Today';
 import { RacePanel } from './RaceReady';
 import { AppHeader } from './Shell';
+import { fmtTime } from '@core/goals/run-target.js';
 
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
 const longDate = (iso: string) => `${DAY_NAMES[weekday(iso)]!.replace(/^./, (c) => c.toUpperCase())}, ${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
@@ -57,7 +58,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           <div className="race-chip">
             <b>{days} zile</b>
             <span>
-              {me.user.raceName ?? goalName} · {fmtDayMonth(me.user.raceDate)} {me.user.raceDate.slice(0, 4)}
+              {me.user.raceName ?? goalName}
+              {me.raceReady?.target ? ` · țintă ${fmtTime(me.raceReady.target.targetSec)}` : ''} · {fmtDayMonth(me.user.raceDate)} {me.user.raceDate.slice(0, 4)}
             </span>
           </div>
         )}

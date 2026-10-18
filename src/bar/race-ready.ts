@@ -15,7 +15,8 @@ import { swimPace100, swimPaceOk } from '../collector/details.js';
 
 import type { SourceActivity } from '../collector/types.js';
 import type { PlannedWorkout, Sport } from '../types.js';
-import type { Goal } from '../calendar/phases.js';
+import { BIKE_DISTANCE_KM, RUN_DISTANCE_KM, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, type Goal } from '../calendar/phases.js';
+import { predictFromEffort, riegel, runTarget, type RunTargetVerdict } from '../goals/run-target.js';
 import { matchActivities } from '../scoring/match.js';
 import { isBrickRun } from './sport-readiness.js';
 import { addDays, diffDays } from '../util/dates.js';
@@ -51,20 +52,69 @@ export interface RaceReady {
   benchmarks: Benchmark[];
   /** Timpul estimat (min) cu marjă și limitele; null când lipsesc ritmurile. */
   estimate: { swim: number | null; bike: number | null; run: number | null; total: number | null; low: number | null; high: number | null; cutoffs: { swim: number; swimBike: number; total: number } | null; assumptions: string[] } | null;
+  /** Doar la alergare cu timp-țintă: ținta față de cel mai bun efort recent și verdictul de realism. */
+  target: {
+    targetSec: number;
+    /** Cel mai bun efort recent pe distanța cursei sau cea mai apropiată, din ceas. */
+    best: { km: number; sec: number; date: string; label: string } | null;
+    /** Timpul estimat pe distanța cursei din cel mai bun efort (Riegel), s. */
+    predictedSec: number | null;
+    predictedLow: number | null;
+    predictedHigh: number | null;
+    verdict: RunTargetVerdict;
+  } | null;
 }
 
 const WIN = 56;
 const TRI: Goal[] = ['70.3', 'olimpic', 'sprint'];
-const DIST: Record<Goal, { swim?: number; bike?: number; run: number; longRun: number; longRide?: number; brickRide?: number; brickRun?: number; bigDayH?: number }> = {
+const DIST: Record<Goal, { swim?: number; bike?: number; run?: number; longRun?: number; longRide?: number; brickRide?: number; brickRun?: number; bigDayH?: number }> = {
   '70.3': { swim: 1.9, bike: 90, run: 21.1, longRun: 18, longRide: 90, brickRide: 120, brickRun: 45, bigDayH: 4 },
   olimpic: { swim: 1.5, bike: 40, run: 10, longRun: 12, longRide: 50, brickRide: 75, brickRun: 30, bigDayH: 2.5 },
   sprint: { swim: 0.75, bike: 20, run: 5, longRun: 8, longRide: 30, brickRide: 45, brickRun: 20, bigDayH: 1.5 },
+  // Alergare: ieșirea lungă de referință (la 5 și 10 km se aleargă mai mult decât cursa; la maraton mai puțin).
+  '5k': { run: 5, longRun: 8 },
+  '10k': { run: 10, longRun: 12 },
   semimaraton: { run: 21.1, longRun: 18 },
   maraton: { run: 42.2, longRun: 32 },
+  // Înot: distanța fără oprire. Bicicletă: tura lungă = distanța obiectivului.
+  'inot-1500': { swim: 1.5 },
+  'inot-1900': { swim: 1.9 },
+  'inot-3800': { swim: 3.8 },
+  'bike-50': { bike: 50, longRide: 50 },
+  'bike-100': { bike: 100, longRide: 100 },
+  'bike-160': { bike: 160, longRide: 160 },
 };
 const CUTOFFS: Partial<Record<Goal, { swim: number; swimBike: number; total: number }>> = { '70.3': { swim: 70, swimBike: 330, total: 510 } };
 
 const fmtH = (min: number) => `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`;
+
+/**
+ * Cel mai bun efort recent de alergare, pentru estimarea timpului: „best efforts” de pe ceas (1 km … 42,2 km) și
+ * alergările întregi (ritmul mediu), aduse la distanța cursei cu Riegel; câștigă cel mai rapid echivalent. Doar
+ * eforturi de cel puțin o cincime din distanța cursei (un km rapid nu „prezice” un maraton) și de cel puțin 1 km.
+ */
+function bestRunEffort(runs: SourceActivity[], raceKm: number): { km: number; sec: number; date: string; label: string } | null {
+  const EFF_KM: Record<string, number> = { '1 km': 1, '1 milă': 1.609, '5 km': 5, '10 km': 10, '21,1 km': 21.0975, '42,2 km': 42.195 };
+  const minKm = Math.max(1, raceKm / 5);
+  const cands: { km: number; sec: number; date: string; label: string }[] = [];
+  for (const a of runs) {
+    for (const [name, sec] of Object.entries(a.details?.bestEfforts ?? {})) {
+      const km = EFF_KM[name];
+      if (km && km >= minKm && sec > 0) cands.push({ km, sec, date: a.date, label: `cel mai bun ${name} (${fmtT(sec)})` });
+    }
+    const movingSec = (a.details?.movingMin ?? a.minutes) * 60;
+    if ((a.distanceKm ?? 0) >= minKm && movingSec > 0) cands.push({ km: a.distanceKm!, sec: movingSec, date: a.date, label: `alergarea de ${a.distanceKm!.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km (${fmtT(movingSec)})` });
+  }
+  if (!cands.length) return null;
+  const equiv = (c: { km: number; sec: number }) => riegel(c.sec, c.km, raceKm);
+  return cands.sort((x, y) => equiv(x) - equiv(y))[0] ?? null;
+}
+const fmtT = (sec: number) => {
+  const r = Math.round(sec);
+  const h = Math.floor(r / 3600);
+  const m = Math.floor((r % 3600) / 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}` : `${m}:${String(r % 60).padStart(2, '0')}`;
+};
 const pct = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 100);
 
 export function raceReady(input: {
@@ -74,10 +124,15 @@ export function raceReady(input: {
   plan: PlannedWorkout[];
   /** Ședințele lungi cu hrănire „conform” (formularul de seară): datele lor. */
   fueledDates: string[];
+  /** La alergare: timpul-țintă (s) din chestionar. */
+  targetSec?: number | null;
+  /** Data cursei (pentru săptămânile rămase); fără ea, ultima zi din plan. */
+  raceDate?: string | null;
 }): RaceReady {
   const { goal, today } = input;
   const d = DIST[goal];
   const tri = TRI.includes(goal);
+  const kind = goalKind(goal);
   const recent = input.acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) < WIN);
   const of = (s: Sport) => recent.filter((a) => a.sport === s);
   const longest = (s: Sport) => of(s).reduce<SourceActivity | null>((m, a) => ((a.distanceKm ?? 0) > (m?.distanceKm ?? 0) ? a : m), null);
@@ -122,12 +177,31 @@ export function raceReady(input: {
   if (tri) {
     const swim = swimPace != null && d.swim ? (swimPace * d.swim * 10) / 60 : null;
     const bike = bikeSpeed && d.bike ? (d.bike / bikeSpeed) * 60 : null;
-    const run = runPace != null ? runPace * d.run : null;
+    const run = runPace != null && d.run ? runPace * d.run : null;
     const total = swim != null && bike != null && run != null ? swim + bike + run + 10 : null;
     estimate = { swim, bike, run, total, low: total ? total * 0.9 : null, high: total ? total * 1.1 : null, cutoffs: CUTOFFS[goal] ?? null, assumptions: [...assumptions, 'tranziții: 10 min'] };
-  } else if (runPace != null) {
-    const run = runPace * d.run;
-    estimate = { swim: null, bike: null, run, total: run, low: run * 0.95, high: run * 1.1, cutoffs: null, assumptions };
+  } else if (isRunGoal(goal)) {
+    // Alergare: din cel mai bun efort recent (Riegel), nu din ritmul alergărilor lungi.
+    const eff = bestRunEffort(of('alergare'), RUN_DISTANCE_KM[goal]);
+    const pred = eff ? predictFromEffort(eff, goal) : null;
+    if (pred) estimate = { swim: null, bike: null, run: pred.sec / 60, total: pred.sec / 60, low: pred.low / 60, high: pred.high / 60, cutoffs: null, assumptions: [`din ${eff!.label} (${eff!.date}), adus la distanța cursei cu formula lui Riegel`] };
+  } else if (isSwimGoal(goal) && swimPace != null && d.swim) {
+    const swim = (swimPace * d.swim * 10) / 60;
+    estimate = { swim, bike: null, run: null, total: swim, low: swim * 0.95, high: swim * 1.15, cutoffs: null, assumptions: [...assumptions, 'ritmul porțiunii continue ținut pe toată distanța (pe distanțe mai lungi ritmul scade)'] };
+  } else if (isBikeGoal(goal) && bikeSpeed && d.bike) {
+    const bike = (d.bike / bikeSpeed) * 60;
+    estimate = { swim: null, bike, run: null, total: bike, low: bike * 0.95, high: bike * 1.15, cutoffs: null, assumptions: [...assumptions, 'viteza medie ținută pe toată distanța; relieful și vântul schimbă mult'] };
+  }
+
+  // ——— Ținta de timp (alergare) ———
+  let target: RaceReady['target'] = null;
+  if (isRunGoal(goal) && input.targetSec && input.targetSec > 0) {
+    const eff = bestRunEffort(of('alergare'), RUN_DISTANCE_KM[goal]);
+    const pred = eff ? predictFromEffort(eff, goal) : null;
+    const until = input.raceDate && input.raceDate > today ? input.raceDate : input.plan.reduce((m, w) => (w.date > m ? w.date : m), today);
+    const weeks = Math.max(0, diffDays(today, until) / 7);
+    const verdict = runTarget({ goal, targetSec: input.targetSec, current: eff ? { km: eff.km, sec: eff.sec, date: eff.date, label: eff.label } : null, weeks });
+    target = { targetSec: input.targetSec, best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
   }
 
   // ——— Ședințele-reper ———
@@ -152,9 +226,29 @@ export function raceReady(input: {
     const ok = of('alergare').filter((r) => isBrickRun(r, recent) && r.minutes >= d.brickRun! && recent.some((b) => b.sport === 'bicicleta' && b.date === r.date && b.minutes >= d.brickRide!));
     benchmarks.push({ id: 'brick-lung', title: `Brick: ${fmtH(d.brickRide)} bicicletă + ${d.brickRun} min alergare`, how: 'Alergarea pornește în cel mult 30 min după tură', done: ok.length > 0, best: brickRuns.length ? `alergare după bicicletă: ${Math.max(...brickRuns.map((a) => a.minutes))} min` : null, date: firstDate(ok) });
   }
-  {
-    const ok = of('alergare').filter((a) => (a.distanceKm ?? 0) >= d.longRun);
-    benchmarks.push({ id: 'alergare-lunga', title: `Alergare lungă de ${d.longRun} km`, how: tri ? 'Reperul obișnuit înainte de un 70.3 (nu e nevoie de toată distanța)' : 'Ieșirea lungă de referință', done: ok.length > 0, best: longest('alergare')?.distanceKm ? `${(longest('alergare')!.distanceKm ?? 0).toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km` : null, date: firstDate(ok) });
+  if (d.longRun) {
+    const ok = of('alergare').filter((a) => (a.distanceKm ?? 0) >= d.longRun!);
+    benchmarks.push({ id: 'alergare-lunga', title: `Alergare lungă de ${d.longRun} km`, how: tri ? 'Reperul obișnuit înainte de un 70.3 (nu e nevoie de toată distanța)' : goal === '5k' || goal === '10k' ? 'Mai lungă decât cursa: rezistența care ține ritmul până la final' : 'Ieșirea lungă de referință', done: ok.length > 0, best: longest('alergare')?.distanceKm ? `${(longest('alergare')!.distanceKm ?? 0).toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km` : null, date: firstDate(ok) });
+  }
+  if (isRunGoal(goal) && input.targetSec) {
+    // Ritmul de cursă ținut pe cel puțin 1 km (din cel mai rapid km al ceasului).
+    const paceNeed = input.targetSec / RUN_DISTANCE_KM[goal];
+    const ok = of('alergare').filter((a) => a.details?.fastestKmSec != null && a.details.fastestKmSec <= paceNeed);
+    const bestKm = of('alergare').map((a) => a.details?.fastestKmSec).filter((x): x is number => x != null);
+    benchmarks.push({ id: 'ritm-cursa', title: 'Ritmul de cursă pe cel puțin 1 km', how: `${Math.floor(paceNeed / 60)}:${String(Math.round(paceNeed % 60)).padStart(2, '0')}/km sau mai repede, într-un antrenament`, done: ok.length > 0, best: bestKm.length ? `cel mai rapid km: ${Math.floor(Math.min(...bestKm) / 60)}:${String(Math.round(Math.min(...bestKm) % 60)).padStart(2, '0')}/km` : null, date: firstDate(ok) });
+  }
+  if (isSwimGoal(goal) && d.swim) {
+    const bestM = Math.max(0, ...of('inot').map((a) => a.details?.continuousM ?? 0));
+    const ok = of('inot').filter((a) => (a.details?.continuousM ?? 0) >= d.swim! * 1000);
+    benchmarks.push({ id: 'inot-continuu', title: `${Math.round(d.swim * 1000).toLocaleString('ro-RO')} m fără oprire`, how: 'Distanța obiectivului, continuu (din turele ceasului)', done: ok.length > 0, best: bestM ? `${bestM.toLocaleString('ro-RO')} m fără oprire` : null, date: firstDate(ok) });
+    const half = of('inot').filter((a) => (a.details?.continuousM ?? 0) >= d.swim! * 500);
+    benchmarks.push({ id: 'inot-jumatate', title: `${Math.round(d.swim * 500).toLocaleString('ro-RO')} m fără oprire`, how: 'Jumătatea distanței, pe drum spre toată', done: half.length > 0, best: null, date: firstDate(half) });
+  }
+  if (isBikeGoal(goal) && d.bike) {
+    const ok = of('bicicleta').filter((a) => (a.distanceKm ?? 0) >= d.bike! * 0.75);
+    benchmarks.push({ id: 'tura-75', title: `Tură de ${Math.round(d.bike * 0.75)} km`, how: 'Trei sferturi din distanță într-o tură; restul îl dă ziua cursei', done: ok.length > 0, best: longest('bicicleta')?.distanceKm ? `${Math.round(longest('bicicleta')!.distanceKm!)} km` : null, date: firstDate(ok) });
+    const twoH = of('bicicleta').filter((a) => a.minutes >= 120);
+    benchmarks.push({ id: 'tura-2h', title: 'Tură de peste 2 ore', how: 'Cu hrănire și hidratare exersate', done: twoH.length > 0, best: null, date: firstDate(twoH) });
   }
   // Ziua lungă: ore de mișcare în aceeași zi, în cel puțin două sporturi (triatlon).
   const days = new Map<string, { min: number; sports: Set<Sport> }>();
@@ -192,10 +286,22 @@ export function raceReady(input: {
     const hasBike = of('bicicleta').some((a) => (a.distanceKm ?? 0) > 0);
     links.push({ name: 'Bicicletă', pct: hasBike ? pct((km / d.bike) * timeOk) : null, measured: hasBike ? `${Math.round(km)} km, cea mai lungă tură` : null, detail: `cea mai lungă tură: ${Math.round(km)} km · proba: ${d.bike} km${cut && sb ? `; înot + bicicletă estimat ${fmtH(sb)} față de ${fmtH(cut.swimBike)}` : ''}` });
   }
-  {
+  if (d.longRun && d.run) {
     const km = longest('alergare')?.distanceKm ?? 0;
     const hasRun = of('alergare').some((a) => (a.distanceKm ?? 0) > 0);
-    links.push({ name: 'Alergare', pct: hasRun ? pct(km / d.longRun) : null, measured: hasRun ? `${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km, cea mai lungă ieșire` : null, detail: `cea mai lungă ieșire: ${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km · reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString('ro-RO')} km; în pregătire nu se aleargă toată distanța)` });
+    const over = d.longRun > d.run;
+    links.push({ name: 'Alergare', pct: hasRun ? pct(km / d.longRun) : null, measured: hasRun ? `${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km, cea mai lungă ieșire` : null, detail: `cea mai lungă ieșire: ${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km · reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString('ro-RO')} km; ${over ? 'în pregătire se aleargă mai mult decât cursa' : 'în pregătire nu se aleargă toată distanța'})` });
+  }
+  if (isSwimGoal(goal) && d.swim) {
+    const contM = Math.max(0, ...swims.map((a) => a.details?.continuousM ?? 0));
+    const sessM = Math.max(0, ...swims.map((a) => Math.round((a.distanceKm ?? 0) * 1000)));
+    const bestM = contM || sessM;
+    links.push({ name: 'Înot', pct: swims.length ? pct(bestM / (d.swim * 1000)) : null, measured: swims.length ? `${bestM.toLocaleString('ro-RO')} m ${contM ? 'fără oprire' : 'într-o ședință'}` : null, detail: `${bestM.toLocaleString('ro-RO')} m ${contM ? 'fără oprire (segment continuu din turele ceasului)' : 'distanță totală într-o ședință, cu pauze'} · obiectiv: ${Math.round(d.swim * 1000).toLocaleString('ro-RO')} m` });
+  }
+  if (isBikeGoal(goal) && d.bike) {
+    const km = longest('bicicleta')?.distanceKm ?? 0;
+    const hasBike = of('bicicleta').some((a) => (a.distanceKm ?? 0) > 0);
+    links.push({ name: 'Bicicletă', pct: hasBike ? pct(km / d.bike) : null, measured: hasBike ? `${Math.round(km)} km, cea mai lungă tură` : null, detail: `cea mai lungă tură: ${Math.round(km)} km · obiectiv: ${d.bike} km` });
   }
   if (tri) {
     const need = estimate?.total ? estimate.total * 0.65 : (d.bigDayH ?? 4) * 60;
@@ -206,5 +312,5 @@ export function raceReady(input: {
   const legs = links.filter((l) => l.name !== 'Cumul');
   const coverage = { withData: legs.filter((l) => l.pct != null).length, total: legs.length, missing };
   const weakestLink = missing.length ? null : links.reduce((a, b) => ((b.pct ?? 0) < (a.pct ?? 0) ? b : a), links[0]!);
-  return { onTrack, ready: weakestLink?.pct ?? null, weakest: weakestLink?.name ?? null, coverage, links, benchmarks, estimate };
+  return { onTrack, ready: weakestLink?.pct ?? null, weakest: weakestLink?.name ?? null, coverage, links, benchmarks, estimate, target };
 }

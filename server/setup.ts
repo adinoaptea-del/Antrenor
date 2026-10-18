@@ -1,3 +1,4 @@
+import { schemaOk } from './config.js';
 import { fail, HttpError, json, requireUser } from './_lib/auth.js';
 import type { Req, Res } from './_lib/http.js';
 import { one } from './_lib/db.js';
@@ -40,11 +41,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 /** Actualizarea (0002) e idempotentă și nu atinge date: o poate declanșa oricine când lipsește. */
 async function hasUpgrade(): Promise<boolean> {
   const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
-  const [r, t, e, a2] = await Promise.all([
+  const [r, t, e, a2, sm] = await Promise.all([
     fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/schema_meta?select=value&key=eq.version`, h),
   ]);
-  return r.ok && t.ok && e.ok && a2.ok;
+  return r.ok && t.ok && e.ok && a2.ok && (await schemaOk(sm));
 }

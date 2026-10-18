@@ -3,9 +3,10 @@
 // Nimic din ce scrie un agent nu ajunge la sportiv fără verificarea mecanică (verify.ts).
 
 import { DAY_TEXT } from '../calendar/day.js';
+import { libraryFor, libraryText } from '../knowledge/workouts.js';
 import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
-import type { Sport } from '../types.js';
+import type { Phase, Sport } from '../types.js';
 import { HEAD_SCHEMA, SPECIALIST_SCHEMA, type HeadResponse } from './schema.js';
 import { AGENTS, getPath, measurementClaims, numbersIn, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
 
@@ -125,6 +126,9 @@ export function route(p: Packet): AgentName[] {
   }
   if (pain || sunday) out.add('fizioterapeut');
   if (sunday) out.add('minte');
+  // Un singur sport: antrenorii celorlalte sporturi nu există pentru sportivul ăsta (nici duminica).
+  const sports = new Set<string>(p.meta.sporturi ?? ['inot', 'bicicleta', 'alergare', 'forta']);
+  for (const [sport, coach] of Object.entries(COACH_OF)) if (coach && !sports.has(sport)) out.delete(coach);
   return [...out];
 }
 
@@ -143,7 +147,15 @@ function specialistSystem(agent: AgentName, prompts: Prompts): string {
 
 function specialistUser(agent: AgentName, p: Packet, file: string | undefined): string {
   const fileName = `${agent.replace('antrenor_', '')}.md`;
-  return [`=== FIȘIERUL TĂU (${fileName}) ===`, file?.trim() || '(gol: prima rulare)', '', `=== PACHETUL DE DATE (${p.meta.eveniment}, ${p.meta.data}) ===`, JSON.stringify(p, null, 1)].join('\n');
+  const parts = [`=== FIȘIERUL TĂU (${fileName}) ===`, file?.trim() || '(gol: prima rulare)', ''];
+  // Antrenorii de sport primesc biblioteca de antrenamente potrivită sportului, obiectivului și fazei de acum.
+  if (agent.startsWith('antrenor_') && agent !== 'antrenor_forta') {
+    const sport = agent.replace('antrenor_', '') as Sport;
+    const lib = libraryText(libraryFor(sport, p.meta.tip_obiectiv, p.meta.obiectiv_cod ?? null, p.meta.faza as Phase));
+    if (lib) parts.push(`=== BIBLIOTECA DE ANTRENAMENTE (${sport}, faza ${p.meta.faza}) ===`, 'Alege de aici sau spune de unde vine altceva și de ce e potrivit acum. Dozele sunt repere, le adaptezi la sportiv.', lib, '');
+  }
+  parts.push(`=== PACHETUL DE DATE (${p.meta.eveniment}, ${p.meta.data}) ===`, JSON.stringify(p, null, 1));
+  return parts.join('\n');
 }
 
 function headUser(p: Packet, specialists: VerifiedResponse[], journal: string[]): string {

@@ -11,7 +11,7 @@ import { BaselineList } from '../forms/Baseline';
 
 const DEVICES: { provider: 'whoop' | 'strava' | 'oura'; name: string; note: string }[] = [
   { provider: 'whoop', name: 'Whoop', note: 'somn, HRV, puls, recuperare, antrenamente' },
-  { provider: 'strava', name: 'Garmin / ceas, prin Strava', note: 'activitățile de pe ceas (Garmin nu mai primește aplicații noi)' },
+  { provider: 'strava', name: 'Garmin · Samsung · alt ceas, prin Strava', note: 'activitățile de pe ceas (Garmin și Samsung Health le trimit în Strava)' },
   { provider: 'oura', name: 'Oura', note: 'somn, HRV, readiness' },
 ];
 
@@ -237,7 +237,87 @@ function DevicesSection() {
         </div>
       </Card>
       {!local && <AppleCard />}
+      {!local && <SamsungCard />}
     </>
+  );
+}
+
+/**
+ * Samsung Watch / Galaxy Watch: Samsung nu are un API în cloud pentru aplicații ca a noastră. Două căi reale:
+ *  1. antrenamentele cu GPS: Samsung Health → Strava (setare oficială), apoi Strava → AIRON (deja conectat);
+ *  2. somnul, HRV-ul, pulsul de repaus și antrenamentele fără GPS: Health Connect (Android) + aplicația
+ *     „Health Connect Webhook”, care trimite înregistrările la adresa personală de mai jos (aceeași ca la Apple Health).
+ */
+function SamsungCard() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const make = async () => {
+    setErr(null);
+    try {
+      const r = await submitForm('apple', {});
+      const u = typeof r.data?.url === 'string' ? r.data.url : null;
+      setUrl(u ? u.replace('/api/webhooks/apple?', '/api/webhooks/android?') : null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  const last = me.profile.androidLast;
+  return (
+    <Card>
+      <Label icon={Icons.watch}>Samsung Watch · Samsung Health</Label>
+      <div className="small">{last ? (last.ok ? `primește date · ultima trimitere ${fmtTime(last.at)}` : `ultima trimitere (${fmtTime(last.at)}) a eșuat`) : 'Samsung nu dă acces direct din cloud. Antrenamentele vin prin Strava; somnul și pulsul prin Health Connect, de pe telefon.'}</div>
+      {last && (
+        <div className="tiny" style={{ marginTop: 6, color: last.ok ? 'var(--muted)' : 'var(--c-rosu)' }}>
+          {last.ok ? `primită · ${last.detail ?? ''}` : `eșuată · ${last.detail ?? 'eroare necunoscută'}`}
+        </div>
+      )}
+      <div className="apple-steps">
+        <div className="as-step">
+          <b>1. Antrenamentele: Samsung Health → Strava</b>
+          <span>În Samsung Health: ⋮ → Setări → Servicii conectate → Strava → autorizează. Apoi conectează Strava aici (mai sus). Vin doar antrenamentele cu GPS (alergare, bicicletă afară); înotul în bazin și banda nu trec prin Strava.</span>
+        </div>
+        <div className="as-step">
+          <b>2. Somnul, HRV-ul, pulsul: Health Connect</b>
+          <span>Pe telefon: Samsung Health → Setări → Health Connect → permite scrierea (somn, puls, HRV, exerciții). Instalează din Play Store „Health Connect Webhook” (com.hcwebhook.app, open source) și dă-i acces la Health Connect.</span>
+        </div>
+        <div className="as-step">
+          <b>3. Adresa personală</b>
+          <span>În Health Connect Webhook adaugi un webhook cu adresa de mai jos (JSON, POST), programat la o oră. Primul pachet ne arată și ce tipuri trimite telefonul tău; dacă apare „tipuri necunoscute”, le adăugăm.</span>
+        </div>
+      </div>
+      {url ? (
+        <>
+          <div className="tiny" style={{ marginTop: 10, wordBreak: 'break-all', userSelect: 'all' }}>
+            {url}
+          </div>
+          <button className="pill on" style={{ marginTop: 8 }} onClick={() => void copy()}>
+            {copied ? 'Copiat' : 'Copiază adresa'}
+          </button>
+          <div className="tiny muted" style={{ marginTop: 8 }}>Aceeași adresă personală servește și Apple Health; dacă o refaci, cea veche nu mai primește date.</div>
+        </>
+      ) : (
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => void make()}>
+          {me.profile.appleConnected ? 'Arată / refă adresa pentru Android' : 'Conectează Samsung Health'}
+        </button>
+      )}
+      {err && (
+        <div className="small" style={{ marginTop: 8, color: 'var(--c-rosu)' }}>
+          {err}
+        </div>
+      )}
+    </Card>
   );
 }
 

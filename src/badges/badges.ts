@@ -11,6 +11,7 @@
 import type { Activity, PlannedWorkout, Sport } from '../types.js';
 import { matchActivities } from '../scoring/match.js';
 import { addDays, weekStart } from '../util/dates.js';
+import { SWIM_DISTANCE_M, goalKind, isSwimGoal } from '../calendar/phases.js';
 import { phaseWeeks } from '../calendar/phases.js';
 
 export type BadgeCategory = 'consecventa' | 'corp' | 'echilibru' | 'repere' | 'progres' | 'drum';
@@ -100,7 +101,7 @@ const LEVELS: { name: string; color: string; hours: number }[] = [
   { name: 'Finisher', color: '#d4fa3a', hours: 700 },
 ];
 
-const TRI = (goal: string | null) => goal === '70.3' || goal === 'olimpic' || goal === 'sprint';
+const TRI = (goal: string | null) => goalKind(goal) === 'tri';
 const active = (w: PlannedWorkout) => (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna';
 
 /** Insigne pe trepte: aceeași măsură, trei praguri. */
@@ -205,7 +206,11 @@ export function computeBadges(i: BadgesInput): BadgesResult {
         { sport: 'bicicleta', title: 'Bicicletă într-o ședință', km: [40, 60, 90], unit: 'km', scale: 1 },
         { sport: 'alergare', title: 'Alergare într-o ședință', km: [10, 15, 21.1], unit: 'km', scale: 1 },
       ]
-    : [{ sport: 'alergare', title: 'Alergare într-o ședință', km: i.goal === 'maraton' ? [21.1, 30, 42.2] : [10, 15, 21.1], unit: 'km', scale: 1 }];
+    : goalKind(i.goal) === 'swim'
+      ? [{ sport: 'inot', title: 'Înot într-o ședință', km: i.goal === 'inot-3800' ? [1.5, 2.5, 3.8] : [0.5, 1, isSwimGoal(i.goal) ? SWIM_DISTANCE_M[i.goal] / 1000 : 1.5], unit: 'm', scale: 1000 }]
+      : goalKind(i.goal) === 'bike'
+        ? [{ sport: 'bicicleta', title: 'Bicicletă într-o ședință', km: i.goal === 'bike-160' ? [60, 100, 160] : i.goal === 'bike-100' ? [40, 70, 100] : [20, 35, 50], unit: 'km', scale: 1 }]
+        : [{ sport: 'alergare', title: 'Alergare într-o ședință', km: i.goal === 'maraton' ? [21.1, 30, 42.2] : i.goal === '5k' ? [3, 5, 8] : i.goal === '10k' ? [5, 10, 12] : [10, 15, 21.1], unit: 'km', scale: 1 }];
   for (const ms2 of milestones) {
     const have = bestKm(ms2.sport);
     ms2.km.forEach((k, idx) =>
@@ -253,8 +258,9 @@ export function computeBadges(i: BadgesInput): BadgesResult {
     badges.push({ id: 'start', category: 'drum', title: 'Linia de start', how: 'Ziua cursei, cu activitate înregistrată', tier: null, earnedAt: start, progress: { have: start ? 1 : 0, target: 1, unit: '' } });
     const raceDay = acts.filter((a) => a.date === i.raceDate);
     const sports = new Set(raceDay.map((a) => a.sport));
-    const finisher = start && (TRI(i.goal) ? sports.has('inot') && sports.has('bicicleta') && sports.has('alergare') : sports.has('alergare')) ? i.raceDate : null;
-    badges.push({ id: 'finisher', category: 'drum', title: 'Finisher', how: TRI(i.goal) ? 'Toate trei probele înregistrate în ziua cursei' : 'Alergarea înregistrată în ziua cursei', tier: null, earnedAt: finisher, progress: { have: finisher ? 1 : 0, target: 1, unit: '' } });
+    const mainSport = goalKind(i.goal) === 'swim' ? 'inot' : goalKind(i.goal) === 'bike' ? 'bicicleta' : 'alergare';
+    const finisher = start && (TRI(i.goal) ? sports.has('inot') && sports.has('bicicleta') && sports.has('alergare') : sports.has(mainSport)) ? i.raceDate : null;
+    badges.push({ id: 'finisher', category: 'drum', title: 'Finisher', how: TRI(i.goal) ? 'Toate trei probele înregistrate în ziua cursei' : `${{ inot: 'Înotul', bicicleta: 'Tura', alergare: 'Alergarea' }[mainSport]} înregistrat${mainSport === 'bicicleta' || mainSport === 'alergare' ? 'ă' : ''} în ziua obiectivului`, tier: null, earnedAt: finisher, progress: { have: finisher ? 1 : 0, target: 1, unit: '' } });
   }
 
   // ——— Provocarea lunii: sportul rămas cel mai mult în urmă luna asta ———

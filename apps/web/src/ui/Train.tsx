@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { addDays, diffDays, weekday } from '@core/util/dates.js';
+import { goalSports } from '@core/calendar/phases.js';
 import { Card, Dot, Icons, Label, fmtDayMonth } from './common';
 import { SubTabs } from './Shell';
 import { useData, useMe } from '../data/store';
@@ -32,9 +33,13 @@ const SWIM_TIP = 'Expiră complet sub apă înainte să întorci capul. Un singu
  * Plan → Sporturi: alegi sportul; apoi, în ordinea utilității: următoarea ședință, rezumatul probei, activitățile,
  * detaliile tehnice la cerere. Înotul are selectorul Bazin | Ape libere sus, explicit.
  */
-export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => void; sport: Sport; onSport: (s: Sport) => void }) {
+export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: string) => void; sport: Sport; onSport: (s: Sport) => void }) {
   const me = useMe();
   const { submitForm, local } = useData();
+  // Un singur sport în obiectiv: doar sportul acela (și forța); celelalte nu există pentru sportivul ăsta.
+  const allowed = goalSports(me.user.goal);
+  const sport: Sport = allowed.includes(sportProp) ? sportProp : (allowed[0] ?? 'alergare');
+  const sportTabs = SPORTS.filter((s) => allowed.includes(s.id));
   const [swimMode, setSwimMode] = useState<'bazin' | 'ape'>(() => me.prefs?.mediuInot ?? readSwimMode());
   const [swimNote, setSwimNote] = useState<string | null>(null);
   const [showTech, setShowTech] = useState(false);
@@ -71,7 +76,7 @@ export function Train({ onOpen, sport, onSport }: { onOpen: (screen: string) => 
   return (
     <>
       <div className="seg sport-seg" role="tablist" aria-label="Sport" style={{ marginBottom: 12 }}>
-        {SPORTS.map((s) => (
+        {sportTabs.map((s) => (
           <button key={s.id} role="tab" aria-selected={sport === s.id} className={sport === s.id ? 'on' : ''} onClick={() => onSport(s.id)}>
             {Icons[s.icon]}
             <span>{SPORT_LABEL[s.id]}</span>

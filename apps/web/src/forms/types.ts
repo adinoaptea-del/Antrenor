@@ -4,7 +4,7 @@
 import type { EveningForm, MorningForm } from '@core/collector/types.js';
 import type { FreeBlock } from '@core/types.js';
 import type { RunResult } from '@core/util/run.js';
-import { isRunGoal } from '@core/calendar/phases.js';
+import { goalKind, isRunGoal, type Goal } from '@core/calendar/phases.js';
 import { parseDuration, parsePace } from '@core/util/run.js';
 
 export type { EveningForm, MorningForm };
@@ -15,7 +15,7 @@ export interface IntakeAnswers {
   anNastere?: number | null;
   /** Înălțimea în cm. */
   inaltime?: number | null;
-  obiectiv: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full';
+  obiectiv: Goal | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };
   bicicleta: { tip: 'sosea' | 'tt' | 'mtb' | 'nu_am' | null; trainer: boolean | null; putere: boolean | null; ceaMaiLungaOre: number | null };
@@ -85,9 +85,14 @@ export function runResultOk(r: RunResult | null | undefined): boolean {
 }
 
 export function intakeComplete(i: IntakeAnswers | undefined): boolean {
-  if (i && isRunGoal(i.obiectiv)) {
+  if (!i) return false;
+  const base = i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  if (isRunGoal(i.obiectiv)) {
     const a = i.alergare;
-    return i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual)) && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+    return base && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual));
   }
-  return !!i && i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  const kind = goalKind(i.obiectiv);
+  if (kind === 'swim') return base && i.inot.nivel != null;
+  if (kind === 'bike') return base && i.bicicleta.tip != null;
+  return base && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null;
 }

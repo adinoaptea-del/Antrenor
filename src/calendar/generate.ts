@@ -7,7 +7,7 @@ import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 import type { FreeBlock, IntensityAllowed, Phase, PlannedWorkout, Sport, WorkoutType, Zone } from '../types.js';
 import { addDays } from '../util/dates.js';
 import { weeklyBudget } from './budget.js';
-import { PHASE_HOURS, isRunGoal, phaseWeeks, type Goal, type PhaseWeek } from './phases.js';
+import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
 
 export interface GenerateInput {
   startDate: string;
@@ -26,8 +26,10 @@ export interface GenerateInput {
   tests?: { alergare: boolean; bicicleta: boolean; inot: boolean };
   /** Vârsta și sexul. Vârsta schimbă structura (descărcare mai des, fără intervale VO2max după 55); sexul nu schimbă volumul, doar nutriția și pragurile analizelor. */
   athlete?: { age: number | null; sex: 'm' | 'f' | null };
-  /** Doar la semimaraton / maraton: ritmul-țintă de cursă (s/km) și dacă poate alerga deja distanța. */
+  /** Doar la alergare (5 km … maraton): ritmul-țintă de cursă (s/km) și dacă poate alerga deja distanța. */
   run?: { goalPaceSecKm: number | null; canDoDistance: boolean | null; longestRunKm?: number | null };
+  /** Doar la înot: câți metri înoată acum fără oprire (declarat sau măsurat). */
+  swim?: { continuousM: number | null };
   /** Întâlniri fixe (ex. alergarea cu grupul sâmbăta): ședința potrivită se pune în ziua aceea, dacă e în program. */
   fixed?: FixedMeet[];
 }
@@ -84,12 +86,12 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const missing = Math.round((minimumHours - budget.hours) * 10) / 10;
     return {
       ok: false,
-      reason: `Ai ${budget.hours} ore pe săptămână disponibile; pentru ${input.goal} ai nevoie de cel puțin ${minimumHours} în ${phasesUsed.includes('build') ? 'build' : 'faza cea mai încărcată'}.`,
+      reason: `Ai ${budget.hours} ore pe săptămână disponibile; pentru ${GOAL_LABEL[input.goal]} ai nevoie de cel puțin ${minimumHours} în ${phasesUsed.includes('build') ? 'build' : 'faza cea mai încărcată'}.`,
       budgetHours: budget.hours,
       minimumHours,
       options: [
         `eliberezi ${missing} ore pe săptămână (blocuri de minimum 45 de minute)`,
-        input.goal === '70.3' ? 'schimbi cursa cu una olimpică' : input.goal === 'maraton' ? 'alegi un semimaraton' : 'schimbi cursa cu una mai scurtă',
+        input.goal === '70.3' ? 'schimbi cursa cu una olimpică' : input.goal === 'maraton' ? 'alegi un semimaraton' : input.goal === 'semimaraton' ? 'alegi 10 km' : 'alegi o distanță mai scurtă',
         'muți data cursei',
       ],
     };
@@ -103,16 +105,19 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // Timpul liber e plafonul, nu doza.
   let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
 
-  const runGoal = isRunGoal(input.goal);
+  const kind = goalKind(input.goal) ?? 'tri';
+  const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
-  const startLong = runGoal ? (input.run?.canDoDistance ? (input.goal === 'maraton' ? 100 : 80) : (input.run?.longestRunKm ?? 0) >= 12 ? 70 : 50) : 60;
+  const startLong = runGoal ? runStartLong(input.goal as RunGoal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
   // Triatlon: tura lungă pornește de la ~80% din cea mai lungă tură recentă (60–120 min), ieșirea lungă de la ~80% din cea mai lungă alergare (40–75 min).
   const lvl = input.level ?? {};
   // Ieșirile lungi pornesc de la ce a demonstrat sportivul (cel mult +25%), nu de la minimul șablonului: 15 min de
   // bicicletă nu devin 60. Podeaua e durata minimă a unei ședințe din sportul respectiv.
   const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN.bicicleta, Math.round((lvl.longestRideH * 60 * 1.25) / 5) * 5)) : 60;
   const triRun = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN.alergare, Math.round((lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25) / 5) * 5)) : 45;
-  const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? startLong : triRun, brickRun: 15 };
+  // Doar înot: ședința lungă pornește de la ce înoată acum fără oprire (≈ 2,5 min la 100 m la început), minimum 30 min.
+  const swimStart = Math.max(MIN_SESSION_MIN.inot, Math.min(60, Math.round(((input.swim?.continuousM ?? 200) / 100) * 2.5 * 1.25)));
+  const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? startLong : triRun, brickRun: 15, longSwim: swimStart };
   const out: WeekPlan[] = [];
 
   for (const pw of weeks) {
@@ -127,10 +132,12 @@ export function generatePlan(input: GenerateInput): GenerateResult {
       prevLoaded = target;
     }
 
-    if (runGoal) advanceRunProgression(prog, pw, input.goal as 'semimaraton' | 'maraton');
+    if (kind === 'run') advanceRunProgression(prog, pw, input.goal as RunGoal);
+    else if (kind === 'swim') advanceSwimProgression(prog, pw, input.goal);
+    else if (kind === 'bike') advanceBikeProgression(prog, pw, input.goal);
     else advanceProgression(prog, pw);
-    const sessions = runGoal ? runWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
-    const minCount: Partial<Record<Sport, number>> = runGoal ? { alergare: 3, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
+    const sessions = kind === 'run' ? runWeekTemplate(pw, input, prog) : kind === 'swim' ? swimWeekTemplate(pw, input, prog) : kind === 'bike' ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    const minCount: Partial<Record<Sport, number>> = kind === 'run' ? { alergare: 3, forta: 1 } : kind === 'swim' ? { inot: 2, forta: 1 } : kind === 'bike' ? { bicicleta: 2, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
     const fitted = fitToHours(sessions, target, pw.recovery, minCount);
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
@@ -241,10 +248,27 @@ function advanceProgression(prog: { longRide: number; longRun: number; brickRun:
   prog.longRun = Math.min(prog.longRun, cap.run);
 }
 
-/** Ieșirea lungă la semimaraton / maraton: +10 min pe săptămână (fără descărcări), plafon pe fază. */
-function advanceRunProgression(prog: { longRun: number }, pw: PhaseWeek, goal: 'semimaraton' | 'maraton'): void {
+/** De unde pornește ieșirea lungă la alergare: de la ce poate sportivul acum, pe distanța aleasă. */
+function runStartLong(goal: RunGoal, canDoDistance: boolean | null, longestRunKm: number | null): number {
+  const long = longestRunKm ?? 0;
+  switch (goal) {
+    case '5k':
+      return canDoDistance ? 50 : long >= 5 ? 45 : 35;
+    case '10k':
+      return canDoDistance ? 60 : long >= 8 ? 50 : 40;
+    case 'semimaraton':
+      return canDoDistance ? 80 : long >= 12 ? 70 : 50;
+    default:
+      return canDoDistance ? 100 : long >= 12 ? 70 : 50;
+  }
+}
+
+/** Ieșirea lungă la alergare: +10 min pe săptămână (fără descărcări), plafon pe fază și pe distanță (la 5 și 10 km ieșirea e mai lungă decât cursa, dar nu dublă). */
+function advanceRunProgression(prog: { longRun: number }, pw: PhaseWeek, goal: RunGoal): void {
   if (pw.recovery) return;
-  const caps: Record<'semimaraton' | 'maraton', Record<Phase, number>> = {
+  const caps: Record<RunGoal, Record<Phase, number>> = {
+    '5k': { evaluare: 45, baza1: 55, baza2: 65, build: 75, peak: 75, taper: 40 },
+    '10k': { evaluare: 55, baza1: 65, baza2: 80, build: 90, peak: 90, taper: 50 },
     semimaraton: { evaluare: 70, baza1: 85, baza2: 100, build: 115, peak: 120, taper: 60 },
     maraton: { evaluare: 90, baza1: 120, baza2: 150, build: 175, peak: 180, taper: 75 },
   };
@@ -257,17 +281,51 @@ function advanceRunProgression(prog: { longRun: number }, pw: PhaseWeek, goal: '
   prog.longRun = Math.min(prog.longRun, cap);
 }
 
+/** Doar înot: ședința lungă crește cu 5 min pe săptămână, plafon pe fază după distanța-obiectiv (1.500 m ≈ 40 min, 3.800 m ≈ 90 min la vârf). */
+function advanceSwimProgression(prog: { longSwim: number }, pw: PhaseWeek, goal: Goal): void {
+  if (pw.recovery) return;
+  const peakMin = isSwimGoal(goal) ? { 'inot-1500': 40, 'inot-1900': 50, 'inot-3800': 90 }[goal] : 45;
+  const scale: Record<Phase, number> = { evaluare: 0.6, baza1: 0.7, baza2: 0.85, build: 1, peak: 1, taper: 0.5 };
+  const cap = Math.round((peakMin * scale[pw.phase]) / 5) * 5;
+  if (pw.phase === 'taper') {
+    prog.longSwim = Math.min(prog.longSwim, cap);
+    return;
+  }
+  if (pw.weekInPhase > 0) prog.longSwim += 5;
+  prog.longSwim = Math.min(prog.longSwim, Math.max(cap, MIN_SESSION_MIN.inot));
+}
+
+/** Doar bicicletă: tura lungă crește cu 15 min pe săptămână, plafon pe fază după distanța-obiectiv (50 km ≈ 2 h 30, 100 km ≈ 4 h, 160 km ≈ 5 h 30 la vârf). */
+function advanceBikeProgression(prog: { longRide: number }, pw: PhaseWeek, goal: Goal): void {
+  if (pw.recovery) return;
+  const peakMin = isBikeGoal(goal) ? { 'bike-50': 150, 'bike-100': 240, 'bike-160': 330 }[goal] : 180;
+  const scale: Record<Phase, number> = { evaluare: 0.5, baza1: 0.65, baza2: 0.8, build: 1, peak: 1, taper: 0.45 };
+  const cap = Math.round((peakMin * scale[pw.phase]) / 15) * 15;
+  if (pw.phase === 'taper') {
+    prog.longRide = Math.min(prog.longRide, cap);
+    return;
+  }
+  if (pw.weekInPhase > 0) prog.longRide += 15;
+  prog.longRide = Math.min(prog.longRide, Math.max(cap, MIN_SESSION_MIN.bicicleta));
+}
+
 function fmtPace(sec: number): string {
   const t = Math.round(sec);
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}/km`;
 }
 
-/** Săptămâna la semimaraton / maraton: 2 alergări ușoare, una de calitate, ieșirea lungă, forță. */
+/**
+ * Săptămâna la alergare (5 km … maraton): 2 alergări ușoare, una de calitate, ieșirea lungă, forță.
+ * Din build, calitatea devine specifică distanței: la 5 km repetări scurte la ritmul de 5 km (VO2max), la 10 km
+ * bucăți de 6–8 min la ritmul de 10 km, la semimaraton/maraton bucăți lungi la ritmul de cursă, iar ieșirea lungă
+ * primește finalul la ritm de cursă doar la semimaraton și maraton (la 5–10 km rămâne ușoară, cu accelerări).
+ */
 function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: number }): Session[] {
   const p = pw.phase;
   const s: Session[] = [];
   const pace = input.run?.goalPaceSecKm ?? null;
-  const race = input.goal === 'maraton' ? 'maraton' : 'semimaraton';
+  const race = (isRunGoal(input.goal) ? input.goal : 'semimaraton') as RunGoal;
+  const short = race === '5k' || race === '10k';
   const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null, pw.weekInPhase);
   const early = p === 'evaluare' || p === 'baza1';
 
@@ -275,20 +333,51 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   s.push({ sport: 'alergare', type: 'z2', minutes: early ? 35 : p === 'taper' ? 25 : 45, zones: [1, 2], key: false, priority: 7, structure: 'ușor + 4–6 accelerări de 20 s' });
 
   const q = quality(p === 'taper' ? 35 : early ? 45 : 60);
-  // Din build, calitatea devine specifică: bucăți la ritmul de cursă.
-  if (q.type === 'calitate' && (p === 'build' || p === 'peak' || p === 'taper') && pace) {
-    q.zones = [3, 4];
-    q.structure = race === 'maraton' ? `3 × 15 min la ritm de maraton (${fmtPace(pace)}), 3 min ușor între` : `3 × 12 min la ritm de semimaraton (${fmtPace(pace)}), 3 min ușor între`;
-    q.intervals = { count: 3, minutes: race === 'maraton' ? 15 : 12, zone: 4 };
+  // Din build, calitatea devine specifică: bucăți la ritmul de cursă (alternând cu calitatea generală a fazei la 5–10 km).
+  const specificWeek = short ? pw.weekInPhase % 2 === 0 : true;
+  if (q.type === 'calitate' && (p === 'build' || p === 'peak' || p === 'taper') && pace && specificWeek) {
+    const RP = fmtPace(pace);
+    const CTRL = ' · prima repetare puțin mai ușor, ultimele cele mai bune';
+    if (race === '5k') {
+      if (p === 'taper') {
+        q.structure = `4 × 2 min la ritm de 5 km (${RP}), 2 min ușor între (întreținere, nu oboseală)${CTRL}`;
+        q.intervals = { count: 4, minutes: 2, zone: 5 };
+      } else if (p === 'peak') {
+        q.structure = `4 × 4 min la ritm de 5 km (${RP}), 3 min trap ușor între${CTRL}`;
+        q.intervals = { count: 4, minutes: 4, zone: 5 };
+      } else {
+        q.structure = `6 × 3 min la ritm de 5 km (${RP}), 2 min trap ușor între${CTRL}`;
+        q.intervals = { count: 6, minutes: 3, zone: 5 };
+      }
+      q.zones = [4, 5];
+    } else if (race === '10k') {
+      if (p === 'taper') {
+        q.structure = `3 × 4 min la ritm de 10 km (${RP}), 2 min ușor între${CTRL}`;
+        q.intervals = { count: 3, minutes: 4, zone: 4 };
+      } else if (p === 'peak') {
+        q.structure = `3 × 8 min la ritm de 10 km (${RP}), 3 min ușor între${CTRL}`;
+        q.intervals = { count: 3, minutes: 8, zone: 4 };
+      } else {
+        q.structure = `4 × 6 min la ritm de 10 km (${RP}), 2 min ușor între${CTRL}`;
+        q.intervals = { count: 4, minutes: 6, zone: 4 };
+      }
+      q.zones = [4];
+    } else {
+      q.zones = [3, 4];
+      q.structure = race === 'maraton' ? `3 × 15 min la ritm de maraton (${RP}), 3 min ușor între` : `3 × 12 min la ritm de semimaraton (${RP}), 3 min ușor între`;
+      q.intervals = { count: 3, minutes: race === 'maraton' ? 15 : 12, zone: 4 };
+    }
   }
   s.push(q);
 
   if (!(p === 'taper' && pw.weekInPhase > 0)) {
-    const specific = (p === 'build' || p === 'peak') && pace && input.intensityAllowed !== 'Z2';
+    const specific = !short && (p === 'build' || p === 'peak') && pace && input.intensityAllowed !== 'Z2';
     s.push({
       sport: 'alergare',
       type: 'lung',
-      ...(specific ? { minutes: prog.longRun, zones: [2] as Zone[], key: true, priority: 1, structure: `ușor, cu ultimele ${race === 'maraton' ? 30 : 20} min la ritm de cursă (${fmtPace(pace!)})` } : { ...longRunOf(pw, prog.longRun, 'ușor, conversațional'), priority: 1 }),
+      ...(specific
+        ? { minutes: prog.longRun, zones: [2] as Zone[], key: true, priority: 1, structure: `ușor, cu ultimele ${race === 'maraton' ? 30 : 20} min la ritm de cursă (${fmtPace(pace!)})` }
+        : { ...longRunOf(pw, prog.longRun, short ? 'ușor, conversațional; 4 accelerări de 20 s la final' : 'ușor, conversațional'), priority: 1 }),
     });
   }
 
@@ -302,6 +391,95 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
     s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
   }
 
+  if (pw.recovery) {
+    for (const x of s) {
+      x.minutes = Math.round((x.minutes * RECOVERY_FACTOR) / 5) * 5;
+      x.key = false;
+      if (x.type === 'calitate') {
+        x.type = 'z2';
+        x.zones = [2];
+        x.structure = undefined;
+        x.intervals = undefined;
+      }
+    }
+  }
+  return s;
+}
+
+/**
+ * Săptămâna doar de înot: tehnică, o ședință lungă în care distanța fără oprire crește treptat (25–50 m în plus pe
+ * săptămână până la 400 m, apoi minute), calitate (set CSS) din baza2 dacă înoată 400 m și intensitatea e permisă,
+ * la 3.800 m încă un înot ușor din build; forța de 2 ori. Fără 400 m continuu, totul rămâne tehnică + bucăți legate.
+ */
+function swimWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longSwim: number }): Session[] {
+  const p = pw.phase;
+  const s: Session[] = [];
+  const can400 = input.swimContinuous400;
+  const early = p === 'evaluare' || p === 'baza1';
+  const targetM = isSwimGoal(input.goal) ? SWIM_DISTANCE_M[input.goal] : 1500;
+
+  s.push({ sport: 'inot', type: 'tehnica', minutes: early ? 35 : p === 'taper' ? 30 : 40, zones: [1, 2], key: false, priority: 6, structure: 'un element de tehnică (respirație, poziție, tracțiune), bucăți scurte' });
+  if (can400) {
+    s.push({ sport: 'inot', type: 'lung', minutes: prog.longSwim, zones: [2], key: true, priority: 1, structure: p === 'peak' ? `distanța obiectivului (${targetM.toLocaleString('ro-RO')} m) sau cât poți fără oprire, ritm constant` : 'cea mai lungă bucată fără oprire de până acum + 100 m, apoi ușor' });
+  } else {
+    s.push({ sport: 'inot', type: 'tehnica', minutes: prog.longSwim, zones: [1, 2], key: true, priority: 1, structure: 'bucăți legate: cât ai demonstrat fără oprire + 25 m, pauză până respiri liniștit; ținta e 400 m legat' });
+  }
+  if (can400 && input.intensityAllowed !== 'Z2' && !early && p !== 'taper') {
+    s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: true, priority: 3, structure: p === 'peak' ? '6 × 200 m la ritm de obiectiv, 20 s pauză (set CSS)' : '10 × 100 m la ritmul CSS, 15 s pauză (set CSS)' });
+  } else if (!early && p !== 'taper') {
+    s.push({ sport: 'inot', type: 'tehnica', minutes: 35, zones: [1, 2], key: false, priority: 5, structure: 'tehnică + 8 × 50 m cu accent pe alunecare' });
+  }
+  if (targetM >= 3800 && (p === 'build' || p === 'peak')) s.push({ sport: 'inot', type: 'z2', minutes: 45, zones: [2], key: false, priority: 6.5, structure: 'ușor, continuu, respirație la 3 brațe' });
+
+  for (const t of fieldTests(pw, input, ['inot'])) {
+    const easy = s.findIndex((x) => x.sport === 'inot' && x.type === 'tehnica' && !x.key);
+    if (easy >= 0) s.splice(easy, 1, t);
+    else s.push(t);
+  }
+  const fortaCount = p === 'taper' ? 1 : 2;
+  for (let i = 0; i < fortaCount; i++) s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
+  if (pw.recovery) {
+    for (const x of s) {
+      x.minutes = Math.round((x.minutes * RECOVERY_FACTOR) / 5) * 5;
+      x.key = false;
+      if (x.type === 'calitate') {
+        x.type = 'tehnica';
+        x.zones = [1, 2];
+        x.structure = 'tehnică, ușor';
+        x.intervals = undefined;
+      }
+    }
+  }
+  return s;
+}
+
+/**
+ * Săptămâna doar de bicicletă: o tură ușoară (Z2, cu cadență), una de calitate (sweet spot din baza2, prag în build,
+ * ritm de obiectiv în peak), tura lungă care crește spre distanța-obiectiv, forța de 2 ori.
+ */
+function bikeWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: number }): Session[] {
+  const p = pw.phase;
+  const s: Session[] = [];
+  const early = p === 'evaluare' || p === 'baza1';
+  const targetKm = isBikeGoal(input.goal) ? BIKE_DISTANCE_KM[input.goal] : 100;
+  const hard = input.intensityAllowed !== 'Z2';
+
+  s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 6, structure: 'ușor, cadență 90–100' });
+  if (p === 'baza2' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3], key: true, priority: 3, structure: '3 × 10 min sweet spot (Z3), 5 min ușor între' });
+  else if (p === 'build' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [4], key: true, priority: 3, structure: '2 × 15 min la prag (Z4), 5 min ușor între' });
+  else if (p === 'peak' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3, 4], key: true, priority: 3, structure: '3 × 15 min la ritmul pe care-l ții în tura-obiectiv, 5 min ușor între' });
+  else if (p === 'taper' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 3, structure: '3 × 5 min la ritm de obiectiv, 3 min ușor între' });
+  else s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : 70, zones: [2], key: false, priority: 5.8, structure: 'ușor, cu 6 × 1 min cadență 110' });
+  if (!(p === 'taper' && pw.weekInPhase > 0)) {
+    s.push({ sport: 'bicicleta', type: 'lung', minutes: prog.longRide, zones: [2], key: true, priority: 1, structure: p === 'peak' ? `tură lungă Z2, cu hrănire la fiecare 30 min (obiectiv: ${targetKm} km)` : 'tură lungă Z2, constantă, cu hrănire exersată' });
+  }
+  for (const t of fieldTests(pw, input, ['bicicleta'])) {
+    const easy = s.findIndex((x) => x.sport === 'bicicleta' && x.type === 'z2' && !x.key);
+    if (easy >= 0) s.splice(easy, 1, t);
+    else s.push(t);
+  }
+  const fortaCount = p === 'taper' ? 1 : 2;
+  for (let i = 0; i < fortaCount; i++) s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
   if (pw.recovery) {
     for (const x of s) {
       x.minutes = Math.round((x.minutes * RECOVERY_FACTOR) / 5) * 5;

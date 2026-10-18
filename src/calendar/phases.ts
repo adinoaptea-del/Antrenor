@@ -3,13 +3,70 @@
 import type { Phase } from '../types.js';
 import { addDays, diffDays, weekStart } from '../util/dates.js';
 
-export type Goal = '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton';
+export type TriGoal = '70.3' | 'olimpic' | 'sprint';
+/** Doar alergare: distanța pe care sportivul vrea să alerge (și, de obicei, un timp-țintă). */
+export type RunGoal = '5k' | '10k' | 'semimaraton' | 'maraton';
+/** Doar înot: distanța pe care vrea s-o înoate fără oprire (bazin sau ape libere). */
+export type SwimGoal = 'inot-1500' | 'inot-1900' | 'inot-3800';
+/** Doar bicicletă: distanța turei pe care vrea s-o termine. */
+export type BikeGoal = 'bike-50' | 'bike-100' | 'bike-160';
+export type Goal = TriGoal | RunGoal | SwimGoal | BikeGoal;
+export type GoalKind = 'tri' | 'run' | 'swim' | 'bike';
 
-/** Obiective doar de alergare: planul are alergare + forță, fără înot și bicicletă. */
-export const RUN_GOALS: readonly Goal[] = ['semimaraton', 'maraton'];
-export const isRunGoal = (g: string | null | undefined): g is 'semimaraton' | 'maraton' => g === 'semimaraton' || g === 'maraton';
+export const TRI_GOALS: readonly TriGoal[] = ['70.3', 'olimpic', 'sprint'];
+export const RUN_GOALS: readonly RunGoal[] = ['5k', '10k', 'semimaraton', 'maraton'];
+export const SWIM_GOALS: readonly SwimGoal[] = ['inot-1500', 'inot-1900', 'inot-3800'];
+export const BIKE_GOALS: readonly BikeGoal[] = ['bike-50', 'bike-100', 'bike-160'];
+export const ALL_GOALS: readonly Goal[] = [...TRI_GOALS, ...RUN_GOALS, ...SWIM_GOALS, ...BIKE_GOALS];
+
+export const isRunGoal = (g: string | null | undefined): g is RunGoal => (RUN_GOALS as readonly string[]).includes(g ?? '');
+export const isSwimGoal = (g: string | null | undefined): g is SwimGoal => (SWIM_GOALS as readonly string[]).includes(g ?? '');
+export const isBikeGoal = (g: string | null | undefined): g is BikeGoal => (BIKE_GOALS as readonly string[]).includes(g ?? '');
+export const isTriGoal = (g: string | null | undefined): g is TriGoal => (TRI_GOALS as readonly string[]).includes(g ?? '');
+export const isGoal = (g: string | null | undefined): g is Goal => (ALL_GOALS as readonly string[]).includes(g ?? '');
+
+/** Felul obiectivului: un singur sport (alergare / înot / bicicletă) sau triatlon. null pentru obiective necunoscute (ex. „full”). */
+export function goalKind(g: string | null | undefined): GoalKind | null {
+  return isRunGoal(g) ? 'run' : isSwimGoal(g) ? 'swim' : isBikeGoal(g) ? 'bike' : isTriGoal(g) ? 'tri' : null;
+}
+
+/** Sporturile din plan pentru un obiectiv: la un singur sport, doar sportul și forța; toate trei doar la triatlon. */
+export function goalSports(g: string | null | undefined): ('inot' | 'bicicleta' | 'alergare' | 'forta')[] {
+  switch (goalKind(g)) {
+    case 'run':
+      return ['alergare', 'forta'];
+    case 'swim':
+      return ['inot', 'forta'];
+    case 'bike':
+      return ['bicicleta', 'forta'];
+    default:
+      return ['inot', 'bicicleta', 'alergare', 'forta'];
+  }
+}
+
 /** Distanța cursei de alergare, km. */
-export const RUN_DISTANCE_KM = { semimaraton: 21.0975, maraton: 42.195 } as const;
+export const RUN_DISTANCE_KM: Record<RunGoal, number> = { '5k': 5, '10k': 10, semimaraton: 21.0975, maraton: 42.195 };
+/** Distanța de înot a obiectivului, m. */
+export const SWIM_DISTANCE_M: Record<SwimGoal, number> = { 'inot-1500': 1500, 'inot-1900': 1900, 'inot-3800': 3800 };
+/** Distanța turei de bicicletă, km. */
+export const BIKE_DISTANCE_KM: Record<BikeGoal, number> = { 'bike-50': 50, 'bike-100': 100, 'bike-160': 160 };
+
+/** Numele obiectivului, pentru om. */
+export const GOAL_LABEL: Record<Goal, string> = {
+  '70.3': 'Ironman 70.3',
+  olimpic: 'triatlon olimpic',
+  sprint: 'triatlon sprint',
+  '5k': '5 km',
+  '10k': '10 km',
+  semimaraton: 'semimaraton',
+  maraton: 'maraton',
+  'inot-1500': 'înot 1.500 m',
+  'inot-1900': 'înot 1.900 m',
+  'inot-3800': 'înot 3.800 m',
+  'bike-50': 'tură de 50 km',
+  'bike-100': 'tură de 100 km',
+  'bike-160': 'tură de 160 km',
+};
 
 export interface PhaseHours {
   min: number;
@@ -59,6 +116,73 @@ export const PHASE_HOURS: Record<Goal, Record<Phase, PhaseHours>> = {
     build: { min: 4.5, target: 7, max: 9 },
     peak: { min: 4.5, target: 7, max: 9 },
     taper: { min: 2.5, target: 3.5, max: 5 },
+  },
+  // 5 și 10 km: mai puțin volum, mai multă calitate (orientativ 20–35 km/săpt. la 5 km, 25–45 la 10 km, cu forța inclusă).
+  '5k': {
+    evaluare: { min: 2, target: 3, max: 4 },
+    baza1: { min: 2.5, target: 3.5, max: 5 },
+    baza2: { min: 2.5, target: 4, max: 5.5 },
+    build: { min: 3, target: 4.5, max: 6 },
+    peak: { min: 3, target: 4.5, max: 6 },
+    taper: { min: 1.5, target: 2.5, max: 3.5 },
+  },
+  '10k': {
+    evaluare: { min: 2.5, target: 3.5, max: 4.5 },
+    baza1: { min: 3, target: 4, max: 5.5 },
+    baza2: { min: 3, target: 4.5, max: 6 },
+    build: { min: 3.5, target: 5, max: 6.5 },
+    peak: { min: 3.5, target: 5, max: 6.5 },
+    taper: { min: 2, target: 2.5, max: 4 },
+  },
+  // Doar înot: 3–4 ședințe + forță; distanța lungă crește treptat (bazinul nu cere ore multe, cere constanță).
+  'inot-1500': {
+    evaluare: { min: 2, target: 3, max: 4 },
+    baza1: { min: 2.5, target: 3.5, max: 4.5 },
+    baza2: { min: 2.5, target: 3.5, max: 5 },
+    build: { min: 3, target: 4, max: 5 },
+    peak: { min: 3, target: 4, max: 5 },
+    taper: { min: 1.5, target: 2.5, max: 3.5 },
+  },
+  'inot-1900': {
+    evaluare: { min: 2, target: 3, max: 4 },
+    baza1: { min: 2.5, target: 3.5, max: 5 },
+    baza2: { min: 3, target: 4, max: 5.5 },
+    build: { min: 3, target: 4.5, max: 5.5 },
+    peak: { min: 3, target: 4.5, max: 5.5 },
+    taper: { min: 1.5, target: 2.5, max: 3.5 },
+  },
+  'inot-3800': {
+    evaluare: { min: 2.5, target: 3.5, max: 4.5 },
+    baza1: { min: 3, target: 4, max: 5.5 },
+    baza2: { min: 3.5, target: 4.5, max: 6 },
+    build: { min: 4, target: 5, max: 6.5 },
+    peak: { min: 4, target: 5, max: 6.5 },
+    taper: { min: 2, target: 3, max: 4 },
+  },
+  // Doar bicicletă: 3 ture + forță; tura lungă crește spre distanța-țintă.
+  'bike-50': {
+    evaluare: { min: 2.5, target: 3.5, max: 5 },
+    baza1: { min: 3, target: 4, max: 6 },
+    baza2: { min: 3.5, target: 4.5, max: 6.5 },
+    build: { min: 3.5, target: 5, max: 7 },
+    peak: { min: 3.5, target: 5, max: 7 },
+    taper: { min: 2, target: 3, max: 4 },
+  },
+  'bike-100': {
+    evaluare: { min: 3, target: 4, max: 6 },
+    baza1: { min: 4, target: 5.5, max: 7.5 },
+    baza2: { min: 4.5, target: 6, max: 8 },
+    build: { min: 5, target: 7, max: 9 },
+    peak: { min: 5, target: 7, max: 9 },
+    taper: { min: 2.5, target: 3.5, max: 5 },
+  },
+  'bike-160': {
+    evaluare: { min: 3.5, target: 5, max: 7 },
+    baza1: { min: 4.5, target: 6.5, max: 8.5 },
+    baza2: { min: 5.5, target: 7.5, max: 10 },
+    build: { min: 6, target: 8.5, max: 11 },
+    peak: { min: 6, target: 8.5, max: 11 },
+    taper: { min: 3, target: 4, max: 6 },
   },
 };
 

@@ -3,7 +3,7 @@
 
 import type { Activity, Color } from '../types.js';
 import { diffDays } from '../util/dates.js';
-import { isRunGoal, type Goal } from '../calendar/phases.js';
+import { goalKind, type Goal } from '../calendar/phases.js';
 
 export interface ScoredActivity extends Activity {
   color: Color;
@@ -57,6 +57,15 @@ const TARGETS: Record<Goal, { swimM: number; rideKm: number; runKm: number; bric
   // Ieșirea lungă de referință înainte de cursă (nu distanța întreagă): 18 km la semimaraton, 32 km la maraton.
   semimaraton: { swimM: 0, rideKm: 0, runKm: 18, brickRunKm: 0 },
   maraton: { swimM: 0, rideKm: 0, runKm: 32, brickRunKm: 0 },
+  '5k': { swimM: 0, rideKm: 0, runKm: 8, brickRunKm: 0 },
+  '10k': { swimM: 0, rideKm: 0, runKm: 12, brickRunKm: 0 },
+  // Un singur sport: distanța obiectivului.
+  'inot-1500': { swimM: 1500, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'inot-1900': { swimM: 1900, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'inot-3800': { swimM: 3800, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'bike-50': { swimM: 0, rideKm: 50, runKm: 0, brickRunKm: 0 },
+  'bike-100': { swimM: 0, rideKm: 100, runKm: 0, brickRunKm: 0 },
+  'bike-160': { swimM: 0, rideKm: 160, runKm: 0, brickRunKm: 0 },
 };
 
 export function computeBar(input: BarInput): BarResult {
@@ -66,15 +75,32 @@ export function computeBar(input: BarInput): BarResult {
   );
 
   const components: BarComponent[] = [];
-  const run = isRunGoal(input.goal);
+  const kind = goalKind(input.goal);
+  const run = kind !== 'tri' && kind != null;
 
-  if (run) {
+  if (kind === 'run') {
     const runs = recent.filter((a) => a.sport === 'alergare' && a.distanceKm != null && a.distanceKm > 0);
     const best = maxBy(runs, (a) => a.distanceKm!);
     components.push(
       best
         ? { name: 'alergare', weight: 0.5, value: r(100 * Math.min(1, best.distanceKm! / t.runKm)), detail: `cea mai lungă alergare: ${r(best.distanceKm!)} km din ${t.runKm}`, evidence: [{ activityId: best.id, date: best.date, label: `${r(best.distanceKm!)} km` }] }
         : { name: 'alergare', weight: 0.5, value: null, detail: 'fără alergare cu distanță în ultimele 6 săptămâni', evidence: [] },
+    );
+  } else if (kind === 'swim') {
+    const swims = recent.filter((a) => a.sport === 'inot' && a.distanceKm != null && a.distanceKm > 0);
+    const best = maxBy(swims, (a) => a.distanceKm!);
+    components.push(
+      best
+        ? { name: 'inot', weight: 0.5, value: r(100 * Math.min(1, (best.distanceKm! * 1000) / t.swimM)), detail: `cel mai lung înot: ${Math.round(best.distanceKm! * 1000)} m din ${t.swimM} m`, evidence: [{ activityId: best.id, date: best.date, label: `${Math.round(best.distanceKm! * 1000)} m` }] }
+        : { name: 'inot', weight: 0.5, value: null, detail: 'fără înot cu distanță în ultimele 6 săptămâni', evidence: [] },
+    );
+  } else if (kind === 'bike') {
+    const rides = recent.filter((a) => a.sport === 'bicicleta' && a.distanceKm != null && a.distanceKm > 0);
+    const best = maxBy(rides, (a) => a.distanceKm!);
+    components.push(
+      best
+        ? { name: 'bicicleta', weight: 0.5, value: r(100 * Math.min(1, best.distanceKm! / t.rideKm)), detail: `cea mai lungă tură: ${r(best.distanceKm!)} km din ${t.rideKm}`, evidence: [{ activityId: best.id, date: best.date, label: `${r(best.distanceKm!)} km` }] }
+        : { name: 'bicicleta', weight: 0.5, value: null, detail: 'fără tură cu distanță în ultimele 6 săptămâni', evidence: [] },
     );
   }
 

@@ -1,4 +1,5 @@
 import { GOAL_NAME, sportReadiness } from '../bar/sport-readiness.js';
+import { goalKind, goalSports } from '../calendar/phases.js';
 import { hooperSum } from './readiness.js';
 import { activeRestriction } from '../calendar/safety.js';
 import { aerobicEfficiency, type EffTrend } from './efficiency.js';
@@ -44,6 +45,13 @@ export interface Packet {
     ora_locala: string | null;
     faza: string;
     obiectiv: string;
+    /** Un singur sport (alergare / înot / bicicletă) sau triatlon; sporturile din plan. La un singur sport nu există ceilalți antrenori. */
+    tip_obiectiv: 'tri' | 'run' | 'swim' | 'bike' | null;
+    /** Codul obiectivului (ex. „10k”, „inot-1900”), pentru biblioteca de antrenamente. */
+    obiectiv_cod: string | null;
+    sporturi: string[];
+    /** La alergare cu timp-țintă. */
+    tinta: CollectorInput['athlete']['tinta'] | null;
     zile_pana_la_cursa: number;
     /** Duminica ultimei săptămâni din lună: mesajul săptămânal include bilanțul lunii. */
     bilant_lunar: boolean;
@@ -191,7 +199,7 @@ export interface MergedDaily {
 }
 
 // Apple dă HRV ca SDNN (alt calcul decât rMSSD-ul Whoop/Oura/Garmin): ultima opțiune pentru HRV.
-const PRIORITY: Record<string, number> = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, apple: 4, manual: 5, strava: 9 };
+const PRIORITY: Record<string, number> = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, android: 3.5, apple: 4, manual: 5, strava: 9 };
 
 function mean(xs: number[]): number | null {
   if (xs.length === 0) return null;
@@ -555,6 +563,12 @@ export function buildPacket(input: CollectorInput): Packet {
     zile[DAY_NAMES[i]!] = ws.length ? ws.map((w) => `${planLabel(w)}${w.status === 'planificat' ? '' : w.status === 'mutat' ? ' [mutat aici]' : ` [${w.status}]`}`).join(' + ') : 'odihnă';
   }
 
+  const gataDeCursa = input.athlete.goal
+    ? raceReady({ goal: input.athlete.goal, today, acts, plan: input.plan, targetSec: input.athlete.targetSec ?? null, raceDate: input.athlete.raceDate, fueledDates: input.evenings.filter((e) => e.fueling_conform === 'da').map((e) => acts.find((a) => (a.id === e.activityId || a.externalId === e.activityId) && a.minutes >= 120)?.date).filter((x): x is string => !!x) })
+    : null;
+  const tinta = gataDeCursa?.target
+    ? { timp_tinta_s: gataDeCursa.target.targetSec, ritm_tinta_s_km: Math.round(gataDeCursa.target.verdict.paceSecKm), verdict: gataDeCursa.target.verdict.verdict, motive: gataDeCursa.target.verdict.reasons, timp_estimat_s: gataDeCursa.target.predictedSec, cel_mai_bun_efort: gataDeCursa.target.best ? `${gataDeCursa.target.best.label}, ${gataDeCursa.target.best.date}` : null }
+    : (input.athlete.tinta ?? null);
   const acwrTotal = acwr(acts, today);
   const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
@@ -580,6 +594,10 @@ export function buildPacket(input: CollectorInput): Packet {
       sportiv: { sex: input.athlete.sex === 'm' ? 'barbat' : input.athlete.sex === 'f' ? 'femeie' : null, varsta: input.athlete.varsta ?? null, inaltime_cm: input.athlete.inaltimeCm ?? null },
       faza: input.athlete.phase,
       obiectiv: input.athlete.obiectiv,
+      tip_obiectiv: goalKind(input.athlete.goal ?? null),
+      obiectiv_cod: input.athlete.goal ?? null,
+      sporturi: goalSports(input.athlete.goal ?? null),
+      tinta,
       zile_pana_la_cursa: diffDays(today, input.athlete.raceDate),
       bilant_lunar: input.event === 'saptamanal' && addDays(today, 7).slice(0, 7) !== today.slice(0, 7),
       surse_nevazute: input.hiddenSources ?? [],
@@ -706,7 +724,7 @@ export function buildPacket(input: CollectorInput): Packet {
     acoperire_azi: aziCover.extra ? aziCover.coverage : null,
     efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
     echilibru: balance,
-    gata_de_cursa: input.athlete.goal ? raceReady({ goal: input.athlete.goal, today, acts, plan: input.plan, fueledDates: input.evenings.filter((e) => e.fueling_conform === 'da').map((e) => acts.find((a) => (a.id === e.activityId || a.externalId === e.activityId) && a.minutes >= 120)?.date).filter((x): x is string => !!x) }) : null,
+    gata_de_cursa: gataDeCursa,
     raspuns_recuperare: input.recoveryEffects ?? [],
     istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {

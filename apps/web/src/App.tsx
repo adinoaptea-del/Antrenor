@@ -1,6 +1,7 @@
 import { BadgesScreen } from './ui/Badges';
 import { useEffect, useRef, useState } from 'react';
 import type { Sport } from '@core/types.js';
+import { goalKind, goalSports } from '@core/calendar/phases.js';
 import { Home } from './ui/Home';
 import { Train } from './ui/Train';
 import { Stats } from './ui/Stats';
@@ -60,7 +61,7 @@ function Shell() {
   const { status, me, error, refresh, local, sync, offline } = useData();
   const [screen, setScreen] = useState<Screen>(readScreen);
   const [lastMain, setLastMain] = useState<Screen>('acasa');
-  const [trainSport, setTrainSport] = useState<Sport>('inot');
+  const [trainSport, setTrainSport] = useState<Sport>(() => (goalSports(me?.user.goal ?? null)[0] ?? 'inot'));
   const [eveningFor, setEveningFor] = useState<string | null>(null);
   const [memento, setMemento] = useState(true);
   const [countdown, setCountdown] = useState(false);
@@ -279,7 +280,7 @@ function Shell() {
             <>
               <AppHeader name={me.user.name} onProfile={() => go('profil')} />
               <PageTitle title="Planul tău" sub={planSub(me.today)} />
-              <SubTabs label="Planul" value={screen === 'calendar' ? 'calendar' : 'sporturi'} onChange={(v) => go(v === 'calendar' ? 'calendar' : 'antrenament')} items={[{ id: 'calendar', label: 'Calendar' }, { id: 'sporturi', label: 'Sporturi' }]} />
+              <SubTabs label="Planul" value={screen === 'calendar' ? 'calendar' : 'sporturi'} onChange={(v) => go(v === 'calendar' ? 'calendar' : 'antrenament')} items={[{ id: 'calendar', label: 'Calendar' }, { id: 'sporturi', label: sportsTabLabel(me.user.goal) }]} />
               {screen === 'calendar' ? <Calendar onBack={back} onOpen={go} /> : <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
             </>
           )}
@@ -332,6 +333,12 @@ function Shell() {
       )}
     </div>
   );
+}
+
+/** Eticheta tabului de sport: la un singur sport, numele sportului (nu există „Sporturi”). */
+function sportsTabLabel(goal: string | null): string {
+  const k = goalKind(goal);
+  return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : 'Sporturi';
 }
 
 /** „19–25 octombrie 2026”: săptămâna curentă. */

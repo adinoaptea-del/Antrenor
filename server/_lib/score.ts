@@ -1,4 +1,5 @@
 // Scorul pe culori și bara de pregătire, recalculate după fiecare sincronizare și după fiecare chestionar de seară.
+import type { Goal } from '../../src/calendar/phases.js';
 import { select, upsert } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadZones } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
@@ -21,7 +22,7 @@ export interface ScoreSummary {
 }
 
 /** Potrivește activitățile cu antrenamentele propuse din ultimele 42 de zile, scrie scorurile și bara zilei. */
-export async function rescore(userId: string, today: string, goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton'): Promise<ScoreSummary> {
+export async function rescore(userId: string, today: string, goal: Goal): Promise<ScoreSummary> {
   const from = addDays(today, -42);
   const [{ workouts }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, today), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
   const activities: Activity[] = dedupeActivities(acts);

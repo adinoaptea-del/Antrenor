@@ -1,3 +1,4 @@
+import type { Goal } from '../../src/calendar/phases.js';
 import { fail, json, requireCron, todayIn } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { consentActive } from '../_lib/consent.js';
@@ -11,7 +12,7 @@ import { labsReminder } from '../_lib/reminders.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     requireCron(req);
-    const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data,withdrawn_at)' });
+    const users = await select<{ id: string; tz: string; goal: Goal | 'full' | null; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data,withdrawn_at)' });
     const out: Record<string, unknown> = {};
     for (const u of users) {
       if (!consentActive(u.consents)) continue;

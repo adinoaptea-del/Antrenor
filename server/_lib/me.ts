@@ -2,6 +2,8 @@ import { GOAL_NAME, swimDeclared, sportReadiness } from '../../src/bar/sport-rea
 import { balanceCheck } from '../../src/calendar/balance.js';
 import { perDayMinutes, weeklyBudget } from '../../src/calendar/budget.js';
 import { raceReady } from '../../src/bar/race-ready.js';
+import { targetSecFromIntake } from '../../src/goals/run-target.js';
+import type { RunResult } from '../../src/util/run.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
@@ -127,7 +129,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     const all = [...a, ...w].sort();
     return all.length ? all[all.length - 1]! : null;
   };
-  const SOURCE_NAME = { whoop: 'WHOOP', strava: 'Strava', oura: 'Oura', apple: 'Apple Health' } as const;
+  const SOURCE_NAME = { whoop: 'WHOOP', strava: 'Strava', oura: 'Oura', apple: 'Apple Health', android: 'Samsung Health' } as const;
+  const androidLast = lastSyncRows.find((r) => (r.provider as string) === 'android') ?? null;
 
   const intake = forms.intake as (Record<string, unknown> & { consimtamant?: boolean }) | null;
   const have: string[] = [];
@@ -183,7 +186,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   return {
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
-    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })() },
+    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })(), androidLastSync: lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok)?.ran_at ?? null, androidLast: androidLast ? { ok: androidLast.ok, detail: androidLast.detail, at: androidLast.ran_at } : null },
     totals: totals
       ? {
           ...totals,
@@ -227,6 +230,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
           today,
           acts: activities,
           plan: planned,
+          targetSec: targetSecFromIntake(user.goal, (forms.intake?.alergare as { tinta?: RunResult | null } | undefined)?.tinta ?? null),
+          raceDate: user.race_date ?? null,
           fueledDates: forms.evenings.filter((e) => e.fueling_conform === 'da').map((e) => activities.find((a) => (a.id === e.activityId || a.externalId === e.activityId) && a.minutes >= 120)?.date).filter((x): x is string => !!x),
         })
       : null,
@@ -246,6 +251,10 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
         return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== 'strava' && !todayRow, connectedAt: t.connected_at ?? null, lastAttempt: last?.ran_at ?? null, missingToday };
       }),
       ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
+      // Samsung Health apare ca sursă doar după ce a trimis ceva (același token ca Apple Health).
+      ...(androidLast
+        ? [{ id: 'android' as const, name: SOURCE_NAME.android, lastSync: androidLast.ok ? androidLast.ran_at : (lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok)?.ran_at ?? null), lastAttempt: androidLast.ran_at, error: androidLast.ok ? null : androidLast.detail, lastData: lastDataOf('android'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'android' && String(r.date) === today) }]
+        : []),
     ],
     prefs: await loadPrefs(userId),
     recovery: {
