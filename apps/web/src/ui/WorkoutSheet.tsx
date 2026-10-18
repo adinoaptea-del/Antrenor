@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Me } from '@core/api-types.js';
@@ -6,10 +6,11 @@ import { prescribe, sessionName, type Prescription } from '@core/strength/ppl.js
 import { strengthSpecFor } from '@core/strength/plan-specs.js';
 import { weekday } from '@core/util/dates.js';
 import { goalKind } from '@core/calendar/phases.js';
-import { Icons } from './common';
+import { Dot, Icons, fmtDayMonth } from './common';
+import { Actions, YellowDay } from './WorkoutActions';
 import { useLocalBack } from './Shell';
 import { useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, dayOf, fmtMinutes, purposeOf, sessionSteps } from '../data/model';
+import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMinutes, isUpcoming, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
@@ -23,19 +24,35 @@ export function strengthOf(me: Me, w: PlannedWorkout): Prescription | null {
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);
 
-/** Fereastra ședinței: o deschizi cu useWorkoutSheet(); se închide cu ×, pe fundal sau cu „înapoi”. */
-export function useWorkoutSheet(): { open: (w: PlannedWorkout) => void; sheet: JSX.Element | null } {
-  const [w, setW] = useState<PlannedWorkout | null>(null);
-  const close = useCallback(() => setW(null), []);
-  return { open: setW, sheet: w ? <WorkoutSheet w={w} onClose={close} /> : null };
+type OpenFn = (screen: string, opts?: { activityId?: string }) => void;
+
+/**
+ * Fereastra ședinței: o deschizi cu useWorkoutSheet(); se închide cu ×, pe fundal sau cu „înapoi”.
+ * Cu o listă (ședințele zilei), sus apare selectorul între ele, iar fereastra pornește pe ședința dată.
+ */
+export function useWorkoutSheet(onOpen?: OpenFn): { open: (w: PlannedWorkout, list?: PlannedWorkout[]) => void; sheet: JSX.Element | null; isOpen: boolean } {
+  const [st, setSt] = useState<{ w: PlannedWorkout; list: PlannedWorkout[] } | null>(null);
+  const close = useCallback(() => setSt(null), []);
+  const open = useCallback((w: PlannedWorkout, list?: PlannedWorkout[]) => setSt({ w, list: list && list.some((x) => x.id === w.id) ? list : [w] }), []);
+  return { open, isOpen: !!st, sheet: st ? <WorkoutSheet w={st.w} list={st.list} onClose={close} onOpen={onOpen} /> : null };
 }
 
 /**
  * Ce faci la ședința asta, într-o fereastră peste ecran (nu mai jos în pagină): de ce există, pașii cu minutele și
  * zonele, iar la forță exercițiile cu seriile, repetările, rezerva, pauza și indicația tehnică.
  */
-export function WorkoutSheet({ w, onClose }: { w: PlannedWorkout; onClose: () => void }) {
+export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w: PlannedWorkout; list?: PlannedWorkout[]; onClose: () => void; onOpen?: OpenFn }) {
   const me = useMe();
+  const [id, setId] = useState(first.id);
+  // Ședința se citește mereu din planul curent: dacă s-a schimbat între timp (Mută, Am mai puțin timp), se vede versiunea nouă.
+  const w = me.plan.find((x) => x.id === id) ?? list.find((x) => x.id === id) ?? first;
+  const tabs = list.map((x) => me.plan.find((p) => p.id === x.id) ?? x);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const back = document.activeElement as HTMLElement | null;
+    box.current?.focus();
+    return () => back?.focus?.();
+  }, []);
   useLocalBack(true, onClose);
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -56,11 +73,29 @@ export function WorkoutSheet({ w, onClose }: { w: PlannedWorkout; onClose: () =>
   const zones = w.targetZones.length ? `Z${w.targetZones.join('–')}` : '';
   const steps = rx ? [] : sessionSteps(me, w);
   const showStructure = !rx && !!w.structure && w.type !== 'brick' && !steps.some((s) => s.text === w.structure);
+  const upcoming = isUpcoming(me, w);
+  const color = colorOf(me, w);
+  const act = activityFor(me, w);
+  const done = !upcoming && w.status !== 'anulat_sistem' && color !== 'asteptare';
+  const reasons = reasonsOf(me, w);
+  const yellow = !!day && day.level === 'galben' && !day.ask && upcoming;
+  const fid = act?.id ?? `plan-${w.id}`;
+  const ev = me.forms.evening[fid];
 
   return createPortal(
     <div className="sheet-wrap" role="dialog" aria-modal="true" aria-label="Ședința" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" aria-hidden="true" />
+        {tabs.length > 1 && (
+          <div className="sheet-tabs" role="tablist" aria-label="Ședințele zilei">
+            {tabs.map((x) => (
+              <button key={x.id} role="tab" aria-selected={x.id === w.id} className={x.id === w.id ? 'on' : ''} onClick={() => setId(x.id)}>
+                {SPORT_LABEL[x.sport]}
+                {!isUpcoming(me, x) && colorOf(me, x) !== 'asteptare' ? ' · făcut' : ''}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="sheet-head">
           <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
           <div className="sheet-t">
@@ -81,11 +116,22 @@ export function WorkoutSheet({ w, onClose }: { w: PlannedWorkout; onClose: () =>
         <div className="sheet-body">
           {paused && <div className="wk-off">{Icons.stop} <span>{day!.title}: azi nu faci ședința asta.</span></div>}
           {w.status === 'anulat_sistem' && <div className="wk-off">{Icons.stop} <span>{w.note ?? 'Anulată de sistem.'}</span></div>}
-          {w.suggestion && w.suggestion.accepted !== false && w.date === me.today && (
-            <div className="wk-yellow">
-              Zi galbenă: varianta ușoară e <b>{w.suggestion.structure}</b> ({fmtMinutes(w.suggestion.minutes)}).
+          {done && (
+            <div className="wk-done">
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <Dot color={color} />
+                <b>{COLOR_LABEL[color]}</b>
+                {act && <span className="muted">· {fmtMinutes(act.minutes)}{act.distanceKm ? ` · ${act.distanceKm.toFixed(1)} km` : ''}{act.avgHr ? ` · FC ${act.avgHr}` : ''}</span>}
+              </div>
+              {reasons.length > 0 && <div className="wk-note">{reasons.slice(0, 2).join(' · ')}</div>}
+              {onOpen && (
+                <button className={`pill ${ev && ev.rpe != null ? '' : 'on'}`} style={{ marginTop: 6 }} onClick={() => { onClose(); onOpen('seara', { activityId: fid }); }}>
+                  {ev && ev.rpe != null ? `Feedback dat${ev.date ? ` · ${fmtDayMonth(ev.date)}` : ''} · editează` : 'Cum a fost? Dă feedback'}
+                </button>
+              )}
             </div>
           )}
+          {yellow && <YellowDay w={w} />}
 
           <div className="sheet-why">{fitness && w.type === 'forta' ? 'Forță pentru obiectivul tău: mușchi construit sau păstrat, mai multă forță în viața de zi cu zi. Greutățile le alegi tu, după rezerva cerută.' : purposeOf(w)}</div>
 
@@ -158,6 +204,12 @@ export function WorkoutSheet({ w, onClose }: { w: PlannedWorkout; onClose: () =>
           )}
 
           {w.note && w.status !== 'anulat_sistem' && <div className="wk-note">{w.note}</div>}
+          {upcoming && !paused && (
+            <>
+              <div className="sheet-k">Nu merge azi așa? Adaptează</div>
+              <Actions w={w} />
+            </>
+          )}
           <div className="sheet-safe">Durere în piept, amețeală sau lipsă de aer neobișnuită: te oprești. Durere nouă care crește: oprești exercițiul și spui în feedbackul de seară.</div>
         </div>
 

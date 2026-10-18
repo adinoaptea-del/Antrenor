@@ -46,7 +46,7 @@ export function Today({ onOpen, cta }: { onOpen: (screen: string, opts?: { sport
 }
 
 /** Starea măsurată de azi, într-o linie, separat de decizie. */
-function StateLine() {
+export function StateLine() {
   const me = useMe();
   const w = me.wellnessToday;
   const score = me.state?.score ?? w?.recoveryScore ?? null;

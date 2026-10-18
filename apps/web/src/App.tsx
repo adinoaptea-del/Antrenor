@@ -24,14 +24,13 @@ import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
 import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
-// Patru taburi egale jos: Acasă, Plan (Calendar | Sporturi), Evoluție (Starea de azi | Obiectiv), Coach.
+// Trei taburi jos: Azi (bula cu ședințele zilei; Starea de azi și Obiectivul se deschid din ea), Plan, Coach.
 // Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
 type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
-type Tab = 'acasa' | 'plan' | 'evolutie' | 'coach';
+type Tab = 'acasa' | 'plan' | 'coach';
 const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; screens: Screen[] }[] = [
-  { id: 'acasa', label: 'Acasă', icon: 'home', go: 'acasa', screens: ['acasa'] },
+  { id: 'acasa', label: 'Azi', icon: 'home', go: 'acasa', screens: ['acasa', 'recuperare', 'obiectiv', 'insigne'] },
   { id: 'plan', label: 'Plan', icon: 'calendar', go: 'calendar', screens: ['calendar', 'antrenament'] },
-  { id: 'evolutie', label: 'Evoluție', icon: 'trend', go: 'recuperare', screens: ['recuperare', 'obiectiv', 'insigne'] },
   { id: 'coach', label: 'Coach', icon: 'chat', go: 'antrenor', screens: ['antrenor'] },
 ];
 const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))?.id ?? null;
