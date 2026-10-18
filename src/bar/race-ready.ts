@@ -16,7 +16,7 @@ import { swimPace100, swimPaceOk } from '../collector/details.js';
 import type { SourceActivity } from '../collector/types.js';
 import type { PlannedWorkout, Sport } from '../types.js';
 import { BIKE_DISTANCE_KM, RUN_DISTANCE_KM, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, type Goal } from '../calendar/phases.js';
-import { predictFromEffort, riegel, runTarget, type RunTargetVerdict } from '../goals/run-target.js';
+import { fmtTime, predictFromEffort, riegel, runTarget, type RunTargetVerdict } from '../goals/run-target.js';
 import { matchActivities } from '../scoring/match.js';
 import { isBrickRun } from './sport-readiness.js';
 import { addDays, diffDays } from '../util/dates.js';
@@ -55,6 +55,10 @@ export interface RaceReady {
   /** Doar la alergare cu timp-țintă: ținta față de cel mai bun efort recent și verdictul de realism. */
   target: {
     targetSec: number;
+    /** Timpul pe care e construit planul: ținta, sau timpul realist de acum când ținta e nerealistă (null = fără reper). */
+    planSec: number | null;
+    /** true când planul nu e pe ținta declarată. */
+    adjusted: boolean;
     /** Cel mai bun efort recent pe distanța cursei sau cea mai apropiată, din ceas. */
     best: { km: number; sec: number; date: string; label: string } | null;
     /** Timpul estimat pe distanța cursei din cel mai bun efort (Riegel), s. */
@@ -201,7 +205,9 @@ export function raceReady(input: {
     const until = input.raceDate && input.raceDate > today ? input.raceDate : input.plan.reduce((m, w) => (w.date > m ? w.date : m), today);
     const weeks = Math.max(0, diffDays(today, until) / 7);
     const verdict = runTarget({ goal, targetSec: input.targetSec, current: eff ? { km: eff.km, sec: eff.sec, date: eff.date, label: eff.label } : null, weeks });
-    target = { targetSec: input.targetSec, best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
+    // La o țintă nerealistă planul nu se face pe ea, ci pe timpul realist de acum (vezi planTarget); aici doar îl arătăm.
+    const planSec = verdict.verdict === 'nerealist' ? (verdict.equivalentNowSec && verdict.feasiblePct != null ? Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100)) : null) : input.targetSec;
+    target = { targetSec: input.targetSec, planSec, adjusted: verdict.verdict === 'nerealist', best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
   }
 
   // ——— Ședințele-reper ———
@@ -291,6 +297,16 @@ export function raceReady(input: {
     const hasRun = of('alergare').some((a) => (a.distanceKm ?? 0) > 0);
     const over = d.longRun > d.run;
     links.push({ name: 'Alergare', pct: hasRun ? pct(km / d.longRun) : null, measured: hasRun ? `${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km, cea mai lungă ieșire` : null, detail: `cea mai lungă ieșire: ${km.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km · reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString('ro-RO')} km; ${over ? 'în pregătire se aleargă mai mult decât cursa' : 'în pregătire nu se aleargă toată distanța'})` });
+  }
+  if (target) {
+    // Obiectiv de timp: distanța nu ajunge; a doua verigă e ritmul — timpul estimat acum față de țintă (100% = ținta e deja la îndemână).
+    const est = target.predictedSec;
+    links.push({
+      name: 'Ritm',
+      pct: est ? pct(target.targetSec / est) : null,
+      measured: est ? `estimat acum ${fmtTime(est)}` : null,
+      detail: est ? `timp estimat acum ${fmtTime(est)} (din cel mai bun efort de pe ceas, Riegel) · ținta ${fmtTime(target.targetSec)}` : `fără un efort recent pe ceas nu putem estima timpul · ținta ${fmtTime(target.targetSec)}`,
+    });
   }
   if (isSwimGoal(goal) && d.swim) {
     const contM = Math.max(0, ...swims.map((a) => a.details?.continuousM ?? 0));

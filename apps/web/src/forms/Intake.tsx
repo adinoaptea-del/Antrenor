@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { weeklyBudget } from '@core/calendar/budget.js';
-import { runTarget, targetSecFromIntake } from '@core/goals/run-target.js';
+import { currentFromIntake, fmtTime, planTarget } from '@core/goals/run-target.js';
 import { AvailabilityDays } from '../ui/Availability';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
 import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
 import { useData, useMe } from '../data/store';
 import { EMPTY_INTAKE, runResultOk, type IntakeAnswers } from './types';
 import { goalKind, isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
-import { fmtDuration, fmtPaceSec, paceFromResult, parseDuration, parsePace, type RunResult } from '@core/util/run.js';
+import { fmtDuration, fmtPaceSec, paceFromResult, parsePace, type RunResult } from '@core/util/run.js';
 
 // Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
 const TRI_STEPS = ['Obiectiv', 'Înot', 'Bicicletă', 'Alergare', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
@@ -48,20 +48,10 @@ const GOALS_BY_FAMILY: Record<GoalFamily, { id: IntakeAnswers['obiectiv']; label
 /** Verdictul asupra țintei, calculat pe loc: ținta, nivelul de acum (sau un timp pe altă distanță) și săptămânile până la cursă. */
 function TargetVerdict({ a }: { a: IntakeAnswers }) {
   if (!isRunGoal(a.obiectiv)) return null;
-  const targetSec = targetSecFromIntake(a.obiectiv, a.alergare.tinta);
-  if (!targetSec) return null;
-  const dist = RUN_DISTANCE_KM[a.obiectiv];
   const weeks = Math.max(0, (Date.parse(`${a.dataCursa}T12:00:00Z`) - Date.now()) / (7 * 86_400_000));
-  let current: { km: number; sec: number; label: string } | null = null;
-  const nowPace = a.alergare.poateDistanta ? paceFromResult(a.alergare.rezultatActual, dist) : null;
-  if (nowPace) current = { km: dist, sec: Math.round(nowPace * dist), label: `${dist.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km în ${fmtDuration(nowPace * dist)}` };
-  else {
-    const t10 = parseDuration(a.evaluare?.alergare10k ?? null, 10);
-    const t5 = parseDuration(a.evaluare?.alergare5k ?? null, 5);
-    if (t10) current = { km: 10, sec: t10, label: `10 km în ${fmtDuration(t10)}` };
-    else if (t5) current = { km: 5, sec: t5, label: `5 km în ${fmtDuration(t5)}` };
-  }
-  const v = runTarget({ goal: a.obiectiv, targetSec, current, weeks });
+  const t = planTarget(a.obiectiv, a.alergare.tinta, currentFromIntake(a), weeks);
+  const v = t.verdict;
+  if (!v) return null;
   const TITLE = { realist: 'Țintă realistă', ambitios: 'Țintă ambițioasă', nerealist: 'Țintă nerealistă', necunoscut: 'Nu putem judeca ținta încă' } as const;
   return (
     <div className={`verdict v-${v.verdict}`} role="status">
@@ -69,7 +59,7 @@ function TargetVerdict({ a }: { a: IntakeAnswers }) {
       {v.reasons.map((r, i) => (
         <p key={i}>{r}</p>
       ))}
-      {v.verdict === 'nerealist' && <p>Poți continua, dar planul se face pe timpul estimat, nu pe ținta asta.</p>}
+      {v.verdict === 'nerealist' && <p>{t.planSec ? `Poți continua, dar planul se construiește pe ~${fmtTime(t.planSec)} (${fmtPaceSec(t.paceSecKm!)}/km), nu pe ținta asta; ținta rămâne notată și o rejudecăm la fiecare test.` : 'Poți continua, dar planul nu primește bucăți la ritmul ăsta; primul test din plan dă ritmurile.'}</p>}
     </div>
   );
 }

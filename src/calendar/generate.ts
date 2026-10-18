@@ -1,13 +1,13 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
-import { DOSE_TEXT, dayById, doseFor, rotation } from '../strength/ppl.js';
+import { dayById, doseFor, doseText, rotation } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
 import type { FreeBlock, IntensityAllowed, Phase, PlannedWorkout, Sport, WorkoutType, Zone } from '../types.js';
-import { addDays } from '../util/dates.js';
+import { addDays, weekStart } from '../util/dates.js';
 import { weeklyBudget } from './budget.js';
-import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
+import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, goalSports, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
 
 export interface GenerateInput {
   startDate: string;
@@ -136,10 +136,14 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     else if (kind === 'swim') advanceSwimProgression(prog, pw, input.goal);
     else if (kind === 'bike') advanceBikeProgression(prog, pw, input.goal);
     else advanceProgression(prog, pw);
-    const sessions = kind === 'run' ? runWeekTemplate(pw, input, prog) : kind === 'swim' ? swimWeekTemplate(pw, input, prog) : kind === 'bike' ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    const templated = kind === 'run' ? runWeekTemplate(pw, input, prog) : kind === 'swim' ? swimWeekTemplate(pw, input, prog) : kind === 'bike' ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    // Săptămâna cursei (și când taper-ul are o singură săptămână): fără ședință lungă, fără forță, totul scurt, dezmorțire înainte de cursă.
+    const raceWeek = pw.weekStart === weekStart(input.raceDate);
+    const sessions = raceWeek ? raceWeekSessions(templated) : templated;
     const minCount: Partial<Record<Sport, number>> = kind === 'run' ? { alergare: 3, forta: 1 } : kind === 'swim' ? { inot: 2, forta: 1 } : kind === 'bike' ? { bicicleta: 2, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
     const fitted = fitToHours(sessions, target, pw.recovery, minCount);
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
+    if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
 
     out.push({
@@ -153,7 +157,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     });
   }
 
-  assignStrengthDays(out);
+  assignStrengthDays(out, goalSports(input.goal));
   // Validatorul final: nicio fază sau șablon nu trece de limita de intensitate și de capacitatea de înot declarată.
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   // Zi tare, zi ușoară și cel mult 3 ședințe grele pe săptămână, pe toate sporturile la un loc.
@@ -171,6 +175,29 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     if (v.notes.length) w.notes.push(...v.notes);
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
+}
+
+/**
+ * Săptămâna cursei: nimic lung, nimic de forță, calitatea rămâne doar ca „deschidere” scurtă (cel mult 35 min),
+ * ședințele ușoare cel mult 30 min. Ziua cursei nu e în plan (planul se oprește înaintea ei); cursa o înregistrează ceasul.
+ */
+function raceWeekSessions(sessions: Session[]): Session[] {
+  return sessions
+    .filter((s) => s.type !== 'lung' && s.type !== 'brick' && s.type !== 'forta')
+    .map((s) => {
+      if (s.type === 'calitate') return { ...s, minutes: Math.min(s.minutes, 35), key: false, structure: `${s.structure ?? 'scurt, la ritm de cursă'} · deschidere, nu antrenament` };
+      return { ...s, minutes: Math.min(s.minutes, 30), key: false };
+    });
+}
+
+/** Ultima ședință dinaintea cursei devine dezmorțire: 20 min foarte ușor cu câteva accelerări (dacă nu e chiar deschiderea). */
+function shakeoutBeforeRace(workouts: PlannedWorkout[], raceDate: string): void {
+  const last = [...workouts].filter((w) => w.date < raceDate).sort((a, b) => (a.date < b.date ? -1 : 1)).at(-1);
+  if (!last || last.type === 'calitate') return;
+  last.plannedMinutes = Math.min(last.plannedMinutes, 20);
+  last.targetZones = [1, 2];
+  last.key = false;
+  last.structure = 'dezmorțire înainte de cursă: 15–20 min foarte ușor + 3–4 accelerări de 20 s; apoi odihnă, mâncare cunoscută, somn';
 }
 
 /**
@@ -196,7 +223,7 @@ function strengthMinutes(p: Phase): number {
  * Picioarele: nu în ziua dinaintea unei ședințe-cheie (ieșirea/tura lungă, calitate) — trec la următoarea ședință de forță;
  * în taper nu se fac deloc.
  */
-export function assignStrengthDays(weeks: WeekPlan[]): void {
+export function assignStrengthDays(weeks: WeekPlan[], sports: readonly Sport[] = ['inot', 'bicicleta', 'alergare']): void {
   const all = weeks.flatMap((w) => w.workouts.map((x) => ({ x, phase: w.phase })));
   const keyDates = new Set(all.filter((o) => o.x.key).map((o) => o.x.date));
   const strength = all.filter((o) => o.x.type === 'forta').sort((a, b) => (a.x.date < b.x.date ? -1 : 1));
@@ -219,7 +246,7 @@ export function assignStrengthDays(weeks: WeekPlan[]): void {
     }
     const day = dayById(id)!;
     const dose = doseFor(o.phase);
-    o.x.structure = `${day.name} · ${DOSE_TEXT[dose]}`;
+    o.x.structure = `${day.name} · ${doseText(dose, sports)}`;
   }
 }
 

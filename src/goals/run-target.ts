@@ -5,9 +5,10 @@
 //     pentru un amator: 5 km sub 14:30, 10 km sub 30:00, semimaraton sub 1:06, maraton sub 2:20.
 //     „Foarte ambițios” între elită și un amator foarte bun: 5 km sub 17:00, 10 km sub 36:00, semi sub 1:20, maraton sub 2:50.
 //  2. Cu un rezultat recent (pe orice distanță): se aduce la distanța cursei cu formula lui Riegel
-//     (T2 = T1 × (D2/D1)^1.06) și se calculează cât % trebuie să se îmbunătățească. Un amator antrenat consecvent
-//     câștigă, orientativ, ~1–1,5% pe lună în primul an (mai mult la început, mai puțin după), deci:
-//     realist ≤ 1,5% × luni (plafon 20%), ambițios ≤ 2,5% × luni (plafon 30%), peste = nerealist.
+//     (T2 = T1 × (D2/D1)^1.06) și se calculează cât % trebuie să se îmbunătățească. Un amator deja antrenat
+//     câștigă, orientativ, ~1–1,5% pe lună; cu cât e mai departe de nivelul „amator foarte bun”, cu atât marja e mai
+//     mare (începătorii progresează mai repede), până la dublu. Deci: realist ≤ 1,5% × factor × luni (plafon 20%),
+//     ambițios ≤ 2,5% × factor × luni (plafon 30%), peste = nerealist.
 //  3. Fără niciun rezultat: doar podeaua absolută; verdictul rămâne „necunoscut” (nu ghicim).
 //
 // Formula lui Riegel (exponent 1,06) e o aproximare bună între 1,5 km și maraton pentru alergători antrenați; pentru
@@ -15,7 +16,7 @@
 // la 1,10 de la de șase ori (5 km → maraton).
 
 import { RUN_DISTANCE_KM, isRunGoal, type RunGoal } from '../calendar/phases.js';
-import { paceFromResult, type RunResult } from '../util/run.js';
+import { paceFromResult, parseDuration, type RunResult } from '../util/run.js';
 
 export type Realism = 'realist' | 'ambitios' | 'nerealist' | 'necunoscut';
 
@@ -48,6 +49,15 @@ const ELITE_SEC: Record<RunGoal, number> = { '5k': 14 * 60 + 30, '10k': 30 * 60,
 const STRONG_AMATEUR_SEC: Record<RunGoal, number> = { '5k': 17 * 60, '10k': 36 * 60, semimaraton: 80 * 60, maraton: 170 * 60 };
 const GAIN_PER_MONTH = { realist: 1.5, ambitios: 2.5 };
 const GAIN_CAP = { realist: 20, ambitios: 30 };
+
+/**
+ * Factorul de nivel: 1 pentru un amator foarte bun (timp ≤ 1,2 × pragul „amator foarte bun”), crește liniar cu
+ * distanța față de prag, până la 2. Ex. 5 km în 27:30 (prag 17:00, raport 1,62) → 1,63: ~2,4%/lună realist.
+ */
+export function gainFactor(goal: RunGoal, equivalentNowSec: number): number {
+  const ratio = equivalentNowSec / STRONG_AMATEUR_SEC[goal];
+  return Math.round(Math.min(2, Math.max(1, 1 + (ratio - 1.2) * 1.5)) * 100) / 100;
+}
 
 /** Riegel: timpul pe D2 din timpul pe D1. Exponent 1,06; 1,08 de la triplul distanței; 1,10 de la de șase ori. */
 export function riegel(sec: number, fromKm: number, toKm: number): number {
@@ -92,15 +102,17 @@ export function runTarget(i: RunTargetInput): RunTargetVerdict {
   }
 
   const improvementPct = Math.round(((equivalentNowSec - i.targetSec) / equivalentNowSec) * 1000) / 10;
-  const feasibleRealist = Math.min(GAIN_CAP.realist, GAIN_PER_MONTH.realist * months);
-  const feasibleAmbitios = Math.min(GAIN_CAP.ambitios, GAIN_PER_MONTH.ambitios * months);
+  const factor = gainFactor(i.goal, equivalentNowSec);
+  const perMonth = Math.round(GAIN_PER_MONTH.realist * factor * 10) / 10;
+  const feasibleRealist = Math.min(GAIN_CAP.realist, GAIN_PER_MONTH.realist * factor * months);
+  const feasibleAmbitios = Math.min(GAIN_CAP.ambitios, GAIN_PER_MONTH.ambitios * factor * months);
   const feasiblePct = Math.round(feasibleRealist * 10) / 10;
 
   if (improvementPct <= 0) {
     reasons.push(`Ținta e la nivelul tău de acum sau mai lentă: realistă; planul poate ținti mai sus.`);
     return { verdict: 'realist', paceSecKm, equivalentNowSec, improvementPct, feasiblePct, reasons };
   }
-  reasons.push(`Ținta cere o îmbunătățire de ${improvementPct.toLocaleString('ro-RO')}% în ${Math.round(i.weeks)} săptămâni; un amator antrenat consecvent câștigă orientativ ${GAIN_PER_MONTH.realist.toLocaleString('ro-RO')}% pe lună, adică ~${feasiblePct.toLocaleString('ro-RO')}% în timpul rămas.`);
+  reasons.push(`Ținta cere o îmbunătățire de ${improvementPct.toLocaleString('ro-RO')}% în ${Math.round(i.weeks)} săptămâni; un amator la nivelul tău câștigă orientativ ${perMonth.toLocaleString('ro-RO')}% pe lună${factor > 1 ? ' (la început se progresează mai repede decât la un alergător deja antrenat)' : ''}, adică ~${feasiblePct.toLocaleString('ro-RO')}% în timpul rămas.`);
   let verdict: Realism;
   if (improvementPct <= feasibleRealist) verdict = 'realist';
   else if (improvementPct <= feasibleAmbitios) {
@@ -108,7 +120,7 @@ export function runTarget(i: RunTargetInput): RunTargetVerdict {
     reasons.push('Se poate, dar fără săptămâni pierdute și cu toate ședințele-cheie făcute.');
   } else {
     verdict = 'nerealist';
-    const needWeeks = Math.ceil((improvementPct / GAIN_PER_MONTH.realist) * 4.33);
+    const needWeeks = Math.ceil((improvementPct / (GAIN_PER_MONTH.realist * factor)) * 4.33);
     reasons.push(improvementPct > GAIN_CAP.ambitios ? 'E o altă categorie de alergător, nu o pregătire de câteva luni.' : `Ar fi nevoie de ~${needWeeks} săptămâni de pregătire continuă pentru o țintă realistă; cu data de acum, o țintă realistă e ~${fmtTime(equivalentNowSec * (1 - feasibleRealist / 100))}.`);
   }
   if (verdict !== 'nerealist' && i.targetSec < STRONG_AMATEUR_SEC[i.goal]) reasons.push('E un timp de amator foarte bun: cere consecvență pe toată perioada.');
@@ -128,4 +140,60 @@ export function targetSecFromIntake(goal: string | null | undefined, tinta: RunR
   if (!isRunGoal(goal) || !tinta) return null;
   const pace = paceFromResult(tinta, RUN_DISTANCE_KM[goal]);
   return pace ? Math.round(pace * RUN_DISTANCE_KM[goal]) : null;
+}
+
+/** Ce știe chestionarul despre nivelul de acum la alergare (forma e cea din formular, citită îngăduitor). */
+export interface RunIntakeLike {
+  obiectiv?: string | null;
+  alergare?: { poateDistanta?: boolean | null; rezultatActual?: RunResult | null } | null;
+  evaluare?: { alergare5k?: string | null; alergare10k?: string | null } | null;
+}
+
+/**
+ * Nivelul de acum din chestionar: rezultatul pe distanța cursei, dacă a alergat-o; altfel un timp recent pe 10 sau 5 km.
+ * null = n-avem niciun rezultat (verdictul rămâne „necunoscut”, primul test din plan calibrează).
+ */
+export function currentFromIntake(intake: RunIntakeLike): { km: number; sec: number; label: string } | null {
+  if (!isRunGoal(intake.obiectiv)) return null;
+  const dist = RUN_DISTANCE_KM[intake.obiectiv];
+  const nowPace = intake.alergare?.poateDistanta ? paceFromResult(intake.alergare.rezultatActual, dist) : null;
+  if (nowPace) {
+    const sec = Math.round(nowPace * dist);
+    return { km: dist, sec, label: `${dist.toLocaleString('ro-RO', { maximumFractionDigits: 1 })} km în ${fmtTime(sec)}` };
+  }
+  const t10 = parseDuration(intake.evaluare?.alergare10k ?? null, 10);
+  if (t10) return { km: 10, sec: t10, label: `10 km în ${fmtTime(t10)}` };
+  const t5 = parseDuration(intake.evaluare?.alergare5k ?? null, 5);
+  if (t5) return { km: 5, sec: t5, label: `5 km în ${fmtTime(t5)}` };
+  return null;
+}
+
+export interface PlanTarget {
+  /** Ținta declarată (s), null fără țintă. */
+  targetSec: number | null;
+  /** Timpul pe care se construiește planul (s): ținta, sau timpul realist de acum când ținta e nerealistă; null fără reper. */
+  planSec: number | null;
+  /** Ritmul (s/km) pentru ședințele la ritm de cursă; null = fără bucăți la ritm de cursă (calitate generală, testul calibrează). */
+  paceSecKm: number | null;
+  /** true când planul NU e pe ținta declarată. */
+  adjusted: boolean;
+  verdict: RunTargetVerdict | null;
+}
+
+/**
+ * Pe ce se construiește planul. Chestionarul promite: „la o țintă nerealistă, planul se face pe timpul estimat, nu pe
+ * ținta asta” — aici se ține promisiunea. Nerealist cu un rezultat cunoscut → timpul realist de acum (Riegel − câștigul
+ * realist în timpul rămas). Nerealist fără niciun rezultat (sub podeaua de elită) → fără ritm de cursă în plan.
+ */
+export function planTarget(goal: RunGoal, tinta: RunResult | null | undefined, current: { km: number; sec: number; label?: string } | null, weeks: number): PlanTarget {
+  const targetSec = targetSecFromIntake(goal, tinta);
+  if (!targetSec) return { targetSec: null, planSec: null, paceSecKm: null, adjusted: false, verdict: null };
+  const dist = RUN_DISTANCE_KM[goal];
+  const verdict = runTarget({ goal, targetSec, current, weeks });
+  if (verdict.verdict !== 'nerealist') return { targetSec, planSec: targetSec, paceSecKm: targetSec / dist, adjusted: false, verdict };
+  if (verdict.equivalentNowSec && verdict.feasiblePct != null) {
+    const planSec = Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100));
+    return { targetSec, planSec, paceSecKm: planSec / dist, adjusted: true, verdict };
+  }
+  return { targetSec, planSec: null, paceSecKm: null, adjusted: true, verdict };
 }

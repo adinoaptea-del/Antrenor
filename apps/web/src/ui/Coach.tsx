@@ -89,8 +89,7 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
                   <div key={w.id} className={`cp-row ${w.status === 'anulat_sistem' || (day && (day.level === 'rosu' || day.level === 'stop')) ? 'off' : ''}`}>
                     <span className="cp-s">{SPORT_LABEL[w.sport]}</span>
                     <span className="cp-t">
-                      {PLAIN[w.type] ?? TYPE_LABEL[w.type]}
-                      {w.structure ? ` · ${cleanRefs(w.structure)}` : ''}
+                      {w.type === 'forta' && w.structure ? cleanRefs(w.structure) : `${PLAIN[w.type] ?? TYPE_LABEL[w.type]}${w.structure ? ` · ${cleanRefs(w.structure)}` : ''}`}
                     </span>
                     <span className="cp-m">{fmtMinutes(w.plannedMinutes)}</span>
                   </div>

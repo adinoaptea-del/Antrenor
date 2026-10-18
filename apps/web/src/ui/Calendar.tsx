@@ -75,6 +75,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
               const ws2 = workoutsOn(me, d).filter((w) => w.type !== 'odihna');
               const un = activitiesOn(me, d).filter((a) => a.unplanned);
               const isAway = (me.prefs?.plecari ?? []).some((a) => d >= a.dela && d <= a.panala);
+              const isRace = d === me.user.raceDate;
               return (
                 <button key={d} className={`week-row ${d === me.today ? 'today' : ''} ${d === selected ? 'sel' : ''}`} onClick={() => setSelected(d)} aria-pressed={d === selected}>
                   <span className="wr-d">
@@ -82,7 +83,12 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
                     <small>{Number(d.slice(8))}</small>
                   </span>
                   <span className="wr-s">
-                    {ws2.length === 0 && un.length === 0 && <i className="wr-rest">odihnă</i>}
+                    {isRace && (
+                      <span className="wr-chip c-cursa">
+                        {Icons.flag} {me.user.raceName ?? 'cursa'}
+                      </span>
+                    )}
+                    {!isRace && ws2.length === 0 && un.length === 0 && <i className="wr-rest">odihnă</i>}
                     {ws2.map((w) => (
                       <span key={w.id} className={`wr-chip c-${colorOf(me, w)} ${w.status === 'anulat_sistem' ? 'off' : ''} ${w.type === 'calitate' || w.type === 'brick' ? 'hard' : ''}`}>
                         {SPORT_ICON[w.sport]}

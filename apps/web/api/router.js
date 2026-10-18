@@ -775,6 +775,10 @@ var ELITE_SEC = { "5k": 14 * 60 + 30, "10k": 30 * 60, semimaraton: 66 * 60, mara
 var STRONG_AMATEUR_SEC = { "5k": 17 * 60, "10k": 36 * 60, semimaraton: 80 * 60, maraton: 170 * 60 };
 var GAIN_PER_MONTH = { realist: 1.5, ambitios: 2.5 };
 var GAIN_CAP = { realist: 20, ambitios: 30 };
+function gainFactor(goal, equivalentNowSec) {
+  const ratio = equivalentNowSec / STRONG_AMATEUR_SEC[goal];
+  return Math.round(Math.min(2, Math.max(1, 1 + (ratio - 1.2) * 1.5)) * 100) / 100;
+}
 function riegel(sec, fromKm, toKm) {
   if (fromKm <= 0 || toKm <= 0 || sec <= 0) return NaN;
   const ratio = toKm / fromKm;
@@ -811,14 +815,16 @@ function runTarget(i) {
     return { verdict: "necunoscut", paceSecKm, equivalentNowSec: null, improvementPct: null, feasiblePct: null, reasons };
   }
   const improvementPct = Math.round((equivalentNowSec - i.targetSec) / equivalentNowSec * 1e3) / 10;
-  const feasibleRealist = Math.min(GAIN_CAP.realist, GAIN_PER_MONTH.realist * months);
-  const feasibleAmbitios = Math.min(GAIN_CAP.ambitios, GAIN_PER_MONTH.ambitios * months);
+  const factor = gainFactor(i.goal, equivalentNowSec);
+  const perMonth = Math.round(GAIN_PER_MONTH.realist * factor * 10) / 10;
+  const feasibleRealist = Math.min(GAIN_CAP.realist, GAIN_PER_MONTH.realist * factor * months);
+  const feasibleAmbitios = Math.min(GAIN_CAP.ambitios, GAIN_PER_MONTH.ambitios * factor * months);
   const feasiblePct = Math.round(feasibleRealist * 10) / 10;
   if (improvementPct <= 0) {
     reasons.push(`\u021Ainta e la nivelul t\u0103u de acum sau mai lent\u0103: realist\u0103; planul poate \u021Binti mai sus.`);
     return { verdict: "realist", paceSecKm, equivalentNowSec, improvementPct, feasiblePct, reasons };
   }
-  reasons.push(`\u021Ainta cere o \xEEmbun\u0103t\u0103\u021Bire de ${improvementPct.toLocaleString("ro-RO")}% \xEEn ${Math.round(i.weeks)} s\u0103pt\u0103m\xE2ni; un amator antrenat consecvent c\xE2\u0219tig\u0103 orientativ ${GAIN_PER_MONTH.realist.toLocaleString("ro-RO")}% pe lun\u0103, adic\u0103 ~${feasiblePct.toLocaleString("ro-RO")}% \xEEn timpul r\u0103mas.`);
+  reasons.push(`\u021Ainta cere o \xEEmbun\u0103t\u0103\u021Bire de ${improvementPct.toLocaleString("ro-RO")}% \xEEn ${Math.round(i.weeks)} s\u0103pt\u0103m\xE2ni; un amator la nivelul t\u0103u c\xE2\u0219tig\u0103 orientativ ${perMonth.toLocaleString("ro-RO")}% pe lun\u0103${factor > 1 ? " (la \xEEnceput se progreseaz\u0103 mai repede dec\xE2t la un alerg\u0103tor deja antrenat)" : ""}, adic\u0103 ~${feasiblePct.toLocaleString("ro-RO")}% \xEEn timpul r\u0103mas.`);
   let verdict;
   if (improvementPct <= feasibleRealist) verdict = "realist";
   else if (improvementPct <= feasibleAmbitios) {
@@ -826,7 +832,7 @@ function runTarget(i) {
     reasons.push("Se poate, dar f\u0103r\u0103 s\u0103pt\u0103m\xE2ni pierdute \u0219i cu toate \u0219edin\u021Bele-cheie f\u0103cute.");
   } else {
     verdict = "nerealist";
-    const needWeeks = Math.ceil(improvementPct / GAIN_PER_MONTH.realist * 4.33);
+    const needWeeks = Math.ceil(improvementPct / (GAIN_PER_MONTH.realist * factor) * 4.33);
     reasons.push(improvementPct > GAIN_CAP.ambitios ? "E o alt\u0103 categorie de alerg\u0103tor, nu o preg\u0103tire de c\xE2teva luni." : `Ar fi nevoie de ~${needWeeks} s\u0103pt\u0103m\xE2ni de preg\u0103tire continu\u0103 pentru o \u021Bint\u0103 realist\u0103; cu data de acum, o \u021Bint\u0103 realist\u0103 e ~${fmtTime(equivalentNowSec * (1 - feasibleRealist / 100))}.`);
   }
   if (verdict !== "nerealist" && i.targetSec < STRONG_AMATEUR_SEC[i.goal]) reasons.push("E un timp de amator foarte bun: cere consecven\u021B\u0103 pe toat\u0103 perioada.");
@@ -842,6 +848,32 @@ function targetSecFromIntake(goal, tinta) {
   if (!isRunGoal(goal) || !tinta) return null;
   const pace = paceFromResult(tinta, RUN_DISTANCE_KM[goal]);
   return pace ? Math.round(pace * RUN_DISTANCE_KM[goal]) : null;
+}
+function currentFromIntake(intake) {
+  if (!isRunGoal(intake.obiectiv)) return null;
+  const dist = RUN_DISTANCE_KM[intake.obiectiv];
+  const nowPace = intake.alergare?.poateDistanta ? paceFromResult(intake.alergare.rezultatActual, dist) : null;
+  if (nowPace) {
+    const sec = Math.round(nowPace * dist);
+    return { km: dist, sec, label: `${dist.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km \xEEn ${fmtTime(sec)}` };
+  }
+  const t10 = parseDuration(intake.evaluare?.alergare10k ?? null, 10);
+  if (t10) return { km: 10, sec: t10, label: `10 km \xEEn ${fmtTime(t10)}` };
+  const t5 = parseDuration(intake.evaluare?.alergare5k ?? null, 5);
+  if (t5) return { km: 5, sec: t5, label: `5 km \xEEn ${fmtTime(t5)}` };
+  return null;
+}
+function planTarget(goal, tinta, current, weeks) {
+  const targetSec = targetSecFromIntake(goal, tinta);
+  if (!targetSec) return { targetSec: null, planSec: null, paceSecKm: null, adjusted: false, verdict: null };
+  const dist = RUN_DISTANCE_KM[goal];
+  const verdict = runTarget({ goal, targetSec, current, weeks });
+  if (verdict.verdict !== "nerealist") return { targetSec, planSec: targetSec, paceSecKm: targetSec / dist, adjusted: false, verdict };
+  if (verdict.equivalentNowSec && verdict.feasiblePct != null) {
+    const planSec = Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100));
+    return { targetSec, planSec, paceSecKm: planSec / dist, adjusted: true, verdict };
+  }
+  return { targetSec, planSec: null, paceSecKm: null, adjusted: true, verdict };
 }
 
 // src/collector/permissions.ts
@@ -1480,7 +1512,8 @@ function raceReady(input) {
     const until = input.raceDate && input.raceDate > today ? input.raceDate : input.plan.reduce((m, w) => w.date > m ? w.date : m, today);
     const weeks = Math.max(0, diffDays(today, until) / 7);
     const verdict = runTarget({ goal, targetSec: input.targetSec, current: eff ? { km: eff.km, sec: eff.sec, date: eff.date, label: eff.label } : null, weeks });
-    target = { targetSec: input.targetSec, best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
+    const planSec = verdict.verdict === "nerealist" ? verdict.equivalentNowSec && verdict.feasiblePct != null ? Math.round(verdict.equivalentNowSec * (1 - verdict.feasiblePct / 100)) : null : input.targetSec;
+    target = { targetSec: input.targetSec, planSec, adjusted: verdict.verdict === "nerealist", best: eff, predictedSec: pred?.sec ?? null, predictedLow: pred?.low ?? null, predictedHigh: pred?.high ?? null, verdict };
   }
   const benchmarks = [];
   const firstDate = (xs) => xs.sort((a, b) => a.date < b.date ? 1 : -1)[0]?.date ?? null;
@@ -1563,6 +1596,15 @@ function raceReady(input) {
     const hasRun = of("alergare").some((a) => (a.distanceKm ?? 0) > 0);
     const over = d.longRun > d.run;
     links.push({ name: "Alergare", pct: hasRun ? pct2(km2 / d.longRun) : null, measured: hasRun ? `${km2.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km, cea mai lung\u0103 ie\u0219ire` : null, detail: `cea mai lung\u0103 ie\u0219ire: ${km2.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km \xB7 reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString("ro-RO")} km; ${over ? "\xEEn preg\u0103tire se alearg\u0103 mai mult dec\xE2t cursa" : "\xEEn preg\u0103tire nu se alearg\u0103 toat\u0103 distan\u021Ba"})` });
+  }
+  if (target) {
+    const est = target.predictedSec;
+    links.push({
+      name: "Ritm",
+      pct: est ? pct2(target.targetSec / est) : null,
+      measured: est ? `estimat acum ${fmtTime(est)}` : null,
+      detail: est ? `timp estimat acum ${fmtTime(est)} (din cel mai bun efort de pe ceas, Riegel) \xB7 \u021Binta ${fmtTime(target.targetSec)}` : `f\u0103r\u0103 un efort recent pe ceas nu putem estima timpul \xB7 \u021Binta ${fmtTime(target.targetSec)}`
+    });
   }
   if (isSwimGoal(goal) && d.swim) {
     const contM = Math.max(0, ...swims.map((a) => a.details?.continuousM ?? 0));
@@ -5926,6 +5968,12 @@ var DOSE_TEXT = {
   anduranta: "f\u0103r\u0103 rest-pause la picioare: oboseala ar strica alergarea \u0219i bicicleta din zilele urm\u0103toare",
   mentinere: "men\u021Binere: doar setul greu, f\u0103r\u0103 set redus \u0219i f\u0103r\u0103 rest-pause"
 };
+function doseText(dose, sports) {
+  if (dose !== "anduranta") return DOSE_TEXT[dose];
+  const names = ["inot", "bicicleta", "alergare"].filter((s) => sports.includes(s)).map((s) => ({ inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea" })[s]);
+  const what = names.length <= 1 ? names[0] ?? "antrenamentul" : `${names.slice(0, -1).join(", ")} \u0219i ${names[names.length - 1]}`;
+  return `f\u0103r\u0103 rest-pause la picioare: oboseala ar strica ${what} din zilele urm\u0103toare`;
+}
 function dayById(id) {
   return PPL.find((d) => d.id === id);
 }
@@ -5991,10 +6039,13 @@ function generatePlan(input) {
     else if (kind === "swim") advanceSwimProgression(prog, pw, input.goal);
     else if (kind === "bike") advanceBikeProgression(prog, pw, input.goal);
     else advanceProgression(prog, pw);
-    const sessions = kind === "run" ? runWeekTemplate(pw, input, prog) : kind === "swim" ? swimWeekTemplate(pw, input, prog) : kind === "bike" ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    const templated = kind === "run" ? runWeekTemplate(pw, input, prog) : kind === "swim" ? swimWeekTemplate(pw, input, prog) : kind === "bike" ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    const raceWeek = pw.weekStart === weekStart(input.raceDate);
+    const sessions = raceWeek ? raceWeekSessions(templated) : templated;
     const minCount = kind === "run" ? { alergare: 3, forta: 1 } : kind === "swim" ? { inot: 2, forta: 1 } : kind === "bike" ? { bicicleta: 2, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
     const fitted = fitToHours(sessions, target, pw.recovery, minCount);
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
+    if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round12(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
     out.push({
       weekStart: pw.weekStart,
@@ -6006,7 +6057,7 @@ function generatePlan(input) {
       notes: [...fitted.notes, ...placed.notes]
     });
   }
-  assignStrengthDays(out);
+  assignStrengthDays(out, goalSports(input.goal));
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   const spaced = enforceSpacing(out.flatMap((w) => w.workouts));
   const byId = new Map(spaced.workouts.map((w) => [w.id, w]));
@@ -6022,6 +6073,20 @@ function generatePlan(input) {
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
 }
+function raceWeekSessions(sessions) {
+  return sessions.filter((s) => s.type !== "lung" && s.type !== "brick" && s.type !== "forta").map((s) => {
+    if (s.type === "calitate") return { ...s, minutes: Math.min(s.minutes, 35), key: false, structure: `${s.structure ?? "scurt, la ritm de curs\u0103"} \xB7 deschidere, nu antrenament` };
+    return { ...s, minutes: Math.min(s.minutes, 30), key: false };
+  });
+}
+function shakeoutBeforeRace(workouts, raceDate) {
+  const last = [...workouts].filter((w) => w.date < raceDate).sort((a, b) => a.date < b.date ? -1 : 1).at(-1);
+  if (!last || last.type === "calitate") return;
+  last.plannedMinutes = Math.min(last.plannedMinutes, 20);
+  last.targetZones = [1, 2];
+  last.key = false;
+  last.structure = "dezmor\u021Bire \xEEnainte de curs\u0103: 15\u201320 min foarte u\u0219or + 3\u20134 acceler\u0103ri de 20 s; apoi odihn\u0103, m\xE2ncare cunoscut\u0103, somn";
+}
 function longRunOf(pw, minutes, easyText) {
   const alternate = !pw.recovery && pw.phase !== "evaluare" && pw.phase !== "taper";
   if (alternate && pw.weekInPhase % 2 === 1) {
@@ -6032,7 +6097,7 @@ function longRunOf(pw, minutes, easyText) {
 function strengthMinutes(p) {
   return p === "taper" ? 35 : p === "peak" ? 40 : p === "build" ? 50 : 55;
 }
-function assignStrengthDays(weeks) {
+function assignStrengthDays(weeks, sports = ["inot", "bicicleta", "alergare"]) {
   const all = weeks.flatMap((w) => w.workouts.map((x) => ({ x, phase: w.phase })));
   const keyDates = new Set(all.filter((o) => o.x.key).map((o) => o.x.date));
   const strength = all.filter((o) => o.x.type === "forta").sort((a, b) => a.x.date < b.x.date ? -1 : 1);
@@ -6055,7 +6120,7 @@ function assignStrengthDays(weeks) {
     }
     const day2 = dayById(id);
     const dose = doseFor(o.phase);
-    o.x.structure = `${day2.name} \xB7 ${DOSE_TEXT[dose]}`;
+    o.x.structure = `${day2.name} \xB7 ${doseText(dose, sports)}`;
   }
 }
 function advanceProgression(prog, pw) {
@@ -6603,7 +6668,8 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimDeclared(intake) },
     run: isRunGoal(intake.obiectiv) ? {
-      goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
+      // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
+      goalPaceSecKm: planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
       canDoDistance: intake.alergare?.poateDistanta ?? null,
       longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null
     } : void 0

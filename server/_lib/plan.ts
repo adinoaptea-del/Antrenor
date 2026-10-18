@@ -8,9 +8,10 @@ import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
-import { GOAL_LABEL, isRunGoal, RUN_DISTANCE_KM, type Goal } from '../../src/calendar/phases.js';
+import { GOAL_LABEL, isRunGoal, type Goal } from '../../src/calendar/phases.js';
+import { currentFromIntake, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
-import { paceFromResult, parsePace, type RunResult } from '../../src/util/run.js';
+import { parsePace, type RunResult } from '../../src/util/run.js';
 
 export interface IntakeLike {
   nume?: string;
@@ -141,7 +142,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
     swim: { continuousM: swimDeclared(intake as unknown as Record<string, unknown>) },
     run: isRunGoal(intake.obiectiv)
       ? {
-          goalPaceSecKm: paceFromResult(intake.alergare?.tinta, RUN_DISTANCE_KM[intake.obiectiv]),
+          // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
+          goalPaceSecKm: planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake as RunIntakeLike), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
           canDoDistance: intake.alergare?.poateDistanta ?? null,
           longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
         }

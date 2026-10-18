@@ -154,6 +154,14 @@ export const DOSE_TEXT: Record<Dose, string> = {
   mentinere: 'menținere: doar setul greu, fără set redus și fără rest-pause',
 };
 
+/** Textul dozei, cu sporturile sportivului (la un singur sport nu pomenim bicicleta sau alergarea altcuiva). */
+export function doseText(dose: Dose, sports: readonly string[]): string {
+  if (dose !== 'anduranta') return DOSE_TEXT[dose];
+  const names = (['inot', 'bicicleta', 'alergare'] as const).filter((s) => sports.includes(s)).map((s) => ({ inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea' })[s]);
+  const what = names.length <= 1 ? (names[0] ?? 'antrenamentul') : `${names.slice(0, -1).join(', ')} și ${names[names.length - 1]}`;
+  return `fără rest-pause la picioare: oboseala ar strica ${what} din zilele următoare`;
+}
+
 export function dosed(day: PplDay, dose: Dose): PplDay {
   const ex = day.exercises.map((e) => {
     let sets = e.sets;

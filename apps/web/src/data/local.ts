@@ -6,11 +6,12 @@ import type { BodyForm, LabsForm, Me, TestsForm } from '@core/api-types.js';
 import { computeBar } from '@core/bar/bar.js';
 import { generatePlan } from '@core/calendar/generate.js';
 import { weeklyBudget } from '@core/calendar/budget.js';
-import { GOAL_LABEL, RUN_DISTANCE_KM, isRunGoal } from '@core/calendar/phases.js';
+import { GOAL_LABEL, isRunGoal } from '@core/calendar/phases.js';
+import { currentFromIntake, planTarget } from '@core/goals/run-target.js';
 import { declaredSwimM } from '@core/bar/sport-readiness.js';
-import { paceFromResult, parsePace } from '@core/util/run.js';
+import { parsePace } from '@core/util/run.js';
 import type { PlannedWorkout } from '@core/types.js';
-import { addDays, labsExpired, weekStart } from '@core/util/dates.js';
+import { addDays, diffDays, labsExpired, weekStart } from '@core/util/dates.js';
 import type { EveningForm, IntakeAnswers, MorningForm, WeeklyForm } from '../forms/types';
 
 interface LocalState {
@@ -142,7 +143,7 @@ export const localServer = {
         swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
         level: { longestRideH: intake.bicicleta.ceaMaiLungaOre, longestRunKm: intake.alergare.ceaMaiLungaKm, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare.ritmActual ?? null) },
         swim: { continuousM: declaredSwimM(intake.inot.nivel, !!intake.evaluare?.inot400) },
-        run: isRunGoal(intake.obiectiv) ? { goalPaceSecKm: paceFromResult(intake.alergare.tinta, RUN_DISTANCE_KM[intake.obiectiv]), canDoDistance: intake.alergare.poateDistanta ?? null, longestRunKm: intake.alergare.ceaMaiLungaKm } : undefined,
+        run: isRunGoal(intake.obiectiv) ? { goalPaceSecKm: planTarget(intake.obiectiv, intake.alergare.tinta, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm, canDoDistance: intake.alergare.poateDistanta ?? null, longestRunKm: intake.alergare.ceaMaiLungaKm } : undefined,
       });
       if (!r.ok) {
         state = { ...state, intake, plan: [], budgetHours: r.budgetHours, planStart: null };

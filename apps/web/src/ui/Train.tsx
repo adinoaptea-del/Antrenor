@@ -103,7 +103,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
                 {next.type === 'forta' ? '' : ` · ${TYPE_LABEL[next.type]}`}
                 {next.key ? ' · cheie' : ''}
               </b>
-              {sport !== 'forta' && <small>{sport === 'inot' ? swimStructure(next.type, next.structure ?? null, swimBest, swimMode) : (next.structure ?? (next.targetZones.length ? `Z${next.targetZones.join('–')}` : ''))}</small>}
+              {sport !== 'forta' && <small>{sport === 'inot' ? swimStructure(next.type, next.structure ?? null, swimBest, swimMode) : (next.structure ?? (next.type === 'z2' ? 'ușor, conversațional' : next.type === 'lung' ? 'ușor, lung' : next.targetZones.length ? `Z${next.targetZones.join('–')}` : ''))}</small>}
             </span>
             {Icons.chevronRight}
           </button>

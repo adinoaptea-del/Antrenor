@@ -8,7 +8,7 @@ import { fmtTime } from '@core/goals/run-target.js';
 const fmtPaceKm = (secKm: number) => `${Math.floor(secKm / 60)}:${String(Math.round(secKm % 60)).padStart(2, '0')}/km`;
 
 const fmtH = (min: number) => `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`;
-const SPORT_OF: Record<string, Sport> = { Înot: 'inot', Bicicletă: 'bicicleta', Alergare: 'alergare' };
+const SPORT_OF: Record<string, Sport> = { Înot: 'inot', Bicicletă: 'bicicleta', Alergare: 'alergare', Ritm: 'alergare' };
 
 type RR = NonNullable<Me['raceReady']>;
 
@@ -21,7 +21,7 @@ function headline(r: RR, goalName: string): { title: string; sub: string } {
       sub: `${r.coverage.withData} din ${r.coverage.total} probe au date${miss.length ? ` · lipsește ${miss.join(', ').toLowerCase()}` : ''}. Nu afișăm un procent global.`,
     };
   }
-  return { title: `Gata de ${goalName}: ${r.ready}%`, sub: `Cea mai slabă verigă: ${(r.weakest ?? '').toLowerCase()}. Indice față de reperele probei, nu probabilitate de a termina.` };
+  return { title: `Gata de ${goalName}: ${r.ready}%`, sub: `Cea mai slabă verigă: ${(r.weakest ?? '').toLowerCase()}. ${r.target ? 'Indice față de reperele probei și de ținta ta de timp, nu o promisiune.' : 'Indice față de reperele probei, nu probabilitate de a termina.'}` };
 }
 
 function Legs({ r }: { r: RR }) {
@@ -110,6 +110,7 @@ export function RaceDetail({ goalName, onOpen }: { goalName: string; onOpen: (s:
             {r.target.verdict.reasons.map((x, i) => (
               <p key={i}>{x}</p>
             ))}
+            {r.target.adjusted && <p>{r.target.planSec ? `Planul se construiește pe ~${fmtTime(r.target.planSec)}, nu pe ținta asta; ținta rămâne notată și o rejudecăm la fiecare test.` : 'Planul nu primește bucăți la ritmul ăsta; testele din plan dau ritmurile.'}</p>}
           </div>
           <p className="tiny muted" style={{ marginTop: 8 }}>Estimarea vine din cel mai bun efort de pe ceas din ultimele 8 săptămâni, adus la distanța cursei cu formula lui Riegel (marjă −4% / +8%). Nu e o promisiune: traseul, vremea și ziua schimbă rezultatul.</p>
         </section>
