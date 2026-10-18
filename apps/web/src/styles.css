@@ -324,6 +324,8 @@ details.formula ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); f
 .cal-day { background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 6px 2px 8px; display: grid; justify-items: center; gap: 5px; color: var(--fg); font: inherit; cursor: pointer; min-height: 52px; }
 .cal-day.today { border-color: var(--accent); }
 .cal-day.sel { background: var(--accent); color: var(--accent-ink); }
+.cal-day .cal-min { font-size: 10px; line-height: 1; color: var(--c-albastru, #7aa7ff); font-variant-numeric: tabular-nums; }
+.cal-day.sel .cal-min { color: inherit; }
 .cal-day .d { font-family: var(--font-display); font-size: 17px; line-height: 1; }
 .cal-day .dots { display: flex; gap: 3px; min-height: 8px; }
 .cal-day .dots .dot { width: 6px; height: 6px; }

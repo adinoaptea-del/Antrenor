@@ -143,6 +143,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
                         <Dot key={a.id} color="albastru" />
                       ))}
                   </span>
+                  {workoutsOn(me, iso).length === 0 && activitiesOn(me, iso).length > 0 && <span className="cal-min">{activitiesOn(me, iso).reduce((n, a) => n + a.minutes, 0)}′</span>}
                 </button>
               ),
             )}
