@@ -258,7 +258,7 @@ export const server = {
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = true) => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force }) }),
   adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; inviteUrl?: string }>('/api/admin'),
   newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
-  adminAction: (action: 'sync' | 'plan' | 'parola', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
+  adminAction: (action: 'sync' | 'plan' | 'parola' | 'detalii', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
   regeneratePlan: (preview = false) =>
     api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number; preview?: boolean; currentBudgetHours?: number | null; from?: string; firstWeekHours?: number; firstWeekSessions?: number; workouts?: number }>(
       `/api/plan/generate${preview ? '?preview=1' : ''}`,

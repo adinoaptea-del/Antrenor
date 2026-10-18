@@ -26,7 +26,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void load();
   }, []);
-  const act = async (action: 'sync' | 'plan' | 'parola', id: string) => {
+  const act = async (action: 'sync' | 'plan' | 'parola' | 'detalii', id: string) => {
     setBusy(`${action}:${id}`);
     try {
       const r = await server.adminAction(action, id);
@@ -146,9 +146,10 @@ export function Admin({ onBack }: { onBack: () => void }) {
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
               <button className="pill" disabled={!!busy} onClick={() => void act('sync', u.id)}>{busy === `sync:${u.id}` ? '…' : 'Citește brățările'}</button>
               <button className="pill" disabled={!!busy || !u.intake} onClick={() => void act('plan', u.id)}>{busy === `plan:${u.id}` ? '…' : 'Refă planul'}</button>
+              <button className="pill" disabled={!!busy || !u.intake} onClick={() => void act('detalii', u.id)}>{busy === `detalii:${u.id}` ? '…' : 'Vezi planul'}</button>
               <button className="pill" disabled={!!busy} onClick={() => void act('parola', u.id)}>{busy === `parola:${u.id}` ? '…' : 'Parolă temporară'}</button>
             </div>
-            {out[u.id] && <div className="tiny" style={{ marginTop: 8, userSelect: 'all' }}>{out[u.id]}</div>}
+            {out[u.id] && <div className="tiny" style={{ marginTop: 8, userSelect: 'all', whiteSpace: 'pre-wrap' }}>{out[u.id]}</div>}
           </Card>
         ))}
       </div>

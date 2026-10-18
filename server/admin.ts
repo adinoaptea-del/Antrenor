@@ -6,7 +6,7 @@ import { ENV, supabaseKeyHeaders } from './_lib/env.js';
 import { syncUser } from './_lib/sync.js';
 import { costUsd } from './_lib/usage.js';
 import { inviteCode, rotateInvite } from './_lib/invite.js';
-import { generateAndStore, type IntakeLike } from './_lib/plan.js';
+import { generateAndStore, historyHours, type IntakeLike } from './_lib/plan.js';
 
 /**
  * Pentru admin (primul cont): starea fiecărui sportiv și trei reparații.
@@ -73,6 +73,28 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const target = await one<{ id: string; tz: string; email: string }>('users', { id: `eq.${body.userId ?? ''}` });
     if (!target) throw new HttpError(404, 'sportiv inexistent');
 
+    if (body.action === 'detalii') {
+      // Ce a răspuns la chestionar (doar ce ține de antrenament) și următoarele două săptămâni din plan: ca să judeci planul.
+      const today = todayIn(target.tz);
+      const intake = await one<{ answers: Record<string, any> }>('questionnaires', { user_id: `eq.${target.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      const a = intake?.answers ?? {};
+      const plan = await one<{ id: string; start_date: string; race_date: string; goal: string; budget_hours: number }>('plans', { user_id: `eq.${target.id}`, active: 'eq.true' });
+      const ws = plan ? await select<{ date: string; sport: string; type: string; planned_minutes: number; structure: string | null; status: string }>('workouts_planned', { plan_id: `eq.${plan.id}`, date: `gte.${today}` }, { order: 'date.asc', limit: 40 }) : [];
+      const hist = await historyHours(target.id, today);
+      const DAY = ['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'];
+      const prog = Array.isArray(a.program) ? (a.program as { day: number; startMin: number; endMin: number }[]).map((b) => `${DAY[b.day]} ${Math.floor(b.startMin / 60)}–${Math.ceil(b.endMin / 60)}`).join(', ') : '–';
+      const al = a.alergare ?? {};
+      const lines = [
+        `Obiectiv: ${a.obiectiv ?? '–'} · data ${a.dataCursa ?? '–'} · ramura ${al.ramura ?? (al.tinta ? 'timp' : '–')}${al.tinta ? ` · ținta ${al.tinta.valoare} (${al.tinta.mod})` : ''}`,
+        `Nivel: ritm ușor ${al.ritmActual ?? a.evaluare?.ritmUsor ?? '–'} · cea mai lungă ${al.ceaMaiLungaKm ?? '–'} km · a alergat distanța: ${al.poateDistanta == null ? '–' : al.poateDistanta ? `da (${al.rezultatActual?.valoare ?? '?'})` : 'nu'} · 5 km ${a.evaluare?.alergare5k ?? '–'} · 10 km ${a.evaluare?.alergare10k ?? '–'}`,
+        `Program: ${prog} · ore declarate ${a.oreSport ?? '–'} · an naștere ${a.anNastere ?? '–'}`,
+        `Istoric (ore/săpt., cele mai noi întâi): ${hist.length ? hist.join(', ') : 'fără'}`,
+        plan ? `Plan: din ${plan.start_date} până la ${plan.race_date}, buget ${plan.budget_hours} h/săpt.` : 'Fără plan activ',
+        ...ws.filter((w) => w.status !== 'sters').slice(0, 16).map((w) => `${w.date.slice(5)} · ${w.sport} · ${w.type} · ${w.planned_minutes} min · ${(w.structure ?? '').slice(0, 110)}`),
+      ];
+      json(res, 200, { ok: true, text: lines.join('\n') });
+      return;
+    }
     if (body.action === 'sync') {
       const r = await syncUser(target.id, 7);
       json(res, 200, { ok: true, text: r.length ? r.map((x) => `${x.provider}: ${x.ok ? `${x.rows} rânduri` : `eroare: ${x.detail ?? ''}`}`).join(' · ') : 'nicio brățară conectată' });

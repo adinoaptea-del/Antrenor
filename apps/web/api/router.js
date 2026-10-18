@@ -8516,6 +8516,27 @@ async function handler15(req, res) {
     }
     const target = await one("users", { id: `eq.${body.userId ?? ""}` });
     if (!target) throw new HttpError(404, "sportiv inexistent");
+    if (body.action === "detalii") {
+      const today = todayIn(target.tz);
+      const intake = await one("questionnaires", { user_id: `eq.${target.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      const a = intake?.answers ?? {};
+      const plan = await one("plans", { user_id: `eq.${target.id}`, active: "eq.true" });
+      const ws = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: `gte.${today}` }, { order: "date.asc", limit: 40 }) : [];
+      const hist = await historyHours(target.id, today);
+      const DAY2 = ["L", "Ma", "Mi", "J", "V", "S", "D"];
+      const prog = Array.isArray(a.program) ? a.program.map((b) => `${DAY2[b.day]} ${Math.floor(b.startMin / 60)}\u2013${Math.ceil(b.endMin / 60)}`).join(", ") : "\u2013";
+      const al = a.alergare ?? {};
+      const lines = [
+        `Obiectiv: ${a.obiectiv ?? "\u2013"} \xB7 data ${a.dataCursa ?? "\u2013"} \xB7 ramura ${al.ramura ?? (al.tinta ? "timp" : "\u2013")}${al.tinta ? ` \xB7 \u021Binta ${al.tinta.valoare} (${al.tinta.mod})` : ""}`,
+        `Nivel: ritm u\u0219or ${al.ritmActual ?? a.evaluare?.ritmUsor ?? "\u2013"} \xB7 cea mai lung\u0103 ${al.ceaMaiLungaKm ?? "\u2013"} km \xB7 a alergat distan\u021Ba: ${al.poateDistanta == null ? "\u2013" : al.poateDistanta ? `da (${al.rezultatActual?.valoare ?? "?"})` : "nu"} \xB7 5 km ${a.evaluare?.alergare5k ?? "\u2013"} \xB7 10 km ${a.evaluare?.alergare10k ?? "\u2013"}`,
+        `Program: ${prog} \xB7 ore declarate ${a.oreSport ?? "\u2013"} \xB7 an na\u0219tere ${a.anNastere ?? "\u2013"}`,
+        `Istoric (ore/s\u0103pt., cele mai noi \xEEnt\xE2i): ${hist.length ? hist.join(", ") : "f\u0103r\u0103"}`,
+        plan ? `Plan: din ${plan.start_date} p\xE2n\u0103 la ${plan.race_date}, buget ${plan.budget_hours} h/s\u0103pt.` : "F\u0103r\u0103 plan activ",
+        ...ws.filter((w) => w.status !== "sters").slice(0, 16).map((w) => `${w.date.slice(5)} \xB7 ${w.sport} \xB7 ${w.type} \xB7 ${w.planned_minutes} min \xB7 ${(w.structure ?? "").slice(0, 110)}`)
+      ];
+      json(res, 200, { ok: true, text: lines.join("\n") });
+      return;
+    }
     if (body.action === "sync") {
       const r2 = await syncUser(target.id, 7);
       json(res, 200, { ok: true, text: r2.length ? r2.map((x) => `${x.provider}: ${x.ok ? `${x.rows} r\xE2nduri` : `eroare: ${x.detail ?? ""}`}`).join(" \xB7 ") : "nicio br\u0103\u021Bar\u0103 conectat\u0103" });
