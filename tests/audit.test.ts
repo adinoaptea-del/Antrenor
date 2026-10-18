@@ -11,7 +11,7 @@ import { enforceLimits, limitViolations } from '../src/calendar/validate.js';
 import { morningSafetyEvents, painSafetyEvents } from '../src/calendar/safety.js';
 import { scoreWorkout } from '../src/scoring/score.js';
 import { measurementClaims, verifyResponse } from '../src/agents/verify.js';
-import { PPL, dosed } from '../src/strength/ppl.js';
+import { SESSIONS, prescribeFull } from '../src/strength/ppl.js';
 import { localDayStartUtc } from '../src/util/dates.js';
 import { appleActivityId, appleOtherId, wellnessGroups } from '../server/webhooks/apple.js';
 import { isActiveWorkout, type PlannedWorkout } from '../src/types.js';
@@ -201,12 +201,13 @@ describe('audit 14 · o „regulă” nu poate acoperi o măsurătoare', () => {
 });
 
 describe('audit 21 · forța în faza de învățare', () => {
-  it('fără rest-pause, fără seturi „max” și fără setul interzis readus', () => {
-    for (const day of PPL) {
-      const d = dosed(day, 'invatare');
-      for (const e of d.exercises) {
-        assert.ok(e.sets.length > 0);
-        assert.ok(!e.sets.some((s) => s.kind === 'restpause' || s.kind === 'max'), `${day.id} ${e.name}`);
+  it('acomodarea: 1–2 seturi, 3–4 repetări în rezervă, fără completări, pe toate ședințele', () => {
+    for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[]) {
+      const p = prescribeFull({ session: id, block: 'acomodare', week: 1, len: 4 });
+      for (const r of p.items) {
+        assert.ok(r.sets >= 1 && r.sets <= 2, `${id} ${r.ex.name}`);
+        assert.equal(r.rir, '3–4');
+        assert.ok(!r.completion);
       }
     }
   });

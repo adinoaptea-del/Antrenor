@@ -5,7 +5,8 @@ import { goalSports } from '@core/calendar/phases.js';
 import { Card, Dot, Icons, Label, fmtDayMonth } from './common';
 import { SubTabs } from './Shell';
 import { useData, useMe } from '../data/store';
-import { DOSE_TEXT, PPL, PPL_RULES, dayFromStructure, dosed, doseFor, rotation, type PSet, type PplDay, type Dose } from '@core/strength/ppl.js';
+import { BLOCK_GOAL, BLOCK_LABEL, STRENGTH_RULES, prescribe, type Prescription } from '@core/strength/ppl.js';
+import { strengthSpecFor } from '@core/strength/plan-specs.js';
 import type { Me, SportTotal } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { SessionDetails } from './SessionDetails';
@@ -99,7 +100,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
             <span>
               <small className="eyebrow">Urmează · {dayName(next.date)}</small>
               <b>
-                {SPORT_LABEL[sport]} · {fmtMinutes(next.plannedMinutes)}
+                {next.type === 'forta' ? `${strengthFor(me, next)?.session.name ?? SPORT_LABEL[sport]}` : SPORT_LABEL[sport]} · {fmtMinutes(next.plannedMinutes)}
                 {next.type === 'forta' ? '' : ` · ${TYPE_LABEL[next.type]}`}
                 {next.key ? ' · cheie' : ''}
               </b>
@@ -179,7 +180,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
               ) : (
                 <div className="list">
                   {weekWorkouts.map((w) => {
-                    const struct = sport === 'inot' ? swimStructure(w.type, w.structure ?? null, swimBest, swimMode) : sport === 'forta' ? (strengthFor(me, w)?.day.name ?? '') : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
+                    const struct = sport === 'inot' ? swimStructure(w.type, w.structure ?? null, swimBest, swimMode) : sport === 'forta' ? (() => { const p = strengthFor(me, w); return p ? `${p.session.name} · ${BLOCK_LABEL[p.spec.block].toLowerCase()}` : ''; })() : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
                     return (
                       <div key={w.id} className="item">
                         <Dot color={colorOf(me, w)} />
@@ -327,33 +328,25 @@ function swimStructure(type: string, planned: string | null, bestM: number | nul
   return `seturi de ${set} m fără oprire (cât ai demonstrat), pauză până respiri liniștit; încearcă să legi ${set + 25} m`;
 }
 
-/**
- * Ziua din programul Push / Pull / Legs pentru o ședință de forță: din plan („Push 1 · …”);
- * la planurile făcute înainte de program, din ordinea ședințelor de forță în calendar.
- */
-function strengthFor(me: Me, w: PlannedWorkout): { day: PplDay; dose: Dose } | null {
-  const dose = doseFor(me.phase ?? 'baza1');
-  const fromPlan = dayFromStructure(w.structure);
-  if (fromPlan) return { day: dosed(fromPlan, dose), dose };
-  const all = me.plan.filter((x) => x.type === 'forta' && x.status !== 'sters').sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  const idx = all.findIndex((x) => x.id === w.id);
-  if (idx < 0) return null;
-  const rot = rotation(2);
-  const day = PPL.find((d) => d.id === rot[idx % rot.length])!;
-  return { day: dosed(day, dose), dose };
+/** Prescripția de forță a unei ședințe: din textul din plan sau, la planurile vechi, recalculată cu aceeași regulă. */
+function strengthFor(me: Me, w: PlannedWorkout): Prescription | null {
+  const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
+  const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4);
+  return spec ? prescribe(spec, w.plannedMinutes) : null;
 }
 
-const SET_LABEL: Record<PSet['kind'], string> = { heavy: 'greu', lowered: 'redus', restpause: 'rest-pause', fix: '', max: '' };
+const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);
 
-/** Ședința de forță: următoarea din calendar, cu exercițiile programului și doza fazei. */
+/** Ședința de forță: următoarea din calendar, cu exercițiile programului, doza blocului și ce a încăput în timp. */
 function StrengthCard() {
   const me = useMe();
   const [showRules, setShowRules] = useState(false);
-  const upcoming = me.plan.filter((x) => x.type === 'forta' && x.status !== 'sters' && x.date >= me.today).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const [openEx, setOpenEx] = useState<string | null>(null);
+  const upcoming = me.plan.filter((x) => x.type === 'forta' && x.status !== 'sters' && x.status !== 'anulat_sistem' && x.date >= me.today).sort((a, b) => (a.date < b.date ? -1 : 1));
   const [idx, setIdx] = useState(0);
   const w = upcoming[idx] ?? null;
-  const info = w ? strengthFor(me, w) : null;
-  if (!w || !info) {
+  const rx = w ? strengthFor(me, w) : null;
+  if (!w || !rx) {
     return (
       <Card tight>
         <Label>Programul de forță</Label>
@@ -362,51 +355,74 @@ function StrengthCard() {
     );
   }
   const dayLabel = w.date === me.today ? 'azi' : `${DAY_NAMES[weekday(w.date)]} ${Number(w.date.slice(8, 10))}`;
+  const sp = rx.spec;
   return (
     <Card tight>
-      <Label>Programul de forță · Push / Pull / Legs</Label>
+      <Label>Programul de forță · {sp.session.startsWith('full') ? 'tot corpul A/B' : 'Push / Pull / Legs A/B'}</Label>
       <div className="det-pills" role="tablist" aria-label="Ședința de forță">
         {upcoming.slice(0, 6).map((x, i) => (
           <button key={x.id} role="tab" aria-selected={i === idx} className={`det-pill ${i === idx ? 'on' : ''}`} onClick={() => setIdx(i)}>
             <b>{x.date === me.today ? 'azi' : `${DAY_NAMES[weekday(x.date)]} ${Number(x.date.slice(8, 10))}`}</b>
-            <small>{strengthFor(me, x)?.day.name ?? ''}</small>
+            <small>{strengthFor(me, x)?.session.name ?? ''}</small>
           </button>
         ))}
       </div>
       <div className="str-head">
-        <span className="num md">{info.day.name}</span>
-        <span className="small muted">{dayLabel} · {w.plannedMinutes} min</span>
+        <span className="num md">{rx.session.name}</span>
+        <span className="small muted">
+          {dayLabel} · ~{rx.minutes} min
+        </span>
       </div>
-      <div className="tiny muted" style={{ marginBottom: 10 }}>Doza fazei: {DOSE_TEXT[info.dose]}.</div>
+      <div className="str-block">
+        <b>
+          {BLOCK_LABEL[sp.block]} · săpt. {sp.week} din {sp.len}
+        </b>
+        <span>{BLOCK_GOAL[sp.block]}</span>
+        <span>
+          Efort: {rx.items[0]?.rir ?? '2–3'} repetări în rezervă · {rx.session.focus}
+        </span>
+      </div>
       <div className="str-list">
-        {info.day.exercises.map((e, i) => (
-          <div key={i} className="str-row">
+        {rx.items.map((r) => (
+          <button key={r.ex.id + (r.completion ? '-c' : '')} className="str-row" onClick={() => setOpenEx(openEx === r.ex.id ? null : r.ex.id)} aria-expanded={openEx === r.ex.id}>
             <div className="str-ex">
-              <b>{e.name}</b>
-              <span>{e.group}{e.note ? ` · ${e.note}` : ''}</span>
+              <b>{r.ex.name}</b>
+              <span>
+                {r.completion ? 'completare · ' : ''}
+                {r.ex.group} · pauză {fmtRest(r.rest)}
+              </span>
+              {openEx === r.ex.id && (
+                <span className="str-cue">
+                  {r.ex.cue}. Alternativă: {r.ex.alt}.{r.note ? ` ${r.note.replace(/^./, (c) => c.toUpperCase())}.` : ''}
+                </span>
+              )}
             </div>
             <div className="str-sets">
-              {e.sets.map((st, k) => (
-                <span key={k} className={`str-set k-${st.kind}`}>
-                  {st.reps}
-                  {SET_LABEL[st.kind] && <small>{SET_LABEL[st.kind]}</small>}
-                </span>
-              ))}
+              <span className="str-set">
+                {r.sets} × {r.reps}
+              </span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
+      {rx.notes.length > 0 && (
+        <ul className="str-notes">
+          {rx.notes.map((n) => (
+            <li key={n}>{n.replace(/^./, (c) => c.toUpperCase())}.</li>
+          ))}
+        </ul>
+      )}
       <button className="pill" style={{ marginTop: 12 }} onClick={() => setShowRules(!showRules)} aria-expanded={showRules}>
-        {showRules ? 'Ascunde indicațiile' : 'Indicații: intensitate, pauze, progresie'}
+        {showRules ? 'Ascunde indicațiile' : 'Indicații: efort, pauze, progresie'}
       </button>
       {showRules && (
         <div className="str-rules">
-          {PPL_RULES.map((r) => (
+          {STRENGTH_RULES.map((r) => (
             <div key={r.t}>
               <b>{r.t}.</b> {r.d}
             </div>
           ))}
-          <div className="tiny muted">Dacă ai mai puțin timp decât e planificat, fă exercițiile în ordine și oprește-te unde se termină timpul; nu le grăbi pauzele.</div>
+          <div className="tiny muted">Ședința e potrivită în timpul pe care îl ai în calendar: când e scurt, cad accesoriile, nu pauzele de la mișcările principale. Fără istoric de greutăți, prima dată calibrezi.</div>
         </div>
       )}
     </Card>

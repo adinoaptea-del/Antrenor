@@ -15,6 +15,8 @@ import { raceReady, type RaceReady } from '../bar/race-ready.js';
 import { extraOn, overYesterday, type DayCoverage } from '../calendar/load.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
+import { BLOCK_LABEL, prescribe } from '../strength/ppl.js';
+import { strengthSpecFor } from '../strength/plan-specs.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
 const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
@@ -116,8 +118,10 @@ export interface Packet {
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
   /** Toate ședințele zilei (plan_azi / plan_maine sunt doar cea principală). */
-  plan_azi_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean }[];
-  plan_maine_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean }[];
+  plan_azi_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  plan_maine_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  /** Forța: prescripția motorului pentru următoarea ședință și cât s-a făcut din ce era planificat (21 de zile). */
+  forta?: { urmatoarea: { data: string; sedinta: string; bloc: string; durata_min: number; exercitii: string[]; note: string[] } | null; expuneri_21_zile: { planificate: number; facute: number } } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
   /** Ultimele 14 zile (fără azi): ședințe planificate vs făcute (activitate pe același sport, ±1 zi). null fără activități de la brățări în 28 de zile: nu putem ști dacă s-a sărit sau doar nu s-a sincronizat. */
   vreme: CollectorInput['weather'] | null;
@@ -456,7 +460,32 @@ function planLabel(w: PlannedWorkout): string {
   return `${sport}${tip} ${w.plannedMinutes}${w.key ? ' (cheie)' : ''}`;
 }
 
-const brief = (w: PlannedWorkout) => ({ sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key });
+const brief = (w: PlannedWorkout) => ({ sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
+
+/** Ședința de forță următoare (azi sau mai târziu), cu prescripția motorului și expunerile din ultimele 21 de zile. */
+function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['forta'] {
+  const { today } = input;
+  const next = input.plan.filter((w) => w.type === 'forta' && isActiveWorkout(w) && w.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
+  // Planurile dinaintea programului AIRON („Push 1 · …”): prescripția se recalculează cu aceeași regulă ca generatorul.
+  const first = input.plan.reduce<string | null>((m, w) => (m == null || w.date < m ? w.date : m), null);
+  const spec = next ? strengthSpecFor(input.plan, next, first ? addDays(first, -weekday(first)) : null, input.athlete.raceDate ?? null) : null;
+  const since = addDays(today, -21);
+  const planned = input.plan.filter((w) => w.type === 'forta' && w.date >= since && w.date < today && w.status !== 'sters').length;
+  const done = acts.filter((a) => a.sport === 'forta' && a.date >= since && a.date < today).length;
+  if (!next || !spec) return planned ? { urmatoarea: null, expuneri_21_zile: { planificate: planned, facute: done } } : null;
+  const rx = prescribe(spec, next.plannedMinutes);
+  return {
+    urmatoarea: {
+      data: next.date,
+      sedinta: rx.session.name,
+      bloc: `${BLOCK_LABEL[spec.block]}, săpt. ${spec.week} din ${spec.len}`,
+      durata_min: next.plannedMinutes,
+      exercitii: rx.items.map((r) => `${r.ex.name}: ${r.sets} × ${r.reps}, ${r.rir} RIR, pauză ${r.rest} s${r.completion ? ' (completare)' : ''}`),
+      note: rx.notes,
+    },
+    expuneri_21_zile: { planificate: planned, facute: done },
+  };
+}
 
 export function buildPacket(input: CollectorInput): Packet {
   const { today } = input;
@@ -687,6 +716,7 @@ export function buildPacket(input: CollectorInput): Packet {
       ? { sport: planToday.sport, tip: planToday.type === 'z2' ? 'Z2' : planToday.type, durata_planificata: planToday.plannedMinutes, zone_tinta: planToday.targetZones, structura: planToday.structure ?? null, cheie: planToday.key }
       : null,
     plan_azi_toate: todayList.map(brief),
+    forta: strengthBrief(input, acts),
     plan_maine_toate: tomorrowList.map(brief),
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },

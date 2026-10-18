@@ -1,13 +1,13 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
-import { dayById, doseFor, doseText, rotation } from '../strength/ppl.js';
+import { FULL_ROTATION, PPL_ROTATION, isLegsSession, prescribe, strengthBlocks, strengthStructure, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
 import type { FreeBlock, IntensityAllowed, Phase, PlannedWorkout, Sport, WorkoutType, Zone } from '../types.js';
-import { addDays, weekStart } from '../util/dates.js';
+import { addDays, diffDays, weekStart } from '../util/dates.js';
 import { weeklyBudget } from './budget.js';
-import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, goalSports, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
+import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
 
 export interface GenerateInput {
   startDate: string;
@@ -30,6 +30,8 @@ export interface GenerateInput {
   run?: { goalPaceSecKm: number | null; canDoDistance: boolean | null; longestRunKm?: number | null };
   /** Doar la înot: câți metri înoată acum fără oprire (declarat sau măsurat). */
   swim?: { continuousM: number | null };
+  /** Intern: câte ședințe de forță încap în fazele de bază (3 când programul total o permite). */
+  strengthSlots?: number;
   /** Întâlniri fixe (ex. alergarea cu grupul sâmbăta): ședința potrivită se pune în ziua aceea, dacă e în program. */
   fixed?: FixedMeet[];
 }
@@ -106,6 +108,8 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
 
   const kind = goalKind(input.goal) ?? 'tri';
+  // A treia ședință de forță (PPL) doar când programul total o permite: un singur sport de la 5 h/săpt., triatlon de la 12 h.
+  input = { ...input, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? runStartLong(input.goal as RunGoal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
@@ -157,7 +161,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     });
   }
 
-  assignStrengthDays(out, goalSports(input.goal));
+  assignStrengthDays(out, input.raceDate);
   // Validatorul final: nicio fază sau șablon nu trece de limita de intensitate și de capacitatea de înot declarată.
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   // Zi tare, zi ușoară și cel mult 3 ședințe grele pe săptămână, pe toate sporturile la un loc.
@@ -212,42 +216,65 @@ function longRunOf(pw: PhaseWeek, minutes: number, easyText: string): Session {
   return { sport: 'alergare', type: 'lung', minutes, zones: [2], key: true, priority: 2, structure: alternate ? `${easyText}; ultimele 15–20 min progresiv, în partea de sus a Z2, fără să cazi pe final` : `${easyText}, constant` };
 }
 
-/** Durata ședinței de forță: programul complet cere ~55–60 min (2–5 min pauză între seturi); menținerea mai puțin. */
+/** Timpul alocat unei ședințe de forță (programul cere 45–65 min); conținutul se potrivește apoi în el. */
 function strengthMinutes(p: Phase): number {
   return p === 'taper' ? 35 : p === 'peak' ? 40 : p === 'build' ? 50 : 55;
 }
 
 /**
- * Ședințele de forță primesc pe rând zilele programului Push / Pull / Legs, în ordinea din program, pe tot planul
- * (Pull 1 se compară cu Pull 1-ul de data trecută). Doza ține de fază (doseFor).
- * Picioarele: nu în ziua dinaintea unei ședințe-cheie (ieșirea/tura lungă, calitate) — trec la următoarea ședință de forță;
- * în taper nu se fac deloc.
+ * Ședințele de forță ale săptămânii: 2 de regulă (tot corpul A/B), 3 în fazele de bază când programul total o permite
+ * (PPL A/B), una în taper. A treia are prioritatea cea mai mică: cade prima dacă orele sau zilele nu ajung.
  */
-export function assignStrengthDays(weeks: WeekPlan[], sports: readonly Sport[] = ['inot', 'bicicleta', 'alergare']): void {
-  const all = weeks.flatMap((w) => w.workouts.map((x) => ({ x, phase: w.phase })));
-  const keyDates = new Set(all.filter((o) => o.x.key).map((o) => o.x.date));
-  const strength = all.filter((o) => o.x.type === 'forta').sort((a, b) => (a.x.date < b.x.date ? -1 : 1));
-  const perWeek = Math.max(...weeks.map((w) => w.workouts.filter((x) => x.type === 'forta').length), 0);
-  const rot = rotation(perWeek);
-  let i = 0;
-  let deferredLegs = false;
-  for (const o of strength) {
-    const legsBlocked = keyDates.has(addDays(o.x.date, 1)) || o.phase === 'taper';
-    let id: string;
-    if (deferredLegs && !legsBlocked) {
-      id = 'legs';
-      deferredLegs = false;
-    } else {
-      id = rot[i++ % rot.length]!;
-      if (id === 'legs' && legsBlocked) {
-        if (o.phase !== 'taper') deferredLegs = true; // în taper picioarele nu se mai recuperează
-        id = rot[i++ % rot.length]!;
+function strengthSessions(p: Phase, slots: number): Session[] {
+  const n = p === 'taper' ? 1 : (p === 'baza1' || p === 'baza2') && slots >= 3 ? 3 : 2;
+  return Array.from({ length: n }, (_, i) => ({ sport: 'forta' as Sport, type: 'forta' as const, minutes: strengthMinutes(p), zones: [] as Zone[], key: false, priority: i === 0 ? 4 : i === 1 ? 6.5 : 7.5, structure: 'forță' }));
+}
+
+/**
+ * Forța, după programul AIRON (src/strength/ppl.ts): blocurile programului se întind pe săptămânile până la cursă
+ * (strânse sub 26, extinse peste), fiecare ședință primește varianta din rotație și doza blocului, apoi conținutul
+ * se potrivește în minutele pe care le are ședința în calendar (accesoriile cad primele, pauzele rămân întregi).
+ * Rotația: 3+ ședințe pe săptămână → Push A, Pull A, Legs A, Push B, Pull B, Legs B; 1–2 → tot corpul A/B.
+ * Picioarele: în PPL, Legs nu cade în ajunul unei ședințe-cheie (trece la următoarea); cu tot corpul, picioarele sunt
+ * ușoare în ajunul ei. În ultimele 10 zile dinaintea cursei, fără picioare.
+ */
+export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string): void {
+  const blocks = strengthBlocks(weeks.length);
+  const keyDates = new Set(weeks.flatMap((w) => w.workouts.filter((x) => x.key).map((x) => x.date)));
+  let pplI = 0;
+  let fullI = 0;
+  let deferred: SessionId | null = null;
+  weeks.forEach((w, wi) => {
+    const bw = blocks[wi] ?? { block: 'mentinere' as const, week: 1, len: 1 };
+    const fs = w.workouts.filter((x) => x.type === 'forta').sort((a, b) => (a.date < b.date ? -1 : 1));
+    const ppl = fs.length >= 3;
+    for (const x of fs) {
+      const beforeKey = keyDates.has(addDays(x.date, 1));
+      const nearRace = raceDate ? diffDays(x.date, raceDate) <= 10 : w.phase === 'taper';
+      let session: SessionId;
+      if (ppl) {
+        if (deferred && !beforeKey && !nearRace) {
+          session = deferred;
+          deferred = null;
+        } else {
+          session = PPL_ROTATION[pplI++ % PPL_ROTATION.length]!;
+          if (isLegsSession(session) && (beforeKey || nearRace)) {
+            if (!nearRace) deferred = session;
+            session = PPL_ROTATION[pplI++ % PPL_ROTATION.length]!;
+            if (isLegsSession(session)) session = PPL_ROTATION[pplI++ % PPL_ROTATION.length]!;
+          }
+        }
+      } else {
+        session = FULL_ROTATION[fullI++ % FULL_ROTATION.length]!;
       }
+      const legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
+      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs };
+      const rx = prescribe(spec, x.plannedMinutes);
+      x.structure = strengthStructure(spec);
+      // Ședința durează cât conținutul ei, cel mult cât are în calendar.
+      x.plannedMinutes = Math.min(x.plannedMinutes, rx.minutes);
     }
-    const day = dayById(id)!;
-    const dose = doseFor(o.phase);
-    o.x.structure = `${day.name} · ${doseText(dose, sports)}`;
-  }
+  });
 }
 
 /** Progresia ședințelor lungi: +15 min la două săptămâni pe bicicletă, +10 pe alergare, cu plafoane pe fază. */
@@ -413,10 +440,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
     if (easy >= 0) s.splice(easy, 1, t);
   }
 
-  const fortaCount = p === 'taper' ? 1 : 2;
-  for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
-  }
+  s.push(...strengthSessions(p, input.strengthSlots ?? 2));
 
   if (pw.recovery) {
     for (const x of s) {
@@ -463,8 +487,7 @@ function swimWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longSwim:
     if (easy >= 0) s.splice(easy, 1, t);
     else s.push(t);
   }
-  const fortaCount = p === 'taper' ? 1 : 2;
-  for (let i = 0; i < fortaCount; i++) s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
+  s.push(...strengthSessions(p, input.strengthSlots ?? 2));
   if (pw.recovery) {
     for (const x of s) {
       x.minutes = Math.round((x.minutes * RECOVERY_FACTOR) / 5) * 5;
@@ -505,8 +528,7 @@ function bikeWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide:
     if (easy >= 0) s.splice(easy, 1, t);
     else s.push(t);
   }
-  const fortaCount = p === 'taper' ? 1 : 2;
-  for (let i = 0; i < fortaCount; i++) s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
+  s.push(...strengthSessions(p, input.strengthSlots ?? 2));
   if (pw.recovery) {
     for (const x of s) {
       x.minutes = Math.round((x.minutes * RECOVERY_FACTOR) / 5) * 5;
@@ -572,10 +594,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   }
 
   // Forță: programul Push / Pull / Legs, 2 ședințe pe săptămână (una în taper); ziua din rotație se pune după plasare.
-  const fortaCount = p === 'taper' ? 1 : 2;
-  for (let i = 0; i < fortaCount; i++) {
-    s.push({ sport: 'forta', type: 'forta', minutes: strengthMinutes(p), zones: [], key: false, priority: i === 0 ? 4 : 6.5, structure: 'forță (Push / Pull / Legs)' });
-  }
+  s.push(...strengthSessions(p, input.strengthSlots ?? 2));
 
   if (pw.recovery) {
     for (const x of s) {

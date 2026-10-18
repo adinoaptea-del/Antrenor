@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
-import { dayFromStructure } from '@core/strength/ppl.js';
+import { sessionName } from '@core/strength/ppl.js';
 import { changeSummary, moveOptions } from '@core/calendar/actions.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { Dot, Icons, fmtDayMonth } from './common';
@@ -40,9 +40,9 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
         <div className="wk-t">
           <div className="wk-name">
-            {SPORT_LABEL[w.sport]} {w.type === 'forta' ? (dayFromStructure(w.structure) ? <span>· {dayFromStructure(w.structure)!.name}</span> : null) : <span>· {PLAIN[w.type]}</span>}
+            {SPORT_LABEL[w.sport]} {w.type === 'forta' ? (sessionName(w.structure) ? <span>· {sessionName(w.structure)}</span> : null) : <span>· {PLAIN[w.type]}</span>}
           </div>
-          <div className="wk-sub">{[w.type === 'forta' ? 'Push / Pull / Legs' : zones, w.key && !cancelled ? 'cheie' : ''].filter(Boolean).join(' · ')}</div>
+          <div className="wk-sub">{[w.type === 'forta' ? (w.structure ?? '').split(' · ')[1] ?? '' : zones, w.key && !cancelled ? 'cheie' : ''].filter(Boolean).join(' · ')}</div>
         </div>
         <div className="wk-min">
           {off ? <s>{fmtMinutes(w.original?.plannedMinutes ?? w.plannedMinutes)}</s> : fmtMinutes(w.plannedMinutes)}
