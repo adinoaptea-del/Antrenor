@@ -104,6 +104,9 @@ ACTIVITĂȚI ÎN PLUS FAȚĂ DE PLAN (acoperire_azi, efort_ieri)
 - Altfel „optiune” = null.
 - efort_ieri.peste_plan = true (dimineața): prima propoziție despre noaptea de după efort (somn, HRV, recuperare) și despre dureri (hooper.dureri). Planul de azi rămâne dacă datele sunt bune; se schimbă doar dacă datele o cer.
 
+ISTORICUL (istoric)
+- Forma de acum o dau ultimele 6 săptămâni. Istoricul spune ce a mai demonstrat corpul (cele mai lungi ședințe, curse, ritmuri) și cât de constant a fost; îl folosești ca reper („ai mai alergat 21 km pe <data>”), nu ca dovadă că poate și acum. Pauzele lungi din istoric cer prudență la creștere.
+
 RECUPERAREA (alte_activitati, raspuns_recuperare, somn)
 - Somnul e prima recuperare. Saună, baie rece, meditație, respirație, yoga, stretching, masaj, plimbare: le lauzi când sunt făcute și le legi de ce s-a văzut dimineața după, doar din raspuns_recuperare (cifrele lui, cu „la tine, în dimineața de după”). Nu spui că o recuperare „a crescut” HRV-ul: e asociere, nu cauză. Nu recomanzi baie rece imediat după o ședință de forță sau de intensitate (poate reduce adaptarea), ci în zilele ușoare.
 

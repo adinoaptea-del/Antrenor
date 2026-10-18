@@ -6,6 +6,7 @@ import { syncUser } from '../_lib/sync.js';
 import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { claimEvent, realign, runAgents } from '../_lib/agents.js';
+import { importHistory } from '../_lib/history.js';
 
 /** La 15 minute: toți sportivii cu brățări conectate și consimțământ. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -13,6 +14,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     requireCron(req);
     const users = await select<{ id: string; tz: string; goal: '70.3' | 'olimpic' | 'sprint' | 'semimaraton' | 'maraton' | 'full' | null; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data,withdrawn_at)' });
     const done: Record<string, unknown> = {};
+    // Istoricul complet: cel mult un sportiv pe rulare (durează), o singură dată pe sursă.
+    let historyBudget = 1;
     for (const u of users) {
       if (!consentActive(u.consents)) continue;
       // Un sportiv cu eroare nu oprește ceilalți; eroarea rămâne vizibilă în răspuns.
@@ -28,7 +31,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         const agent = fresh ? await runAgents(u.id, today, 'dupa_antrenament', true).catch((e: Error) => ({ eroare: e.message })) : null;
         // Decizia s-a schimbat după mesajul de azi: antrenorul îl rescrie, ca să spună ce decide aplicația.
         const realiniat = agent ? false : await realign(u.id, today).catch(() => false);
-        done[u.id] = { realiniat, citire: reports.map((x) => `${x.provider}:${x.ok ? x.rows : 'eroare'}`), calendar: r.changes.length, antrenor: agent ? ('eroare' in agent ? agent.eroare : agent.decision) : '-' };
+        let istoric: Record<string, number | string> | null = null;
+        if (historyBudget > 0) {
+          istoric = await importHistory(u.id).catch((e: Error) => ({ eroare: e.message }));
+          if (Object.keys(istoric).length) historyBudget -= 1;
+        }
+        done[u.id] = { istoric, realiniat, citire: reports.map((x) => `${x.provider}:${x.ok ? x.rows : 'eroare'}`), calendar: r.changes.length, antrenor: agent ? ('eroare' in agent ? agent.eroare : agent.decision) : '-' };
       } catch (e) {
         done[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
       }

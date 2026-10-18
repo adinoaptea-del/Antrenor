@@ -146,6 +146,12 @@ export interface Packet {
    */
   decizia_aplicatiei?: { nivel: 'verde' | 'galben' | 'rosu' | 'stop'; titlu: string; ce_faci: string; motiv: string | null } | null;
   /**
+   * Istoricul, pe până la 24 de luni: volum pe lună și sport, cele mai lungi ședințe, cele mai bune ritmuri, cursele,
+   * pauzele de peste 2 săptămâni, consecvența. Forma de acum o dau ultimele 6 săptămâni; istoricul spune ce a mai
+   * demonstrat corpul și cât de repede poate reveni.
+   */
+  istoric: import('../history/summary.js').HistorySummary | null;
+  /**
    * Cum răspunde corpul LUI la recuperare: dimineața de după fiecare tip (saună, baie rece, meditație…), HRV și puls față
    * de media lui pe 7 zile, comparat cu diminețile fără recuperare. Asociere, nu cauză; doar cu ≥ 4 dimineți.
    */
@@ -691,6 +697,7 @@ export function buildPacket(input: CollectorInput): Packet {
     efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
     echilibru: balance,
     raspuns_recuperare: input.recoveryEffects ?? [],
+    istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {
       const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;

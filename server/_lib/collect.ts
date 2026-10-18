@@ -11,6 +11,7 @@ import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../s
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { AI_BLOCKED_SOURCES, allowedForAI } from '../../src/collector/permissions.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
+import { historySummary, type HistorySummary } from '../../src/history/summary.js';
 import { mergeWellness } from '../../src/collector/packet.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
@@ -305,6 +306,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness: allowedForAI(wellness),
     activities: allowedForAI(activities),
+    trainingHistory: await loadHistorySummary(userId, today).catch(() => null),
     recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
     // Surse conectate pe care AI-ul n-are voie să le vadă (registrul din permissions.ts); acum niciuna.
     hiddenSources: [...AI_BLOCKED_SOURCES],
@@ -398,4 +400,14 @@ function declaredLevel(intake: Record<string, unknown> | null): string {
 export async function loadOthers(userId: string, from: string): Promise<OtherActivity[]> {
   const rows = await select<{ id: string; source: string; external_id: string; date: string; start_local: string | null; kind: 'recuperare' | 'activ'; name: string; minutes: number; avg_hr: number | null; max_hr: number | null }>('other_activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 200 }).catch(() => []);
   return rows.map((r) => ({ id: r.id, source: r.source, externalId: r.external_id, date: r.date, startLocal: r.start_local, kind: r.kind, name: r.name, minutes: r.minutes, avgHr: r.avg_hr, maxHr: r.max_hr }));
+}
+
+/** Rezumatul istoricului (24 de luni), din coloanele ușoare ale activităților. */
+export async function loadHistorySummary(userId: string, today: string): Promise<HistorySummary> {
+  const rows = await select<{ id: string; source: string; external_id: string; date: string; sport: Sport; minutes: number; distance_km: number | string | null; name: string | null }>('activities', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -730)}` }, { select: 'id,source,external_id,date,sport,minutes,distance_km,name', order: 'date.desc', limit: 4000 });
+  const acts = dedupeActivities(
+    allowedForAI(applyOverrides(rows.map((r) => ({ id: r.id, source: r.source as SourceActivity['source'], externalId: r.external_id, date: r.date, sport: r.sport, minutes: r.minutes, distanceKm: r.distance_km == null ? null : Number(r.distance_km), name: r.name })), await loadOverrides(userId))),
+  );
+  const ev = await select<{ activity_id: string | null; answers: { tip_neplanificat?: string | null } }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara' }, { select: 'activity_id,answers', limit: 2000 }).catch(() => []);
+  return historySummary(today, acts, ev.filter((e) => e.answers?.tip_neplanificat === 'cursa' && e.activity_id).map((e) => e.activity_id!));
 }

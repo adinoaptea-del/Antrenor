@@ -20,7 +20,7 @@ function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function pullWhoop(userId: string, token: string, days: number): Promise<{ wellness: SourceDaily[]; activities: SourceActivity[]; others: OtherActivity[] }> {
+export async function pullWhoop(userId: string, token: string, days: number): Promise<{ wellness: SourceDaily[]; activities: SourceActivity[]; others: OtherActivity[] }> {
   const end = new Date();
   const start = new Date(end.getTime() - days * 86_400_000);
   const [recoveries, sleeps, workouts] = await Promise.all([whoopApi.recovery(token, isoDay(start), isoDay(end)), whoopApi.sleep(token, isoDay(start), isoDay(end)), whoopApi.workouts(token, isoDay(start), isoDay(end))]);
@@ -36,7 +36,7 @@ async function pullWhoop(userId: string, token: string, days: number): Promise<{
   return { wellness, activities, others };
 }
 
-async function pullStrava(token: string, days: number): Promise<{ activities: SourceActivity[]; others: OtherActivity[] }> {
+export async function pullStrava(token: string, days: number): Promise<{ activities: SourceActivity[]; others: OtherActivity[] }> {
   const now = Math.floor(Date.now() / 1000);
   const rows = await listActivities(token, now - Math.max(days, 42) * 86_400, now + 3600);
   return { activities: rows.map(normalizeStravaActivity).filter((a): a is SourceActivity => a != null), others: rows.map(normalizeStravaOther).filter((a): a is OtherActivity => a != null) };
@@ -54,7 +54,7 @@ async function pullOura(token: string, days: number): Promise<SourceDaily[]> {
   return out;
 }
 
-function wellnessRow(userId: string, w: SourceDaily) {
+export function wellnessRow(userId: string, w: SourceDaily) {
   return {
     user_id: userId,
     date: w.date,
@@ -73,7 +73,7 @@ function wellnessRow(userId: string, w: SourceDaily) {
   };
 }
 
-function activityRow(userId: string, a: SourceActivity) {
+export function activityRow(userId: string, a: SourceActivity) {
   return {
     id: a.id,
     user_id: userId,

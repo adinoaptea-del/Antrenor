@@ -123,6 +123,8 @@ export interface CollectorInput {
   weather?: WeatherInput | null;
   /** Istoric pentru creșterea controlată: zile verzi la rând (readiness), ultima creștere aplicată. */
   history?: { greenStreak: number; lastIncrease: string | null } | null;
+  /** Rezumatul istoricului pe până la 24 de luni (calculat de cod). */
+  trainingHistory?: import('../history/summary.js').HistorySummary | null;
   /** Cum răspunde corpul sportivului la fiecare tip de recuperare (asocieri pe 90 de zile, calculate de cod). */
   recoveryEffects?: import('../recovery/recovery.js').RecoveryEffect[];
   /** Surse conectate pe care AI-ul nu are voie să le vadă (Strava): doar faptul că sunt conectate, fără date. */
