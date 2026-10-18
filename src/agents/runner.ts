@@ -275,6 +275,7 @@ export function safetyDecision(p: Packet): HeadResponse['decizie'] {
 export function safetyLine(p: Packet): string | null {
   if (p.semnale.simptom_cardiac === true) return 'Ai raportat un simptom cardiac: azi nu te antrenezi. Cere o evaluare medicală azi. Dacă ai durere în piept, leșin, lipsă de aer sau palpitații care nu trec, sună la 112.';
   if (p.semnale.febra === true) return 'Ai febră: azi și următoarele două zile fără antrenament; apoi o săptămână doar ușor. Dacă febra nu scade sau apar dureri în piept ori lipsă de aer, mergi la medic.';
+  if (p.restrictie_activa?.verdict === 'stop') return p.restrictie_activa.motiv;
   return null;
 }
 

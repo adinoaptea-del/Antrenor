@@ -49,16 +49,33 @@ export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string 
  *  - boală raportată azi → roșu;
  *  - durere ≥ 5 în ultimele 2 zile → roșu; durere 3–4 în ultimele 2 zile → cel puțin galben.
  */
+/**
+ * Semnale de alarmă scrise liber (comentariul de seară, nota de dimineață): durere/apăsare în piept, leșin, palpitații,
+ * lipsă de aer neobișnuită. Auditul R03: un simptom urgent trebuie tratat în cod, înaintea AI, nu doar dacă e bifat.
+ * O negație apropiată („fără durere în piept”, „n-am avut palpitații”) nu declanșează.
+ */
+const URGENT = /(dur(ere|eri)|apăsare|apasare|strânsoare|jungh(i|iuri))\s+(în|in|la)\s+piept|piept(ul)?\s+(mă|ma)\s+(doare|strânge)|leșin|lesin|am\s+leșinat|palpita(ț|t)ii|inima\s+(o\s+ia\s+razna|bate\s+neregulat)|bătăi\s+neregulate|nu\s+(mai\s+)?puteam\s+respira|lipsă\s+de\s+aer|lipsa\s+de\s+aer|sufoca/i;
+const NEG = /(fără|fara|nu\s+am|n-am|nu\s+a\s+fost|niciun|nicio)\s+(\S+\s+){0,3}$/i;
+export function urgentText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const m = URGENT.exec(text);
+  if (!m) return null;
+  if (NEG.test(text.slice(Math.max(0, m.index - 40), m.index))) return null;
+  return m[0];
+}
+
 export function activeRestriction(input: {
   today: string;
   morning: { date?: string; semnale?: Record<string, unknown> | null } | null;
-  evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null }[];
+  evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null; comentariu?: string | null }[];
   savedVerdict?: 'verde' | 'galben' | 'rosu' | 'stop' | null;
   /** Activitățile de azi (după dedublare) și RPE-ul declarat: un efort mare azi închide ziua. */
   todayActivities?: { sport: string; minutes: number; rpe?: number | null }[];
 }): Restriction {
   const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? (input.morning.semnale ?? {}) : {};
   if (s.simptom_cardiac === true) return { verdict: 'stop', reason: 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.' };
+  const written = [typeof s.nota === 'string' ? s.nota : null, ...input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -1)).map((e) => e.comentariu ?? null)].map(urgentText).find(Boolean);
+  if (written) return { verdict: 'stop', reason: `Ai scris „${written}”: azi fără antrenament și cere o evaluare medicală azi. Dacă durerea în piept, leșinul sau lipsa de aer apar acum, sună la 112.` };
   if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
   if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
   if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };

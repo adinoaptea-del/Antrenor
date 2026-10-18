@@ -32,3 +32,18 @@ describe('aviz cardiologic în trei stări', () => {
     assert.match(sql, /if v < 6 then/);
   });
 });
+
+import { activeRestriction, urgentText } from '../src/calendar/safety.js';
+describe('R03: simptomul urgent scris în comentariu oprește ziua din cod', () => {
+  it('detectează, cu negație respectată', () => {
+    assert.ok(urgentText('la final am simțit o durere în piept'));
+    assert.ok(urgentText('palpitații după intervale'));
+    assert.equal(urgentText('fără durere în piept, doar obosit'), null);
+    assert.equal(urgentText('picioarele grele'), null);
+  });
+  it('comentariul de ieri seară → stop azi, cu motivul', () => {
+    const r = activeRestriction({ today: '2026-10-19', morning: null, evenings: [{ date: '2026-10-18', durere: null, comentariu: 'am avut lipsă de aer neobișnuită' }] });
+    assert.equal(r?.verdict, 'stop');
+    assert.match(r!.reason, /112/);
+  });
+});

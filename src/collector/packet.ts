@@ -248,6 +248,7 @@ type Metric = 'hrv' | 'rhr';
 // Pentru HRV, Apple dă SDNN (alt calcul): nu intră în medie decât dacă e singura sursă.
 const HRV_EXCLUDED = new Set(['apple', 'manual', 'strava']);
 const RHR_EXCLUDED = new Set(['manual', 'strava']);
+const HRV_EXCLUDED_FOR = (k: 'hrv' | 'rhr') => (k === 'hrv' ? HRV_EXCLUDED : RHR_EXCLUDED);
 const MIN_OVERLAP = 7;
 
 /** Sursa de referință = cea mai bună sursă care are date pe metrica respectivă. */
@@ -318,6 +319,16 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
   const unique = new Map<string, SourceDaily>();
   for (const r of rows) unique.set(`${r.date}|${r.source}`, { ...unique.get(`${r.date}|${r.source}`), ...Object.fromEntries(Object.entries(r).filter(([, v]) => v != null)) } as SourceDaily);
   const clean = [...unique.values()];
+  // Auditul R05: HRV și pulsul de repaus nu se mediază între brățări (metode și scale diferite). Sursa principală pe
+  // fiecare metrică e cea cu cele mai multe zile în fereastră, ca baseline-ul să rămână pe aceeași metodă; o zi fără
+  // ea rămâne fără valoare (lipsă ≠ rău). Celelalte brățări rămân vizibile în perDevice / dezacord.
+  const primary = (k: 'hrv' | 'rhr') => {
+    const n = new Map<string, number>();
+    for (const r of clean) if (r[k] != null && !HRV_EXCLUDED_FOR(k).has(r.source)) n.set(r.source, (n.get(r.source) ?? 0) + 1);
+    return [...n.entries()].sort((a, b) => b[1] - a[1] || (PRIORITY[a[0]] ?? 5) - (PRIORITY[b[0]] ?? 5))[0]?.[0] ?? null;
+  };
+  const prim = { hrv: primary('hrv'), rhr: primary('rhr') };
+  // Decalajele între brățări rămân doar pentru semnalarea dezacordului, nu pentru valoare.
   const offsets = { hrv: sourceOffsets(clean, 'hrv'), rhr: sourceOffsets(clean, 'rhr') };
   const byDate = new Map<string, SourceDaily[]>();
   for (const r of clean) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
@@ -331,16 +342,20 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       }
       return { v: null, src: null };
     };
-    const hrv = averaged(sorted, 'hrv', offsets.hrv);
-    const rhr = averaged(sorted, 'rhr', offsets.rhr);
+    const fromPrimary = (k: 'hrv' | 'rhr') => {
+      const r = prim[k] ? sorted.find((x) => x.source === prim[k] && x[k] != null) : undefined;
+      return { v: r ? (r[k] as number) : null, src: r ? r.source : null };
+    };
+    const hrv = fromPrimary('hrv');
+    const rhr = fromPrimary('rhr');
     const sleeps = sorted.filter((r) => r.sleepMin != null).map((r) => r.sleepMin!);
     const sleepSources = sorted.filter((r) => r.sleepMin != null).map((r) => r.source);
     const bedtime = sorted.find((r) => r.bedtime)?.bedtime ?? null;
     // Scorurile de somn/recuperare sunt scale proprii fiecărui producător: nu se mediază, se ia cea mai bună sursă.
     const sleepScore = pick('sleepScore');
-    // Recuperarea / readiness-ul brățărilor (Whoop recovery, Oura readiness; ambele 0–100): media lor.
-    const recs = sorted.filter((r) => r.recoveryScore != null);
-    const recovery = { v: recs.length ? Math.round(mean(recs.map((r) => r.recoveryScore!))!) : null, src: recs.length ? recs.map((r) => r.source).join('+') : null };
+    // Recuperarea / readiness-ul brățărilor sunt scoruri proprii (Whoop recovery ≠ Oura readiness): nu se mediază; se ia
+    // sursa cu prioritate, etichetată.
+    const recovery = pick('recoveryScore');
     const resps = sorted.filter((r) => r.respiratoryRate != null).map((r) => r.respiratoryRate!);
     const weight = pick('weightKg');
     const fat = pick('bodyFatPct');
