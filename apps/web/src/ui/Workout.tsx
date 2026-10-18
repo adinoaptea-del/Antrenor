@@ -4,9 +4,10 @@ import { sessionName } from '@core/strength/ppl.js';
 import { changeSummary, moveOptions } from '@core/calendar/actions.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { Dot, Icons, fmtDayMonth } from './common';
+import { useWorkoutSheet } from './WorkoutSheet';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
-import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf, sessionSteps } from '../data/model';
+import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf } from '../data/model';
 
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
@@ -17,7 +18,7 @@ const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.r
  */
 export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; hero?: boolean; onOpen?: (screen: string, opts?: { activityId?: string }) => void }) {
   const me = useMe();
-  const [showSteps, setShowSteps] = useState(false);
+  const { open: openSheet, sheet } = useWorkoutSheet();
   const [showChange, setShowChange] = useState(false);
   const color = colorOf(me, w);
   const cancelled = w.status === 'anulat_sistem';
@@ -36,7 +37,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
 
   return (
     <div className={`wk ${hero ? 'hero' : ''} ${off ? 'off' : ''}`}>
-      <div className="wk-head">
+      <button className="wk-head wk-tap" onClick={() => openSheet(w)} aria-label="Ce faci la ședința asta">
         <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
         <div className="wk-t">
           <div className="wk-name">
@@ -47,7 +48,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         <div className="wk-min">
           {off ? <s>{fmtMinutes(w.original?.plannedMinutes ?? w.plannedMinutes)}</s> : fmtMinutes(w.plannedMinutes)}
         </div>
-      </div>
+      </button>
 
       {cancelled || paused ? (
         <div className="wk-off">
@@ -120,22 +121,11 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
       {yellow && <YellowDay w={w} />}
 
       {!off && !done && (
-        <>
-          <button className="linkish" onClick={() => setShowSteps(!showSteps)} aria-expanded={showSteps}>
-            {showSteps ? 'Ascunde pașii' : 'Cum o faci'}
-          </button>
-          {showSteps && (
-            <ol className="steps">
-              {w.structure && w.type !== 'brick' && <li><b>Structura</b> {w.structure}</li>}
-              {sessionSteps(me, w).map((st) => (
-                <li key={st.label}>
-                  <b>{st.label}</b> {st.text}
-                </li>
-              ))}
-            </ol>
-          )}
-        </>
+        <button className="pill on wk-how" onClick={() => openSheet(w)}>
+          Ce faci {w.date === me.today ? 'azi' : 'la ședința asta'} {Icons.arrowRight}
+        </button>
       )}
+      {sheet}
 
       {upcoming && !paused && <Actions w={w} />}
     </div>

@@ -10,6 +10,7 @@ import { DAY_NAMES, SPORT_LABEL, colorOf, daysToRace, fmtMinutes, lastDoneWorkou
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { Today } from './Today';
+import { useWorkoutSheet } from './WorkoutSheet';
 import { RacePanel } from './RaceReady';
 import { AppHeader } from './Shell';
 import { fmtTime } from '@core/goals/run-target.js';
@@ -47,6 +48,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           ? { label: 'Vezi ședința în plan', go: () => onOpen('calendar') }
           : { label: 'De ce? Întreabă antrenorul', go: () => onOpen('antrenor') };
 
+  const { open: openSheet, sheet } = useWorkoutSheet();
   const next = me.plan
     .filter((w) => (w.status === 'planificat' || w.status === 'mutat') && w.date > me.today && w.type !== 'odihna')
     .sort((a, b) => (a.date < b.date ? -1 : 1))[0];
@@ -76,6 +78,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         )}
       </div>
 
+      {sheet}
       <div className="stack">
         {!me.intakeComplete && (
           <button className="row-card todo" onClick={() => onOpen('intake')}>
@@ -90,7 +93,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         <Today onOpen={onOpen} cta={cta} />
 
         {next && (
-          <button className="row-card" onClick={() => onOpen('calendar')}>
+          <button className="row-card" onClick={() => openSheet(next)}>
             <span>
               <small className="eyebrow">
                 Urmează · {DAY_NAMES[weekday(next.date)]}, {fmtDayMonth(next.date)}

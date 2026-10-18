@@ -12,6 +12,7 @@ import { strengthSpecFor } from '@core/strength/plan-specs.js';
 import type { Me, SportTotal } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { SessionDetails } from './SessionDetails';
+import { useWorkoutSheet } from './WorkoutSheet';
 import { DAY_NAMES, SPORT_LABEL, TYPE_LABEL, colorOf, fmtMinutes, thisWeekDates, workoutsOn } from '../data/model';
 
 const SPORTS: { id: Sport; icon: keyof typeof Icons }[] = [
@@ -75,6 +76,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
   const dayName = (iso: string) => (iso === me.today ? 'azi' : iso === addDays(me.today, 1) ? 'mâine' : `${DAY_NAMES[weekday(iso)]!}, ${Number(iso.slice(8, 10))}`);
   const swimBest = me.sportReady?.find((r) => r.sport === 'inot')?.best ?? null;
   const hasActs = me.activities.some((a) => a.sport === sport);
+  const { open: openSheet, sheet } = useWorkoutSheet();
 
   return (
     <>
@@ -89,6 +91,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
       </div>
       )}
 
+      {sheet}
       <div className="stack">
         {goalKind(me.user.goal) === 'fitness' && <FitnessWeekCard />}
         {sport === 'inot' && (
@@ -101,7 +104,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
         )}
 
         {next ? (
-          <button className="row-card" onClick={() => onOpen('calendar')}>
+          <button className="row-card" onClick={() => openSheet(next)}>
             <span>
               <small className="eyebrow">Urmează · {dayName(next.date)}</small>
               <b>
@@ -187,7 +190,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
                   {weekWorkouts.map((w) => {
                     const struct = sport === 'inot' ? swimStructure(w.type, w.structure ?? null, swimBest, swimMode) : sport === 'forta' ? (() => { const p = strengthFor(me, w); return p ? `${p.session.name} · ${BLOCK_LABEL[p.spec.block].toLowerCase()}` : ''; })() : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
                     return (
-                      <div key={w.id} className="item">
+                      <div key={w.id} className="item" role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openSheet(w)} onKeyDown={(e) => e.key === 'Enter' && openSheet(w)}>
                         <Dot color={colorOf(me, w)} />
                         <div style={{ minWidth: 0 }}>
                           <div className="t">

@@ -1086,3 +1086,28 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
   .wk.hero .wk-head { grid-template-columns: 36px minmax(0, 1fr); }
   .wk.hero .wk-min { grid-column: 2; }
 }
+
+/* Fereastra ședinței: peste ecran, de jos în sus pe telefon, cu fundalul întunecat. */
+.wk-tap { background: transparent; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; width: 100%; }
+.wk-how { justify-self: start; }
+.sheet-wrap { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-end; justify-content: center; animation: sheet-fade 0.18s ease-out; }
+.sheet { width: 100%; max-width: 560px; max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-2); border-bottom: 0; border-radius: 22px 22px 0 0; padding: 8px max(16px, env(safe-area-inset-left, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet-grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line-2); margin: 2px auto 10px; }
+.sheet-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; gap: 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.sheet-t { min-width: 0; display: grid; gap: 2px; }
+.sheet-t b { font-size: 16px; font-weight: 800; line-height: 1.25; }
+.sheet-t span { font-size: 12px; color: var(--muted); }
+.sheet-x { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg); font-size: 22px; line-height: 1; cursor: pointer; }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; display: grid; gap: 10px; padding: 12px 0; min-height: 0; }
+.sheet-why { font-size: 14px; line-height: 1.45; }
+.sheet-k { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.sheet-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; line-height: 1.45; }
+.sheet-steps b { margin-right: 4px; }
+.sheet-tip { font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); }
+.sheet-safe { font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.sheet-ok { width: 100%; justify-content: center; }
+.str-cue { color: var(--muted); }
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (min-width: 700px) { .sheet-wrap { align-items: center; } .sheet { border-radius: 22px; border-bottom: 1px solid var(--line-2); } }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-wrap { animation: none; } }
