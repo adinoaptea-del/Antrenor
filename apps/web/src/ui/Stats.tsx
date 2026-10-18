@@ -133,7 +133,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         {me.sportReady && me.sportReady.length > 0 && (
           <Card>
             <div className="chart-h">
-              <div className="title">Pregătit pentru {me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă'}</div>
+              <div className="title">Progres față de repere · {me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă'}</div>
               <span className="num md">{overallReady(me.sportReady)}%</span>
             </div>
             <div className="bar-legend">

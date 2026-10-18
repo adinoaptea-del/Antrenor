@@ -210,3 +210,9 @@ alter table public.users alter column approved set default false;
 -- Costul AI: tokenii de cache separat (au alt tarif decât intrarea obișnuită).
 alter table public.ai_usage add column if not exists cache_write_tokens int not null default 0;
 alter table public.ai_usage add column if not exists cache_read_tokens int not null default 0;
+
+-- 8. Ședințe pe care le schimbă sportivul sau sistemul: forma din plan (eticheta „Actualizat”, revenirea după „Plecat”).
+alter table public.workouts_planned add column if not exists original jsonb;
+alter table public.workouts_planned add column if not exists changed_at timestamptz;
+-- Preferințele de calendar: plecări (interval + ce ai la dispoziție) și întâlniri fixe (alergarea cu grupul).
+alter table public.users add column if not exists calendar_prefs jsonb not null default '{}'::jsonb;

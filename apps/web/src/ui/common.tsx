@@ -363,6 +363,11 @@ function I({ d, extra }: { d: string; extra?: ReactNode }) {
 }
 
 export const Icons = {
+  alert: <I d="M12 4 2.8 19.5h18.4L12 4ZM12 10v4.5M12 17.2v.3" />,
+  stop: <I d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3L8.3 3ZM8.5 12h7" />,
+  move: <I d="M4 12h16M16 8l4 4-4 4M8 4v4M8 16v4" />,
+  plane: <I d="M10.5 13.5 3 11l1.5-1.5 7 1L16 6c1-1 2.6-1.4 3.3-.7.7.7.3 2.3-.7 3.3l-4.5 4.5 1 7L13.6 21.6 11 14Z" />,
+  users: <I d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5M16 4.3a3.5 3.5 0 0 1 0 6.4M18 14.8c1.9.8 3.1 2.6 3.5 5.2" />,
   home: <I d="M3 11.5 12 4l9 7.5M5.5 10.5V20h13v-9.5M10 20v-5h4v5" />,
   grid: (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="i">

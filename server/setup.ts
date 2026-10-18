@@ -41,10 +41,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 async function hasUpgrade(): Promise<boolean> {
   const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
   const [r, t, e, a2] = await Promise.all([
-    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/plans?select=audit2&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/workouts_planned?select=original,changed_at&limit=1`, h),
   ]);
   return r.ok && t.ok && e.ok && a2.ok;
 }

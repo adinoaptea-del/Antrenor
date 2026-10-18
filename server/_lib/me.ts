@@ -2,6 +2,7 @@ import { swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
+import { loadPrefs } from './prefs.js';
 import { ENV } from './env.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
@@ -104,6 +105,13 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     return { provider: t.provider, connectedAt: t.connected_at, lastSync: last?.ran_at ?? null, lastOk: last ? last.ok : null, detail: last?.detail ?? null };
   });
   const lastSync = lastSyncRows.find((s) => s.ok)?.ran_at ?? null;
+  const lastDataOf = (src: string) => {
+    const a = acts.filter((x) => x.source === src).map((x) => x.date);
+    const w = wellnessRows.filter((x) => x.source === src).map((x) => String(x.date));
+    const all = [...a, ...w].sort();
+    return all.length ? all[all.length - 1]! : null;
+  };
+  const SOURCE_NAME = { whoop: 'WHOOP', strava: 'Strava', oura: 'Oura', apple: 'Apple Health' } as const;
 
   const intake = forms.intake as (Record<string, unknown> & { consimtamant?: boolean }) | null;
   const have: string[] = [];
@@ -174,6 +182,15 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     forms: { intake, morning: (forms.morning as MorningForm | null) ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today) },
     devices,
     lastSync,
+    sources: [
+      ...tokens.map((t) => {
+        const ok = lastSyncRows.find((r) => r.provider === t.provider && r.ok);
+        const last = lastSyncRows.find((r) => r.provider === t.provider);
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider) };
+      }),
+      ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple') }] : []),
+    ],
+    prefs: await loadPrefs(userId),
     zones: zonesRow
       ? {
           run: zonesRow.run_hr_zones ? `Z2 ${zonesRow.run_hr_zones[0]}–${zonesRow.run_hr_zones[1]} bpm` : null,

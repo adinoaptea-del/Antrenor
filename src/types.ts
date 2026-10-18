@@ -42,6 +42,22 @@ export interface PlannedWorkout {
    * accepted = true → varianta ușoară intră în calendar; false → face ședința din plan; null → n-a ales încă.
    */
   suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null } | null;
+  /** Cum arăta ședința în plan înainte de prima schimbare (de sistem sau a sportivului): pentru „Actualizat” și pentru revenire. */
+  original?: WorkoutSnapshot | null;
+  /** Când s-a schimbat ultima dată (ISO). */
+  changedAt?: string | null;
+}
+
+export interface WorkoutSnapshot {
+  date: string;
+  sport?: Sport;
+  type: WorkoutType;
+  plannedMinutes: number;
+  targetZones: Zone[];
+  structure?: string | null;
+  key: boolean;
+  status: PlannedWorkout['status'];
+  intervals?: PlannedWorkout['intervals'] | null;
 }
 
 /** O ședință care încă trebuie făcută: planificată sau mutată pe altă zi. Singura regulă folosită în toate filtrele. */

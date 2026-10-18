@@ -214,7 +214,7 @@ function ReadyCard({ sport }: { sport: Sport }) {
   const lvl = r.value == null ? null : r.value >= 70 ? 'verde' : r.value >= 50 ? 'galben' : r.value >= 30 ? 'portocaliu' : 'rosu';
   return (
     <Card tight>
-      <Label>Pregătit pentru proba de cursă</Label>
+      <Label>Progres față de repere</Label>
       <div className="ready-head">
         <span className={`num ready-num lvl-txt-${lvl ?? ''}`}>{r.value == null ? '–' : r.value}</span>
         {r.value != null && <span className="unit">%</span>}

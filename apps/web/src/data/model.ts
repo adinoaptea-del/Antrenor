@@ -278,3 +278,66 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
     { label: 'Revenire', text: `${cool} min ${z(1)}` },
   ];
 }
+
+/** De ce există ședința, într-o propoziție (din tipul ei). */
+export function purposeOf(w: PlannedWorkout): string {
+  if (w.status === 'anulat_sistem') return 'Anulată: corpul are nevoie de odihnă sau ziua nu permite.';
+  if (/TEST/i.test(w.structure ?? '')) return 'Test: din el ies zonele tale, ca intensitatea să fie pe corpul tău.';
+  if (/4\s*×\s*4/.test(w.structure ?? '')) return 'Metoda norvegiană 4×4: ridică VO2max, plafonul motorului.';
+  switch (w.type) {
+    case 'z2':
+      return w.sport === 'inot' ? 'Înot ușor: volum aerob fără oboseală.' : 'Bază aerobă: inima și mușchii învață să ardă grăsimi, fără să te obosească.';
+    case 'tehnica':
+      return 'Tehnică: înoți mai eficient cu același efort.';
+    case 'calitate':
+      return 'Intensitate: ridică pragul, ca ritmul de cursă să pară mai ușor.';
+    case 'lung':
+      return 'Rezistență: corpul se obișnuiește cu durata cursei.';
+    case 'brick':
+      return 'Brick: picioarele învață să alerge imediat după bicicletă.';
+    case 'forta':
+      return 'Forță: tendoane și mușchi mai rezistenți, mai puține accidentări.';
+    default:
+      return 'Odihnă: adaptarea se întâmplă acum.';
+  }
+}
+
+/** Primele n propoziții dintr-un text (pentru rezumate scurte). */
+export function firstSentences(text: string, n = 2): string {
+  const flat = cleanRefs(text).replace(/\s*\n+\s*/g, ' ').trim();
+  const parts = flat.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [flat];
+  return parts.slice(0, n).join('').trim();
+}
+
+/** Mesajul de azi al antrenorului, dacă a fost scris pe starea de acum (altfel e depășit). */
+export function todayMessage(me: Me): { msg: Me['messages'][number] | null; stale: boolean } {
+  const color = me.readiness?.verdict === 'stop' ? 'stop' : (me.state?.verdict ?? me.readiness?.verdict ?? null);
+  const todays = me.messages.filter((m) => localDayOf(m.createdAt) === me.today);
+  const fresh = (m: Me['messages'][number]) => !m.decision || m.decision === 'stop' || !color || color === 'stop' || m.decision === (color === 'portocaliu' ? 'galben' : color);
+  const msg = todays.find(fresh) ?? null;
+  return { msg, stale: !msg && todays.length > 0 };
+}
+
+export function localDayOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Ședința e încă de făcut (activă, azi sau în viitor, fără activitate legată și fără scor final). */
+export function isUpcoming(me: Me, w: PlannedWorkout): boolean {
+  return (w.status === 'planificat' || w.status === 'mutat') && w.date >= me.today && colorOf(me, w) === 'asteptare' && !(w.date === me.today && activityFor(me, w));
+}
+
+/** „acum 5 min”, „azi 08:12”, „ieri”, „acum 3 zile”. */
+export function ago(iso: string | null, today: string): string {
+  if (!iso) return 'niciodată';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const min = Math.round((Date.now() - t) / 60000);
+  if (min < 60) return `acum ${Math.max(1, min)} min`;
+  const day = localDayOf(iso);
+  const d = diffDays(day, today);
+  if (d <= 0) return `azi ${new Date(t).toTimeString().slice(0, 5)}`;
+  if (d === 1) return 'ieri';
+  return `acum ${d} zile`;
+}

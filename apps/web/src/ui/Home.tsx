@@ -11,6 +11,7 @@ import { DAY_NAMES, SPORT_LABEL, daysToRace, fmtMinutes, greeting, lastDoneWorko
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
+import { Today } from './Today';
 
 // Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
 // zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
@@ -70,10 +71,42 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         <div className="sub">{me.user.raceDate ? `${fmtDayMonth(me.user.raceDate)} ${me.user.raceDate.slice(0, 4)}` : 'completează chestionarul ca să pornească planul'}</div>
       </div>
 
+      <div className="forms-row">
+        {!me.intakeComplete && (
+          <button className="form-tile todo" onClick={() => onOpen('intake')}>
+            <span className="k">Chestionar</span>
+            <span className="v">3 minute</span>
+          </button>
+        )}
+        {/* Chestionarul de dimineață contează doar pentru decizia zilei: după 14:00 nu mai apare. */}
+        {!morningComplete(morning ?? undefined) && new Date().getHours() >= 4 && new Date().getHours() < 14 && (
+          <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
+            <span className="k">Dimineața</span>
+            <span className="v">{morning && Object.values(morning.hooper).some((v) => v != null) ? `Completează (${Object.values(morning.hooper).filter((v) => v != null).length} din 4)` : 'Cum te simți azi? · 20 de secunde'}</span>
+          </button>
+        )}
+        {lastDone && lastDoneId && !eveningComplete(evening) && (
+          <button className="form-tile todo" onClick={() => onOpen('seara', { activityId: lastDoneId })}>
+            <span className="k">Cum a fost</span>
+            <span className="v">{`${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
+          </button>
+        )}
+        {isSunday && !me.forms.weeklyDone && (
+          <button className="form-tile todo" onClick={() => onOpen('saptamanal')}>
+            <span className="k">Săptămâna</span>
+            <span className="v">3 întrebări</span>
+          </button>
+        )}
+      </div>
+
+      <Suggestions />
+
+      <Today onOpen={onOpen} />
+
       {me.sportReady && me.sportReady.length > 0 ? (
-        <div className="progress" role="img" aria-label={`Ești pregătit pentru ${goalName}: ${overall}%`}>
+        <div className="progress" role="img" aria-label={`Progres față de repere, ${goalName}: ${overall}%`}>
           <div className="ready-title">
-            Ești pregătit pentru {goalName}: <b>{overall}%</b>
+            Progres față de repere ({goalName}): <b>{overall}%</b>
           </div>
           <div className="track">
             <div className={`fill ${overall ? '' : 'empty'}`} style={overall ? { width: `${Math.max(3, overall ?? 0)}%` } : undefined} />
@@ -115,7 +148,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           </div>
           <div className="meta">
             <span>
-              <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> pregătit pentru {me.user.goal ?? 'cursă'}
+              <b>{total == null ? (bar?.blocked ? 'blocată' : 'fără date') : `${total}%`}</b> progres față de repere
             </span>
             <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
               {bar && bar.components.length ? `măsurat ${known}/${bar.components.length}` : 'detalii'} {Icons.chevronRight}
@@ -143,36 +176,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
 
       <p className="daymsg">{greeting(me)}</p>
 
-      <div className="forms-row">
-        {!me.intakeComplete && (
-          <button className="form-tile todo" onClick={() => onOpen('intake')}>
-            <span className="k">Chestionar</span>
-            <span className="v">3 minute</span>
-          </button>
-        )}
-        {/* Chestionarul de dimineață contează doar pentru decizia zilei: după 14:00 nu mai apare. */}
-        {!morningComplete(morning ?? undefined) && new Date().getHours() >= 4 && new Date().getHours() < 14 && (
-          <button className="form-tile todo" onClick={() => onOpen('dimineata')}>
-            <span className="k">Dimineața</span>
-            <span className="v">{morning && Object.values(morning.hooper).some((v) => v != null) ? `Completează (${Object.values(morning.hooper).filter((v) => v != null).length} din 4)` : 'Cum te simți azi? · 20 de secunde'}</span>
-          </button>
-        )}
-        {lastDone && lastDoneId && !eveningComplete(evening) && (
-          <button className="form-tile todo" onClick={() => onOpen('seara', { activityId: lastDoneId })}>
-            <span className="k">Cum a fost</span>
-            <span className="v">{`${SPORT_LABEL[lastDone.sport]} · ${dayLabel(lastDone.date)}`}</span>
-          </button>
-        )}
-        {isSunday && !me.forms.weeklyDone && (
-          <button className="form-tile todo" onClick={() => onOpen('saptamanal')}>
-            <span className="k">Săptămâna</span>
-            <span className="v">3 întrebări</span>
-          </button>
-        )}
-      </div>
-
-      <Suggestions />
-      <ShortOnTime />
 
       <div className="sports">
         {SPORTS.filter((s) => !isRunGoal(me.user.goal) || s.id === 'alergare').map((s) => {
@@ -261,63 +264,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         </Card>
       ))}
     </>
-  );
-}
-
-/**
- * „Am doar X minute azi”: ședința de azi se scurtează corect (încălzire, partea principală cu repetările care încap,
- * revenire). Restul săptămânii nu se încarcă în plus: ce nu s-a făcut azi nu se recuperează.
- */
-function ShortOnTime() {
-  const me = useMe();
-  const { submitForm } = useData();
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const today = me.plan.filter((w) => w.date === me.today && (w.status === 'planificat' || w.status === 'mutat') && w.sport !== 'forta' && w.type !== 'odihna' && w.plannedMinutes > 25);
-  const done = me.activities.some((a) => a.date === me.today);
-  if (!today.length || done) return null;
-  const w = today.sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0]!;
-  const options = [20, 30, 45, 60, 75].filter((m) => m <= w.plannedMinutes - 10);
-  if (!options.length) return null;
-  const pick = async (minutes: number) => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await submitForm('timp', { workoutId: w.id, minutes });
-      const d = r.data as { structura?: string } | undefined;
-      setMsg(`Gata: ${SPORT_LABEL[w.sport].toLowerCase()} ${minutes} min${d?.structura ? ` · ${d.structura}` : ''}.`);
-      setOpen(false);
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="suggest">
-      {!open ? (
-        <button className="pill" onClick={() => setOpen(true)}>
-          Am mai puțin timp azi
-        </button>
-      ) : (
-        <>
-          <div className="sg-k">Cât timp ai pentru {SPORT_LABEL[w.sport].toLowerCase()}?</div>
-          <div className="sg-s">În plan: {fmtMinutes(w.plannedMinutes)}. Păstrez partea importantă a ședinței; ce rămâne nu se adaugă în alte zile.</div>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            {options.map((m) => (
-              <button key={m} className="pill on" disabled={busy} onClick={() => void pick(m)}>
-                {m} min
-              </button>
-            ))}
-            <button className="pill" disabled={busy} onClick={() => setOpen(false)}>
-              Renunț
-            </button>
-          </div>
-        </>
-      )}
-      {msg && <div className="tiny muted" style={{ marginTop: 8 }}>{msg}</div>}
-    </div>
   );
 }
 

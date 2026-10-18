@@ -1,4 +1,6 @@
 // Planul: din chestionarul de intrare (program, nivel, aviz) și istoricul de activități → generatePlan → workouts_planned.
+import { applyAway } from '../../src/calendar/actions.js';
+import { currentAway, loadPrefs } from './prefs.js';
 import { insert, one, remove, rpc, select, update, upsert } from './db.js';
 import { loadActivities, loadZones, toWorkoutRow } from './collect.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
@@ -112,7 +114,9 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const startDate = continuing ? current!.start_date : nextMonday;
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
+  const prefs = await loadPrefs(userId);
   const result: GenerateResult = generatePlan({
+    fixed: prefs.fixe,
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
@@ -145,7 +149,13 @@ export async function generateAndStore(userId: string, today: string, intake: In
     version: (prev[0]?.version ?? 0) + 1,
     active: false,
   });
-  const future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  // Plecările deja anunțate se aplică și pe planul nou (altfel „Refă planul” le-ar șterge).
+  const at = new Date().toISOString();
+  for (const away of currentAway(prefs, today)) {
+    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
+    future = future.map((w) => changed.get(w.id) ?? w);
+  }
   const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan!.id}-${x.id}` }, userId, plan!.id));
   try {
     for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));

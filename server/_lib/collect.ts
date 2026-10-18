@@ -49,6 +49,8 @@ export interface WorkoutRow {
   status: PlannedWorkout['status'];
   note: string | null;
   suggestion?: PlannedWorkout['suggestion'] | null;
+  original?: PlannedWorkout['original'] | null;
+  changed_at?: string | null;
 }
 
 export function toPlanned(r: WorkoutRow): PlannedWorkout {
@@ -66,6 +68,8 @@ export function toPlanned(r: WorkoutRow): PlannedWorkout {
     status: r.status,
     note: r.note ?? undefined,
     suggestion: r.suggestion ?? null,
+    original: r.original ?? null,
+    changedAt: r.changed_at ?? null,
   };
 }
 
@@ -87,6 +91,9 @@ export function toWorkoutRow(w: PlannedWorkout, userId: string, planId: string):
     note: w.note ?? null,
     // Mereu scrisă (și null): o sugestie expirată se șterge explicit.
     suggestion: w.suggestion ?? null,
+    // Forma din plan de dinainte de schimbări (eticheta „Actualizat”); null = ședința e cum a fost planificată.
+    original: w.original ?? null,
+    changed_at: w.changedAt ?? null,
   };
 }
 

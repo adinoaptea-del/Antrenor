@@ -1,3 +1,4 @@
+import { withOriginal } from '../../src/calendar/actions.js';
 import { recordUsage } from './usage.js';
 import { hasConsent } from './consent.js';
 // Rularea agenților pentru un sportiv: pachet → piramidă → mesaje, jurnal, fișiere, calendar viu, readiness.
@@ -132,7 +133,11 @@ export async function applyPlanEvents(userId: string, today: string, planId: str
     if (!claimed) continue;
     const before = new Map(plan.map((w) => [w.id, JSON.stringify(w)]));
     const r = adapt(plan, ev, ctx);
-    const changed = r.plan.filter((w) => before.get(w.id) !== JSON.stringify(w));
+    const at = new Date().toISOString();
+    const prevById = new Map(plan.map((w) => [w.id, w]));
+    const changed = r.plan.filter((w) => before.get(w.id) !== JSON.stringify(w)).map((w) => (prevById.has(w.id) ? withOriginal(prevById.get(w.id)!, w, at) : w));
+    const changedIds = new Map(changed.map((w) => [w.id, w]));
+    r.plan = r.plan.map((w) => changedIds.get(w.id) ?? w);
     try {
       if (changed.length) await upsert('workouts_planned', changed.map((w) => toWorkoutRow(w, userId, planId)), 'id');
     } catch (e) {

@@ -60,7 +60,7 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
       <div className="stack">
         <Card>
           <Label>Azi</Label>
-          {color && <div className={`coach-day lvl-txt-${color === 'stop' ? 'rosu' : color}`}>{DAY_WORD[color]}</div>}
+          {color && <div className={`coach-day lvl-txt-${color === 'stop' ? 'rosu' : color}`}>{color === 'rosu' || color === 'stop' ? Icons.stop : color === 'verde' ? Icons.check : Icons.alert} {DAY_WORD[color]}</div>}
           {plan.length === 0 ? (
             <div className="small muted" style={{ marginTop: 6 }}>{me.plan.length ? 'Odihnă în plan.' : 'Planul apare după chestionarul de intrare.'}</div>
           ) : (

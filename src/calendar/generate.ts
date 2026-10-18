@@ -1,3 +1,4 @@
+import { fixedBonus, type FixedMeet } from './actions.js';
 import { DOSE_TEXT, dayById, doseFor, rotation } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
@@ -25,6 +26,8 @@ export interface GenerateInput {
   athlete?: { age: number | null; sex: 'm' | 'f' | null };
   /** Doar la semimaraton / maraton: ritmul-țintă de cursă (s/km) și dacă poate alerga deja distanța. */
   run?: { goalPaceSecKm: number | null; canDoDistance: boolean | null; longestRunKm?: number | null };
+  /** Întâlniri fixe (ex. alergarea cu grupul sâmbăta): ședința potrivită se pune în ziua aceea, dacă e în program. */
+  fixed?: FixedMeet[];
 }
 
 export interface WeekPlan {
@@ -118,7 +121,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const sessions = runGoal ? runWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
     const minCount: Partial<Record<Sport, number>> = runGoal ? { alergare: 3, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
     const fitted = fitToHours(sessions, target, pw.recovery, minCount);
-    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount);
+    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
 
     out.push({
@@ -476,7 +479,7 @@ interface DayState {
   sports: Set<Sport>;
 }
 
-function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phase: Phase = 'baza1', minCount: Partial<Record<Sport, number>> = {}): { workouts: PlannedWorkout[]; notes: string[] } {
+function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phase: Phase = 'baza1', minCount: Partial<Record<Sport, number>> = {}, fixed?: FixedMeet[]): { workouts: PlannedWorkout[]; notes: string[] } {
   const days: DayState[] = Array.from({ length: 7 }, (_, d) => ({
     blocks: blocks.filter((b) => b.day === d).map((b) => b.endMin - b.startMin),
     count: 0,
@@ -502,7 +505,10 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phas
       taken[x.sport] = n + 1;
     }
   }
-  const ordered = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
+  // Ședința legată de o întâlnire fixă (ex. lunga cu grupul) se plasează prima, ca ziua ei să nu fie luată de altele.
+  const isFixed = (x: Session) => !!fixed?.some((f) => fixedBonus([f], f.zi, x.sport, x.type) > 0);
+  const ordered0 = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
+  const ordered = [...ordered0.filter(isFixed), ...ordered0.filter((x) => !isFixed(x))];
   let n = 0;
 
   for (const s of ordered) {
@@ -539,7 +545,7 @@ function place(sessions: Session[], blocks: FreeBlock[], weekStart: string, phas
     function spaced(c: { st: DayState; d: number }): number {
       const heavy = (x: DayState | undefined) => !!x && (x.hard > 0 || !!x.hasBrick);
       const hardSession = s.type === 'calitate' || s.type === 'brick';
-      return score(c, s) - (hardSession && (heavy(days[c.d - 1]) || heavy(days[c.d + 1])) ? 1000 : 0);
+      return score(c, s) + fixedBonus(fixed, c.d, s.sport, s.type) - (hardSession && (heavy(days[c.d - 1]) || heavy(days[c.d + 1])) ? 1000 : 0);
     }
 
     let candidates = findCandidates();

@@ -13,10 +13,12 @@ import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
-import { applyPlanEvents, runAgents } from '../_lib/agents.js';
-import { loadForms, loadPlan } from '../_lib/collect.js';
+import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
+import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
 import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
-import { addDays, localDayStartUtc } from '../../src/util/dates.js';
+import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
+import { AWAY_LABEL, applyAway, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
+import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 
 /**
@@ -262,6 +264,94 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const shorter = shortenWorkout(w, minutes);
       await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: shorter.plannedMinutes, type: shorter.type, target_zones: shorter.targetZones, intervals: shorter.intervals ?? null, structure: shorter.structure ?? null, note: shorter.note ?? null, is_key: shorter.key });
       json(res, 200, { ok: true, structura: shorter.structure ?? null });
+      return;
+    }
+    if (kind === 'actiune') {
+      // Acțiunile sportivului pe o ședință: { workoutId, op: 'muta', date } sau { workoutId, op: 'usor' }.
+      const id = String(body.workoutId ?? '');
+      const op = String(body.op ?? '');
+      const row = await one<{ date: string }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: 'date' });
+      if (!row) throw new HttpError(404, 'ședință inexistentă');
+      if (row.date < today) throw new HttpError(409, 'ședința e în trecut');
+      const ws = weekStart(row.date);
+      const { planId, workouts } = await loadPlan(u.id, ws, addDays(ws, 6));
+      const w = workouts.find((x) => x.id === id);
+      if (!planId || !w) throw new HttpError(404, 'ședința nu e în planul activ');
+      const done = await executedIds(u.id, today, workouts);
+      if (done.includes(id)) throw new HttpError(409, 'ședința e deja făcută');
+      const at = new Date().toISOString();
+      let next;
+      try {
+        if (op === 'muta') next = moveWorkout(workouts, id, String(body.date ?? ''), today, at, done);
+        else if (op === 'usor') next = easyWorkout(w, at);
+        else throw new HttpError(400, 'acțiune necunoscută');
+      } catch (e) {
+        if (e instanceof HttpError) throw e;
+        throw new HttpError(409, e instanceof Error ? e.message : String(e));
+      }
+      await upsert('workouts_planned', toWorkoutRow(next, u.id, planId), 'id');
+      await insert('journal', { user_id: u.id, date: today, entry: `calendar (sportivul): ${next.note ?? op}` }).catch(() => undefined);
+      await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
+      json(res, 200, { ok: true, note: next.note ?? null });
+      return;
+    }
+    if (kind === 'plecat') {
+      // { dela, panala, ce } adaugă o plecare; { anuleaza: index } o scoate și pune planul la loc.
+      const prefs = await loadPrefs(u.id);
+      const at = new Date().toISOString();
+      if (body.anuleaza != null) {
+        const i = Number(body.anuleaza);
+        const away = prefs.plecari[i];
+        if (!away) throw new HttpError(404, 'plecare inexistentă');
+        const { planId, workouts } = await loadPlan(u.id, today, addDays(away.panala, 7));
+        const back = planId ? restoreAway(workouts, away, today, at) : [];
+        if (back.length) await upsert('workouts_planned', back.map((x) => toWorkoutRow(x, u.id, planId!)), 'id');
+        prefs.plecari.splice(i, 1);
+        await savePrefs(u.id, prefs);
+        json(res, 200, { ok: true, inapoi: back.length });
+        return;
+      }
+      const dela = String(body.dela ?? '');
+      const panala = String(body.panala ?? '');
+      const ce = String(body.ce ?? '') as Away['ce'];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dela) || !/^\d{4}-\d{2}-\d{2}$/.test(panala)) throw new HttpError(400, 'alege datele plecării');
+      if (panala < dela) throw new HttpError(400, 'întoarcerea e înainte de plecare');
+      if (panala < today) throw new HttpError(400, 'plecarea e deja în trecut');
+      if (diffDays(dela, panala) > 42) throw new HttpError(400, 'cel mult 6 săptămâni; pentru o pauză mai lungă, planul se reface');
+      if (!(ce in AWAY_LABEL)) throw new HttpError(400, 'alege ce ai la dispoziție');
+      const away: Away = { dela, panala, ce };
+      if (prefs.plecari.some((a) => a.panala >= dela && a.dela <= panala)) throw new HttpError(409, 'se suprapune cu o plecare deja anunțată; anuleaz-o întâi');
+      const { planId, workouts } = await loadPlan(u.id, dela < today ? today : dela, panala);
+      const done = planId ? await executedIds(u.id, today, workouts) : [];
+      const changed = planId ? applyAway(workouts, away, today, at, done) : [];
+      if (changed.length) await upsert('workouts_planned', changed.map((x) => toWorkoutRow(x, u.id, planId!)), 'id');
+      prefs.plecari = [...currentAway(prefs, today), away].sort((a, b) => (a.dela < b.dela ? -1 : 1));
+      await savePrefs(u.id, prefs);
+      await insert('journal', { user_id: u.id, date: today, entry: `plecat ${dela}–${panala} (${AWAY_LABEL[ce]}): ${changed.length} ședințe schimbate` }).catch(() => undefined);
+      json(res, 200, { ok: true, schimbate: changed.length });
+      return;
+    }
+    if (kind === 'fixe') {
+      // Întâlnirile fixe: [{ zi, sport, tip, eticheta }]. Planul se reface de la lunea viitoare ca să le respecte.
+      const list = Array.isArray(body.fixe) ? (body.fixe as Record<string, unknown>[]) : [];
+      if (list.length > 3) throw new HttpError(400, 'cel mult 3 întâlniri fixe');
+      const fixe: FixedMeet[] = list.map((f) => {
+        const zi = Number(f.zi);
+        const sport = String(f.sport);
+        const tip = String(f.tip);
+        if (!Number.isInteger(zi) || zi < 0 || zi > 6) throw new HttpError(400, 'zi greșită');
+        if (!['inot', 'bicicleta', 'alergare'].includes(sport)) throw new HttpError(400, 'sport greșit');
+        if (!['lung', 'calitate', 'usor'].includes(tip)) throw new HttpError(400, 'tip greșit');
+        const eticheta = typeof f.eticheta === 'string' ? f.eticheta.trim().slice(0, 40) : '';
+        return { zi, sport: sport as FixedMeet['sport'], tip: tip as FixedMeet['tip'], ...(eticheta ? { eticheta } : {}) };
+      });
+      const prefs = await loadPrefs(u.id);
+      await savePrefs(u.id, { ...prefs, fixe });
+      const intakeRow = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      const program = (intakeRow?.answers as { program?: { day: number }[] } | undefined)?.program ?? [];
+      const outside = fixe.filter((f) => !program.some((b) => b.day === f.zi)).map((f) => f.zi);
+      json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
       return;
     }
     if (kind === 'deconectare') {

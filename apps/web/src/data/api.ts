@@ -113,20 +113,66 @@ export function captureSessionFromUrl(): boolean {
   return true;
 }
 
+/**
+ * O singură reînnoire odată (tokenul de reînnoire se schimbă la fiecare folosire: două cereri simultane ar invalida
+ * sesiunea). Ieșirea din cont doar când Supabase spune clar că sesiunea nu mai e validă (400/401/403); fără semnal
+ * sau cu serverul căzut, sesiunea rămâne și aplicația arată ultimele date.
+ */
+let refreshing: Promise<Session | null> | null = null;
 async function refreshSession(s: Session): Promise<Session | null> {
-  const res = await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-    method: 'POST',
-    headers: { ...keyHeaders(), 'content-type': 'application/json' },
-    body: JSON.stringify({ refresh_token: s.refresh_token }),
-  }, 15_000);
-  if (!res.ok) {
-    writeSession(null);
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { ...keyHeaders(), 'content-type': 'application/json' },
+        body: JSON.stringify({ refresh_token: s.refresh_token }),
+      }, 15_000);
+    } catch {
+      throw new ApiError(0, 'fără semnal');
+    }
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      writeSession(null);
+      return null;
+    }
+    if (!res.ok) throw new ApiError(res.status, `nu am putut reînnoi sesiunea (${res.status})`);
+    const j = (await res.json()) as { access_token: string; refresh_token: string; expires_in: number; user: { id: string; email: string } };
+    const next: Session = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Math.floor(Date.now() / 1000) + j.expires_in, user: j.user };
+    writeSession(next);
+    return next;
+  })().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+/** Eroare de rețea (fără semnal, timeout, server de negăsit), nu un refuz al serverului. */
+export function isNetworkError(e: unknown): boolean {
+  if (e instanceof ApiError) return e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504;
+  const msg = e instanceof Error ? e.message : String(e);
+  return e instanceof TypeError || /load failed|failed to fetch|network|nu a răspuns|serverul nu răspunde/i.test(msg);
+}
+
+/** Ultimul `Me` primit, ca aplicația să se deschidă și fără semnal (doar citire). */
+const ME_CACHE = 'airon-me-cache';
+export function saveMeCache(me: Me): void {
+  try {
+    localStorage.setItem(ME_CACHE, JSON.stringify({ at: new Date().toISOString(), userId: me.user.id, me }));
+  } catch {
+    /* fără loc sau fără stocare: merge și fără */
+  }
+}
+export function readMeCache(): { at: string; me: Me } | null {
+  try {
+    const raw = localStorage.getItem(ME_CACHE);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as { at: string; userId: string; me: Me };
+    if (memorySession && c.userId !== memorySession.user.id) return null;
+    return { at: c.at, me: c.me };
+  } catch {
     return null;
   }
-  const j = (await res.json()) as { access_token: string; refresh_token: string; expires_in: number; user: { id: string; email: string } };
-  const next: Session = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Math.floor(Date.now() / 1000) + j.expires_in, user: j.user };
-  writeSession(next);
-  return next;
 }
 
 export async function getSession(): Promise<Session | null> {

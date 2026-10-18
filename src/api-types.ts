@@ -138,4 +138,19 @@ export interface Me {
   zones: { run: string | null; bike: string | null; swim: string | null; source: string | null } | null;
   dataAvailability: { have: string[]; missing: string[] };
   warnings: { title: string; text: string; fix: string }[];
+  /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */
+  sources?: MeSource[];
+  /** Plecări anunțate și întâlniri fixe. */
+  prefs?: { plecari: { dela: string; panala: string; ce: 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic' }[]; fixe: { zi: number; sport: 'inot' | 'bicicleta' | 'alergare'; tip: 'lung' | 'calitate' | 'usor'; eticheta?: string }[] };
+}
+
+export interface MeSource {
+  id: 'whoop' | 'strava' | 'oura' | 'apple';
+  name: string;
+  /** Ultima citire reușită (ISO), sau null. */
+  lastSync: string | null;
+  /** Ultima eroare la citire (dacă ultima încercare a eșuat). */
+  error: string | null;
+  /** Ultima zi pentru care au venit date (activitate sau somn/puls). */
+  lastData: string | null;
 }

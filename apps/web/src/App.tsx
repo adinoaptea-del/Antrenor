@@ -49,7 +49,7 @@ export function App() {
 }
 
 function Shell() {
-  const { status, me, error, refresh, local, sync } = useData();
+  const { status, me, error, refresh, local, sync, offline } = useData();
   const [screen, setScreen] = useState<Screen>(readScreen);
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>('inot');
@@ -228,6 +228,11 @@ function Shell() {
 
   return (
     <div className="app">
+      {offline && (
+        <div className="offline-bar" role="status">
+          Fără semnal: vezi datele de la {new Date(offline).toLocaleString('ro-RO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. Se actualizează singur când revine semnalul.
+        </div>
+      )}
       {countdown && (
         <Countdown
           onDone={() => {

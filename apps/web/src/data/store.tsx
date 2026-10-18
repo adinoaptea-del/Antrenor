@@ -1,11 +1,11 @@
 // Starea aplicației: sesiunea, obiectul `Me` de la server, reîncărcarea după formulare și sincronizare.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Me } from '@core/api-types.js';
-import { CONFIG, SERVER, captureSessionFromUrl, getSession, loadServerConfig, runSetup, server, setBootStage, signOut } from './api';
+import { CONFIG, SERVER, captureSessionFromUrl, getSession, isNetworkError, loadServerConfig, readMeCache, runSetup, saveMeCache, server, setBootStage, signOut } from './api';
 import { localServer } from './local';
 
 export type Status = 'boot' | 'unconfigured' | 'setup' | 'anon' | 'loading' | 'ready' | 'error';
-export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp';
+export type FormKind = 'intrare' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'profil' | 'apple' | 'analize-citire' | 'teste-citire' | 'sugestie' | 'aviz' | 'admin-chei' | 'activitate' | 'deconectare' | 'timp' | 'actiune' | 'plecat' | 'fixe';
 
 export interface Data {
   status: Status;
@@ -20,6 +20,8 @@ export interface Data {
   sync: () => Promise<string | null>;
   connect: (provider: 'whoop' | 'strava' | 'oura') => Promise<void>;
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal') => Promise<string>;
+  /** Fără semnal: datele afișate sunt cele salvate la ora asta (ISO). null = date live. */
+  offline: string | null;
 }
 
 const Ctx = createContext<Data | null>(null);
@@ -30,6 +32,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('boot');
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState<string | null>(null);
   // Generația sesiunii: un răspuns /me pornit înainte de ieșire (sau de schimbarea contului) nu mai are voie să
   // reinstaleze datele vechi.
   const gen = useRef(0);
@@ -37,6 +40,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     const my = gen.current;
+    // Fără semnal: ultimele date salvate, doar de citit, în loc de ecran de eroare sau de logare.
+    const fallback = (e: unknown): boolean => {
+      const c = isNetworkError(e) ? readMeCache() : null;
+      if (!c || my !== gen.current) return false;
+      setMe(c.me);
+      setOffline(c.at);
+      setStatus('ready');
+      return true;
+    };
     if (local) {
       setMe(await localServer.me());
       setStatus('ready');
@@ -58,13 +70,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // Actualizarea bazei rulează în fundal; nu ține aplicația pe loc.
         if (c.upgrade) void runSetup().catch(() => undefined);
       } catch (e) {
+        if (fallback(e)) return;
         setError(e instanceof Error ? e.message : String(e));
         setStatus('unconfigured');
         return;
       }
     }
     setBootStage('verific contul');
-    const s = await getSession().catch(() => null);
+    let s;
+    try {
+      s = await getSession();
+    } catch (e) {
+      // Sesiunea există, dar nu s-a putut reînnoi acum (rețea): nu scoatem pe nimeni din cont.
+      if (fallback(e)) return;
+      setError(e instanceof Error ? e.message : String(e));
+      setStatus('error');
+      return;
+    }
     if (!s) {
       setStatus('anon');
       setMe(null);
@@ -76,10 +98,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const fresh = await server.me();
       if (my !== gen.current) return;
       setMe(fresh);
+      setOffline(null);
+      saveMeCache(fresh);
       setStatus('ready');
       setError(null);
     } catch (e) {
       if (my !== gen.current) return;
+      if (fallback(e)) return;
       setError(e instanceof Error ? e.message : String(e));
       setStatus('error');
     }
@@ -89,6 +114,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     captureSessionFromUrl();
     void load();
   }, [load]);
+
+  // Semnalul a revenit: reîncărcăm datele live.
+  useEffect(() => {
+    if (!offline) return;
+    const on = () => void load();
+    window.addEventListener('online', on);
+    return () => window.removeEventListener('online', on);
+  }, [offline, load]);
 
   const submitForm = useCallback<Data['submitForm']>(
     async (kind, body) => {
@@ -169,7 +202,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [local, load]);
 
-  const value = useMemo<Data>(() => ({ status, me, error, local, refresh: load, logout, submitForm, sync, connect, runAgents }), [status, me, error, local, load, logout, submitForm, sync, connect, runAgents]);
+  const value = useMemo<Data>(() => ({ status, me, error, local, refresh: load, logout, submitForm, sync, connect, runAgents, offline }), [status, me, error, local, load, logout, submitForm, sync, connect, runAgents, offline]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

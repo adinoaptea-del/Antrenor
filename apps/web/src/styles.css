@@ -857,7 +857,8 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 }
 
 /* Antrenor: ziua de azi și mesajul de azi */
-.coach-day { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.coach-day { font-weight: 700; font-size: 16px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.coach-day .i { width: 18px; height: 18px; flex: none; stroke-width: 2.4; }
 .coach-plan { display: grid; gap: 8px; margin-top: 10px; }
 .cp-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 13.5px; }
 .cp-s { font-weight: 700; }
@@ -903,3 +904,98 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .str-set.k-heavy { background: rgba(220, 42, 30, 0.22); }
 .str-set.k-restpause { background: rgba(250, 204, 21, 0.16); }
 .str-rules { display: grid; gap: 8px; margin-top: 10px; font-size: 12.5px; line-height: 1.45; }
+
+/* ——— Azi: ședința zilei, decizia antrenorului, starea datelor ——— */
+.today-card { margin: 14px 0 22px; display: grid; gap: 10px; }
+.today-k { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.verdict { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 13px; padding: 4px 10px 4px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.verdict .i { width: 16px; height: 16px; stroke-width: 2.4; }
+.verdict.v-verde { color: #30d158; }
+.verdict.v-galben { color: #ffd60a; }
+.verdict.v-portocaliu { color: #ff9f0a; }
+.verdict.v-rosu, .verdict.v-stop { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+.today-reason { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.today-rest { display: grid; gap: 4px; padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); font-size: 14px; }
+.today-rest span { color: var(--muted); font-size: 13px; }
+.today-list { display: grid; gap: 10px; }
+.today-coach { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; text-align: left; font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; cursor: pointer; }
+.today-coach .i { width: 20px; height: 20px; color: var(--accent-2); margin-top: 1px; }
+.today-coach b { color: var(--accent-2); font-weight: 700; white-space: nowrap; }
+.sources { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.sources span { display: inline-flex; align-items: center; gap: 4px; }
+.sources b { color: var(--fg); font-weight: 600; }
+.sources .late { color: #ffd60a; }
+.sources .late .i { width: 14px; height: 14px; }
+.sources.none { color: #ffd60a; }
+
+/* ——— O ședință ——— */
+.wk { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+.wk.hero { padding: 18px; border-color: var(--line-2); }
+.wk.off { opacity: 0.85; }
+.wk-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; min-width: 0; }
+.wk-ic { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--accent-2); }
+.wk-ic .i { width: 20px; height: 20px; }
+.wk-t { min-width: 0; }
+.wk-name { font-weight: 700; font-size: 16px; }
+.wk-name span { color: var(--muted); font-weight: 600; }
+.wk-sub { font-size: 12px; color: var(--muted); }
+.wk-min { font-family: var(--font-display); font-size: 28px; white-space: nowrap; }
+.wk.hero .wk-min { font-size: 36px; }
+.wk-min s { color: var(--muted); }
+.wk-why { font-size: 13.5px; line-height: 1.45; }
+.wk-note { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.wk-off { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--fg); background: rgba(185, 28, 28, 0.18); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 12px; padding: 8px 10px; }
+.wk-off .i { width: 18px; height: 18px; flex: none; color: var(--c-rosu); }
+.wk-upd { display: grid; gap: 6px; }
+.wk-chip { justify-self: start; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--c-albastru); background: rgba(96, 165, 250, 0.12); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 999px; padding: 5px 10px; cursor: pointer; text-align: left; }
+.wk-chip .i { width: 14px; height: 14px; flex: none; }
+.wk-upd-d { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.45; padding-left: 4px; }
+.wk-upd-d b { color: var(--fg); }
+.wk-done { display: grid; gap: 4px; font-size: 13px; }
+.wk-msg { font-size: 13px; line-height: 1.5; }
+.linkish { justify-self: start; font: inherit; font-size: 13px; font-weight: 700; color: var(--accent-2); background: none; border: 0; padding: 2px 0; cursor: pointer; }
+.wk-act { display: grid; gap: 8px; }
+.wk-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.wk-btns .pill { height: 36px; }
+.wk-pick { display: grid; gap: 6px; }
+.wk-pick-k { font-size: 13px; font-weight: 700; }
+.wk-day { display: flex; justify-content: space-between; gap: 10px; font: inherit; font-size: 13px; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; cursor: pointer; text-align: left; }
+.wk-day span { color: var(--c-verde); }
+.wk-day.no { cursor: default; opacity: 0.6; }
+.wk-day.no span { color: var(--muted); }
+
+/* ——— Calendar pe săptămână ——— */
+.cal-view { margin-bottom: 12px; }
+.wk-range { display: grid; text-align: center; gap: 2px; }
+.wk-range b { font-family: var(--font-display); font-size: 24px; font-weight: 400; }
+.wk-range small { font-size: 12px; color: var(--muted); }
+.week-rows { display: grid; gap: 6px; }
+.week-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; min-height: 52px; font: inherit; color: var(--fg); text-align: left; background: var(--surface-2); border: 1px solid transparent; border-radius: 14px; padding: 6px 10px; cursor: pointer; min-width: 0; }
+.week-row.today { border-color: var(--line-2); }
+.week-row.sel { border-color: var(--accent); }
+.wr-d { display: grid; line-height: 1.1; }
+.wr-d b { font-size: 13px; }
+.wr-d small { font-family: var(--font-display); font-size: 20px; color: var(--muted); }
+.week-row.today .wr-d small { color: var(--accent-2); }
+.wr-s { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.wr-rest { font-size: 12px; color: var(--muted-2); font-style: normal; }
+.wr-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; padding: 4px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-2); }
+.wr-chip .i { width: 14px; height: 14px; }
+.wr-chip.hard { border-color: var(--accent); }
+.wr-chip.off { text-decoration: line-through; color: var(--muted); }
+.wr-chip em { color: var(--c-albastru); font-style: normal; }
+.wr-chip.c-verde { background: rgba(74, 222, 128, 0.16); }
+.wr-chip.c-galben { background: rgba(250, 204, 21, 0.16); }
+.wr-chip.c-portocaliu { background: rgba(251, 146, 60, 0.18); }
+.wr-chip.c-rosu { background: rgba(239, 68, 68, 0.2); }
+.wr-chip.c-albastru { background: rgba(96, 165, 250, 0.16); border-color: rgba(96, 165, 250, 0.5); }
+.wr-away .i { width: 16px; height: 16px; color: var(--c-albastru); }
+.day-k { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
+.pref-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.pref-row:first-of-type { border-top: 0; }
+.pref-form { display: grid; gap: 10px; margin-top: 4px; }
+.pref-form label { display: grid; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.pref-k { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.wk-note .i { width: 14px; height: 14px; vertical-align: -2px; }
+
+.offline-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.4; color: #1a1400; background: #ffd60a; }

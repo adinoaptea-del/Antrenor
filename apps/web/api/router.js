@@ -1546,7 +1546,9 @@ function toPlanned(r2) {
     intervals: r2.intervals ?? void 0,
     status: r2.status,
     note: r2.note ?? void 0,
-    suggestion: r2.suggestion ?? null
+    suggestion: r2.suggestion ?? null,
+    original: r2.original ?? null,
+    changedAt: r2.changed_at ?? null
   };
 }
 function toWorkoutRow(w, userId, planId) {
@@ -1566,7 +1568,10 @@ function toWorkoutRow(w, userId, planId) {
     status: w.status,
     note: w.note ?? null,
     // Mereu scrisă (și null): o sugestie expirată se șterge explicit.
-    suggestion: w.suggestion ?? null
+    suggestion: w.suggestion ?? null,
+    // Forma din plan de dinainte de schimbări (eticheta „Actualizat”); null = ședința e cum a fost planificată.
+    original: w.original ?? null,
+    changed_at: w.changedAt ?? null
   };
 }
 function toSourceActivity(r2) {
@@ -1797,6 +1802,251 @@ function declaredLevel(intake) {
 async function loadOthers(userId, from) {
   const rows = await select("other_activities", { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: "date.desc", limit: 200 }).catch(() => []);
   return rows.map((r2) => ({ id: r2.id, source: r2.source, externalId: r2.external_id, date: r2.date, startLocal: r2.start_local, kind: r2.kind, name: r2.name, minutes: r2.minutes, avgHr: r2.avg_hr, maxHr: r2.max_hr }));
+}
+
+// src/calendar/validate.ts
+var INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
+var SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
+function enforceLimits(workouts, lim) {
+  const notes = [];
+  const maxZone = lim.intensityAllowed === "Z2" ? 2 : lim.intensityAllowed === "pana_la_Z4" ? 4 : 5;
+  const out = workouts.map((w0) => {
+    const w = { ...w0, targetZones: [...w0.targetZones] };
+    if (w.sport === "forta" || w.type === "odihna") return w;
+    if (w.sport === "inot" && !lim.swimContinuous400 && (w.type === "lung" || w.type === "calitate" || SWIM_BEYOND.test(w.structure ?? ""))) {
+      w.type = "tehnica";
+      w.key = false;
+      w.targetZones = [1, 2];
+      w.intervals = void 0;
+      w.structure = "tehnic\u0103 \u0219i buc\u0103\u021Bi scurte cu pauz\u0103 (\xEEnc\u0103 nu \xEEno\u021Bi 400 m f\u0103r\u0103 oprire)";
+      notes.push(`${w.id}: \xEEnot adus la tehnic\u0103 (capacitatea de 400 m continuu nu e confirmat\u0103)`);
+    }
+    const tooHard = w.targetZones.some((z) => z > maxZone) || w.intervals != null && w.intervals.zone > maxZone;
+    const textHard = maxZone === 2 && INTENSE_TEXT.test(w.structure ?? "");
+    if (tooHard || textHard) {
+      if (maxZone === 2) {
+        if (w.type === "calitate") w.type = "z2";
+        if (w.type === "z2") w.key = false;
+        w.targetZones = w.targetZones.filter((z) => z <= 2);
+        if (!w.targetZones.length) w.targetZones = [2];
+        w.intervals = void 0;
+        if (textHard || tooHard) w.structure = w.type === "brick" ? w.structure?.replace(INTENSE_TEXT, "Z2") : "u\u0219or \xEEn Z2, f\u0103r\u0103 intervale (intensitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic)";
+      } else {
+        w.targetZones = w.targetZones.filter((z) => z <= maxZone);
+        if (!w.targetZones.length) w.targetZones = [maxZone];
+        if (w.intervals && w.intervals.zone > maxZone) w.intervals = { ...w.intervals, zone: maxZone };
+      }
+      notes.push(`${w.id}: intensitatea cobor\xE2t\u0103 la limita permis\u0103 (${lim.intensityAllowed})`);
+    }
+    return w;
+  });
+  return { workouts: out, notes };
+}
+function fitStructure(w) {
+  const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? "");
+  if (!m || w.type === "brick") return w;
+  const count = Number(m[1]);
+  const reps = Number(m[2]);
+  const restM = /(\d+)\s*min ușor între/.exec(w.structure ?? "");
+  const rest = restM ? Number(restM[1]) : 0;
+  const need = (n3) => n3 * reps + (n3 - 1) * rest + 10;
+  if (need(count) <= w.plannedMinutes) return w;
+  let n2 = count;
+  while (n2 > 0 && need(n2) > w.plannedMinutes) n2 -= 1;
+  if (n2 === 0) {
+    return { ...w, type: w.type === "calitate" ? "z2" : w.type, key: w.type === "calitate" ? false : w.key, intervals: void 0, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min u\u0219or (prea scurt pentru repet\u0103ri)` };
+  }
+  return { ...w, structure: w.structure.replace(m[0], `${n2} \xD7 ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n2 } : void 0 };
+}
+function isHard(w) {
+  return w.status !== "anulat_sistem" && w.status !== "sters" && (w.type === "calitate" || w.type === "brick");
+}
+var EASY_NOTE = "u\u0219or: l\xE2ng\u0103 alt\u0103 \u0219edin\u021B\u0103 grea (zi tare, zi u\u0219oar\u0103)";
+function soften(w, why) {
+  return { ...w, type: w.sport === "inot" ? "tehnica" : "z2", key: false, targetZones: w.sport === "inot" ? [1, 2] : [2], intervals: void 0, structure: w.sport === "inot" ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : void 0, note: why };
+}
+var SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 5 : 0);
+function enforceSpacing(workouts, maxHardPerWeek = 3) {
+  const notes = [];
+  let out = workouts.map((w) => ({ ...w }));
+  const weeks = /* @__PURE__ */ new Map();
+  for (const w of out) {
+    const d = /* @__PURE__ */ new Date(`${w.date}T00:00:00Z`);
+    const monday = new Date(d.getTime() - (d.getUTCDay() + 6) % 7 * 864e5).toISOString().slice(0, 10);
+    if (!weeks.has(monday)) weeks.set(monday, []);
+    weeks.get(monday).push(w);
+  }
+  const softened = /* @__PURE__ */ new Map();
+  for (const ws of weeks.values()) {
+    const hard = ws.filter(isHard);
+    const softenable = hard.filter((w) => !(w.key && w.type === "brick")).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
+    for (const w of softenable.slice(0, Math.max(0, hard.length - maxHardPerWeek))) {
+      softened.set(w.id, soften(w, `u\u0219or: deja ${maxHardPerWeek} \u0219edin\u021Be grele s\u0103pt\u0103m\xE2na asta`));
+      notes.push(`${w.id}: ${w.sport} ${w.type} devine u\u0219or (peste ${maxHardPerWeek} \u0219edin\u021Be grele pe s\u0103pt\u0103m\xE2n\u0103)`);
+    }
+  }
+  out = out.map((w) => softened.get(w.id) ?? w);
+  const days = [...new Set(out.filter(isHard).map((w) => w.date))].sort();
+  for (let i = 1; i < days.length; i++) {
+    const prev = days[i - 1];
+    const cur = days[i];
+    if (((/* @__PURE__ */ new Date(`${cur}T00:00:00Z`)).getTime() - (/* @__PURE__ */ new Date(`${prev}T00:00:00Z`)).getTime()) / 864e5 !== 1) continue;
+    const both = out.filter((w) => isHard(w) && (w.date === prev || w.date === cur)).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
+    const victim = both.find((w) => !(w.key && w.type === "brick") && !(w.structure ?? "").startsWith("TEST"));
+    if (!victim || both.filter((w) => w.date === victim.date).length === 0) continue;
+    const swap = swapTarget(out, victim);
+    if (swap) {
+      const vDate = victim.date;
+      const vMin = Math.min(victim.plannedMinutes, swap.plannedMinutes);
+      const sMin = Math.min(swap.plannedMinutes, victim.plannedMinutes);
+      out = out.map((w) => w.id === victim.id ? fitStructure({ ...w, date: swap.date, plannedMinutes: vMin }) : w.id === swap.id ? { ...w, date: vDate, plannedMinutes: sMin } : w);
+      notes.push(`${victim.id}: ${victim.sport} mutat pe ${swap.date} (zi tare, zi u\u0219oar\u0103)`);
+      i = 0;
+      days.splice(0, days.length, ...[...new Set(out.filter(isHard).map((w) => w.date))].sort());
+      continue;
+    }
+    out = out.map((w) => w.id === victim.id ? soften(w, EASY_NOTE) : w);
+    notes.push(`${victim.id}: ${victim.sport} ${victim.date} devine u\u0219or (zi grea \u0219i ziua de dinainte/dup\u0103)`);
+    if (!out.some((w) => isHard(w) && w.date === cur)) days.splice(i, 1), i -= 1;
+  }
+  return { workouts: out, notes };
+}
+function swapTarget(all, victim) {
+  const dayMs = (d) => (/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getTime() / 864e5;
+  const monday = (d) => Math.floor((dayMs(d) + 3) / 7);
+  const hardDays = new Set(all.filter((w) => isHard(w) && w.id !== victim.id).map((w) => dayMs(w.date)));
+  const okDay = (d) => !hardDays.has(dayMs(d)) && !hardDays.has(dayMs(d) - 1) && !hardDays.has(dayMs(d) + 1);
+  const candidates = all.filter((w) => w.id !== victim.id && !isHard(w) && w.type !== "lung" && w.sport !== "forta" && w.status === "planificat" && monday(w.date) === monday(victim.date) && w.plannedMinutes >= Math.min(45, victim.plannedMinutes) && okDay(w.date)).sort((a, b) => Number(b.sport === victim.sport) - Number(a.sport === victim.sport) || b.plannedMinutes - a.plannedMinutes);
+  return candidates[0] ?? null;
+}
+function shortenWorkout(w, minutes) {
+  const before = w.plannedMinutes;
+  let out = { ...w, plannedMinutes: minutes };
+  if (w.type === "brick") {
+    const m = /tură (\d+) min(.*)alergare (\d+) min/.exec(w.structure ?? "");
+    if (minutes < 30) {
+      out = { ...out, type: "z2", key: false, structure: `${minutes} min biciclet\u0103 u\u0219or (prea pu\u021Bin timp pentru brick)` };
+    } else if (m) {
+      const bike = Math.min(minutes - 10, Math.max(15, Math.round(Number(m[1]) * minutes / before / 5) * 5));
+      out.structure = (w.structure ?? "").replace(m[0], `tur\u0103 ${bike} min${m[2]}alergare ${minutes - bike} min`);
+    }
+  } else {
+    out = fitStructure(out);
+  }
+  out.note = `scurtat la cererea ta: ${minutes} min \xEEn loc de ${before}; ce nu se face azi nu se recupereaz\u0103`;
+  return out;
+}
+
+// src/calendar/actions.ts
+function snapshot(w) {
+  return { date: w.date, sport: w.sport, type: w.type, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure ?? null, key: w.key, status: w.status, intervals: w.intervals ?? null };
+}
+var sameShape = (a, b) => a.date === b.date && (a.sport ?? "") === (b.sport ?? "") && a.type === b.type && a.plannedMinutes === b.plannedMinutes && a.targetZones.join() === b.targetZones.join() && (a.structure ?? "") === (b.structure ?? "") && a.status === b.status;
+function withOriginal(prev, next, at) {
+  const before = snapshot(prev);
+  const after = snapshot(next);
+  if (sameShape(before, after)) return next;
+  const original = prev.original ?? before;
+  if (sameShape(original, after)) return { ...next, original: null, changedAt: at };
+  return { ...next, original, changedAt: at };
+}
+var DAY = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
+var active = (w) => w.status === "planificat" || w.status === "mutat";
+function moveOptions(plan, id, today, doneIds = []) {
+  const w = plan.find((x) => x.id === id);
+  if (!w || !active(w) || w.date < today || doneIds.includes(id)) return [];
+  const ws = weekStart(w.date);
+  const others = plan.filter((x) => x.id !== id && active(x));
+  const on = (d) => others.filter((x) => x.date === d);
+  const hardOn = (d) => on(d).some(isHard);
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    if (d === w.date) continue;
+    if (d < today) continue;
+    const day2 = on(d);
+    let reason;
+    if (day2.length >= 2) reason = "are deja dou\u0103 \u0219edin\u021Be";
+    else if (w.sport !== "forta" && day2.some((x) => x.sport === w.sport)) reason = `are deja ${SPORT_WORD2[w.sport]}`;
+    else if ((w.type === "lung" || w.type === "brick") && day2.some((x) => x.type === "lung" || x.type === "brick")) reason = "are deja o \u0219edin\u021B\u0103 lung\u0103";
+    else if (isHard(w) && hardOn(d)) reason = "are deja o \u0219edin\u021B\u0103 grea";
+    else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = "e l\xE2ng\u0103 o zi grea (zi tare, zi u\u0219oar\u0103)";
+    else if (w.sport === "alergare" && w.type === "calitate" && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === "alergare" && x.type === "lung")) reason = "e l\xE2ng\u0103 alergarea lung\u0103";
+    out.push(reason ? { date: d, ok: false, reason } : { date: d, ok: true });
+  }
+  return out;
+}
+var SPORT_WORD2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
+function moveWorkout(plan, id, date, today, at, doneIds = []) {
+  const w = plan.find((x) => x.id === id);
+  if (!w) throw new Error("\u0219edin\u021B\u0103 inexistent\u0103");
+  const opt = moveOptions(plan, id, today, doneIds).find((o) => o.date === date);
+  if (!opt) throw new Error("se poate muta doar o \u0219edin\u021B\u0103 care urmeaz\u0103, pe alt\u0103 zi din aceea\u0219i s\u0103pt\u0103m\xE2n\u0103");
+  if (!opt.ok) throw new Error(`ziua aleas\u0103 ${opt.reason}`);
+  return withOriginal(w, { ...w, date, note: `mutat\u0103 de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}` }, at);
+}
+function easyWorkout(w, at) {
+  const intense = w.type === "calitate" || w.type === "brick" || w.targetZones.some((z) => z >= 3);
+  if (!active(w)) throw new Error("\u0219edin\u021Ba nu mai e activ\u0103");
+  if (w.type === "lung") {
+    const minutes = Math.max(30, Math.round(w.plannedMinutes * 0.75 / 5) * 5);
+    return withOriginal(w, { ...w, plannedMinutes: minutes, targetZones: [1, 2], intervals: void 0, key: false, structure: `${minutes} min constant, Z1\u2013Z2`, note: "u\u0219oar\u0103 la cererea ta: \u221225%, f\u0103r\u0103 final rapid" }, at);
+  }
+  if (!intense) throw new Error("\u0219edin\u021Ba e deja u\u0219oar\u0103");
+  const swim = w.sport === "inot";
+  const next = {
+    ...w,
+    type: swim ? "tehnica" : "z2",
+    key: false,
+    targetZones: swim ? [1, 2] : [2],
+    intervals: void 0,
+    structure: swim ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : `${w.plannedMinutes} min u\u0219or, s\u0103 po\u021Bi vorbi`,
+    note: "u\u0219oar\u0103 la cererea ta: f\u0103r\u0103 intensitate azi; progresia a\u0219teapt\u0103"
+  };
+  return withOriginal(w, fitStructure(next), at);
+}
+var AWAY_LABEL = { fara_bazin: "f\u0103r\u0103 bazin", fara_bicicleta: "f\u0103r\u0103 biciclet\u0103", doar_alergare: "doar alergare", nimic: "f\u0103r\u0103 antrenament" };
+var AWAY_NOTE = "plecat";
+function applyAway(plan, away, today, at, doneIds = []) {
+  const from = away.dela < today ? today : away.dela;
+  const changed = [];
+  const byDay = /* @__PURE__ */ new Map();
+  for (const w of plan) if (active(w) && w.date >= from && w.date <= away.panala && !doneIds.includes(w.id)) byDay.set(w.date, [...byDay.get(w.date) ?? [], w]);
+  for (const [, ws] of byDay) {
+    let hasRun = ws.some((w) => w.sport === "alergare" && keeps(w, away.ce));
+    for (const w of ws) {
+      if (keeps(w, away.ce)) continue;
+      const label = `${AWAY_NOTE} (${AWAY_LABEL[away.ce]})`;
+      if (away.ce !== "nimic" && !hasRun && w.sport !== "forta") {
+        const minutes = Math.min(w.plannedMinutes, w.sport === "bicicleta" ? 45 : 40);
+        hasRun = true;
+        changed.push(withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD2[w.sport]}` }, at));
+      } else {
+        changed.push(withOriginal(w, { ...w, status: "anulat_sistem", note: `${label}: ${SPORT_WORD2[w.sport]} anulat` }, at));
+      }
+    }
+  }
+  return changed;
+}
+function keeps(w, ce) {
+  if (ce === "nimic") return false;
+  if (ce === "fara_bazin") return w.sport !== "inot";
+  if (ce === "fara_bicicleta") return w.sport !== "bicicleta" && w.type !== "brick";
+  return w.sport === "alergare" || w.sport === "forta";
+}
+function restoreAway(plan, away, today, at) {
+  const from = away.dela < today ? today : away.dela;
+  return plan.filter((w) => w.original && (w.note ?? "").startsWith(AWAY_NOTE) && w.original.date >= from && w.original.date <= away.panala && w.date >= today).map((w) => {
+    const o = w.original;
+    return { ...w, sport: o.sport ?? w.sport, date: o.date, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, status: o.status, intervals: o.intervals ?? void 0, note: void 0, original: null, changedAt: at };
+  });
+}
+function fixedBonus(fixed, day2, sport, type) {
+  if (!fixed?.length) return 0;
+  const f = fixed.find((x) => x.zi === day2 && x.sport === sport);
+  if (!f) return 0;
+  const match = f.tip === "lung" ? type === "lung" : f.tip === "calitate" ? type === "calitate" : type === "z2" || type === "tehnica";
+  return match ? 3e3 : 0;
 }
 
 // server/_lib/usage.ts
@@ -2275,139 +2525,6 @@ Reguli:
   ghid: "GHIDUL ECHIPEI: CE E CURSA SI CUM SE CONSTRUIESTE UN SPORTIV PE APROAPE UN AN (amator cu experienta putina)\n\nIRONMAN 70.3 (jumatate de Ironman)\n- 1,9 km inot (de obicei ape deschise, cu costum de neopren daca apa e rece), 90 km bicicleta, 21,1 km alergare, in aceeasi zi, cu doua tranzitii (T1, T2) care se exerseaza.\n- Limitele uzuale ale organizatorului: inotul in aproximativ 1 h 10, bicicleta terminata in aproximativ 5 h 30 de la start, totul in aproximativ 8 h 30. Verifica regulamentul cursei; pentru un incepator, primul obiectiv e sa termine sigur, in limite.\n- Un amator la prima cursa termina tipic intre 6 si 8 ore. Alergarea vine dupa 3-4 ore de efort: se castiga sau se pierde pe bicicleta (ritm prea tare) si pe alimentare.\n\nCUM ARATA ANUL (incepator, 40-50 de saptamani)\n1. Evaluare (2-4 sapt.): obiceiul de a te antrena, teste de teren, tehnica de inot. Toate sporturile, scurt si usor.\n2. Baza 1 (3-5 luni): volum aerob in Z2, inot frecvent pentru tehnica, forta de doua ori pe saptamana. Repere: 400 m inot continuu, 2 h bicicleta, 1 h alergare usoara.\n3. Baza 2 (2 luni): volumul creste, primul tempo/sweet spot, primele brick-uri scurte. Repere: 1.000-1.500 m inot continuu, 2 h 30-3 h bicicleta, 1 h 15-1 h 30 alergare.\n4. Build (3 luni): prag, brick-uri lungi, prima iesire in ape deschise, alimentare exersata pe fiecare tura lunga. Repere: 1.900 m continuu, 3-3 h 30 bicicleta + 20-40 min alergare imediat dupa, 1 h 45 alergare.\n5. Peak (3-4 sapt.): ritmul de cursa, simulari (o \u201Ecursa de proba\u201D sau un triatlon olimpic cu 4-6 saptamani inainte), tranzitii.\n6. Taper (2 sapt.): volumul scade 40-60%, intensitatea scurta ramane; somn, alimentare, echipament verificat.\n\nCE CONTEAZA CEL MAI MULT LA UN INCEPATOR\n- Consecventa saptamanilor, nu ziua eroica. 80% usor, 20% tare.\n- Inotul: frecventa si tehnica; frica de ape deschise se rezolva prin expunere treptata, insotit.\n- Bicicleta: ore in sa, pozitie confortabila (bike fit), cadenta, alimentare 60-90 g carbohidrati/ora; pe cursa ritm constant, fara varfuri.\n- Alergarea: creste cel mai incet (risc de accidentare); dupa bicicleta, primii kilometri mai usor.\n- Forta: picioare, core, sold; protejeaza de accidentari.\n- Alimentarea si hidratarea se exerseaza ca un al patrulea sport; nimic nou in ziua cursei.\n- Somnul si zilele usoare fac adaptarea.\n- Echipament de bifat pana in build: costum de neopren incercat in apa, bicicleta reglata, pantofi rodati, centura de numar, ce mananci pe traseu.\n\nGRESELI TIPICE DE EVITAT\n- Prea tare in zilele usoare, prea usor in cele tari (\u201Ezona gri\u201D).\n- Volum crescut brusc dupa o saptamana buna; recuperarea ratata prin dublare.\n- Prima iesire in ape deschise in ziua cursei.\n- Bicicleta prea tare in cursa, apoi mers pe jos la alergare.\n- Alimentare netestata, deshidratare la caldura.\n\nSEMIMARATON / MARATON (doar alergare)\n- Semimaraton 21,1 km; maraton 42,2 km. Baza aeroba lunga, apoi tempo si prag, apoi ritmul tinta in bucati si in finalul iesirii lungi.\n- Iesirea lunga: pana la 2 h la semimaraton, pana la 3 h la maraton; mai mult nu aduce adaptare, doar oboseala.\n- Taper: 1-2 saptamani la semimaraton, 2-3 la maraton. Prima jumatate a cursei in ritmul planificat, nu mai repede.\n\nMETODA NORVEGIANA (de stiut, de explicat, de propus doar unde se potriveste)\n- 4x4 (studiile NTNU, Helgerud si Hoff, 2007): incalzire 10-15 min, apoi 4 repetari de 4 min la 90-95% din pulsul maxim (Z5: respiratie grea, poti spune doar 2-3 cuvinte), 3 min usor intre ele (mers sau pedalat usor, ~70% din pulsul maxim), revenire 5-10 min. Tinta: VO2max (motorul aerob la varf). Merge la alergare (ideal in panta usoara) si pe bicicleta.\n- Ritmul corect: a patra repetare trebuie sa se poata termina la fel ca prima; daca ultima e mult mai lenta, primele au fost prea tari. Pulsul urca in primele 1-2 minute ale fiecarei repetari; nu forta de la prima secunda.\n- Metoda Ingebrigtsen / Blummenfelt (triatlon de elita): mult volum usor si \u201Edouble threshold\u201D (doua sedinte la prag in aceeasi zi, controlate cu lactatul, 2-3 mmol/L). E pentru profesionisti cu 20-30 h pe saptamana; pentru un amator cu job ideea care ramane e: volum mare usor, intensitate controlata, nu \u201Ela maxim\u201D. Nu propui double threshold.\n- In planul AIRON, 4x4 apare la alergare in build (o saptamana din doua, alternativ cu pragul) si in peak, doar cu aviz cardiologic (aviz.intensitate_permisa = toate) si fara limita de varsta pentru Z5.\n- Cand il propui tu ca alternativa (doar in text; calendarul il schimba codul): numai daca azi e verde, plan_azi este o sedinta de calitate (tip calitate) la alergare sau bicicleta, faza (meta.faza) e build sau peak, aviz.intensitate_permisa = toate, restrictie_activa e null si in ultimele 48 h nu a fost alt efort mare (sedinte_48h). Altfel nu il propui, chiar daca sportivul il cere: spui ce lipseste (aviz, faza, zi verde) si cand devine posibil.\n- Nu inlocuieste niciodata iesirea lunga sau brick-ul si nu se adauga peste plan: o singura sedinta tare pe zi, cel mult una de 4x4 pe saptamana.\n\nPRINCIPIILE SANG / KAPTAGAT, ADAPTATE LA TRIATLON (codul le aplica; tu le explici)\n- Zi tare, zi usoara, pe toate sporturile la un loc: cel mult 3 sedinte grele pe saptamana (intensitate sau brick), niciodata doua zile grele la rand. Restul e usor de-adevaratelea: la alergarea usoara pornesti foarte incet si abia apoi te asezi in Z2.\n- Ziua tare se face la ~80%, nu la maxim (\u201Enu pleca tare ca sa cazi\u201D): prima repetare putin mai usor, ultimele cele mai bune. Daca ultima e mult mai slaba decat prima, ai pornit prea tare: spui asta in debrief.\n- Iesirea lunga alterneaza: o saptamana mai scurta si constanta, una plina cu ultimele 15-20 min progresiv (sus in Z2). A doua jumatate nu are voie sa fie mai lenta: daca scorul spune \u201Ea cazut pe final\u201D, explici sa porneasca mai usor data viitoare.\n- Fartlek dupa timp (ex. 8 x 3 min tare / 1 min usor, pauza la trap) si alergarea progresiva (pornesti usor, termini in Z3) sunt in biblioteca planului.\n- Eficienta la acelasi puls (eficienta_aeroba): cat de repede mergi sau cati wati scoti la aceeasi bataie de inima, pe sedinte usoare si plate. Creste = progres real, il spui cu cifra. Scade cu peste 3% = oboseala, caldura sau boala: nu impingi.\n- Revenire dupa pauza (nota \u201Erevenire dupa X zile de pauza\u201D in plan): doua saptamani, prima fara intensitate la 60%, a doua la 80%. Nu recuperezi ce s-a pierdut.\n- Bilantul de duminica: obosit (energie 1-2, oboseala, efort 9-10) = saptamana viitoare fara crestere si o intensitate mai putin; altfel planul merge inainte.\n- Sedinta scurtata pentru timp, vreme sau traseu nu e oboseala si nu e esec: nu o tratezi ca atare.\n- Ce s-a ratat nu se dubleaza si nu se muta peste alte zile.\n"
 };
 
-// src/calendar/validate.ts
-var INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
-var SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
-function enforceLimits(workouts, lim) {
-  const notes = [];
-  const maxZone = lim.intensityAllowed === "Z2" ? 2 : lim.intensityAllowed === "pana_la_Z4" ? 4 : 5;
-  const out = workouts.map((w0) => {
-    const w = { ...w0, targetZones: [...w0.targetZones] };
-    if (w.sport === "forta" || w.type === "odihna") return w;
-    if (w.sport === "inot" && !lim.swimContinuous400 && (w.type === "lung" || w.type === "calitate" || SWIM_BEYOND.test(w.structure ?? ""))) {
-      w.type = "tehnica";
-      w.key = false;
-      w.targetZones = [1, 2];
-      w.intervals = void 0;
-      w.structure = "tehnic\u0103 \u0219i buc\u0103\u021Bi scurte cu pauz\u0103 (\xEEnc\u0103 nu \xEEno\u021Bi 400 m f\u0103r\u0103 oprire)";
-      notes.push(`${w.id}: \xEEnot adus la tehnic\u0103 (capacitatea de 400 m continuu nu e confirmat\u0103)`);
-    }
-    const tooHard = w.targetZones.some((z) => z > maxZone) || w.intervals != null && w.intervals.zone > maxZone;
-    const textHard = maxZone === 2 && INTENSE_TEXT.test(w.structure ?? "");
-    if (tooHard || textHard) {
-      if (maxZone === 2) {
-        if (w.type === "calitate") w.type = "z2";
-        if (w.type === "z2") w.key = false;
-        w.targetZones = w.targetZones.filter((z) => z <= 2);
-        if (!w.targetZones.length) w.targetZones = [2];
-        w.intervals = void 0;
-        if (textHard || tooHard) w.structure = w.type === "brick" ? w.structure?.replace(INTENSE_TEXT, "Z2") : "u\u0219or \xEEn Z2, f\u0103r\u0103 intervale (intensitatea e blocat\u0103 p\xE2n\u0103 la avizul cardiologic)";
-      } else {
-        w.targetZones = w.targetZones.filter((z) => z <= maxZone);
-        if (!w.targetZones.length) w.targetZones = [maxZone];
-        if (w.intervals && w.intervals.zone > maxZone) w.intervals = { ...w.intervals, zone: maxZone };
-      }
-      notes.push(`${w.id}: intensitatea cobor\xE2t\u0103 la limita permis\u0103 (${lim.intensityAllowed})`);
-    }
-    return w;
-  });
-  return { workouts: out, notes };
-}
-function fitStructure(w) {
-  const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? "");
-  if (!m || w.type === "brick") return w;
-  const count = Number(m[1]);
-  const reps = Number(m[2]);
-  const restM = /(\d+)\s*min ușor între/.exec(w.structure ?? "");
-  const rest = restM ? Number(restM[1]) : 0;
-  const need = (n3) => n3 * reps + (n3 - 1) * rest + 10;
-  if (need(count) <= w.plannedMinutes) return w;
-  let n2 = count;
-  while (n2 > 0 && need(n2) > w.plannedMinutes) n2 -= 1;
-  if (n2 === 0) {
-    return { ...w, type: w.type === "calitate" ? "z2" : w.type, key: w.type === "calitate" ? false : w.key, intervals: void 0, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min u\u0219or (prea scurt pentru repet\u0103ri)` };
-  }
-  return { ...w, structure: w.structure.replace(m[0], `${n2} \xD7 ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n2 } : void 0 };
-}
-function isHard(w) {
-  return w.status !== "anulat_sistem" && w.status !== "sters" && (w.type === "calitate" || w.type === "brick");
-}
-var EASY_NOTE = "u\u0219or: l\xE2ng\u0103 alt\u0103 \u0219edin\u021B\u0103 grea (zi tare, zi u\u0219oar\u0103)";
-function soften(w, why) {
-  return { ...w, type: w.sport === "inot" ? "tehnica" : "z2", key: false, targetZones: w.sport === "inot" ? [1, 2] : [2], intervals: void 0, structure: w.sport === "inot" ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : void 0, note: why };
-}
-var SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 5 : 0);
-function enforceSpacing(workouts, maxHardPerWeek = 3) {
-  const notes = [];
-  let out = workouts.map((w) => ({ ...w }));
-  const weeks = /* @__PURE__ */ new Map();
-  for (const w of out) {
-    const d = /* @__PURE__ */ new Date(`${w.date}T00:00:00Z`);
-    const monday = new Date(d.getTime() - (d.getUTCDay() + 6) % 7 * 864e5).toISOString().slice(0, 10);
-    if (!weeks.has(monday)) weeks.set(monday, []);
-    weeks.get(monday).push(w);
-  }
-  const softened = /* @__PURE__ */ new Map();
-  for (const ws of weeks.values()) {
-    const hard = ws.filter(isHard);
-    const softenable = hard.filter((w) => !(w.key && w.type === "brick")).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
-    for (const w of softenable.slice(0, Math.max(0, hard.length - maxHardPerWeek))) {
-      softened.set(w.id, soften(w, `u\u0219or: deja ${maxHardPerWeek} \u0219edin\u021Be grele s\u0103pt\u0103m\xE2na asta`));
-      notes.push(`${w.id}: ${w.sport} ${w.type} devine u\u0219or (peste ${maxHardPerWeek} \u0219edin\u021Be grele pe s\u0103pt\u0103m\xE2n\u0103)`);
-    }
-  }
-  out = out.map((w) => softened.get(w.id) ?? w);
-  const days = [...new Set(out.filter(isHard).map((w) => w.date))].sort();
-  for (let i = 1; i < days.length; i++) {
-    const prev = days[i - 1];
-    const cur = days[i];
-    if (((/* @__PURE__ */ new Date(`${cur}T00:00:00Z`)).getTime() - (/* @__PURE__ */ new Date(`${prev}T00:00:00Z`)).getTime()) / 864e5 !== 1) continue;
-    const both = out.filter((w) => isHard(w) && (w.date === prev || w.date === cur)).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
-    const victim = both.find((w) => !(w.key && w.type === "brick") && !(w.structure ?? "").startsWith("TEST"));
-    if (!victim || both.filter((w) => w.date === victim.date).length === 0) continue;
-    const swap = swapTarget(out, victim);
-    if (swap) {
-      const vDate = victim.date;
-      const vMin = Math.min(victim.plannedMinutes, swap.plannedMinutes);
-      const sMin = Math.min(swap.plannedMinutes, victim.plannedMinutes);
-      out = out.map((w) => w.id === victim.id ? fitStructure({ ...w, date: swap.date, plannedMinutes: vMin }) : w.id === swap.id ? { ...w, date: vDate, plannedMinutes: sMin } : w);
-      notes.push(`${victim.id}: ${victim.sport} mutat pe ${swap.date} (zi tare, zi u\u0219oar\u0103)`);
-      i = 0;
-      days.splice(0, days.length, ...[...new Set(out.filter(isHard).map((w) => w.date))].sort());
-      continue;
-    }
-    out = out.map((w) => w.id === victim.id ? soften(w, EASY_NOTE) : w);
-    notes.push(`${victim.id}: ${victim.sport} ${victim.date} devine u\u0219or (zi grea \u0219i ziua de dinainte/dup\u0103)`);
-    if (!out.some((w) => isHard(w) && w.date === cur)) days.splice(i, 1), i -= 1;
-  }
-  return { workouts: out, notes };
-}
-function swapTarget(all, victim) {
-  const dayMs = (d) => (/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getTime() / 864e5;
-  const monday = (d) => Math.floor((dayMs(d) + 3) / 7);
-  const hardDays = new Set(all.filter((w) => isHard(w) && w.id !== victim.id).map((w) => dayMs(w.date)));
-  const okDay = (d) => !hardDays.has(dayMs(d)) && !hardDays.has(dayMs(d) - 1) && !hardDays.has(dayMs(d) + 1);
-  const candidates = all.filter((w) => w.id !== victim.id && !isHard(w) && w.type !== "lung" && w.sport !== "forta" && w.status === "planificat" && monday(w.date) === monday(victim.date) && w.plannedMinutes >= Math.min(45, victim.plannedMinutes) && okDay(w.date)).sort((a, b) => Number(b.sport === victim.sport) - Number(a.sport === victim.sport) || b.plannedMinutes - a.plannedMinutes);
-  return candidates[0] ?? null;
-}
-function shortenWorkout(w, minutes) {
-  const before = w.plannedMinutes;
-  let out = { ...w, plannedMinutes: minutes };
-  if (w.type === "brick") {
-    const m = /tură (\d+) min(.*)alergare (\d+) min/.exec(w.structure ?? "");
-    if (minutes < 30) {
-      out = { ...out, type: "z2", key: false, structure: `${minutes} min biciclet\u0103 u\u0219or (prea pu\u021Bin timp pentru brick)` };
-    } else if (m) {
-      const bike = Math.min(minutes - 10, Math.max(15, Math.round(Number(m[1]) * minutes / before / 5) * 5));
-      out.structure = (w.structure ?? "").replace(m[0], `tur\u0103 ${bike} min${m[2]}alergare ${minutes - bike} min`);
-    }
-  } else {
-    out = fitStructure(out);
-  }
-  out.note = `scurtat la cererea ta: ${minutes} min \xEEn loc de ${before}; ce nu se face azi nu se recupereaz\u0103`;
-  return out;
-}
-
 // src/calendar/adapt.ts
 var CHANGE_MIN = 10;
 var FEVER_HALF_NOTE = "prima s\u0103pt\u0103m\xE2n\u0103 dup\u0103 febr\u0103: volum \u221250%, f\u0103r\u0103 cheie";
@@ -2853,7 +2970,11 @@ async function applyPlanEvents(userId, today, planId, current, events, doneIds) 
     if (!claimed) continue;
     const before = new Map(plan.map((w) => [w.id, JSON.stringify(w)]));
     const r2 = adapt(plan, ev, ctx);
-    const changed = r2.plan.filter((w) => before.get(w.id) !== JSON.stringify(w));
+    const at = (/* @__PURE__ */ new Date()).toISOString();
+    const prevById = new Map(plan.map((w) => [w.id, w]));
+    const changed = r2.plan.filter((w) => before.get(w.id) !== JSON.stringify(w)).map((w) => prevById.has(w.id) ? withOriginal(prevById.get(w.id), w, at) : w);
+    const changedIds = new Map(changed.map((w) => [w.id, w]));
+    r2.plan = r2.plan.map((w) => changedIds.get(w.id) ?? w);
     try {
       if (changed.length) await upsert("workouts_planned", changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
     } catch (e) {
@@ -3295,7 +3416,7 @@ async function handler3(_req, res) {
       if (ready) {
         const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
         const [c, t, l, o, w, a, ov, ev, a2] = await Promise.all([
-          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/users?select=city,apple_token,schema_v,sex,birth_year,height_cm,calendar_prefs&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/app_settings?select=key&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/labs?select=uploaded_at&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/other_activities?select=id&limit=1`, h),
@@ -3303,7 +3424,7 @@ async function handler3(_req, res) {
           fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/plans?select=audit2&limit=1`, h)
+          fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=original,changed_at&limit=1`, h)
         ]);
         upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok;
       }
@@ -4250,6 +4371,19 @@ function wellnessGroups(userId, days) {
   return [...groups.values()];
 }
 
+// server/_lib/prefs.ts
+async function loadPrefs(userId) {
+  const row = await one("users", { id: `eq.${userId}` }, { select: "calendar_prefs" }).catch(() => null);
+  const p = row?.calendar_prefs ?? {};
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [] };
+}
+async function savePrefs(userId, prefs) {
+  await update("users", { id: `eq.${userId}` }, { calendar_prefs: prefs });
+}
+function currentAway(prefs, today) {
+  return prefs.plecari.filter((a) => a.panala >= today);
+}
+
 // src/strength/ppl.ts
 var H = (r2 = "5-9") => ({ kind: "heavy", reps: r2 });
 var L = (r2 = "10-15") => ({ kind: "lowered", reps: r2 });
@@ -4433,7 +4567,7 @@ function generatePlan(input) {
     const sessions = runGoal ? runWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
     const minCount = runGoal ? { alergare: 3, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
     const fitted = fitToHours(sessions, target, pw.recovery, minCount);
-    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount);
+    const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     const plannedHours = round12(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
     out.push({
       weekStart: pw.weekStart,
@@ -4702,7 +4836,7 @@ function fitToHours(sessions, targetHours, recovery, minCount) {
   else if (all.some((x, i) => x.minutes !== sessions.find((y) => y === sessions[i])?.minutes)) notes.push(`\u0219edin\u021Be scurtate ca s\u0103 \xEEncap\u0103 \xEEn ${targetHours} h${recovery ? " (desc\u0103rcare)" : ""}`);
   return { sessions: all, notes };
 }
-function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}) {
+function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}, fixed) {
   const days = Array.from({ length: 7 }, (_, d) => ({
     blocks: blocks.filter((b) => b.day === d).map((b) => b.endMin - b.startMin),
     count: 0,
@@ -4727,13 +4861,15 @@ function place(sessions, blocks, weekStart2, phase = "baza1", minCount = {}) {
       taken[x.sport] = n3 + 1;
     }
   }
-  const ordered = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
+  const isFixed = (x) => !!fixed?.some((f) => fixedBonus([f], f.zi, x.sport, x.type) > 0);
+  const ordered0 = [...byPrio.filter((x) => core.has(x)), ...byPrio.filter((x) => !core.has(x))];
+  const ordered = [...ordered0.filter(isFixed), ...ordered0.filter((x) => !isFixed(x))];
   let n2 = 0;
   for (const s of ordered) {
     let spaced2 = function(c) {
       const heavy = (x) => !!x && (x.hard > 0 || !!x.hasBrick);
       const hardSession = s.type === "calitate" || s.type === "brick";
-      return score(c, s) - (hardSession && (heavy(days[c.d - 1]) || heavy(days[c.d + 1])) ? 1e3 : 0);
+      return score(c, s) + fixedBonus(fixed, c.d, s.sport, s.type) - (hardSession && (heavy(days[c.d - 1]) || heavy(days[c.d + 1])) ? 1e3 : 0);
     };
     var spaced = spaced2;
     let need = s.minutes + CHANGE_MIN2;
@@ -4878,7 +5014,9 @@ async function generateAndStore(userId, today, intake) {
   const startDate = continuing ? current.start_date : nextMonday;
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
+  const prefs = await loadPrefs(userId);
   const result = generatePlan({
+    fixed: prefs.fixe,
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
@@ -4906,7 +5044,12 @@ async function generateAndStore(userId, today, intake) {
     version: (prev[0]?.version ?? 0) + 1,
     active: false
   });
-  const future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const away of currentAway(prefs, today)) {
+    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
+    future = future.map((w) => changed.get(w.id) ?? w);
+  }
   const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan.id}-${x.id}` }, userId, plan.id));
   try {
     for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
@@ -5156,6 +5299,91 @@ async function handler8(req, res) {
       json(res, 200, { ok: true, structura: shorter.structure ?? null });
       return;
     }
+    if (kind === "actiune") {
+      const id = String(body.workoutId ?? "");
+      const op = String(body.op ?? "");
+      const row = await one("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: "date" });
+      if (!row) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
+      if (row.date < today) throw new HttpError(409, "\u0219edin\u021Ba e \xEEn trecut");
+      const ws = weekStart(row.date);
+      const { planId, workouts } = await loadPlan(u.id, ws, addDays(ws, 6));
+      const w = workouts.find((x) => x.id === id);
+      if (!planId || !w) throw new HttpError(404, "\u0219edin\u021Ba nu e \xEEn planul activ");
+      const done = await executedIds(u.id, today, workouts);
+      if (done.includes(id)) throw new HttpError(409, "\u0219edin\u021Ba e deja f\u0103cut\u0103");
+      const at = (/* @__PURE__ */ new Date()).toISOString();
+      let next;
+      try {
+        if (op === "muta") next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done);
+        else if (op === "usor") next = easyWorkout(w, at);
+        else throw new HttpError(400, "ac\u021Biune necunoscut\u0103");
+      } catch (e) {
+        if (e instanceof HttpError) throw e;
+        throw new HttpError(409, e instanceof Error ? e.message : String(e));
+      }
+      await upsert("workouts_planned", toWorkoutRow(next, u.id, planId), "id");
+      await insert("journal", { user_id: u.id, date: today, entry: `calendar (sportivul): ${next.note ?? op}` }).catch(() => void 0);
+      await rescore(u.id, today, user.goal ?? "70.3").catch(() => void 0);
+      json(res, 200, { ok: true, note: next.note ?? null });
+      return;
+    }
+    if (kind === "plecat") {
+      const prefs = await loadPrefs(u.id);
+      const at = (/* @__PURE__ */ new Date()).toISOString();
+      if (body.anuleaza != null) {
+        const i = Number(body.anuleaza);
+        const away2 = prefs.plecari[i];
+        if (!away2) throw new HttpError(404, "plecare inexistent\u0103");
+        const { planId: planId2, workouts: workouts2 } = await loadPlan(u.id, today, addDays(away2.panala, 7));
+        const back = planId2 ? restoreAway(workouts2, away2, today, at) : [];
+        if (back.length) await upsert("workouts_planned", back.map((x) => toWorkoutRow(x, u.id, planId2)), "id");
+        prefs.plecari.splice(i, 1);
+        await savePrefs(u.id, prefs);
+        json(res, 200, { ok: true, inapoi: back.length });
+        return;
+      }
+      const dela = String(body.dela ?? "");
+      const panala = String(body.panala ?? "");
+      const ce = String(body.ce ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dela) || !/^\d{4}-\d{2}-\d{2}$/.test(panala)) throw new HttpError(400, "alege datele plec\u0103rii");
+      if (panala < dela) throw new HttpError(400, "\xEEntoarcerea e \xEEnainte de plecare");
+      if (panala < today) throw new HttpError(400, "plecarea e deja \xEEn trecut");
+      if (diffDays(dela, panala) > 42) throw new HttpError(400, "cel mult 6 s\u0103pt\u0103m\xE2ni; pentru o pauz\u0103 mai lung\u0103, planul se reface");
+      if (!(ce in AWAY_LABEL)) throw new HttpError(400, "alege ce ai la dispozi\u021Bie");
+      const away = { dela, panala, ce };
+      if (prefs.plecari.some((a) => a.panala >= dela && a.dela <= panala)) throw new HttpError(409, "se suprapune cu o plecare deja anun\u021Bat\u0103; anuleaz-o \xEEnt\xE2i");
+      const { planId, workouts } = await loadPlan(u.id, dela < today ? today : dela, panala);
+      const done = planId ? await executedIds(u.id, today, workouts) : [];
+      const changed = planId ? applyAway(workouts, away, today, at, done) : [];
+      if (changed.length) await upsert("workouts_planned", changed.map((x) => toWorkoutRow(x, u.id, planId)), "id");
+      prefs.plecari = [...currentAway(prefs, today), away].sort((a, b) => a.dela < b.dela ? -1 : 1);
+      await savePrefs(u.id, prefs);
+      await insert("journal", { user_id: u.id, date: today, entry: `plecat ${dela}\u2013${panala} (${AWAY_LABEL[ce]}): ${changed.length} \u0219edin\u021Be schimbate` }).catch(() => void 0);
+      json(res, 200, { ok: true, schimbate: changed.length });
+      return;
+    }
+    if (kind === "fixe") {
+      const list = Array.isArray(body.fixe) ? body.fixe : [];
+      if (list.length > 3) throw new HttpError(400, "cel mult 3 \xEEnt\xE2lniri fixe");
+      const fixe = list.map((f) => {
+        const zi = Number(f.zi);
+        const sport = String(f.sport);
+        const tip = String(f.tip);
+        if (!Number.isInteger(zi) || zi < 0 || zi > 6) throw new HttpError(400, "zi gre\u0219it\u0103");
+        if (!["inot", "bicicleta", "alergare"].includes(sport)) throw new HttpError(400, "sport gre\u0219it");
+        if (!["lung", "calitate", "usor"].includes(tip)) throw new HttpError(400, "tip gre\u0219it");
+        const eticheta = typeof f.eticheta === "string" ? f.eticheta.trim().slice(0, 40) : "";
+        return { zi, sport, tip, ...eticheta ? { eticheta } : {} };
+      });
+      const prefs = await loadPrefs(u.id);
+      await savePrefs(u.id, { ...prefs, fixe });
+      const intakeRow = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      const plan = intakeRow ? await generateAndStore(u.id, today, intakeRow.answers) : null;
+      const program = intakeRow?.answers?.program ?? [];
+      const outside = fixe.filter((f) => !program.some((b) => b.day === f.zi)).map((f) => f.zi);
+      json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
+      return;
+    }
     if (kind === "deconectare") {
       const p = String(body.provider ?? "");
       if (p === "apple") await update("users", { id: `eq.${u.id}` }, { apple_token: null });
@@ -5278,6 +5506,13 @@ async function buildMe(userId, today) {
     return { provider: t.provider, connectedAt: t.connected_at, lastSync: last?.ran_at ?? null, lastOk: last ? last.ok : null, detail: last?.detail ?? null };
   });
   const lastSync = lastSyncRows.find((s) => s.ok)?.ran_at ?? null;
+  const lastDataOf = (src) => {
+    const a = acts.filter((x) => x.source === src).map((x) => x.date);
+    const w = wellnessRows.filter((x) => x.source === src).map((x) => String(x.date));
+    const all = [...a, ...w].sort();
+    return all.length ? all[all.length - 1] : null;
+  };
+  const SOURCE_NAME = { whoop: "WHOOP", strava: "Strava", oura: "Oura", apple: "Apple Health" };
   const intake = forms.intake;
   const have = [];
   const missing = [];
@@ -5345,6 +5580,15 @@ async function buildMe(userId, today) {
     forms: { intake, morning: forms.morning ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today) },
     devices,
     lastSync,
+    sources: [
+      ...tokens.map((t) => {
+        const ok2 = lastSyncRows.find((r2) => r2.provider === t.provider && r2.ok);
+        const last = lastSyncRows.find((r2) => r2.provider === t.provider);
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok2?.ran_at ?? null, error: last && !last.ok ? last.detail ?? "eroare la citire" : null, lastData: lastDataOf(t.provider) };
+      }),
+      ...u2.apple_token ? [{ id: "apple", name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf("apple") }] : []
+    ],
+    prefs: await loadPrefs(userId),
     zones: zonesRow ? {
       run: zonesRow.run_hr_zones ? `Z2 ${zonesRow.run_hr_zones[0]}\u2013${zonesRow.run_hr_zones[1]} bpm` : null,
       bike: zonesRow.bike_ftp_w ? `FTP ${zonesRow.bike_ftp_w} W` : zonesRow.bike_hr_zones ? `Z2 ${zonesRow.bike_hr_zones[0]}\u2013${zonesRow.bike_hr_zones[1]} bpm` : null,
@@ -5456,7 +5700,7 @@ async function handler12(req, res) {
 var init_default = "-- Antrenor \u2014 schema real\u0103 (Supabase / PostgreSQL). Ruleaz\u0103 cu `supabase db push` sau \xEEn SQL Editor.\n-- Principii: fiecare r\xE2nd are user_id; sportivul \xEE\u0219i vede doar r\xE2ndurile lui (RLS); scrie doar serverul (service role),\n-- cu excep\u021Bia chestionarelor \u0219i a consim\u021B\u0103m\xE2ntului, pe care le poate scrie \u0219i aplica\u021Bia direct.\n\ncreate extension if not exists pgcrypto;\n\n-- ---------- utilizatori (oglinda auth.users) ----------\ncreate table public.users (\n  id uuid primary key references auth.users(id) on delete cascade,\n  email text unique not null,\n  name text not null default '',\n  role text not null check (role in ('sportiv', 'head_coach', 'admin')) default 'sportiv',\n  coach_id uuid references public.users(id),\n  tz text not null default 'Europe/Bucharest',\n  goal text check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),\n  race_name text,\n  race_date date,\n  created_at timestamptz not null default now()\n);\n\ncreate or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$\nbegin\n  insert into public.users (id, email, name)\n  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)))\n  on conflict (id) do nothing;\n  return new;\nend $$;\ndrop trigger if exists on_auth_user_created on auth.users;\ncreate trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();\n\ncreate table public.consents (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  health_data boolean not null default false,\n  adult boolean not null default false,\n  not_medical_ack boolean not null default false,\n  accepted_at timestamptz,\n  withdrawn_at timestamptz\n);\n\n-- ---------- chestionare: intrare, dimineata, seara, saptamanal ----------\ncreate table public.questionnaires (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null check (kind in ('intrare', 'dimineata', 'seara', 'saptamanal')),\n  for_date date not null,\n  activity_id text,                      -- la \u201Eseara\u201D: activitatea la care se refer\u0103\n  answers jsonb not null,\n  created_at timestamptz not null default now(),\n  unique (user_id, kind, for_date, activity_id)\n);\ncreate index on public.questionnaires (user_id, kind, for_date desc);\n\n-- Blocurile libere recurente: day 0 = luni; minute din miezul nop\u021Bii.\ncreate table public.schedules (\n  user_id uuid not null references public.users(id) on delete cascade,\n  day smallint not null check (day between 0 and 6),\n  start_min smallint not null,\n  end_min smallint not null,\n  valid_from date not null default current_date,\n  primary key (user_id, day, start_min, valid_from)\n);\n\ncreate table public.zones (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  run_hr_zones smallint[],          -- limite superioare Z1..Z5, bpm\n  run_threshold_pace_sec_km int,\n  bike_ftp_w int,\n  bike_hr_zones smallint[],\n  swim_css_sec_100m int,\n  hr_max_test smallint,\n  source text,                      -- cpet | lactat | teren | provizoriu\n  tested_at date,\n  updated_at timestamptz not null default now()\n);\n\ncreate table public.tests (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  kind text not null,\n  results jsonb not null,\n  tested_at date not null\n);\n\ncreate table public.labs (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  feritina numeric, vitamina_d numeric, hemoglobina numeric, ck numeric, crp numeric,\n  other jsonb,\n  drawn_at date not null\n);\n\ncreate table public.clearances (\n  user_id uuid primary key references public.users(id) on delete cascade,\n  cardiology boolean not null default false,\n  cleared_at date,\n  intensity_allowed text not null check (intensity_allowed in ('Z2', 'pana_la_Z4', 'toate')) default 'Z2'\n);\n\n-- ---------- br\u0103\u021B\u0103ri ----------\n-- Token-urile OAuth: doar service role le cite\u0219te. Niciodat\u0103 expuse aplica\u021Biei.\ncreate table public.oauth_tokens (\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null check (provider in ('whoop', 'strava', 'oura')),\n  access_token text not null,\n  refresh_token text,\n  expires_at timestamptz not null,\n  scope text,\n  external_user_id text,\n  connected_at timestamptz not null default now(),\n  updated_at timestamptz not null default now(),\n  primary key (user_id, provider)\n);\n\n-- O noapte / o zi, pe surs\u0103, \xEEn forma normalizat\u0103 a colectorului. Arbitrajul \xEEntre surse se face la citire.\ncreate table public.wellness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,                  -- ziua trezirii\n  source text not null check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata')),\n  hrv numeric, rhr smallint,\n  sleep_min int, bedtime text, wake_time text, sleep_score smallint,\n  recovery_score smallint, respiratory_rate numeric,\n  weight_kg numeric, body_fat_pct numeric,\n  raw jsonb,\n  synced_at timestamptz not null default now(),\n  primary key (user_id, date, source)\n);\n\ncreate table public.sync_log (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  provider text not null,\n  ok boolean not null,\n  detail text,\n  rows int not null default 0,\n  ran_at timestamptz not null default now()\n);\ncreate index on public.sync_log (user_id, ran_at desc);\n\n-- ---------- plan ----------\ncreate table public.plans (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  goal text not null check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton')),\n  race_date date not null,\n  start_date date not null,\n  budget_hours numeric not null,\n  version int not null default 1,\n  active boolean not null default true,\n  approved_by uuid references public.users(id),\n  created_at timestamptz not null default now()\n);\ncreate index on public.plans (user_id, active);\n\ncreate table public.workouts_planned (\n  id text primary key,\n  plan_id uuid not null references public.plans(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  type text not null check (type in ('z2', 'tehnica', 'calitate', 'lung', 'brick', 'forta', 'odihna')),\n  planned_minutes int not null,\n  target_zones smallint[] not null,\n  is_key boolean not null default false,\n  step int,\n  structure text,\n  intervals jsonb,\n  status text not null check (status in ('planificat', 'anulat_sistem', 'mutat', 'sters')) default 'planificat',\n  note text,\n  pushed_to_watch_at timestamptz\n);\ncreate index on public.workouts_planned (user_id, date);\n\ncreate table public.activities (\n  id text primary key,              -- \u201Estrava-123\u201D, \u201Ewhoop-abc\u201D\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  sport text not null check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  minutes int not null,\n  distance_km numeric,\n  avg_hr smallint, max_hr smallint,\n  avg_pace_min_km numeric, avg_cadence smallint, avg_watts smallint,\n  time_in_zones_min jsonb,\n  intervals_hit_pct numeric, intervals_abandoned int, main_set_abandoned boolean,\n  first_third_hr smallint, last_third_hr smallint, first_third_output numeric, last_third_output numeric,\n  after_bike_minutes int,\n  name text,\n  raw jsonb,\n  synced_at timestamptz not null default now()\n);\ncreate index on public.activities (user_id, date desc);\n\ncreate table public.scores (\n  workout_id text primary key references public.workouts_planned(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text references public.activities(id),\n  extra_activity_id text references public.activities(id),\n  color text not null check (color in ('verde', 'galben', 'portocaliu', 'rosu', 'gri', 'albastru', 'asteptare')),\n  reasons text[] not null,\n  metrics jsonb not null,\n  flags jsonb not null,\n  is_final boolean not null default false,\n  scored_at timestamptz not null default now()\n);\n\ncreate table public.readiness_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  verdict text not null check (verdict in ('verde', 'galben', 'rosu', 'stop')),\n  reason text,\n  hrv numeric, hrv_baseline numeric, rhr numeric, sleep_min int,\n  hooper_sum smallint,\n  acwr numeric, tsb numeric,\n  primary key (user_id, date)\n);\n\n-- ---------- agen\u021Bi ----------\ncreate table public.packets (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  event text not null check (event in ('dimineata', 'dupa_antrenament', 'saptamanal', 'lunar', 'semnal', 'analize', 'retest')),\n  packet jsonb not null,\n  created_at timestamptz not null default now()\n);\ncreate index on public.packets (user_id, created_at desc);\n\ncreate table public.agent_outputs (\n  id uuid primary key default gen_random_uuid(),\n  packet_id uuid not null references public.packets(id) on delete cascade,\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  verdict text,\n  output jsonb not null,            -- r\u0103spunsul JSON, cu \u201Estare\u201D pe fiecare r\xE2nd dup\u0103 verificare\n  rejected int not null default 0,\n  model text,\n  created_at timestamptz not null default now()\n);\n\n-- Mesajele head coach-ului c\u0103tre sportiv: ce vede \xEEn sec\u021Biunea Antrenor \u0219i \xEEn memento.\ncreate table public.messages (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  packet_id uuid references public.packets(id) on delete set null,\n  kind text not null check (kind in ('dimineata', 'dupa_antrenament', 'saptamanal', 'memento', 'avertisment', 'uman')),\n  body text not null,\n  decision text check (decision in ('verde', 'galben', 'rosu', 'stop')),\n  from_human boolean not null default false,\n  created_at timestamptz not null default now()\n);\ncreate index on public.messages (user_id, created_at desc);\n\ncreate table public.journal (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  entry text not null,\n  created_at timestamptz not null default now()\n);\n\n-- Fi\u0219ierele agen\u021Bilor (fiziolog.md, inot.md \u2026): maximum 30 de r\xE2nduri, rescrise de agent prin \u201Epentru_viitor\u201D.\ncreate table public.agent_files (\n  user_id uuid not null references public.users(id) on delete cascade,\n  agent text not null,\n  content text not null default '',\n  updated_at timestamptz not null default now(),\n  primary key (user_id, agent)\n);\n\ncreate table public.bar_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  total numeric,\n  blocked text,\n  basis text not null,\n  components jsonb not null,\n  primary key (user_id, date)\n);\n\n-- ---------- RLS: sportivul \xEE\u0219i vede r\xE2ndurile; scrie doar serverul (service role trece peste RLS) ----------\ndo $$\ndeclare t text;\nbegin\n  for t in select unnest(array['users','consents','questionnaires','schedules','zones','tests','labs','clearances','wellness_daily','sync_log','plans','workouts_planned','activities','scores','readiness_daily','packets','agent_outputs','messages','journal','agent_files','bar_daily']) loop\n    execute format('alter table public.%I enable row level security', t);\n    if t = 'users' then\n      execute 'create policy users_select_own on public.users for select using (auth.uid() = id)';\n      execute 'create policy users_update_own on public.users for update using (auth.uid() = id)';\n    else\n      execute format('create policy %I_select_own on public.%I for select using (auth.uid() = user_id)', t, t);\n    end if;\n  end loop;\nend $$;\n\n-- Aplica\u021Bia poate scrie direct consim\u021B\u0103m\xE2ntul \u0219i chestionarele proprii; restul trece prin API.\ncreate policy consents_upsert_own on public.consents for insert with check (auth.uid() = user_id);\ncreate policy consents_update_own on public.consents for update using (auth.uid() = user_id);\ncreate policy questionnaires_insert_own on public.questionnaires for insert with check (auth.uid() = user_id);\ncreate policy questionnaires_update_own on public.questionnaires for update using (auth.uid() = user_id);\n\n-- Token-urile OAuth nu au nicio politic\u0103 de select: doar service role le vede.\nalter table public.oauth_tokens enable row level security;\n";
 
 // supabase/migrations/0002_upgrade.sql
-var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D (\u0219i automat c\xE2nd aplica\u021Bia vede schema veche).\nalter table public.users add column if not exists city text;\nalter table public.users add column if not exists lat double precision;\nalter table public.users add column if not exists lon double precision;\nalter table public.users add column if not exists apple_token text;\ncreate unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;\n\n-- Apple Health (prin Health Auto Export) ca surs\u0103 de somn, HRV \u0219i puls de repaus.\nalter table public.wellness_daily drop constraint if exists wellness_daily_source_check;\nalter table public.wellness_daily add constraint wellness_daily_source_check\n  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));\n\n-- Set\u0103rile aplica\u021Biei introduse de admin din aplica\u021Bie (cheile aplica\u021Biilor WHOOP / Strava / Oura).\n-- F\u0103r\u0103 nicio politic\u0103 RLS: le cite\u0219te doar serverul (service role).\ncreate table if not exists public.app_settings (\n  key text primary key,\n  value text not null,\n  updated_at timestamptz not null default now()\n);\nalter table public.app_settings enable row level security;\nrevoke all on public.app_settings from anon, authenticated;\n\n-- Analize: c\xE2nd a fost urcat buletinul (pentru \u201Eanalize noi\u201D \u0219i compara\u021Bia cu cele vechi).\nalter table public.labs add column if not exists uploaded_at timestamptz not null default now();\n\n-- Obiective noi: semimaraton \u0219i maraton (doar alergare).\nalter table public.users drop constraint if exists users_goal_check;\nalter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\nalter table public.plans drop constraint if exists plans_goal_check;\nalter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\n-- Marcaj de versiune a schemei (aplica\u021Bia cere singur\u0103 actualizarea c\xE2nd lipse\u0219te).\nalter table public.users add column if not exists schema_v smallint not null default 3;\n\n-- Sex \u0219i anul na\u0219terii: conteaz\u0103 pentru intervalele analizelor, nutri\u021Bie \u0219i recuperare.\nalter table public.users add column if not exists sex text check (sex in ('m', 'f'));\nalter table public.users add column if not exists birth_year smallint;\n\n-- Recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, alte sporturi) de pe br\u0103\u021B\u0103ri.\ncreate table if not exists public.other_activities (\n  id text primary key,\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  kind text not null check (kind in ('recuperare', 'activ')),\n  name text not null,\n  minutes int not null,\n  avg_hr smallint,\n  max_hr smallint,\n  synced_at timestamptz not null default now()\n);\ncreate index if not exists other_activities_user_date on public.other_activities (user_id, date desc);\nalter table public.other_activities enable row level security;\ndo $$ begin\n  if not exists (select 1 from pg_policies where tablename = 'other_activities' and policyname = 'other_activities_select_own') then\n    create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);\n  end if;\nend $$;\n\n-- \xCEn\u0103l\u021Bimea: pentru indicele de mas\u0103 corporal\u0103 \u0219i necesarul de energie.\nalter table public.users add column if not exists height_cm smallint;\n\n-- Sugestia mai u\u0219oar\u0103 din zilele galbene/portocalii (sportivul alege).\nalter table public.workouts_planned add column if not exists suggestion jsonb;\n\n-- Consumul AI real, pe apel: tokeni de la Anthropic, pentru costul afi\u0219at adminului.\ncreate table if not exists public.ai_usage (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid references public.users(id) on delete cascade,\n  kind text not null,               -- agenti:dimineata, analize, test \u2026\n  model text not null,\n  input_tokens int not null default 0,\n  output_tokens int not null default 0,\n  created_at timestamptz not null default now()\n);\ncreate index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);\nalter table public.ai_usage enable row level security;\n\n-- Corecturile sportivului pe \u0219edin\u021Be clasificate gre\u0219it de br\u0103\u021B\u0103ri (\u201Ee de fapt alergare\u201D, \u201Enu e antrenament\u201D).\n-- Separat de activities, ca o sincronizare nou\u0103 s\u0103 nu le \u0219tearg\u0103.\ncreate table if not exists public.activity_overrides (\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text not null,\n  sport text check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  ignored boolean not null default false,\n  updated_at timestamptz not null default now(),\n  primary key (user_id, activity_id)\n);\nalter table public.activity_overrides enable row level security;\n\n-- ---------- Audit 17.10.2026: drepturi, izolarea conturilor, evenimente idempotente ----------\n\n-- 1. Aplica\u021Bia nu scrie niciodat\u0103 direct \xEEn baz\u0103 (totul trece prin server, cu service role). Un sportiv logat nu\n--    poate modifica niciun r\xE2nd, nici propriul rol: f\u0103r\u0103 politica de update pe users \u0219i f\u0103r\u0103 drept de scriere.\ndrop policy if exists users_update_own on public.users;\ndrop policy if exists consents_upsert_own on public.consents;\ndrop policy if exists consents_update_own on public.consents;\ndrop policy if exists questionnaires_insert_own on public.questionnaires;\ndrop policy if exists questionnaires_update_own on public.questionnaires;\nrevoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;\nalter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;\n-- Rolul se schimb\u0103 doar din server (service role); orice alt\u0103 sesiune prime\u0219te eroare, chiar dac\u0103 un drept ar reap\u0103rea.\ncreate or replace function public.guard_user_role() returns trigger language plpgsql as $$\nbegin\n  if new.role is distinct from old.role and coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', 'service_role') not in ('service_role') then\n    raise exception 'rolul se schimb\u0103 doar din server';\n  end if;\n  return new;\nend $$;\ndrop trigger if exists users_guard_role on public.users;\ncreate trigger users_guard_role before update on public.users for each row execute function public.guard_user_role();\n\n-- 2. Un import nu poate muta o activitate de la un sportiv la altul.\ncreate or replace function public.guard_owner() returns trigger language plpgsql as $$\nbegin\n  if new.user_id is distinct from old.user_id then\n    raise exception 'activitatea % apar\u021Bine altui cont', old.id;\n  end if;\n  return new;\nend $$;\ndrop trigger if exists activities_guard_owner on public.activities;\ncreate trigger activities_guard_owner before update on public.activities for each row execute function public.guard_owner();\ndrop trigger if exists other_activities_guard_owner on public.other_activities;\ncreate trigger other_activities_guard_owner before update on public.other_activities for each row execute function public.guard_owner();\n\n-- 3. ID-urile Apple includ contul (apple-<user>-<id extern>). R\xE2ndurile vechi se redenumesc o singur\u0103 dat\u0103;\n--    scorurile, corecturile \u0219i chestionarele care le citeaz\u0103 se mut\u0103 odat\u0103 cu ele.\ndo $$\ndeclare r record;\nbegin\n  if exists (select 1 from public.activities where source = 'apple' and id not like 'apple-' || user_id::text || '-%') then\n    for r in select conname from pg_constraint where conrelid = 'public.scores'::regclass and contype = 'f' and confrelid = 'public.activities'::regclass loop\n      execute format('alter table public.scores drop constraint %I', r.conname);\n    end loop;\n    alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n    alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n    update public.activity_overrides o set activity_id = 'apple-' || o.user_id::text || '-' || substr(o.activity_id, 7)\n      where o.activity_id like 'apple-%' and o.activity_id not like 'apple-' || o.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = o.activity_id and a.user_id = o.user_id);\n    update public.questionnaires q set activity_id = 'apple-' || q.user_id::text || '-' || substr(q.activity_id, 7)\n      where q.activity_id like 'apple-%' and q.activity_id not like 'apple-' || q.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = q.activity_id and a.user_id = q.user_id);\n    update public.activities set id = 'apple-' || user_id::text || '-' || substr(id, 7)\n      where source = 'apple' and id not like 'apple-' || user_id::text || '-%';\n  end if;\n  if exists (select 1 from public.other_activities where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%') then\n    update public.other_activities set id = 'apple-o-' || user_id::text || '-' || external_id\n      where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%';\n  end if;\nexception when others then\n  -- Nu opre\u0219te actualizarea: r\xE2ndurile vechi r\u0103m\xE2n; cele noi vin cu ID-ul pe cont, iar dublura se recunoa\u0219te la citire.\n  raise notice 'redenumire apple: %', sqlerrm;\nend $$;\n\n-- 4. Evenimentele calendarului (febr\u0103, stop, durere, progres\u2026) se aplic\u0103 o singur\u0103 dat\u0103 fiecare.\ncreate table if not exists public.agent_events (\n  user_id uuid not null references public.users(id) on delete cascade,\n  event_key text not null,\n  applied_at timestamptz not null default now(),\n  primary key (user_id, event_key)\n);\nalter table public.agent_events enable row level security;\n\n-- 5. Un singur chestionar de diminea\u021B\u0103 pe zi: \xEEn SQL dou\u0103 valori NULL nu sunt \u201Eegale\u201D, deci unicitatea veche\n--    nu oprea dublurile cu activity_id NULL. P\u0103str\u0103m cel mai recent \u0219i facem NULL-urile egale (PostgreSQL 15+).\ndo $$\nbegin\n  if not exists (select 1 from pg_constraint where conname = 'questionnaires_one_per_key') then\n    delete from public.questionnaires q using public.questionnaires r\n      where q.user_id = r.user_id and q.kind = r.kind and q.for_date = r.for_date\n        and q.activity_id is not distinct from r.activity_id\n        and (q.created_at, q.id) < (r.created_at, r.id);\n    alter table public.questionnaires drop constraint if exists questionnaires_user_id_kind_for_date_activity_id_key;\n    alter table public.questionnaires add constraint questionnaires_one_per_key unique nulls not distinct (user_id, kind, for_date, activity_id);\n  end if;\nexception when others then\n  -- PostgreSQL mai vechi de 15: r\u0103m\xE2ne unicitatea veche; serverul evit\u0103 oricum dublurile la citire.\n  raise notice 'questionnaires: %', sqlerrm;\nend $$;\n\n-- 6. Un singur plan activ pe sportiv; activarea unui plan nou e o singur\u0103 tranzac\u021Bie: \u0219edin\u021Bele de dinainte de lunea\n--    de la care se reface planul trec \xEEn planul nou (istoricul \u0219i s\u0103pt\u0103m\xE2na curent\u0103 r\u0103m\xE2n), apoi se schimb\u0103 planul activ.\nupdate public.plans p set active = false\n  where p.active and exists (select 1 from public.plans q where q.user_id = p.user_id and q.active and (q.created_at, q.id) > (p.created_at, p.id));\ncreate unique index if not exists plans_one_active on public.plans (user_id) where active;\ncreate or replace function public.activate_plan(p_user uuid, p_plan uuid, p_keep_before date) returns void\nlanguage plpgsql as $$\nbegin\n  if not exists (select 1 from public.plans where id = p_plan and user_id = p_user) then\n    raise exception 'plan inexistent pentru sportiv';\n  end if;\n  update public.workouts_planned set plan_id = p_plan\n    where user_id = p_user and date < p_keep_before\n      and plan_id in (select id from public.plans where user_id = p_user and active and id <> p_plan);\n  update public.plans set active = false where user_id = p_user and active and id <> p_plan;\n  update public.plans set active = true where id = p_plan;\nend $$;\nrevoke execute on function public.activate_plan(uuid, uuid, date) from public, anon, authenticated;\ngrant execute on function public.activate_plan(uuid, uuid, date) to service_role;\n\n-- Marcaj: actualizarea din auditul 2 (17.10.2026) a rulat (aplica\u021Bia o cere singur\u0103 c\xE2nd lipse\u0219te).\nalter table public.plans add column if not exists audit2 boolean not null default true;\n\n-- 7. Doar conturile create prin aplica\u021Bie (cu linkul de invita\u021Bie) au acces. Conturile de p\xE2n\u0103 acum r\u0103m\xE2n aprobate;\n--    un cont f\u0103cut direct \xEEn Supabase (ocolind aplica\u021Bia) nu e aprobat \u0219i serverul \xEEl refuz\u0103.\nalter table public.users add column if not exists approved boolean not null default true;\nalter table public.users alter column approved set default false;\n\n-- Costul AI: tokenii de cache separat (au alt tarif dec\xE2t intrarea obi\u0219nuit\u0103).\nalter table public.ai_usage add column if not exists cache_write_tokens int not null default 0;\nalter table public.ai_usage add column if not exists cache_read_tokens int not null default 0;\n";
+var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D (\u0219i automat c\xE2nd aplica\u021Bia vede schema veche).\nalter table public.users add column if not exists city text;\nalter table public.users add column if not exists lat double precision;\nalter table public.users add column if not exists lon double precision;\nalter table public.users add column if not exists apple_token text;\ncreate unique index if not exists users_apple_token_idx on public.users (apple_token) where apple_token is not null;\n\n-- Apple Health (prin Health Auto Export) ca surs\u0103 de somn, HRV \u0219i puls de repaus.\nalter table public.wellness_daily drop constraint if exists wellness_daily_source_check;\nalter table public.wellness_daily add constraint wellness_daily_source_check\n  check (source in ('whoop', 'garmin', 'oura', 'strava', 'manual', 'athletedata', 'apple'));\n\n-- Set\u0103rile aplica\u021Biei introduse de admin din aplica\u021Bie (cheile aplica\u021Biilor WHOOP / Strava / Oura).\n-- F\u0103r\u0103 nicio politic\u0103 RLS: le cite\u0219te doar serverul (service role).\ncreate table if not exists public.app_settings (\n  key text primary key,\n  value text not null,\n  updated_at timestamptz not null default now()\n);\nalter table public.app_settings enable row level security;\nrevoke all on public.app_settings from anon, authenticated;\n\n-- Analize: c\xE2nd a fost urcat buletinul (pentru \u201Eanalize noi\u201D \u0219i compara\u021Bia cu cele vechi).\nalter table public.labs add column if not exists uploaded_at timestamptz not null default now();\n\n-- Obiective noi: semimaraton \u0219i maraton (doar alergare).\nalter table public.users drop constraint if exists users_goal_check;\nalter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\nalter table public.plans drop constraint if exists plans_goal_check;\nalter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));\n-- Marcaj de versiune a schemei (aplica\u021Bia cere singur\u0103 actualizarea c\xE2nd lipse\u0219te).\nalter table public.users add column if not exists schema_v smallint not null default 3;\n\n-- Sex \u0219i anul na\u0219terii: conteaz\u0103 pentru intervalele analizelor, nutri\u021Bie \u0219i recuperare.\nalter table public.users add column if not exists sex text check (sex in ('m', 'f'));\nalter table public.users add column if not exists birth_year smallint;\n\n-- Recuperarea (saun\u0103, baie rece, yoga, stretching, masaj) \u0219i mi\u0219carea \xEEn plus (plimb\u0103ri, alte sporturi) de pe br\u0103\u021B\u0103ri.\ncreate table if not exists public.other_activities (\n  id text primary key,\n  user_id uuid not null references public.users(id) on delete cascade,\n  source text not null,\n  external_id text not null,\n  date date not null,\n  start_local text,\n  kind text not null check (kind in ('recuperare', 'activ')),\n  name text not null,\n  minutes int not null,\n  avg_hr smallint,\n  max_hr smallint,\n  synced_at timestamptz not null default now()\n);\ncreate index if not exists other_activities_user_date on public.other_activities (user_id, date desc);\nalter table public.other_activities enable row level security;\ndo $$ begin\n  if not exists (select 1 from pg_policies where tablename = 'other_activities' and policyname = 'other_activities_select_own') then\n    create policy other_activities_select_own on public.other_activities for select using (auth.uid() = user_id);\n  end if;\nend $$;\n\n-- \xCEn\u0103l\u021Bimea: pentru indicele de mas\u0103 corporal\u0103 \u0219i necesarul de energie.\nalter table public.users add column if not exists height_cm smallint;\n\n-- Sugestia mai u\u0219oar\u0103 din zilele galbene/portocalii (sportivul alege).\nalter table public.workouts_planned add column if not exists suggestion jsonb;\n\n-- Consumul AI real, pe apel: tokeni de la Anthropic, pentru costul afi\u0219at adminului.\ncreate table if not exists public.ai_usage (\n  id uuid primary key default gen_random_uuid(),\n  user_id uuid references public.users(id) on delete cascade,\n  kind text not null,               -- agenti:dimineata, analize, test \u2026\n  model text not null,\n  input_tokens int not null default 0,\n  output_tokens int not null default 0,\n  created_at timestamptz not null default now()\n);\ncreate index if not exists ai_usage_user_created on public.ai_usage (user_id, created_at desc);\nalter table public.ai_usage enable row level security;\n\n-- Corecturile sportivului pe \u0219edin\u021Be clasificate gre\u0219it de br\u0103\u021B\u0103ri (\u201Ee de fapt alergare\u201D, \u201Enu e antrenament\u201D).\n-- Separat de activities, ca o sincronizare nou\u0103 s\u0103 nu le \u0219tearg\u0103.\ncreate table if not exists public.activity_overrides (\n  user_id uuid not null references public.users(id) on delete cascade,\n  activity_id text not null,\n  sport text check (sport in ('inot', 'bicicleta', 'alergare', 'forta')),\n  ignored boolean not null default false,\n  updated_at timestamptz not null default now(),\n  primary key (user_id, activity_id)\n);\nalter table public.activity_overrides enable row level security;\n\n-- ---------- Audit 17.10.2026: drepturi, izolarea conturilor, evenimente idempotente ----------\n\n-- 1. Aplica\u021Bia nu scrie niciodat\u0103 direct \xEEn baz\u0103 (totul trece prin server, cu service role). Un sportiv logat nu\n--    poate modifica niciun r\xE2nd, nici propriul rol: f\u0103r\u0103 politica de update pe users \u0219i f\u0103r\u0103 drept de scriere.\ndrop policy if exists users_update_own on public.users;\ndrop policy if exists consents_upsert_own on public.consents;\ndrop policy if exists consents_update_own on public.consents;\ndrop policy if exists questionnaires_insert_own on public.questionnaires;\ndrop policy if exists questionnaires_update_own on public.questionnaires;\nrevoke insert, update, delete, truncate on all tables in schema public from anon, authenticated;\nalter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;\n-- Rolul se schimb\u0103 doar din server (service role); orice alt\u0103 sesiune prime\u0219te eroare, chiar dac\u0103 un drept ar reap\u0103rea.\ncreate or replace function public.guard_user_role() returns trigger language plpgsql as $$\nbegin\n  if new.role is distinct from old.role and coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', 'service_role') not in ('service_role') then\n    raise exception 'rolul se schimb\u0103 doar din server';\n  end if;\n  return new;\nend $$;\ndrop trigger if exists users_guard_role on public.users;\ncreate trigger users_guard_role before update on public.users for each row execute function public.guard_user_role();\n\n-- 2. Un import nu poate muta o activitate de la un sportiv la altul.\ncreate or replace function public.guard_owner() returns trigger language plpgsql as $$\nbegin\n  if new.user_id is distinct from old.user_id then\n    raise exception 'activitatea % apar\u021Bine altui cont', old.id;\n  end if;\n  return new;\nend $$;\ndrop trigger if exists activities_guard_owner on public.activities;\ncreate trigger activities_guard_owner before update on public.activities for each row execute function public.guard_owner();\ndrop trigger if exists other_activities_guard_owner on public.other_activities;\ncreate trigger other_activities_guard_owner before update on public.other_activities for each row execute function public.guard_owner();\n\n-- 3. ID-urile Apple includ contul (apple-<user>-<id extern>). R\xE2ndurile vechi se redenumesc o singur\u0103 dat\u0103;\n--    scorurile, corecturile \u0219i chestionarele care le citeaz\u0103 se mut\u0103 odat\u0103 cu ele.\ndo $$\ndeclare r record;\nbegin\n  if exists (select 1 from public.activities where source = 'apple' and id not like 'apple-' || user_id::text || '-%') then\n    for r in select conname from pg_constraint where conrelid = 'public.scores'::regclass and contype = 'f' and confrelid = 'public.activities'::regclass loop\n      execute format('alter table public.scores drop constraint %I', r.conname);\n    end loop;\n    alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n    alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n    update public.activity_overrides o set activity_id = 'apple-' || o.user_id::text || '-' || substr(o.activity_id, 7)\n      where o.activity_id like 'apple-%' and o.activity_id not like 'apple-' || o.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = o.activity_id and a.user_id = o.user_id);\n    update public.questionnaires q set activity_id = 'apple-' || q.user_id::text || '-' || substr(q.activity_id, 7)\n      where q.activity_id like 'apple-%' and q.activity_id not like 'apple-' || q.user_id::text || '-%'\n        and exists (select 1 from public.activities a where a.id = q.activity_id and a.user_id = q.user_id);\n    update public.activities set id = 'apple-' || user_id::text || '-' || substr(id, 7)\n      where source = 'apple' and id not like 'apple-' || user_id::text || '-%';\n  end if;\n  if exists (select 1 from public.other_activities where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%') then\n    update public.other_activities set id = 'apple-o-' || user_id::text || '-' || external_id\n      where source = 'apple' and id not like 'apple-o-' || user_id::text || '-%';\n  end if;\nexception when others then\n  -- Nu opre\u0219te actualizarea: r\xE2ndurile vechi r\u0103m\xE2n; cele noi vin cu ID-ul pe cont, iar dublura se recunoa\u0219te la citire.\n  raise notice 'redenumire apple: %', sqlerrm;\nend $$;\n\n-- 4. Evenimentele calendarului (febr\u0103, stop, durere, progres\u2026) se aplic\u0103 o singur\u0103 dat\u0103 fiecare.\ncreate table if not exists public.agent_events (\n  user_id uuid not null references public.users(id) on delete cascade,\n  event_key text not null,\n  applied_at timestamptz not null default now(),\n  primary key (user_id, event_key)\n);\nalter table public.agent_events enable row level security;\n\n-- 5. Un singur chestionar de diminea\u021B\u0103 pe zi: \xEEn SQL dou\u0103 valori NULL nu sunt \u201Eegale\u201D, deci unicitatea veche\n--    nu oprea dublurile cu activity_id NULL. P\u0103str\u0103m cel mai recent \u0219i facem NULL-urile egale (PostgreSQL 15+).\ndo $$\nbegin\n  if not exists (select 1 from pg_constraint where conname = 'questionnaires_one_per_key') then\n    delete from public.questionnaires q using public.questionnaires r\n      where q.user_id = r.user_id and q.kind = r.kind and q.for_date = r.for_date\n        and q.activity_id is not distinct from r.activity_id\n        and (q.created_at, q.id) < (r.created_at, r.id);\n    alter table public.questionnaires drop constraint if exists questionnaires_user_id_kind_for_date_activity_id_key;\n    alter table public.questionnaires add constraint questionnaires_one_per_key unique nulls not distinct (user_id, kind, for_date, activity_id);\n  end if;\nexception when others then\n  -- PostgreSQL mai vechi de 15: r\u0103m\xE2ne unicitatea veche; serverul evit\u0103 oricum dublurile la citire.\n  raise notice 'questionnaires: %', sqlerrm;\nend $$;\n\n-- 6. Un singur plan activ pe sportiv; activarea unui plan nou e o singur\u0103 tranzac\u021Bie: \u0219edin\u021Bele de dinainte de lunea\n--    de la care se reface planul trec \xEEn planul nou (istoricul \u0219i s\u0103pt\u0103m\xE2na curent\u0103 r\u0103m\xE2n), apoi se schimb\u0103 planul activ.\nupdate public.plans p set active = false\n  where p.active and exists (select 1 from public.plans q where q.user_id = p.user_id and q.active and (q.created_at, q.id) > (p.created_at, p.id));\ncreate unique index if not exists plans_one_active on public.plans (user_id) where active;\ncreate or replace function public.activate_plan(p_user uuid, p_plan uuid, p_keep_before date) returns void\nlanguage plpgsql as $$\nbegin\n  if not exists (select 1 from public.plans where id = p_plan and user_id = p_user) then\n    raise exception 'plan inexistent pentru sportiv';\n  end if;\n  update public.workouts_planned set plan_id = p_plan\n    where user_id = p_user and date < p_keep_before\n      and plan_id in (select id from public.plans where user_id = p_user and active and id <> p_plan);\n  update public.plans set active = false where user_id = p_user and active and id <> p_plan;\n  update public.plans set active = true where id = p_plan;\nend $$;\nrevoke execute on function public.activate_plan(uuid, uuid, date) from public, anon, authenticated;\ngrant execute on function public.activate_plan(uuid, uuid, date) to service_role;\n\n-- Marcaj: actualizarea din auditul 2 (17.10.2026) a rulat (aplica\u021Bia o cere singur\u0103 c\xE2nd lipse\u0219te).\nalter table public.plans add column if not exists audit2 boolean not null default true;\n\n-- 7. Doar conturile create prin aplica\u021Bie (cu linkul de invita\u021Bie) au acces. Conturile de p\xE2n\u0103 acum r\u0103m\xE2n aprobate;\n--    un cont f\u0103cut direct \xEEn Supabase (ocolind aplica\u021Bia) nu e aprobat \u0219i serverul \xEEl refuz\u0103.\nalter table public.users add column if not exists approved boolean not null default true;\nalter table public.users alter column approved set default false;\n\n-- Costul AI: tokenii de cache separat (au alt tarif dec\xE2t intrarea obi\u0219nuit\u0103).\nalter table public.ai_usage add column if not exists cache_write_tokens int not null default 0;\nalter table public.ai_usage add column if not exists cache_read_tokens int not null default 0;\n\n-- 8. \u0218edin\u021Be pe care le schimb\u0103 sportivul sau sistemul: forma din plan (eticheta \u201EActualizat\u201D, revenirea dup\u0103 \u201EPlecat\u201D).\nalter table public.workouts_planned add column if not exists original jsonb;\nalter table public.workouts_planned add column if not exists changed_at timestamptz;\n-- Preferin\u021Bele de calendar: plec\u0103ri (interval + ce ai la dispozi\u021Bie) \u0219i \xEEnt\xE2lniri fixe (alergarea cu grupul).\nalter table public.users add column if not exists calendar_prefs jsonb not null default '{}'::jsonb;\n";
 
 // server/_lib/pg.ts
 import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes3 } from "node:crypto";
@@ -5778,10 +6022,10 @@ async function handler13(req, res) {
 async function hasUpgrade() {
   const h = { headers: supabaseKeyHeaders(ENV.supabaseService()) };
   const [r2, t, e, a2] = await Promise.all([
-    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/plans?select=audit2&limit=1`, h)
+    fetch(`${ENV.supabaseUrl()}/rest/v1/workouts_planned?select=original,changed_at&limit=1`, h)
   ]);
   return r2.ok && t.ok && e.ok && a2.ok;
 }
