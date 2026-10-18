@@ -100,7 +100,7 @@ describe('runner · piramida', () => {
     const r = await runPyramid({ packet: buildPacket(input), files: {}, journal: [], prompts: PROMPTS, models: { specialist: 'spec', head: 'head' } }, client);
     assert.equal(headCalls, 2);
     assert.equal(r.fallbackUsed, true);
-    assert.match(r.head.mesaj, /^Decizia: verde\./);
+    assert.match(r.head.mesaj, /^Zi verde\. Faci antrenamentul din plan\./);
     assert.match(r.head.mesaj, /HRV 27,9/);
     assert.doesNotMatch(r.head.mesaj, /31/);
   });

@@ -3,6 +3,7 @@ import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
 import { loadPrefs } from './prefs.js';
+import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { ENV } from './env.js';
 import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
@@ -154,7 +155,13 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   if (u2.apple_token) (appleRow ? have : missing).push('Apple Watch (Health Auto Export)');
 
   const dayStartMs = Date.parse(localDayStartUtc(today, (user as UserRow).tz || 'Europe/Bucharest'));
-  const memento = messagesRows.find((m) => m.kind === 'memento' && Date.parse(m.created_at) >= dayStartMs)?.body ?? null;
+  const readinessOut = withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction);
+  // Decizia zilei: una singură, pentru toate ecranele.
+  const day = decideDay({ state, readiness: readinessOut, restriction, todayPlan: planned.filter((w) => w.date === today) });
+  // Mementoul de azi se arată doar dacă mesajul de dimineață cu care a venit spune același lucru ca decizia de acum.
+  const todayMsgs = messagesRows.filter((m) => Date.parse(m.created_at) >= dayStartMs);
+  const lastDecided = todayMsgs.find((m) => m.kind !== 'memento' && m.decision);
+  const memento = lastDecided && !messageMatches(lastDecided.decision, day) ? null : (todayMsgs.find((m) => m.kind === 'memento')?.body ?? null);
 
   return {
     baseline,
@@ -173,7 +180,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     activities: meActivities,
     state,
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
-    readiness: withRestriction(readinessRow ? { ...alignWithState(softenRed(readinessRow), state), acwr: num(readinessRow.acwr), hooperSum: readinessRow.hooper_sum } : null, restriction),
+    readiness: readinessOut,
+    day,
     efficiency: aerobicEfficiency(activities, today),
     sportReady: user.goal ? sportReadiness(user.goal as Goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
@@ -236,7 +244,7 @@ function softenRed(r: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: s
   const hrv = n(r.hrv);
   const base = n(r.hrv_baseline);
   const really = (r.sleep_min != null && r.sleep_min < 270) || (acwr != null && acwr > 1.8) || (tsb != null && tsb < -40) || (r.hooper_sum ?? 0) >= 24 || (hrv != null && base != null && hrv < base * 0.8);
-  return really ? { verdict: 'rosu', reason: r.reason } : { verdict: 'galben', reason: 'Galben: încărcare sau somn de urmărit, dar datele de sănătate sunt bune. Roșu rămâne doar pentru zilele cu adevărat rele.' };
+  return really ? { verdict: 'rosu', reason: r.reason } : { verdict: 'galben', reason: 'Încărcarea sau somnul sunt de urmărit, dar datele de sănătate sunt bune.' };
 }
 
 /**
@@ -247,7 +255,7 @@ function alignWithState(d: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reas
   if (!state || d.verdict === 'stop') return d;
   const v = state.verdict === 'portocaliu' ? 'galben' : state.verdict;
   if (v === d.verdict) return d;
-  const why = { verde: 'Datele de sănătate sunt bune: faci antrenamentul din plan.', galben: 'Recuperarea nu e la maxim: ai o variantă mai ușoară ca sugestie; alegi tu.', rosu: 'Datele de sănătate arată o zi grea: azi pauză.' }[v];
+  const why = { verde: 'Datele de sănătate sunt bune.', galben: 'Recuperarea nu e la maxim.', rosu: 'Datele de sănătate arată o zi grea.' }[v];
   return { verdict: v, reason: why };
 }
 

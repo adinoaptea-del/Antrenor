@@ -138,6 +138,8 @@ export interface Me {
   zones: { run: string | null; bike: string | null; swim: string | null; source: string | null } | null;
   dataAvailability: { have: string[]; missing: string[] };
   warnings: { title: string; text: string; fix: string }[];
+  /** Decizia zilei: una singură, citită de toate ecranele. null = fără date azi. */
+  day?: import('./calendar/day.js').DayDecision | null;
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */
   sources?: MeSource[];
   /** Plecări anunțate și întâlniri fixe. */

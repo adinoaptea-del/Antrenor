@@ -99,7 +99,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         )}
       </div>
 
-      <Suggestions />
 
       <Today onOpen={onOpen} />
 
@@ -262,47 +261,6 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             Corecția: {w.fix}
           </div>
         </Card>
-      ))}
-    </>
-  );
-}
-
-/** Zilele galbene/portocalii: ședința din plan rămâne, iar aici apare varianta mai ușoară. Sportivul alege. */
-function Suggestions() {
-  const me = useMe();
-  const { submitForm } = useData();
-  const [busy, setBusy] = useState<string | null>(null);
-  const pending = me.plan.filter((w) => w.date === me.today && (w.status === 'planificat' || w.status === 'mutat') && w.suggestion && w.suggestion.accepted == null);
-  if (!pending.length) return null;
-  const choose = async (id: string, accept: boolean) => {
-    setBusy(id);
-    try {
-      await submitForm('sugestie', { workoutId: id, accept });
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <>
-      {pending.map((w) => (
-        <div key={w.id} className="suggest">
-          <div className="sg-k">Sugestie pentru azi</div>
-          <div className="sg-t">
-            În plan: <b>{SPORT_LABEL[w.sport]} {fmtMinutes(w.plannedMinutes)}</b>
-            {w.targetZones.length ? ` · Z${w.targetZones.join('–Z')}` : ''}
-          </div>
-          <div className="sg-s">
-            Recuperarea de azi nu e la maxim. Varianta ușoară: <b>{w.suggestion!.structure}</b>. Dacă te simți în stare, poți face ce era în plan.
-          </div>
-          <div className="sg-b">
-            <button className="btn" disabled={busy === w.id} onClick={() => void choose(w.id, true)}>
-              Aleg varianta ușoară
-            </button>
-            <button className="btn dark" disabled={busy === w.id} onClick={() => void choose(w.id, false)}>
-              Rămân la plan
-            </button>
-          </div>
-        </div>
       ))}
     </>
   );

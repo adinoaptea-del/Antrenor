@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Avatar, Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
 import { useData, useMe } from '../data/store';
-import { SPORT_LABEL, TYPE_LABEL, cleanRefs, fmtMinutes, workoutsOn } from '../data/model';
+import { SPORT_LABEL, TYPE_LABEL, cleanRefs, dayOf, fmtMinutes, todayMessage, workoutsOn } from '../data/model';
+import { DayDecisionView } from './Day';
 
 // Antrenorul, redus la ce contează: ce faci azi, ce ți-a scris azi, și un singur buton.
 // Mesajele vechi stau strânse, la cerere.
 
-const DAY_WORD = { verde: 'Zi verde: ești recuperat', galben: 'Zi galbenă: recuperare parțială, ai și o variantă mai ușoară', portocaliu: 'Zi portocalie: recuperare slabă, mai ușor azi', rosu: 'Zi roșie: pauză azi', stop: 'Stop: azi nu te antrenezi' } as const;
 const PLAIN: Record<string, string> = { z2: 'ușor, să poți vorbi', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă, ușor', brick: 'bicicletă apoi alergare', forta: 'forță', odihna: 'odihnă' };
 const KIND_LABEL = { dimineata: 'Dimineața', dupa_antrenament: 'După antrenament', saptamanal: 'Săptămâna', memento: 'Memento', avertisment: 'Atenție', uman: 'Antrenorul' } as const;
 
@@ -20,13 +20,10 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
   const today = me.today;
   const plan = workoutsOn(me, today);
   const doneToday = me.activities.some((a) => a.date === today);
-  const color = me.readiness?.verdict === 'stop' ? 'stop' : (me.state?.verdict ?? me.readiness?.verdict ?? null);
+  const day = dayOf(me);
   const msgs = me.messages;
-  const todays = msgs.filter((m) => localDay(m.createdAt) === today);
-  // Un mesaj scris cu altă culoare decât starea de acum (date noi, reguli noi) e depășit: nu-l mai arătăm ca mesajul zilei.
-  const fresh = (m: (typeof msgs)[number]) => !m.decision || m.decision === 'stop' || !color || color === 'stop' || m.decision === (color === 'portocaliu' ? 'galben' : color);
-  const latest = todays.find(fresh) ?? null;
-  const stale = !latest && todays.length > 0;
+  // Un mesaj scris pe altă decizie decât cea de acum (date noi, reguli noi) e depășit: nu-l mai arătăm ca mesajul zilei.
+  const { msg: latest, stale } = todayMessage(me);
   const older = msgs.filter((m) => m !== latest).slice(0, 10);
 
   const evening = new Date().getHours() >= 18 || new Date().getHours() < 5;
@@ -60,13 +57,13 @@ export function Coach({ onBack, onOpen }: { onBack: () => void; onOpen: (screen:
       <div className="stack">
         <Card>
           <Label>Azi</Label>
-          {color && <div className={`coach-day lvl-txt-${color === 'stop' ? 'rosu' : color}`}>{color === 'rosu' || color === 'stop' ? Icons.stop : color === 'verde' ? Icons.check : Icons.alert} {DAY_WORD[color]}</div>}
+          {day && <DayDecisionView day={day} compact />}
           {plan.length === 0 ? (
             <div className="small muted" style={{ marginTop: 6 }}>{me.plan.length ? 'Odihnă în plan.' : 'Planul apare după chestionarul de intrare.'}</div>
           ) : (
             <div className="coach-plan">
               {plan.map((w) => (
-                <div key={w.id} className="cp-row">
+                <div key={w.id} className={`cp-row ${w.status === 'anulat_sistem' || (day && (day.level === 'rosu' || day.level === 'stop')) ? 'off' : ''}`}>
                   <span className="cp-s">{SPORT_LABEL[w.sport]}</span>
                   <span className="cp-t">{PLAIN[w.type] ?? TYPE_LABEL[w.type]}{w.structure ? ` · ${cleanRefs(w.structure)}` : ''}</span>
                   <span className="cp-m">{fmtMinutes(w.plannedMinutes)}</span>

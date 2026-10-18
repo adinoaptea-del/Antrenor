@@ -2,13 +2,14 @@ import { weekday } from '@core/util/dates.js';
 import { AreaChart, Avatar, Card, CircleBtn, Ecg, Icons, Ring, Spark, Stat, fmtDate } from './common';
 import { SyncButton } from './SyncButton';
 import { useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm } from '../data/model';
+import { DAY_NAMES, SPORT_LABEL, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm, dayOf } from '../data/model';
+import { DayDecisionView } from './Day';
 import { GOAL_NAME, overallReady } from '@core/bar/sport-readiness.js';
 import type { Goal } from '@core/calendar/phases.js';
 import { cleanRefs } from '../data/model';
 import { levelFromScore, sleepScore } from '@core/collector/readiness.js';
 
-const LEVEL_LABEL: Record<string, string> = { verde: 'verde', galben: 'galben', portocaliu: 'portocaliu', rosu: 'roșu' };
+const LEVEL_LABEL: Record<string, string> = { verde: 'recuperare bună', galben: 'recuperare medie', portocaliu: 'recuperare slabă', rosu: 'recuperare foarte slabă' };
 
 
 export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
@@ -32,7 +33,8 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
   ].filter((c) => c.show);
   const n = parts ? Object.values(parts).filter((x) => x != null).length : 0;
   const ringValue = me.state?.score ?? recovery;
-  const ringLevel = me.state?.verdict ?? levelFromScore(recovery);
+  // Inelul = măsurătoarea (scorul de recuperare), colorată după scor; decizia zilei e una singură, în cardul de dedesubt.
+  const ringLevel = levelFromScore(ringValue ?? null);
   const lastRun = me.activities.filter((a) => a.sport === 'alergare' && a.avgHr != null).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
   const hrTrend = me.activities
     .filter((a) => a.sport === 'alergare' && a.avgHr != null)
@@ -84,12 +86,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
             Media celor {n} scoruri de mai sus. Inima și respirația sunt comparate cu media ta din ultimele 60 de zile.
           </div>
         )}
-        {me.readiness && (
-          <div className={`day-verdict v-${me.readiness.verdict}`}>
-            <b>Antrenamentul de azi: {{ verde: 'normal', galben: 'mai ușor', rosu: 'pauză', stop: 'stop' }[me.readiness.verdict]}</b>
-            {me.readiness.reason && <span>{cleanRefs(me.readiness.reason)}</span>}
-          </div>
-        )}
+        {dayOf(me) && <DayDecisionView day={dayOf(me)!} />}
       </div>
 
       <div className="stack">

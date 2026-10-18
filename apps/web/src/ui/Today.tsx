@@ -3,16 +3,8 @@ import { weekday } from '@core/util/dates.js';
 import { Icons } from './common';
 import { WorkoutCard } from './Workout';
 import { useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, ago, colorOf, firstSentences, fmtMinutes, todayMessage, workoutsOn } from '../data/model';
-
-type Verdict = 'verde' | 'galben' | 'portocaliu' | 'rosu' | 'stop';
-const VERDICT: Record<Verdict, { icon: JSX.Element; text: string }> = {
-  verde: { icon: Icons.check, text: 'Zi verde: faci ce e în plan' },
-  galben: { icon: Icons.alert, text: 'Zi galbenă: ai și o variantă mai ușoară' },
-  portocaliu: { icon: Icons.alert, text: 'Zi portocalie: mai ușor azi' },
-  rosu: { icon: Icons.stop, text: 'Zi roșie: pauză azi' },
-  stop: { icon: Icons.stop, text: 'Stop: azi nu te antrenezi' },
-};
+import { DAY_NAMES, SPORT_LABEL, ago, colorOf, dayOf, firstSentences, fmtMinutes, todayMessage, workoutsOn } from '../data/model';
+import { DayDecisionView } from './Day';
 
 /**
  * Cardul „Azi”: primul lucru de pe Acasă. Ce faci azi (ședința, cât, intensitatea, de ce), decizia antrenorului în
@@ -22,8 +14,7 @@ export function Today({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sp
   const me = useMe();
   if (!me.plan.length) return null;
   const list = workoutsOn(me, me.today).filter((w) => w.type !== 'odihna');
-  const verdict: Verdict | null = me.readiness?.verdict === 'stop' ? 'stop' : (me.state?.verdict ?? me.readiness?.verdict ?? null);
-  const reason = me.readiness?.reason ?? null;
+  const day = dayOf(me);
   const { msg, stale } = todayMessage(me);
   const next = list.length
     ? null
@@ -35,14 +26,8 @@ export function Today({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sp
     <section className="today-card" aria-label="Azi">
       <div className="today-k">
         <span>Azi · {DAY_NAMES[weekday(me.today)]}</span>
-        {verdict && (
-          <span className={`verdict v-${verdict}`}>
-            {VERDICT[verdict].icon}
-            {VERDICT[verdict].text}
-          </span>
-        )}
       </div>
-      {verdict && verdict !== 'verde' && reason && <div className="today-reason">{reason}</div>}
+      {day && <DayDecisionView day={day} />}
 
       {list.length === 0 ? (
         <div className="today-rest">

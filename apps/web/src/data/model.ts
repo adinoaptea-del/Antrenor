@@ -4,6 +4,7 @@
 import type { Me, MeActivity } from '@core/api-types.js';
 import type { Color, PlannedWorkout, Sport } from '@core/types.js';
 import { addDays, diffDays, weekStart, weekday } from '@core/util/dates.js';
+import { decideDay, messageMatches, type DayDecision } from '@core/calendar/day.js';
 
 export type { Me, MeActivity };
 
@@ -154,7 +155,8 @@ export function cleanRefs(t: string): string {
 }
 
 export function greeting(me: Me): string {
-  if (me.memento) return cleanRefs(me.memento);
+  // Mementoul AI doar dacă a fost scris pe decizia de acum; altfel ar contrazice cardul „Azi”.
+  if (me.memento && !todayMessage(me).stale) return cleanRefs(me.memento);
   const ride = longest(me, 'bicicleta');
   const run = longest(me, 'alergare');
   const best = [ride, run].filter((x): x is MeActivity => x != null).sort((a, b) => b.minutes - a.minutes)[0];
@@ -196,15 +198,16 @@ export type Level = 'verde' | 'galben' | 'portocaliu' | 'rosu';
  * Fără verdict azi (înainte de 05:30 sau fără date): fără culoare.
  */
 export function dayLevel(me: Me): Level | null {
-  // Marginile arată starea ta de azi: datele de sănătate (și cum te simți). Stop la febră/simptome = roșu.
-  if (me.readiness?.verdict === 'stop') return 'rosu';
-  if (me.state) return me.state.verdict;
-  const r = me.readiness;
-  if (!r) return null;
-  if (r.verdict === 'rosu' || r.verdict === 'stop') return 'rosu';
-  const loaded = (r.acwr != null && r.acwr > 1.3) || (r.hooperSum != null && r.hooperSum >= 20);
-  if (r.verdict === 'galben') return loaded ? 'portocaliu' : 'galben';
-  return loaded ? 'galben' : 'verde';
+  // Marginea ecranului = decizia zilei (aceeași ca peste tot).
+  const d = dayOf(me);
+  if (!d) return null;
+  return d.level === 'stop' ? 'rosu' : d.level;
+}
+
+/** Decizia zilei: cea calculată pe server; în demo (fără server) aceeași regulă, din ce există. */
+export function dayOf(me: Me): DayDecision | null {
+  if (me.day !== undefined) return me.day;
+  return decideDay({ state: me.state ?? null, readiness: me.readiness ? { verdict: me.readiness.verdict, reason: me.readiness.reason } : null, restriction: null, todayPlan: me.plan.filter((w) => w.date === me.today) });
 }
 
 /**
@@ -226,7 +229,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
   const easyTarget = w.targetZones.some((x) => x > 2) ? z(2) : target;
   const talk = w.targetZones.every((x) => x <= 2) ? ' – poți vorbi în propoziții întregi' : '';
   const m = Math.max(0, w.plannedMinutes);
-  if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament. Plimbare ușoară sau mobilitate, dacă ai chef.' }];
+  if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament azi. Corpul se adaptează acum.' }];
   if (w.type === 'forta') {
     const warm = Math.min(5, Math.floor(m / 4));
     const cool = Math.min(5, Math.floor(m / 6));
@@ -311,10 +314,9 @@ export function firstSentences(text: string, n = 2): string {
 
 /** Mesajul de azi al antrenorului, dacă a fost scris pe starea de acum (altfel e depășit). */
 export function todayMessage(me: Me): { msg: Me['messages'][number] | null; stale: boolean } {
-  const color = me.readiness?.verdict === 'stop' ? 'stop' : (me.state?.verdict ?? me.readiness?.verdict ?? null);
+  const day = dayOf(me);
   const todays = me.messages.filter((m) => localDayOf(m.createdAt) === me.today);
-  const fresh = (m: Me['messages'][number]) => !m.decision || m.decision === 'stop' || !color || color === 'stop' || m.decision === (color === 'portocaliu' ? 'galben' : color);
-  const msg = todays.find(fresh) ?? null;
+  const msg = todays.find((m) => messageMatches(m.decision, day)) ?? null;
   return { msg, stale: !msg && todays.length > 0 };
 }
 

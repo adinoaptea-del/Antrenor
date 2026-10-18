@@ -5,7 +5,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Dot, Icons } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
-import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf, sessionSteps } from '../data/model';
+import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
@@ -27,9 +27,14 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
   const reasons = reasonsOf(me, w);
   const debrief = done ? me.messages.find((m) => m.kind === 'dupa_antrenament' && localDayOf(m.createdAt) >= w.date && localDayOf(m.createdAt) <= addDays(w.date, 1)) : undefined;
   const zones = w.targetZones.length ? `Z${w.targetZones.join('–')}` : '';
+  // Decizia zilei se aplică și ședinței de azi: în zi roșie nu i se mai propune nimic, în zi galbenă varianta ușoară.
+  const day = w.date === me.today && (upcoming || cancelled) ? dayOf(me) : null;
+  const paused = !!day && (day.level === 'rosu' || day.level === 'stop');
+  const yellow = !!day && day.level === 'galben' && upcoming;
+  const off = cancelled || paused;
 
   return (
-    <div className={`wk ${hero ? 'hero' : ''} ${cancelled ? 'off' : ''}`}>
+    <div className={`wk ${hero ? 'hero' : ''} ${off ? 'off' : ''}`}>
       <div className="wk-head">
         <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
         <div className="wk-t">
@@ -39,14 +44,14 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
           <div className="wk-sub">{[zones, w.key && !cancelled ? 'cheie' : ''].filter(Boolean).join(' · ')}</div>
         </div>
         <div className="wk-min">
-          {cancelled ? <s>{fmtMinutes(w.original?.plannedMinutes ?? w.plannedMinutes)}</s> : fmtMinutes(w.plannedMinutes)}
+          {off ? <s>{fmtMinutes(w.original?.plannedMinutes ?? w.plannedMinutes)}</s> : fmtMinutes(w.plannedMinutes)}
         </div>
       </div>
 
-      {cancelled ? (
+      {cancelled || paused ? (
         <div className="wk-off">
           {Icons.stop}
-          <span>{w.note ?? 'Anulată de sistem.'}</span>
+          <span>{paused ? `${day!.title}: azi nu faci ședința asta.` : cap(w.note ?? 'Anulată de sistem.')}</span>
         </div>
       ) : (
         <div className="wk-why">{purposeOf(w)}</div>
@@ -91,7 +96,9 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         </div>
       )}
 
-      {!cancelled && !done && (
+      {yellow && <YellowDay w={w} />}
+
+      {!off && !done && (
         <>
           <button className="linkish" onClick={() => setShowSteps(!showSteps)} aria-expanded={showSteps}>
             {showSteps ? 'Ascunde pașii' : 'Cum o faci'}
@@ -109,9 +116,51 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         </>
       )}
 
-      {upcoming && <Actions w={w} />}
+      {upcoming && !paused && <Actions w={w} />}
     </div>
   );
+}
+
+function cap(t: string): string {
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/**
+ * Zi galbenă: aceeași idee ca sus („azi mai ușor”). Dacă antrenorul a pregătit varianta ușoară, ea e ședința de azi;
+ * dacă ședința e deja ușoară, nu e nimic de schimbat; altfel butonul „Fă-o ușoară”.
+ */
+function YellowDay({ w }: { w: PlannedWorkout }) {
+  const { submitForm, local } = useData();
+  const [busy, setBusy] = useState(false);
+  const intense = w.type === 'calitate' || w.type === 'brick' || w.type === 'lung' || w.targetZones.some((z) => z >= 3);
+  const s = w.suggestion;
+  if (s && s.accepted === true) return <div className="wk-yellow">Zi galbenă: faci varianta ușoară, deja pusă în plan.</div>;
+  if (s && s.accepted == null)
+    return (
+      <div className="wk-yellow">
+        <div>
+          Zi galbenă, deci azi: <b>{s.structure}</b> ({fmtMinutes(s.minutes)}) în loc de ce scrie mai sus.
+        </div>
+        {!local && (
+          <button
+            className="btn sm"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await submitForm('sugestie', { workoutId: w.id, accept: true });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Pune varianta ușoară în plan
+          </button>
+        )}
+      </div>
+    );
+  if (!intense) return <div className="wk-yellow">Zi galbenă: ședința e deja ușoară. O faci așa, fără să forțezi.</div>;
+  return <div className="wk-yellow">Zi galbenă: apasă „Fă-o ușoară” și ședința rămâne, fără intensitate.</div>;
 }
 
 function Actions({ w }: { w: PlannedWorkout }) {

@@ -2,6 +2,7 @@
 // Modelul primește promptul agentului ca system și pachetul ca mesaj; răspunde doar JSON pe schema cerută.
 // Nimic din ce scrie un agent nu ajunge la sportiv fără verificarea mecanică (verify.ts).
 
+import { DAY_TEXT } from '../calendar/day.js';
 import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
 import type { Sport } from '../types.js';
@@ -196,11 +197,10 @@ export function verifyHeadText(text: string, packet: Packet, specialists: Verifi
 /** Mesaj construit din cod când head coach-ul nu trece verificarea de două ori: doar verdictul și rândurile acceptate. */
 export function fallbackMessage(p: Packet, decision: HeadResponse['decizie'], specialists: VerifiedResponse[]): string {
   const lines: string[] = [];
-  const label = { verde: 'verde', galben: 'galben', rosu: 'roșu', stop: 'stop' }[decision];
-  lines.push(`Decizia: ${label}.`);
-  if (decision === 'rosu') lines.push('Azi: fără antrenament.');
-  else if (decision === 'stop') lines.push(safetyLine(p) ? 'Azi: oprire.' : 'Azi: oprire. Vorbește cu un medic înainte să reiei antrenamentele.');
-  else if (p.plan_azi) lines.push(`Azi: ${p.plan_azi.sport} ${p.plan_azi.tip} ${p.plan_azi.durata_planificata} min${decision === 'galben' ? ', Z1–Z2' : ''}.`);
+  // Aceleași cuvinte ca în aplicație (DAY_TEXT): mesajul nu poate spune altceva decât decizia.
+  lines.push(`${DAY_TEXT[decision].title}. ${DAY_TEXT[decision].action}`);
+  if (decision === 'stop' && !safetyLine(p)) lines.push('Vorbește cu un medic înainte să reiei antrenamentele.');
+  else if ((decision === 'verde' || decision === 'galben') && p.plan_azi) lines.push(`Azi: ${p.plan_azi.sport} ${p.plan_azi.tip} ${p.plan_azi.durata_planificata} min${decision === 'galben' ? ', Z1–Z2' : ''}.`);
   for (const s of specialists) for (const item of s.ce) if (item.stare === 'acceptat') lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join('\n');
 }

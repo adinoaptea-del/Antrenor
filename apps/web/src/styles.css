@@ -999,3 +999,19 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .wk-note .i { width: 14px; height: 14px; vertical-align: -2px; }
 
 .offline-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.4; color: #1a1400; background: #ffd60a; }
+
+.wk-yellow { display: grid; gap: 8px; font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; background: rgba(255, 214, 10, 0.1); border: 1px solid rgba(255, 214, 10, 0.4); }
+.wk-yellow b { color: #ffd60a; }
+.wk-yellow .btn { justify-self: start; }
+/* Decizia zilei: aceeași pe toate ecranele */
+.day-dec { display: grid; gap: 6px; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line-2); background: var(--surface); }
+.dd-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.dd-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 4px 10px 4px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.dd-badge .i { width: 16px; height: 16px; stroke-width: 2.4; }
+.dd-action { font-size: 15px; }
+.dd-why { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.d-verde .dd-badge { color: #30d158; }
+.d-galben .dd-badge { color: #ffd60a; }
+.d-rosu .dd-badge, .d-stop .dd-badge { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+.d-rosu, .d-stop { border-color: rgba(239, 68, 68, 0.55); }
+.cp-row.off { opacity: 0.5; text-decoration: line-through; }
