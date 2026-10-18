@@ -525,7 +525,7 @@ function paceFromResult(r2, distanceKm) {
 }
 
 // src/collector/permissions.ts
-var AI_BLOCKED_SOURCES = /* @__PURE__ */ new Set(["strava"]);
+var AI_BLOCKED_SOURCES = /* @__PURE__ */ new Set();
 function allowedForAI(rows) {
   return rows.filter((r2) => !r2.source || !AI_BLOCKED_SOURCES.has(r2.source));
 }
@@ -1892,8 +1892,8 @@ async function collect(userId, today, event) {
     athlete: { goal: user.goal ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? "curs\u0103"}${user.race_date ? `, ${user.race_date}` : ""}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness: allowedForAI(wellness),
     activities: allowedForAI(activities),
-    // Doar faptul că Strava e conectat (din tokenuri, nu din datele Strava): AI-ul știe că nu vede tot.
-    hiddenSources: (await select("oauth_tokens", { user_id: `eq.${userId}`, provider: "eq.strava" }, { select: "provider", limit: 1 }).catch(() => [])).length ? ["strava"] : [],
+    // Surse conectate pe care AI-ul n-are voie să le vadă (registrul din permissions.ts); acum niciuna.
+    hiddenSources: [...AI_BLOCKED_SOURCES],
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
@@ -6542,7 +6542,7 @@ async function handler14(req, res) {
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== "memento")?.created_at ?? null,
             costMonth: cost(usage.filter((r2) => r2.user_id === x.id)),
-            recent: acts.filter((r2) => r2.user_id === x.id).slice(0, 8).map((r2) => ({ date: r2.date, sport: r2.sport, source: r2.source, name: r2.name, minutes: r2.minutes, km: r2.distance_km }))
+            recent: acts.filter((r2) => r2.user_id === x.id && r2.source !== "strava").slice(0, 8).map((r2) => ({ date: r2.date, sport: r2.sport, source: r2.source, name: r2.name, minutes: r2.minutes, km: r2.distance_km }))
           };
         })
       });

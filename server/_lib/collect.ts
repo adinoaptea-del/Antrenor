@@ -9,7 +9,7 @@ import type { OtherActivity } from '../../src/collector/other.js';
 import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
-import { allowedForAI } from '../../src/collector/permissions.js';
+import { AI_BLOCKED_SOURCES, allowedForAI } from '../../src/collector/permissions.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
 import type { LabsForm } from '../../src/api-types.js';
@@ -293,7 +293,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     loadHistory(userId, today),
     planRow ? loadTotals(userId, planRow.start_date, true) : Promise.resolve(null),
   ]);
-  // Pachetul merge la AI: sursele fără drept de folosire în AI (Strava) nu intră deloc, nici prin derivate.
+  // Pachetul merge la AI: sursele din registrul de blocare (permissions.ts) nu intră deloc, nici prin derivate.
   const others = allowedForAI(await loadOthers(userId, addDays(today, -8)));
   const input: CollectorInput = {
     others,
@@ -303,8 +303,8 @@ export async function collect(userId: string, today: string, event: CollectorInp
     athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness: allowedForAI(wellness),
     activities: allowedForAI(activities),
-    // Doar faptul că Strava e conectat (din tokenuri, nu din datele Strava): AI-ul știe că nu vede tot.
-    hiddenSources: (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: 'eq.strava' }, { select: 'provider', limit: 1 }).catch(() => [])).length ? ['strava'] : [],
+    // Surse conectate pe care AI-ul n-are voie să le vadă (registrul din permissions.ts); acum niciuna.
+    hiddenSources: [...AI_BLOCKED_SOURCES],
     plan: planRes.workouts,
     zones,
     morning: forms.morning,

@@ -54,7 +54,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== 'memento')?.created_at ?? null,
             costMonth: cost(usage.filter((r) => r.user_id === x.id)),
-            recent: acts.filter((r) => r.user_id === x.id).slice(0, 8).map((r) => ({ date: r.date, sport: r.sport, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km })),
+            recent: acts.filter((r) => r.user_id === x.id && r.source !== 'strava').slice(0, 8).map((r) => ({ date: r.date, sport: r.sport, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km })),
           };
         }),
       });

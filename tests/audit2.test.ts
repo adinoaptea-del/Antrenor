@@ -150,10 +150,10 @@ describe('47 / T46 · testul fără ergometru nu pune pragurile la alergare', ()
   });
 });
 
-describe('12 / T11 · Strava nu ajunge la AI', () => {
-  it('filtrul scoate sursa Strava, păstrează restul', () => {
+describe('12 / T11 · registrul surselor pentru AI (v2: Strava permisă, doar pentru sportivul ei)', () => {
+  it('Strava, WHOOP și Apple ajung toate la antrenorul sportivului', () => {
     const rows = allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: 'apple' }, { source: null }]);
-    assert.deepEqual(rows.map((r) => r.source), ['whoop', 'apple', null]);
+    assert.deepEqual(rows.map((r) => r.source), ['strava', 'whoop', 'apple', null]);
   });
 });
 
