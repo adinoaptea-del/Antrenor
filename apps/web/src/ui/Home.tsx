@@ -13,6 +13,7 @@ import type { MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
 import { Today } from './Today';
 import { BadgesTeaser, NewBadge } from './Badges';
+import { RaceReadyBar } from './RaceReady';
 
 // Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
 // zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
@@ -104,39 +105,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       <NewBadge onOpen={onOpen} />
       <Today onOpen={onOpen} />
 
-      {me.sportReady && me.sportReady.length > 0 ? (
-        <div className="progress" role="img" aria-label={`Progres față de repere, ${goalName}: ${overall}%`}>
-          <div className="ready-title">
-            Progres față de repere ({goalName}): <b>{overall}%</b>
-          </div>
-          <div className="track">
-            <div className={`fill ${overall ? '' : 'empty'}`} style={overall ? { width: `${Math.max(3, overall ?? 0)}%` } : undefined} />
-            <div className="ticks" aria-hidden="true">
-              {me.sportReady.map((r) => (
-                <i key={r.sport} style={{ flexGrow: 1 }} />
-              ))}
-            </div>
-          </div>
-          <div className="meta">
-            <span className="tiny muted">{me.sportReady.map((r) => `${SPORT_LABEL[r.sport]} ${r.value ?? 0}%`).join('  ·  ')}</span>
-            <button className="pill" onClick={() => setBarInfo(!barInfo)} style={{ height: 28 }} aria-expanded={barInfo}>
-              detalii {Icons.chevronRight}
-            </button>
-          </div>
-          {barInfo && (
-            <div className="bar-info">
-              {me.sportReady.map((r) => (
-                <button key={r.sport} className="bi-row bi-btn" onClick={() => onOpen('antrenament', { sport: r.sport })}>
-                  <span className="bi-k">{SPORT_LABEL[r.sport]}</span>
-                  <span className={`bi-v ${r.value == null ? 'none' : ''}`}>{r.value == null ? 'fără date' : `${r.value}%`}</span>
-                  <span className="bi-d">{r.value == null ? `nicio ședință cu distanță în 6 săptămâni; proba: ${r.leg}` : r.parts.map((p) => `${p.label.toLowerCase()}: ${p.have} din ${p.target}`).join('; ')}</span>
-                </button>
-              ))}
-              {limiting && <div className="small" style={{ marginTop: 4 }}>Proba care te ține pe loc: <b>{SPORT_LABEL[limiting.sport]}</b> ({limiting.value == null ? 'fără date' : `${limiting.value}%`}).</div>}
-              <div className="tiny muted">Un index după regulile noastre de antrenor, nu o probabilitate de a termina cursa. Media probelor, din tot ce au înregistrat brățările în ultimele 6 săptămâni; o probă fără nicio ședință contează 0. Apasă pe un sport pentru detalii.</div>
-            </div>
-          )}
-        </div>
+      {me.raceReady ? (
+        <RaceReadyBar onOpen={onOpen} goalName={goalName} open={barInfo} setOpen={setBarInfo} />
       ) : (
         <div className="progress" role="img" aria-label={total == null ? 'Bara de pregătire: fără date' : `Pregătit ${total}% pentru cursă`}>
           <div className="track">

@@ -1,5 +1,6 @@
 import { GOAL_NAME, swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
 import { balanceCheck } from '../../src/calendar/balance.js';
+import { raceReady } from '../../src/bar/race-ready.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
@@ -196,6 +197,15 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     readiness: readinessOut,
     day,
     efficiency: aerobicEfficiency(activities, today),
+    raceReady: user.goal && user.goal in GOAL_NAME
+      ? raceReady({
+          goal: user.goal as Goal,
+          today,
+          acts: activities,
+          plan: planned,
+          fueledDates: forms.evenings.filter((e) => e.fueling_conform === 'da').map((e) => activities.find((a) => (a.id === e.activityId || a.externalId === e.activityId) && a.minutes >= 120)?.date).filter((x): x is string => !!x),
+        })
+      : null,
     sportReady: user.goal ? sportReadiness(user.goal as Goal, activities, today, { swimContinuousM: swimDeclared(forms.intake) }) : [],
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),

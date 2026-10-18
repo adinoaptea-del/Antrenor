@@ -104,6 +104,10 @@ ACTIVITĂȚI ÎN PLUS FAȚĂ DE PLAN (acoperire_azi, efort_ieri)
 - Altfel „optiune” = null.
 - efort_ieri.peste_plan = true (dimineața): prima propoziție despre noaptea de după efort (somn, HRV, recuperare) și despre dureri (hooper.dureri). Planul de azi rămâne dacă datele sunt bune; se schimbă doar dacă datele o cer.
 
+PE DRUM ȘI GATA DE CURSĂ (gata_de_cursa)
+- Departe de cursă (Bază), contează „pe drum” (onTrack): execuția planului. „Gata de cursă” (ready, weakest) devine subiect din Build; o pomenești doar când se schimbă veriga slabă sau o ședință-reper e trecută.
+- Timpul estimat îl spui doar cu marja lui (low–high) și cu ipotezele lui; nu e o predicție.
+
 ISTORICUL (istoric)
 - Forma de acum o dau ultimele 6 săptămâni. Istoricul spune ce a mai demonstrat corpul (cele mai lungi ședințe, curse, ritmuri) și cât de constant a fost; îl folosești ca reper („ai mai alergat 21 km pe <data>”), nu ca dovadă că poate și acum. Pauzele lungi din istoric cer prudență la creștere.
 

@@ -10,6 +10,7 @@ import { isActiveWorkout, type Activity, type PlannedWorkout, type Sport } from 
 import { scoreWorkout, zoneDirection } from '../scoring/score.js';
 import { matchActivities } from '../scoring/match.js';
 import { balanceCheck, type Balance } from '../calendar/balance.js';
+import { raceReady, type RaceReady } from '../bar/race-ready.js';
 import { extraOn, overYesterday, type DayCoverage } from '../calendar/load.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -156,6 +157,11 @@ export interface Packet {
    * de media lui pe 7 zile, comparat cu diminețile fără recuperare. Asociere, nu cauză; doar cu ≥ 4 dimineți.
    */
   raspuns_recuperare: import('../recovery/recovery.js').RecoveryEffect[];
+  /**
+   * Pe drum (execuția planului pe 4 săptămâni) și Gata de cursă (cea mai slabă verigă: probele și cumulul), cu
+   * ședințele-reper și timpul estimat (marjă ±10%, ipotezele scrise). Calculate de cod.
+   */
+  gata_de_cursa: RaceReady | null;
   /** Echilibrul pe ultimele 3 săptămâni: sporturi rămase în urmă, intensitate sărită. Din date, nu din impresie. */
   echilibru: Balance;
   analize: CollectorInput['labs'] | null;
@@ -696,6 +702,7 @@ export function buildPacket(input: CollectorInput): Packet {
     acoperire_azi: aziCover.extra ? aziCover.coverage : null,
     efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
     echilibru: balance,
+    gata_de_cursa: input.athlete.goal ? raceReady({ goal: input.athlete.goal, today, acts, plan: input.plan, fueledDates: input.evenings.filter((e) => e.fueling_conform === 'da').map((e) => acts.find((a) => (a.id === e.activityId || a.externalId === e.activityId) && a.minutes >= 120)?.date).filter((x): x is string => !!x) }) : null,
     raspuns_recuperare: input.recoveryEffects ?? [],
     istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {
