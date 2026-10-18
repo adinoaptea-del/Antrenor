@@ -15,7 +15,7 @@ import { LabsGate } from './ui/LabsGate';
 import { Tour, tourSeen } from './ui/Tour';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
-import { Ambient, AppHeader, PageTitle, SubTabs, ambientOn } from './ui/Shell';
+import { takeLocalBack, Ambient, AppHeader, PageTitle, SubTabs, ambientOn } from './ui/Shell';
 import { Goal } from './ui/Goal';
 import { Intake } from './forms/Intake';
 import { Evening, Morning, Weekly } from './forms/Daily';
@@ -57,6 +57,8 @@ export function App() {
   );
 }
 
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
 function Shell() {
   const { status, me, error, refresh, local, sync, offline } = useData();
   const [screen, setScreen] = useState<Screen>(readScreen);
@@ -86,7 +88,7 @@ function Shell() {
         return;
       }
       const t = e.touches[0];
-      active = !!t && t.clientX <= 24 && !!swipeBack.current;
+      active = !IS_ANDROID && !!t && t.clientX <= 24 && !!swipeBack.current;
       if (!active || !t) return;
       sx = t.clientX;
       sy = t.clientY;
@@ -175,6 +177,36 @@ function Shell() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  // Butonul / gestul „înapoi” al telefonului (Android, Samsung): pe orice ecran în afară de Acasă există o intrare în
+  // istoric peste Acasă; „înapoi” te duce unde te-ar duce și săgeata din aplicație, iar pe Acasă iese din aplicație.
+  const popBack = useRef<() => void>(() => undefined);
+  const skipPop = useRef(false);
+  useEffect(() => {
+    try {
+      const start = readScreen();
+      if (start !== 'acasa' && history.state?.airon !== 'deep') {
+        history.replaceState(null, '', '#acasa');
+        history.pushState({ airon: 'deep' }, '', `#${start}`);
+      }
+    } catch {
+      /* fără istoric: rămâne navigarea din aplicație */
+    }
+    const onPop = () => {
+      if (skipPop.current) {
+        skipPop.current = false;
+        try {
+          history.replaceState(null, '', '#acasa');
+        } catch {
+          /* */
+        }
+        return;
+      }
+      popBack.current();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   useEffect(() => {
     if (status !== 'ready') return;
     const stop = startAutoSync(sync);
@@ -209,7 +241,15 @@ function Shell() {
     setNavDir(t === screen ? 'none' : depth(t) > depth(screen) ? 'fwd' : depth(t) < depth(screen) ? 'back' : 'fade');
     setScreen(t);
     try {
-      history.replaceState(null, '', `#${t}`);
+      const deepNow = history.state?.airon === 'deep';
+      if (t !== 'acasa') {
+        if (deepNow) history.replaceState({ airon: 'deep' }, '', `#${t}`);
+        else history.pushState({ airon: 'deep' }, '', `#${t}`);
+      } else if (deepNow) {
+        // Înapoi la Acasă din aplicație: scoatem intrarea de deasupra, ca „înapoi” de pe Acasă să iasă din prima.
+        skipPop.current = true;
+        history.back();
+      } else history.replaceState(null, '', '#acasa');
     } catch {
       /* fără hash, rămâne starea din React */
     }
@@ -227,6 +267,20 @@ function Shell() {
           ? () => go('acasa')
           : back;
   const isForm = ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'].includes(screen);
+  popBack.current = () => {
+    const local = takeLocalBack();
+    if (local) {
+      local();
+      try {
+        history.pushState({ airon: 'deep' }, '', `#${screen}`);
+      } catch {
+        /* */
+      }
+      return;
+    }
+    if (swipeBack.current) swipeBack.current();
+    else if (screen !== 'acasa') go('acasa');
+  };
 
   // Primul pas: fără chestionar de intrare nu există plan. Intri direct în el.
   const gateIntake = !me.intakeComplete && screen !== 'intake' && screen !== 'profil';

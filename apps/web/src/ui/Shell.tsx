@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Icons } from './common';
 
 /** Cuvântul AIRON, cu I-ul în lime (ca pe iconiță). */
@@ -88,4 +88,23 @@ export function setAmbientOn(on: boolean): void {
   } catch {
     /* fără storage: rămâne aprinsă */
   }
+}
+
+/**
+ * Navigarea din interiorul unui ecran (ex. Profil → Cont): butonul „înapoi” al telefonului închide întâi pasul local.
+ * Componenta înregistrează cât timp e deschisă o funcție de întoarcere; App o cheamă la „înapoi”, înaintea ecranului.
+ */
+const localBacks: (() => void)[] = [];
+export function useLocalBack(active: boolean, fn: () => void): void {
+  useEffect(() => {
+    if (!active) return;
+    localBacks.push(fn);
+    return () => {
+      const i = localBacks.lastIndexOf(fn);
+      if (i >= 0) localBacks.splice(i, 1);
+    };
+  }, [active, fn]);
+}
+export function takeLocalBack(): (() => void) | null {
+  return localBacks[localBacks.length - 1] ?? null;
 }

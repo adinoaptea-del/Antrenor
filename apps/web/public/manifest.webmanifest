@@ -1,7 +1,9 @@
 {
   "name": "AIRON",
   "short_name": "AIRON",
-  "description": "Antrenorul AI pentru triatlon: plan, brățări, head coach și specialiști",
+  "description": "Antrenorul AI pentru alergare, înot, bicicletă și triatlon: plan, brățări, head coach și specialiști",
+  "prefer_related_applications": false,
+  "categories": ["health", "fitness", "sports"],
   "id": "./",
   "start_url": "./",
   "scope": "./",

@@ -23,8 +23,8 @@
   --c-gri: #7d878b;
   --c-albastru: #7fb4f0;
   --c-asteptare: #2a3134;
-  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI', Roboto, 'SamsungOne', sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'SamsungOne', sans-serif;
   --radius: 22px;
   --radius-sm: 14px;
   --nav-h: 64px;
@@ -747,10 +747,10 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .wk-ic .i { width: 20px; height: 20px; }
 .wk-t { min-width: 0; }
 .wk-name { font-weight: 700; font-size: 16px; }
-.wk-name span { color: var(--muted); font-weight: 600; display: inline-block; }
+.wk-name span { color: var(--muted); font-weight: 600; }
 .wk-sub { font-size: 12px; color: var(--muted); }
 .wk-min { font: 700 22px/1 var(--font-display); white-space: nowrap; letter-spacing: -0.01em; }
-.wk.hero .wk-min { font-size: 36px; }
+.wk.hero .wk-min { font-size: clamp(26px, 8vw, 36px); }
 .wk-min s { color: var(--muted); }
 .wk-why { font-size: 13.5px; line-height: 1.45; }
 .wk-note { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
@@ -1079,3 +1079,8 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .str-cue { display: block; margin-top: 4px; color: var(--fg); font-size: 12.5px; line-height: 1.45; }
 .str-notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
+/* Telefoane înguste (Samsung, 360 px și sub): pe cardul zilei, minutele trec sub titlu, ca titlul să nu se rupă. */
+@media (max-width: 400px) {
+  .wk.hero .wk-head { grid-template-columns: 36px minmax(0, 1fr); }
+  .wk.hero .wk-min { grid-column: 2; }
+}

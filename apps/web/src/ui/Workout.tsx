@@ -40,7 +40,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
         <div className="wk-t">
           <div className="wk-name">
-            {SPORT_LABEL[w.sport]} {w.type === 'forta' ? (sessionName(w.structure) ? <span>· {sessionName(w.structure)}</span> : null) : <span>· {PLAIN[w.type]}</span>}
+            {SPORT_LABEL[w.sport]} {w.type === 'forta' ? (sessionName(w.structure) ? <span>·{'\u00a0'}{sessionName(w.structure)}</span> : null) : <span>·{'\u00a0'}{PLAIN[w.type]}</span>}
           </div>
           <div className="wk-sub">{[w.type === 'forta' ? (w.structure ?? '').split(' · ')[1] ?? '' : zones, w.key && !cancelled ? 'cheie' : ''].filter(Boolean).join(' · ')}</div>
         </div>

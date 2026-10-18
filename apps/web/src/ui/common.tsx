@@ -363,6 +363,7 @@ function I({ d, extra }: { d: string; extra?: ReactNode }) {
 }
 
 export const Icons = {
+  download: <I d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" />,
   alert: <I d="M12 4 2.8 19.5h18.4L12 4ZM12 10v4.5M12 17.2v.3" />,
   stop: <I d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3L8.3 3ZM8.5 12h7" />,
   move: <I d="M4 12h16M16 8l4 4-4 4M8 4v4M8 16v4" />,

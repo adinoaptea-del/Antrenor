@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, Icons, Label, fmtDayMonth } from './common';
-import { BackHeader, setAmbientOn } from './Shell';
+import { BackHeader, setAmbientOn, useLocalBack } from './Shell';
+import { InstallCard } from './Install';
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
@@ -40,8 +41,10 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
     return null;
   });
   useEffect(() => {
-    if (oauthMsg) history.replaceState(null, '', '#profil');
+    if (oauthMsg) history.replaceState(history.state, '', '#profil');
   }, [oauthMsg]);
+  const toIndex = useCallback(() => setSection('index'), []);
+  useLocalBack(section !== 'index', toIndex);
 
   if (section !== 'index') {
     const title = section === 'admin' ? 'Administrare' : SECTIONS.find((x) => x.id === section)!.title;
@@ -60,7 +63,12 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
           {section === 'chestionare' && <FormsSection onOpen={onOpen} />}
           {section === 'sanatate' && <HealthSection onOpen={onOpen} />}
           {section === 'preferinte' && <PrefsSection ambient={ambient} onAmbient={onAmbient} />}
-          {section === 'cont' && <AccountSection onOpen={onOpen} />}
+          {section === 'cont' && (
+            <>
+              <InstallCard />
+              <AccountSection onOpen={onOpen} />
+            </>
+          )}
           {section === 'admin' && me.admin && !local && (
             <>
               <AdminDb />
