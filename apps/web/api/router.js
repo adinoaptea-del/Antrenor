@@ -8487,7 +8487,8 @@ async function handler15(req, res) {
         tracking: usage.length > 0,
         users: users.map((x) => {
           const last = logs.filter((l) => l.user_id === x.id);
-          const byProvider = [...new Set(tokens.filter((t) => t.user_id === x.id).map((t) => t.provider))].map((p) => {
+          const pushed = [...new Set(last.filter((l) => l.provider === "apple" || l.provider === "android").map((l) => l.provider))];
+          const byProvider = [.../* @__PURE__ */ new Set([...tokens.filter((t) => t.user_id === x.id).map((t) => t.provider), ...pushed])].map((p) => {
             const l = last.find((r2) => r2.provider === p);
             return { provider: p, lastSync: l?.ran_at ?? null, ok: l?.ok ?? null, detail: l?.detail ?? null };
           });

@@ -3,7 +3,7 @@ import { Card, CircleBtn, Icons, Label, LiveTitle } from './common';
 import { server, type AdminUser } from '../data/api';
 import { fmtTime } from './sync';
 
-const NAME: Record<string, string> = { whoop: 'Whoop', strava: 'Strava', oura: 'Oura' };
+const NAME: Record<string, string> = { whoop: 'Whoop', strava: 'Strava', oura: 'Oura', apple: 'Apple Health', android: 'Samsung Health' };
 
 /** Pentru admin: starea fiecărui prieten și reparațiile care se pot face de la distanță. */
 export function Admin({ onBack }: { onBack: () => void }) {

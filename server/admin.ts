@@ -40,7 +40,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         tracking: usage.length > 0,
         users: users.map((x) => {
           const last = logs.filter((l) => l.user_id === x.id);
-          const byProvider = [...new Set(tokens.filter((t) => t.user_id === x.id).map((t) => t.provider))].map((p) => {
+          // Brățările cu token (OAuth) și cele care trimit singure (Apple Health, Samsung prin Health Connect): după sync_log.
+          const pushed = [...new Set(last.filter((l) => l.provider === 'apple' || l.provider === 'android').map((l) => l.provider))];
+          const byProvider = [...new Set([...tokens.filter((t) => t.user_id === x.id).map((t) => t.provider), ...pushed])].map((p) => {
             const l = last.find((r) => r.provider === p);
             return { provider: p, lastSync: l?.ran_at ?? null, ok: l?.ok ?? null, detail: l?.detail ?? null };
           });
