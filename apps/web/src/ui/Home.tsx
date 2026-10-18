@@ -3,6 +3,7 @@ import { FITNESS_WEEKS, goalKind, type Goal } from '@core/calendar/phases.js';
 import { fitnessWeekOf } from './FitnessProgress';
 import type { PlannedWorkout, Sport } from '@core/types.js';
 import { sessionName } from '@core/strength/ppl.js';
+import { swimSet } from '@core/calendar/session-steps.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
@@ -21,7 +22,13 @@ const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 't
 
 /** Numele ședinței în bulă: la forță numele sesiunii din program, altfel sportul. */
 const titleOf = (w: PlannedWorkout) => (w.type === 'forta' ? sessionName(w.structure) ?? 'Forță' : w.type === 'brick' ? 'Bicicletă + alergare' : SPORT_LABEL[w.sport]);
-const subOf = (w: PlannedWorkout) => [fmtMinutes(w.plannedMinutes), w.type === 'forta' || w.type === 'brick' ? null : PLAIN[w.type], w.targetZones.length ? `Z${w.targetZones.join('–')}` : null].filter(Boolean).join(' · ');
+const subOf = (w: PlannedWorkout, css: number | null = null) =>
+  w.sport === 'inot' && w.type !== 'odihna'
+    ? (() => {
+        const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date });
+        return `${s.meters} m · ≈ ${s.estMin} min · ${PLAIN[w.type]}`;
+      })()
+    : [fmtMinutes(w.plannedMinutes), w.type === 'forta' || w.type === 'brick' ? null : PLAIN[w.type], w.targetZones.length ? `Z${w.targetZones.join('–')}` : null].filter(Boolean).join(' · ');
 
 /**
  * Azi: bula cu ședințele reale ale zilei (din planul activ). Apăsarea deschide direct fereastra cu detaliile, pe prima
@@ -105,14 +112,14 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
                 {done && <span className="orb-ok">{Icons.check}</span>}
                 {titleOf(w)}
               </b>
-              <small>{done ? 'făcut' : subOf(w)}</small>
+              <small>{done ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null)}</small>
             </span>
           );
         })}
         {today.length > shown.length && <span className="orb-sub">+{today.length - shown.length} în listă</span>}
       </>
     );
-    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w)}`).join('; ')}. Deschide detaliile.`;
+    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null)}`).join('; ')}. Deschide detaliile.`;
   }
 
   return (
@@ -130,7 +137,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
               <button key={w.id} className="row-card" onClick={() => openSheet(w, today)}>
                 <span>
                   <b>{titleOf(w)}</b>
-                  <small>{isDone(w) ? 'făcut' : subOf(w)}</small>
+                  <small>{isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null)}</small>
                 </span>
                 {Icons.chevronRight}
               </button>

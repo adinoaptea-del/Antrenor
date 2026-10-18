@@ -127,8 +127,8 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
   pullB: { id: 'pullB', name: 'Pull B', focus: 'spate, umăr posterior, biceps', exercises: ['pull-assisted-pullup', 'pull-cable-row-1arm', 'pull-rev-fly-cable', 'pull-cable-curl', 'pull-suitcase'], completions: [{ id: 'push-db-incline', sets: 2 }, { id: 'legs-goblet', sets: 2 }] },
   legsB: { id: 'legsB', name: 'Legs B', focus: 'picioare, trunchi', exercises: ['legs-goblet', 'legs-hip-thrust', 'legs-lying-curl', 'legs-seated-calf', 'legs-pallof'], completions: [], legSwap: 'legs-step-up' },
   // Cu două ședințe pe săptămână: tot corpul, din același catalog (alegerea AIRON; programul cere tot corpul, nu un PPL incomplet).
-  fullA: { id: 'fullA', name: 'Tot corpul A', focus: 'picioare, împins, tras, trunchi', exercises: ['legs-press', 'push-db-bench', 'pull-lat-neutral', 'legs-db-rdl', 'push-cable-lateral', 'pull-farmer', 'legs-dead-bug'], completions: [] },
-  fullB: { id: 'fullB', name: 'Tot corpul B', focus: 'picioare, tras, împins, trunchi', exercises: ['legs-goblet', 'pull-chest-row', 'push-machine-shoulder', 'legs-hip-thrust', 'legs-lying-curl', 'pull-suitcase', 'legs-pallof'], completions: [] },
+  fullA: { id: 'fullA', name: 'Tot corpul A', focus: 'picioare, împins, tras, trunchi', exercises: ['legs-press', 'legs-db-rdl', 'push-db-bench', 'pull-lat-neutral', 'push-cable-lateral', 'pull-farmer', 'legs-dead-bug'], completions: [] },
+  fullB: { id: 'fullB', name: 'Tot corpul B', focus: 'picioare, tras, împins, trunchi', exercises: ['legs-goblet', 'legs-hip-thrust', 'legs-lying-curl', 'pull-chest-row', 'push-db-incline', 'pull-suitcase', 'legs-pallof'], completions: [] },
   // Fitness: două zile (F1/F2), trei zile (A3/B3/C3) sau patru zile (L1/U1/L2/U2) — variante alternative, nu cumulate.
   f1: fit('f1', 'F1 Tot corpul', 'fesieri, coapse, împins, tras, trunchi', { 'fit-hip-thrust': 2, 'fit-leg-press': 2, 'fit-chest-press': 2, 'fit-row': 2, 'fit-calf': 1, 'fit-dead-bug': 1 }),
   f2: fit('f2', 'F2 Tot corpul', 'posterior, fesieri, tras, împins, trunchi', { 'fit-rdl': 2, 'fit-step-up': 2, 'fit-lat': 2, 'fit-incline': 2, 'fit-leg-curl': 1, 'fit-pallof': 1 }),
@@ -482,8 +482,19 @@ export function prescribe(spec: StrengthSpec, minutes: number): Prescription {
       trimmed.push(`un set la ${r.ex.name.toLowerCase()}`);
     }
   }
-  // Tot nu încape: rămân primele mișcări principale, câte încap (minimum una).
-  while (!fits() && items.length > 1) trimmed.push(items.pop()!.ex.name.toLowerCase());
+  // Tot nu încape: pleacă întâi a doua mișcare de același tip (picioare / împins / tras), ca o ședință de tot corpul
+  // să păstreze câte o mișcare din fiecare; abia apoi ultimele, câte încap (minimum una).
+  const pattern = (r: Rx) => r.ex.id.split('-')[0];
+  while (!fits() && items.length > 1) {
+    let i = items.length - 1;
+    for (let j = items.length - 1; j >= 0; j--) {
+      if (items.filter((x) => pattern(x) === pattern(items[j]!)).length > 1) {
+        i = j;
+        break;
+      }
+    }
+    trimmed.push(items.splice(i, 1)[0]!.ex.name.toLowerCase());
+  }
   const notes = [...p.notes];
   if (trimmed.length) notes.push(`ca să încapă în ${minutes} min: fără ${trimmed.join(', ')}; pauzele rămân întregi`);
   return { ...p, items, minutes: roundUp5(estimateMinutes(items)), trimmed, notes };

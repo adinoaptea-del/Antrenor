@@ -454,7 +454,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   } else if (!fourRuns || beginner) {
     // Fără calitate (debutant, finalizare): a treia ieșire e tot ușoară; prioritatea e regularitatea.
   } else {
-    s.push({ sport: 'alergare', type: 'z2', minutes: early ? 40 : 45, zones: [2], key: false, priority: 5, structure: p === 'evaluare' ? 'ușor + 6 accelerări de 20 s (fără calitate în evaluare)' : 'ușor, constant' });
+    s.push({ sport: 'alergare', type: 'z2', minutes: early ? 40 : 45, zones: [2], key: false, priority: 5, structure: p === 'evaluare' ? 'ușor + 6 accelerări de 20 s' : 'ușor, constant' });
   }
 
   if (!raceWeek && !(p === 'taper' && pw.weekInPhase > 0)) {
@@ -669,7 +669,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
 function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null, weekInPhase = 0): (minutes: number) => Session {
   return (minutes) => {
     if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e limitată (restricție de la medic sau din analize)' };
-    if (phase === 'evaluare') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'ușor + 6 accelerări de 20 s (fără calitate în evaluare)' };
+    if (phase === 'evaluare') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'ușor + 6 accelerări de 20 s' };
     const capZ4 = allowed === 'pana_la_Z4' || (age != null && age >= 55);
     // Regula Sang: prima repetare puțin mai ușor, ultimele cele mai bune; ziua tare la ~80%, nu la maxim.
     const CTRL = ' · prima repetare puțin mai ușor, ultimele cele mai bune';

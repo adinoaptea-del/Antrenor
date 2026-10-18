@@ -1,4 +1,5 @@
 import { MODULE_PURPOSE, moduleSteps, parseModule } from '@core/calendar/run-modules.js';
+import { parseStrides, stridesMinutes, stridesStep, swimSet } from '@core/calendar/session-steps.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -269,19 +270,17 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
       { label: 'Alergare', text: `${m - bike} min ${easyTarget}, primele 5 min mai ușor până se „așază” picioarele` },
     ];
   }
+  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: t?.css ?? null, date: w.date }).steps;
   const warm = m >= 30 ? 10 : Math.floor(m / 3);
   const cool = m >= 30 ? 5 : Math.floor(m / 6);
-  const main = m - warm - cool;
-  if (w.sport === 'inot') {
-    return [
-      { label: 'Încălzire', text: `${warm} min înot ușor, cu pauze cât ai nevoie` },
-      { label: 'Principal', text: w.type === 'tehnica' ? `${main} min tehnică: exerciții pe respirație și braț, apoi bucăți scurte ușor` : `${main} min pe bucăți, ${target}${talk}` },
-      { label: 'Revenire', text: `${cool} min înot foarte ușor` },
-    ];
-  }
+  // Accelerările din structură sunt un pas separat; minutele lor ies din partea ușoară (suma rămâne durata din plan).
+  const strides = w.sport === 'alergare' ? parseStrides(w.structure) : null;
+  const sMin = strides ? Math.min(stridesMinutes(strides), Math.max(0, m - warm - cool - 5)) : 0;
+  const main = m - warm - cool - sMin;
   return [
     { label: 'Încălzire', text: `${warm} min ${z(1)}` },
     { label: 'Principal', text: `${main} min ${target}${w.type === 'lung' ? ', constant' : ''}${talk}` },
+    ...(strides && sMin ? [{ ...stridesStep(strides), text: `${stridesStep(strides).text} (${sMin} min)` }] : []),
     { label: 'Revenire', text: `${cool} min ${z(1)}` },
   ];
 }

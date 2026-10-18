@@ -72,7 +72,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
   const when = w.date === me.today ? 'azi' : `${DAY_NAMES[weekday(w.date)]}, ${Number(w.date.slice(8, 10))}`;
   const zones = w.targetZones.length ? `Z${w.targetZones.join('–')}` : '';
   const steps = rx ? [] : sessionSteps(me, w);
-  const showStructure = !rx && !!w.structure && w.type !== 'brick' && !steps.some((s) => s.text === w.structure);
+  const showStructure = !rx && !!w.structure && w.type !== 'brick' && w.sport !== 'inot' && !steps.some((s) => s.text === w.structure);
   const upcoming = isUpcoming(me, w);
   const color = colorOf(me, w);
   const act = activityFor(me, w);
@@ -184,7 +184,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               <ol className="sheet-steps">
                 {showStructure && (
                   <li>
-                    <b>Pe scurt</b> {w.structure}
+                    <b>Pe scurt</b> {w.structure!.replace(/\s*\(fără calitate în evaluare\)/, '')}
                   </li>
                 )}
                 {steps.map((st) => (
