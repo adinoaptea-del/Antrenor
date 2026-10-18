@@ -392,7 +392,7 @@ function Shell() {
 /** Eticheta tabului de sport: la un singur sport, numele sportului (nu există „Sporturi”). */
 function sportsTabLabel(goal: string | null): string {
   const k = goalKind(goal);
-  return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : 'Sporturi';
+  return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : k === 'fitness' ? 'Fitness' : 'Sporturi';
 }
 
 /** „19–25 octombrie 2026”: săptămâna curentă. */

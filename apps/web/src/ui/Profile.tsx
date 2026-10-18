@@ -289,7 +289,7 @@ function SamsungCard() {
   return (
     <Card>
       <Label icon={Icons.watch}>Samsung Watch · Samsung Health</Label>
-      <div className="small">{last ? (last.ok ? `primește date · ultima trimitere ${fmtTime(last.at)}` : `ultima trimitere (${fmtTime(last.at)}) a eșuat`) : 'Samsung nu dă acces direct din cloud. Antrenamentele vin prin Strava; somnul și pulsul prin Health Connect, de pe telefon.'}</div>
+      <div className="small">{last ? (last.ok && (last.detail ?? '').startsWith('test') ? `adresa e bună (test reușit la ${fmtTime(last.at)}) · încă n-au venit date de sănătate din Health Connect` : last.ok ? `primește date · ultima trimitere ${fmtTime(last.at)}` : `ultima trimitere (${fmtTime(last.at)}) a eșuat`) : 'Samsung nu dă acces direct din cloud. Antrenamentele vin prin Strava; somnul și pulsul prin Health Connect, de pe telefon.'}</div>
       {last && (
         <div className="tiny" style={{ marginTop: 6, color: last.ok ? 'var(--muted)' : 'var(--c-rosu)' }}>
           {last.ok ? `primită · ${last.detail ?? ''}` : `eșuată · ${last.detail ?? 'eroare necunoscută'}`}

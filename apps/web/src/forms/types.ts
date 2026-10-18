@@ -5,6 +5,7 @@ import type { EveningForm, MorningForm } from '@core/collector/types.js';
 import type { FreeBlock } from '@core/types.js';
 import type { RunResult } from '@core/util/run.js';
 import { goalKind, isRunGoal, type Goal } from '@core/calendar/phases.js';
+import type { FitnessIntake } from '@core/strength/fitness.js';
 import { parseDuration, parsePace } from '@core/util/run.js';
 
 export type { EveningForm, MorningForm };
@@ -39,7 +40,10 @@ export interface IntakeAnswers {
   program: FreeBlock[];
   /** Câte ore pe săptămână are, realist, pentru sport (timpul liber ≠ timp de sport). */
   oreSport?: number | null;
-  sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string };
+  /** Avizul se consideră dat (întrebarea nu mai e în chestionar); limitareMedic = medicul a limitat efortul. */
+  sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string; limitareMedic?: boolean | null };
+  /** Doar la fitness (femei). */
+  fitness?: FitnessIntake;
   minte: { motiveaza: string; aOprit: string };
   consimtamant: boolean;
 }
@@ -60,7 +64,7 @@ export const EMPTY_INTAKE: IntakeAnswers = {
   alergare: { ceaMaiLungaKm: null, curseRecente: null },
   echipament: { ceas: null, whoop: false, oura: false, cantar: false },
   program: [],
-  sanatate: { avizCardiolog: null, accidentari: '' },
+  sanatate: { avizCardiolog: 'da', accidentari: '' },
   minte: { motiveaza: '', aOprit: '' },
   consimtamant: false,
 };
@@ -88,12 +92,13 @@ export function runResultOk(r: RunResult | null | undefined): boolean {
 
 export function intakeComplete(i: IntakeAnswers | undefined): boolean {
   if (!i) return false;
-  const base = i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.program.length > 0 && i.sanatate.avizCardiolog != null;
+  const base = i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.program.length > 0;
   if (isRunGoal(i.obiectiv)) {
     const a = i.alergare;
     return base && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual));
   }
   const kind = goalKind(i.obiectiv);
+  if (kind === 'fitness') return base && !!i.fitness?.experienta && !!i.fitness?.zile && !!i.fitness?.minute;
   if (kind === 'swim') return base && i.inot.nivel != null;
   if (kind === 'bike') return base && i.bicicleta.tip != null;
   return base && i.inot.nivel != null && i.bicicleta.tip != null && i.alergare.ceaMaiLungaKm != null;

@@ -66,6 +66,11 @@ const TARGETS: Record<Goal, { swimM: number; rideKm: number; runKm: number; bric
   'bike-50': { swimM: 0, rideKm: 50, runKm: 0, brickRunKm: 0 },
   'bike-100': { swimM: 0, rideKm: 100, runKm: 0, brickRunKm: 0 },
   'bike-160': { swimM: 0, rideKm: 160, runKm: 0, brickRunKm: 0 },
+  // Fitness: fără cursă; bara rămâne consecvența și forma.
+  'fit-slabire': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'fit-tonifiere': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'fit-intretinere': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  'fit-masa': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
 };
 
 export function computeBar(input: BarInput): BarResult {

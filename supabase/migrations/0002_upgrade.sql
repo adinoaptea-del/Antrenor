@@ -25,9 +25,9 @@ alter table public.labs add column if not exists uploaded_at timestamptz not nul
 
 -- Obiective noi: semimaraton și maraton (doar alergare).
 alter table public.users drop constraint if exists users_goal_check;
-alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
 alter table public.plans drop constraint if exists plans_goal_check;
-alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton'));
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
 -- Marcaj de versiune a schemei (aplicația cere singură actualizarea când lipsește).
 alter table public.users add column if not exists schema_v smallint not null default 3;
 
@@ -229,11 +229,22 @@ create table if not exists public.badges_earned (
 alter table public.badges_earned enable row level security;
 revoke insert, update, delete on public.badges_earned from anon, authenticated;
 
--- Obiective pe un singur sport (alergare 5 / 10 km, înot 1.500 / 1.900 / 3.800 m, bicicletă 50 / 100 / 160 km).
+-- Obiective pe un singur sport (alergare 5 / 10 km, înot 1.500 / 1.900 / 3.800 m, bicicletă 50 / 100 / 160 km) și fitness.
+-- Lista e aceeași peste tot în fișier: rularea din nou nu pică pe rândurile existente.
 alter table public.users drop constraint if exists users_goal_check;
-alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160'));
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
 alter table public.plans drop constraint if exists plans_goal_check;
-alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160'));
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
+
+-- Avizul cardiologic se consideră dat pentru toți (întrebarea a fost scoasă). Rămân limitați doar cei care au spus
+-- explicit că medicul le-a limitat efortul (Profil → Date de sănătate). Idempotent.
+update public.clearances c
+   set cardiology = true, intensity_allowed = 'toate', cleared_at = coalesce(c.cleared_at, current_date)
+ where c.cardiology = false
+   and not exists (
+     select 1 from public.questionnaires q
+      where q.user_id = c.user_id and q.kind = 'intrare' and (q.answers -> 'sanatate' ->> 'limitareMedic') = 'true'
+   );
 
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
@@ -243,5 +254,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 4)
+insert into public.schema_meta (key, value) values ('version', 5)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

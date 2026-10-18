@@ -44,7 +44,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const intake = body as unknown as IntakeLike & { consimtamant?: boolean };
       if (!intake.consimtamant) throw new HttpError(400, 'fără consimțământ nu se salvează date de sănătate');
       // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
-      if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km)');
+      if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
       await saveIntake(u.id, today, intake);
       const plan = await generateAndStore(u.id, today, intake);
@@ -194,13 +194,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'aviz') {
-      // O bifă: ai aviz cardiologic sau nu. Schimbă intensitatea permisă și chestionarul de intrare.
+      // O bifă: avizul se consideră dat; „nu” înseamnă că medicul a limitat efortul (planul rămâne la Z1–Z2).
       const da = body.aviz === 'da';
       await upsert('clearances', { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: da ? 'toate' : 'Z2' }, 'user_id');
       const intake = await one<{ id: string; answers: { sanatate?: Record<string, unknown> } }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
       let plan = null;
       if (intake) {
-        const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: da ? 'da' : 'nu' } };
+        const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: da ? 'da' : 'nu', limitareMedic: !da } };
         await update('questionnaires', { id: `eq.${intake.id}` }, { answers });
         // Intensitatea permisă schimbă planul: îl refacem de la lunea următoare, păstrând restul răspunsurilor.
         plan = await generateAndStore(u.id, today, answers as unknown as IntakeLike);

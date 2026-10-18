@@ -143,7 +143,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const labsOld = !!labsRow && labsExpired(labsRow.drawn_at, today);
   (labsRow && !labsOld ? have : missing).push(labsOld ? 'analize de sânge (mai vechi de 12 luni)' : 'analize de sânge');
   const clearance = await one<{ cardiology: boolean }>('clearances', { user_id: `eq.${userId}` });
-  (clearance?.cardiology ? have : missing).push('aviz cardiologic');
+  // Avizul se consideră dat; doar o limitare declarată apare ca lipsă.
+  if (clearance?.cardiology !== false) have.push('aviz cardiologic');
   (activities.length ? have : missing).push('istoric de activități');
 
   const warnings: Me['warnings'] = [];
@@ -158,13 +159,12 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 
   const testRow = await one<{ results: TestsForm }>('tests', { user_id: `eq.${userId}` }, { order: 'tested_at.desc' });
   const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
-  const aviz = (intake as { sanatate?: { avizCardiolog?: 'da' | 'nu' | 'programat' } } | null)?.sanatate?.avizCardiolog ?? null;
   const baseline: Me['baseline'] = {
     labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
     labsCompare: labsRow ? compareLabs(labSnapshot(labsRow), labsRows[1] ? labSnapshot(labsRows[1]) : null) : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
-    cardiolog: clearance?.cardiology ? 'da' : aviz === 'da' ? 'da' : aviz ? 'nu' : null,
+    cardiolog: (intake as { sanatate?: { limitareMedic?: boolean } } | null)?.sanatate?.limitareMedic === true ? 'nu' : 'da',
   };
 
   const u2 = user as UserRow;
@@ -186,7 +186,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   return {
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
-    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })(), androidLastSync: lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok)?.ran_at ?? null, androidLast: androidLast ? { ok: androidLast.ok, detail: androidLast.detail, at: androidLast.ran_at } : null },
+    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })(), androidLastSync: lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok && !String(r.detail ?? '').startsWith('test'))?.ran_at ?? null, androidLast: androidLast ? { ok: androidLast.ok, detail: androidLast.detail, at: androidLast.ran_at } : null },
     totals: totals
       ? {
           ...totals,
@@ -253,7 +253,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
       // Samsung Health apare ca sursă doar după ce a trimis ceva (același token ca Apple Health).
       ...(androidLast
-        ? [{ id: 'android' as const, name: SOURCE_NAME.android, lastSync: androidLast.ok ? androidLast.ran_at : (lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok)?.ran_at ?? null), lastAttempt: androidLast.ran_at, error: androidLast.ok ? null : androidLast.detail, lastData: lastDataOf('android'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'android' && String(r.date) === today) }]
+        ? [{ id: 'android' as const, name: SOURCE_NAME.android, lastSync: androidLast.ok ? androidLast.ran_at : (lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok && !String(r.detail ?? '').startsWith('test'))?.ran_at ?? null), lastAttempt: androidLast.ran_at, error: androidLast.ok ? null : androidLast.detail, lastData: lastDataOf('android'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'android' && String(r.date) === today) }]
         : []),
     ],
     prefs: await loadPrefs(userId),

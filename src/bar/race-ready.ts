@@ -87,6 +87,10 @@ const DIST: Record<Goal, { swim?: number; bike?: number; run?: number; longRun?:
   'bike-50': { bike: 50, longRide: 50 },
   'bike-100': { bike: 100, longRide: 100 },
   'bike-160': { bike: 160, longRide: 160 },
+  'fit-slabire': {},
+  'fit-tonifiere': {},
+  'fit-intretinere': {},
+  'fit-masa': {},
 };
 const CUTOFFS: Partial<Record<Goal, { swim: number; swimBike: number; total: number }>> = { '70.3': { swim: 70, swimBike: 330, total: 510 } };
 

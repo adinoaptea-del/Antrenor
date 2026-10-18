@@ -5,7 +5,9 @@ import { goalSports } from '@core/calendar/phases.js';
 import { Card, Dot, Icons, Label, fmtDayMonth } from './common';
 import { SubTabs } from './Shell';
 import { useData, useMe } from '../data/store';
-import { BLOCK_GOAL, BLOCK_LABEL, STRENGTH_RULES, prescribe, type Prescription } from '@core/strength/ppl.js';
+import { BLOCK_GOAL, BLOCK_LABEL, FITNESS_BLOCK_GOAL, STRENGTH_RULES, isFitnessSession, prescribe, type Prescription } from '@core/strength/ppl.js';
+import { FITNESS_RULES, FITNESS_WEEK_ACTION, fitnessCardio, fitnessProfile, fitnessWeeks, type FitnessIntake } from '@core/strength/fitness.js';
+import { FITNESS_WEEKS, goalKind } from '@core/calendar/phases.js';
 import { strengthSpecFor } from '@core/strength/plan-specs.js';
 import type { Me, SportTotal } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
@@ -76,6 +78,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
 
   return (
     <>
+      {sportTabs.length > 1 && (
       <div className="seg sport-seg" role="tablist" aria-label="Sport" style={{ marginBottom: 12 }}>
         {sportTabs.map((s) => (
           <button key={s.id} role="tab" aria-selected={sport === s.id} className={sport === s.id ? 'on' : ''} onClick={() => onSport(s.id)}>
@@ -84,8 +87,10 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
           </button>
         ))}
       </div>
+      )}
 
       <div className="stack">
+        {goalKind(me.user.goal) === 'fitness' && <FitnessWeekCard />}
         {sport === 'inot' && (
           <>
             <SubTabs label="Unde înoți" value={swimMode} onChange={(v) => void changeSwim(v)} items={[{ id: 'bazin', label: 'Bazin' }, { id: 'ape', label: 'Ape libere' }]} />
@@ -356,9 +361,10 @@ function StrengthCard() {
   }
   const dayLabel = w.date === me.today ? 'azi' : `${DAY_NAMES[weekday(w.date)]} ${Number(w.date.slice(8, 10))}`;
   const sp = rx.spec;
+  const fit = isFitnessSession(sp.session);
   return (
     <Card tight>
-      <Label>Programul de forță · {sp.session.startsWith('full') ? 'tot corpul A/B' : 'Push / Pull / Legs A/B'}</Label>
+      <Label>{fit ? `Programul de fitness · ${rx.session.id.startsWith('f') ? '2 zile, F1/F2' : rx.session.id.endsWith('3') ? '3 zile, A3/B3/C3' : '4 zile, L1/U1/L2/U2'}` : `Programul de forță · ${sp.session.startsWith('full') ? 'tot corpul A/B' : 'Push / Pull / Legs A/B'}`}</Label>
       <div className="det-pills" role="tablist" aria-label="Ședința de forță">
         {upcoming.slice(0, 6).map((x, i) => (
           <button key={x.id} role="tab" aria-selected={i === idx} className={`det-pill ${i === idx ? 'on' : ''}`} onClick={() => setIdx(i)}>
@@ -377,7 +383,7 @@ function StrengthCard() {
         <b>
           {BLOCK_LABEL[sp.block]} · săpt. {sp.week} din {sp.len}
         </b>
-        <span>{BLOCK_GOAL[sp.block]}</span>
+        <span>{(fit ? FITNESS_BLOCK_GOAL[sp.block] : null) ?? BLOCK_GOAL[sp.block]}</span>
         <span>
           Efort: {rx.items[0]?.rir ?? '2–3'} repetări în rezervă · {rx.session.focus}
         </span>
@@ -417,7 +423,7 @@ function StrengthCard() {
       </button>
       {showRules && (
         <div className="str-rules">
-          {STRENGTH_RULES.map((r) => (
+          {(fit ? FITNESS_RULES : STRENGTH_RULES).map((r) => (
             <div key={r.t}>
               <b>{r.t}.</b> {r.d}
             </div>
@@ -425,6 +431,37 @@ function StrengthCard() {
           <div className="tiny muted">Ședința e potrivită în timpul pe care îl ai în calendar: când e scurt, cad accesoriile, nu pauzele de la mișcările principale. Fără istoric de greutăți, prima dată calibrezi.</div>
         </div>
       )}
+    </Card>
+  );
+}
+
+/** Fitness: săptămâna din programul de 26, ce face săptămâna și mișcarea recomandată (în afara sălii). */
+function FitnessWeekCard() {
+  const me = useMe();
+  const start = me.planStart ?? null;
+  const f = ((me.forms.intake as { fitness?: FitnessIntake } | null)?.fitness ?? {}) as FitnessIntake;
+  if (!start) return null;
+  const week = Math.floor(diffDays(start, me.today) / 7) + 1;
+  if (week < 1) {
+    return (
+      <Card tight>
+        <Label>Programul de fitness · {FITNESS_WEEKS} săptămâni</Label>
+        <div className="small">Începe {DAY_NAMES[weekday(start)]} {Number(start.slice(8, 10))}. Prima săptămână: {FITNESS_WEEK_ACTION[1]!.charAt(0).toLowerCase() + FITNESS_WEEK_ACTION[1]!.slice(1)}</div>
+      </Card>
+    );
+  }
+  const wk = Math.min(FITNESS_WEEKS, week);
+  const fw = fitnessWeeks(fitnessProfile(me.user.goal ?? 'fit-tonifiere', f))[wk - 1];
+  return (
+    <Card tight>
+      <Label>
+        Săptămâna {wk} din {FITNESS_WEEKS}
+        {fw ? ` · ${BLOCK_LABEL[fw.block]}` : ''}
+      </Label>
+      <div className="small">{FITNESS_WEEK_ACTION[wk]}</div>
+      <div className="pref-k" style={{ marginTop: 10 }}>Mișcare în afara sălii</div>
+      <div className="small">{fitnessCardio(wk, f.miscare ?? null)}</div>
+      <div className="tiny muted" style={{ marginTop: 6 }}>Nu e ședință punctată în calendar: o adaugi în ritmul tău, crescând un singur lucru odată.</div>
     </Card>
   );
 }

@@ -8,6 +8,8 @@ import type { FreeBlock, IntensityAllowed, Phase, PlannedWorkout, Sport, Workout
 import { addDays, diffDays, weekStart } from '../util/dates.js';
 import { RUN_MODULES, WALK_RUN_STEPS, moduleStructure, walkRunStructure, type RunModuleId } from './run-modules.js';
 import { weeklyBudget } from './budget.js';
+import { generateFitnessPlan } from './fitness-plan.js';
+import type { FitnessProfile } from '../strength/fitness.js';
 import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
 
 export interface GenerateInput {
@@ -43,6 +45,8 @@ export interface GenerateInput {
   strengthSlots?: number;
   /** Întâlniri fixe (ex. alergarea cu grupul sâmbăta): ședința potrivită se pune în ziua aceea, dacă e în program. */
   fixed?: FixedMeet[];
+  /** Doar la fitness: zilele, minutele, nivelul și contextul din chestionar. */
+  fitness?: FitnessProfile;
 }
 
 export interface WeekPlan {
@@ -77,6 +81,10 @@ const CHANGE_MIN = 10; // minute de schimbat/duș în jurul unei ședințe
 const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 30 };
 
 export function generatePlan(input: GenerateInput): GenerateResult {
+  if (goalKind(input.goal) === 'fitness') {
+    const fitness: FitnessProfile = input.fitness ?? { goal: input.goal as FitnessProfile['goal'], days: 2, minutes: 45, beginner: true };
+    return generateFitnessPlan({ startDate: input.startDate, raceDate: input.raceDate, freeBlocks: input.freeBlocks, fitness });
+  }
   const budget = weeklyBudget(input.freeBlocks, undefined, input.sportHours ?? null);
   if (!budget.valid) {
     return {
@@ -660,7 +668,7 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
  */
 function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | null = null, weekInPhase = 0): (minutes: number) => Session {
   return (minutes) => {
-    if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e blocată până la avizul cardiologic' };
+    if (allowed === 'Z2') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'calitatea e limitată (restricție de la medic sau din analize)' };
     if (phase === 'evaluare') return { sport: 'alergare', type: 'z2', minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: 'ușor + 6 accelerări de 20 s (fără calitate în evaluare)' };
     const capZ4 = allowed === 'pana_la_Z4' || (age != null && age >= 55);
     // Regula Sang: prima repetare puțin mai ușor, ultimele cele mai bune; ziua tare la ~80%, nu la maxim.

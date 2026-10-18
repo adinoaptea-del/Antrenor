@@ -1,5 +1,6 @@
 import { GOAL_NAME } from '@core/bar/sport-readiness.js';
-import type { Goal } from '@core/calendar/phases.js';
+import { FITNESS_WEEKS, goalKind, type Goal } from '@core/calendar/phases.js';
+import { FitnessProgress, fitnessWeekOf } from './FitnessProgress';
 import type { Sport } from '@core/types.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
@@ -28,6 +29,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const lastDoneId = lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null);
   const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
   const days = daysToRace(me);
+  const fit = goalKind(me.user.goal) === 'fitness';
+  const fitWeek = fitnessWeekOf(me.planStart, me.today);
   const goalName = me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă';
   const yesterday = addDays(me.today, -1);
   const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}`);
@@ -54,7 +57,15 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       <div className="hello">
         <h1>Salut, {(me.user.name || 'sportivule').split(' ')[0]}.</h1>
         <p>{longDate(me.today)}</p>
-        {me.user.raceDate && (
+        {fit && me.user.raceDate && (
+          <div className="race-chip">
+            <b>{fitWeek ? `săpt. ${fitWeek}` : 'start'}</b>
+            <span>
+              {goalName} · {fitWeek ? `din ${FITNESS_WEEKS}` : `de luni, ${fmtDayMonth(me.planStart ?? me.today)}`}
+            </span>
+          </div>
+        )}
+        {!fit && me.user.raceDate && (
           <div className="race-chip">
             <b>{days} zile</b>
             <span>
@@ -92,7 +103,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           </button>
         )}
 
-        <RacePanel goalName={goalName} onOpen={onOpen} />
+        {fit ? <FitnessProgress compact /> : <RacePanel goalName={goalName} onOpen={onOpen} />}
 
         {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
           <button className="row-card" onClick={() => onOpen('saptamanal')}>

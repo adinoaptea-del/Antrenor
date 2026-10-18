@@ -17,6 +17,7 @@ import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict }
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import { BLOCK_LABEL, prescribe } from '../strength/ppl.js';
 import { strengthSpecFor } from '../strength/plan-specs.js';
+import { FITNESS_WEEK_ACTION, fitnessCardio, fitnessProfile, fitnessWeeks } from '../strength/fitness.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
 const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
@@ -48,7 +49,7 @@ export interface Packet {
     faza: string;
     obiectiv: string;
     /** Un singur sport (alergare / înot / bicicletă) sau triatlon; sporturile din plan. La un singur sport nu există ceilalți antrenori. */
-    tip_obiectiv: 'tri' | 'run' | 'swim' | 'bike' | null;
+    tip_obiectiv: 'tri' | 'run' | 'swim' | 'bike' | 'fitness' | null;
     /** Codul obiectivului (ex. „10k”, „inot-1900”), pentru biblioteca de antrenamente. */
     obiectiv_cod: string | null;
     sporturi: string[];
@@ -125,6 +126,20 @@ export interface Packet {
   /** Ieșirea lungă de alergare din următoarele 7 zile față de cea mai lungă alergare reală din ultimele 30 de zile: peste +10% cere revizuire (asociere observațională, nu prag sigur). */
   alergare_lunga?: { data: string; planificat_min: number; cea_mai_lunga_30_zile_min: number | null; salt_pct: number | null; revizuire: boolean } | null;
   /** Forța: prescripția motorului pentru următoarea ședință și cât s-a făcut din ce era planificat (21 de zile). */
+  /** Doar la fitness: săptămâna din programul de 26, etapa, ce face săptămâna, mișcarea recomandată și contextul declarat. */
+  fitness?: {
+    saptamana_program: number;
+    etapa: string;
+    actiunea_saptamanii: string;
+    miscare_recomandata: string;
+    zile_alese: number | null;
+    minute_sedinta: number | null;
+    nivel: 'incepatoare' | 'stabila' | null;
+    acces: 'sala' | 'acasa' | null;
+    miscare_actuala: 'sedentara' | 'plimbari' | 'activa' | null;
+    /** true doar dacă a spus „da” la sarcină / primul an după naștere: fără ramura standard de slăbire. */
+    sarcina_postpartum: boolean;
+  } | null;
   forta?: { urmatoarea: { data: string; sedinta: string; bloc: string; durata_min: number; exercitii: string[]; note: string[] } | null; expuneri_21_zile: { planificate: number; facute: number } } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
   /** Ultimele 14 zile (fără azi): ședințe planificate vs făcute (activitate pe același sport, ±1 zi). null fără activități de la brățări în 28 de zile: nu putem ști dacă s-a sărit sau doar nu s-a sincronizat. */
@@ -502,6 +517,28 @@ function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['f
   };
 }
 
+/** Fitness: unde e sportiva în programul de 26 de săptămâni (din prima zi a planului) și ce cere săptămâna. */
+function fitnessBrief(input: CollectorInput): Packet['fitness'] {
+  if (goalKind(input.athlete.goal ?? null) !== 'fitness') return null;
+  const f = input.athlete.fitness ?? {};
+  const first = input.plan.reduce<string | null>((m, w) => (m == null || w.date < m ? w.date : m), null);
+  const start = first ? addDays(first, -weekday(first)) : addDays(input.today, -weekday(input.today));
+  const week = Math.max(1, Math.min(26, Math.floor(diffDays(start, input.today) / 7) + 1));
+  const fw = fitnessWeeks(fitnessProfile(input.athlete.goal ?? 'fit-tonifiere', f))[week - 1];
+  return {
+    saptamana_program: week,
+    etapa: fw ? `${BLOCK_LABEL[fw.block]}, săpt. ${fw.blockWeek} din ${fw.blockLen}` : '',
+    actiunea_saptamanii: FITNESS_WEEK_ACTION[week] ?? '',
+    miscare_recomandata: fitnessCardio(week, f.miscare ?? null),
+    zile_alese: f.zile ?? null,
+    minute_sedinta: f.minute ?? null,
+    nivel: f.experienta ?? null,
+    acces: f.acces ?? null,
+    miscare_actuala: f.miscare ?? null,
+    sarcina_postpartum: f.sarcina === 'da',
+  };
+}
+
 export function buildPacket(input: CollectorInput): Packet {
   const { today } = input;
   const merged = mergeWellness(input.wellness);
@@ -733,6 +770,7 @@ export function buildPacket(input: CollectorInput): Packet {
       : null,
     plan_azi_toate: todayList.map(brief),
     forta: strengthBrief(input, acts),
+    fitness: fitnessBrief(input),
     alergare_lunga: longRunJump(input, acts),
     plan_maine_toate: tomorrowList.map(brief),
     plan_maine: planTomorrow ? { sport: planTomorrow.sport, tip: planTomorrow.type === 'z2' ? 'Z2' : planTomorrow.type, durata_planificata: planTomorrow.plannedMinutes, cheie: planTomorrow.key } : null,

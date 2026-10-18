@@ -120,6 +120,8 @@ export interface CollectorInput {
     targetSec?: number | null;
     /** Alergare: „finalizare” (rezistență) sau „timp”. */
     ramura?: 'finalizare' | 'timp' | null;
+    /** Fitness (femei): răspunsurile din chestionar (zile, minute, nivel, acces, mișcare, context opțional). */
+    fitness?: import('../strength/fitness.js').FitnessIntake | null;
     tinta?: { timp_tinta_s: number; ritm_tinta_s_km: number; verdict: 'realist' | 'ambitios' | 'nerealist' | 'necunoscut'; motive: string[]; timp_estimat_s: number | null; cel_mai_bun_efort: string | null } | null;
   };
   wellness: SourceDaily[];

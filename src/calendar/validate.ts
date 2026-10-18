@@ -41,7 +41,7 @@ export function enforceLimits(workouts: PlannedWorkout[], lim: PlanLimits): { wo
         w.targetZones = w.targetZones.filter((z) => z <= 2);
         if (!w.targetZones.length) w.targetZones = [2];
         w.intervals = undefined;
-        if (textHard || tooHard) w.structure = w.type === 'brick' ? w.structure?.replace(INTENSE_TEXT, 'Z2') : 'ușor în Z2, fără intervale (intensitatea e blocată până la avizul cardiologic)';
+        if (textHard || tooHard) w.structure = w.type === 'brick' ? w.structure?.replace(INTENSE_TEXT, 'Z2') : 'ușor în Z2, fără intervale (intensitatea e limitată: restricție de la medic sau din analize)';
       } else {
         w.targetZones = w.targetZones.filter((z) => z <= maxZone);
         if (!w.targetZones.length) w.targetZones = [maxZone];

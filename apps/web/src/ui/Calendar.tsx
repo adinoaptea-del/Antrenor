@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CircleBtn, Dot, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
-import { phaseWeeks } from '@core/calendar/phases.js';
+import { FITNESS_PHASE_LABEL, isFitnessGoal, phaseWeeks } from '@core/calendar/phases.js';
 import { AWAY_LABEL, type AwayKind } from '@core/calendar/actions.js';
 import { addDays, weekStart, weekday } from '@core/util/dates.js';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activitiesOn, colorOf, fmtMinutes, workoutsOn } from '../data/model';
@@ -401,6 +401,14 @@ const PHASE_WHAT: Record<string, string> = {
   peak: 'ritm de cursă, intervale Z5',
   taper: 'volum jos, prospețime',
 };
+const FITNESS_WHAT: Record<string, string> = {
+  evaluare: 'înveți aparatele și execuția, 1–2 serii',
+  baza1: 'frecvența se consolidează, repetări sau sarcină',
+  baza2: 'accent pe fesieri și picioare; revizuire la final',
+  build: 'păstrezi performanța, adaugi doar la nevoie',
+  peak: 'reevaluezi obiectivul, spre menținere',
+  taper: 'obiceiuri stabile, volum sustenabil',
+};
 
 /** Tot planul până la cursă: fazele, săptămânile și orele pe săptămână (se vede creșterea și descărcările). */
 function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
@@ -423,11 +431,14 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
     hours.set(k, h);
   }
   const max = Math.max(1, ...[...hours.values()].map((h) => h.min));
+  const fit = isFitnessGoal(me.user.goal);
+  const LBL = fit ? FITNESS_PHASE_LABEL : PHASE_LABEL;
+  const WHAT = fit ? FITNESS_WHAT : PHASE_WHAT;
   const thisWeek = weekStart(me.today);
   const phases = [...new Set(weeks.map((w) => w.phase))];
   return (
     <Card>
-      <Label>Planul până la cursă</Label>
+      <Label>{fit ? `Programul de ${weeks.length} de săptămâni` : 'Planul până la cursă'}</Label>
       <div className="tiny muted" style={{ marginBottom: 10 }}>
         {weeks.length} săptămâni, de la {me.planStart.split('-').reverse().join('.')} la cursă. Fiecare bară e o săptămână: înălțimea = ore planificate; barele scurte sunt descărcările.
       </div>
@@ -454,8 +465,8 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
             <button key={ph} className="po-row" onClick={() => onPick(ws[0]!.weekStart)}>
               <span className={`po-dot ph-${ph}`} />
               <span className="po-n">
-                <b>{PHASE_LABEL[ph]}</b> · {ws.length} săpt. · de la {ws[0]!.weekStart.split('-').reverse().slice(0, 2).join('.')}
-                <small>{PHASE_WHAT[ph]}</small>
+                <b>{LBL[ph]}</b> · {ws.length} săpt. · de la {ws[0]!.weekStart.split('-').reverse().slice(0, 2).join('.')}
+                <small>{WHAT[ph]}</small>
               </span>
               <span className="po-h">~{fmtMinutes(Math.round(avg))}/săpt.</span>
             </button>

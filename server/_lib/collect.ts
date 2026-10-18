@@ -7,7 +7,8 @@ import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../..
 import { addDays, labsExpired } from '../../src/util/dates.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
-import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import { isFitnessGoal, isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import type { FitnessIntake } from '../../src/strength/fitness.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { AI_BLOCKED_SOURCES, allowedForAI } from '../../src/collector/permissions.js';
@@ -309,6 +310,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
       declaredSwimM: swimDeclared(forms.intake),
       obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`,
       targetSec: targetSecFromIntake(user.goal, (forms.intake?.alergare as { tinta?: RunResult | null } | undefined)?.tinta ?? null),
+      fitness: isFitnessGoal(user.goal) ? ((forms.intake?.fitness as FitnessIntake | undefined) ?? {}) : null,
       ramura: isRunGoal(user.goal) ? ((forms.intake?.alergare as { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } | undefined)?.ramura ?? ((forms.intake?.alergare as { tinta?: unknown } | undefined)?.tinta ? 'timp' : 'finalizare')) : null,
       raceDate: user.race_date ?? addDays(today, 365),
       phase,

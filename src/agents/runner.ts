@@ -35,6 +35,8 @@ export interface Prompts {
   antrenor_bicicleta: string;
   antrenor_alergare: string;
   antrenor_forta?: string;
+  /** Antrenorul de fitness pentru femei: ia locul antrenorului de forță când obiectivul e de fitness. */
+  antrenor_fitness?: string;
   nutritionist: string;
   fizioterapeut: string;
   minte: string;
@@ -134,13 +136,15 @@ export function route(p: Packet): AgentName[] {
 
 // ---------- prompturi ----------
 
-function specialistSystem(agent: AgentName, prompts: Prompts): string {
+function specialistSystem(agent: AgentName, prompts: Prompts, packet?: Packet): string {
   if (agent.startsWith('antrenor_')) {
+    // Fitness (femei): antrenorul de forță vorbește cu programul de fitness, nu cu PPL-ul pentru sportivii de anduranță.
+    const fitness = agent === 'antrenor_forta' && packet?.meta.tip_obiectiv === 'fitness' && !!prompts.antrenor_fitness;
     const sport = agent.replace('antrenor_', '');
-    const SPORT = { inot: 'ÎNOT', bicicleta: 'BICICLETĂ', alergare: 'ALERGARE', forta: 'FORȚĂ' }[sport] ?? sport.toUpperCase();
-    const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT).replace(/<sport>/g, sport);
-    const own = prompts[agent as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'] ?? '';
-    return `${common}\n${own}\n\n${prompts.ghid ?? ''}\n\n${prompts.format}`;
+    const SPORT = fitness ? 'FITNESS' : ({ inot: 'ÎNOT', bicicleta: 'BICICLETĂ', alergare: 'ALERGARE', forta: 'FORȚĂ' }[sport] ?? sport.toUpperCase());
+    const common = prompts.antrenor_comun.replace(/<SPORT>/g, SPORT).replace(/<sport>/g, fitness ? 'fitness' : sport);
+    const own = fitness ? prompts.antrenor_fitness! : (prompts[agent as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'] ?? '');
+    return `${common}\n${own}\n\n${fitness ? '' : (prompts.ghid ?? '')}\n\n${prompts.format}`;
   }
   return `${prompts[agent as Exclude<AgentName, 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'>]}\n\n${prompts.format}`;
 }
@@ -310,7 +314,7 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
     others.map(async (agent) => {
       const raw = await client.json<SpecialistResponse>({
         model: models.specialist,
-        system: specialistSystem(agent, prompts),
+        system: specialistSystem(agent, prompts, packetWithVerdict),
         user: specialistUser(agent, packetWithVerdict, input.files[agent]),
         schema: SPECIALIST_SCHEMA,
       });

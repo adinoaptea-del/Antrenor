@@ -245,7 +245,7 @@ export function BaselineList({ onOpen, onlyMissing = false }: { onOpen: (screen:
   );
 }
 
-/** Avizul cardiologic: o bifă. Ai aviz sau nu ai; fără el, planul rămâne la Z1–Z2. */
+/** Avizul cardiologic se consideră dat; bifa e pentru cazul în care medicul a limitat efortul (planul rămâne la Z1–Z2). */
 function AvizRow() {
   const me = useMe();
   const { submitForm } = useData();
@@ -264,9 +264,9 @@ function AvizRow() {
       <span className="ic">{has ? Icons.check : null}</span>
       <span className="tx">
         <span className="t">
-          Aviz cardiologic <small>· {has ? 'am aviz' : 'nu am aviz'}</small>
+          Aviz pentru efort <small>· {has ? 'fără restricții' : 'efort limitat de medic'}</small>
         </span>
-        <span className="s">{has ? 'intensitatea peste Z2 e permisă, după zonele testate' : 'atinge dacă ai avizul; fără el planul rămâne la Z1–Z2'}</span>
+        <span className="s">{has ? 'intensitatea e permisă, după zonele testate; atinge doar dacă medicul ți-a limitat efortul' : 'planul rămâne la Z1–Z2; atinge când medicul îți permite din nou intensitatea'}</span>
       </span>
     </button>
   );

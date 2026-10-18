@@ -8,7 +8,8 @@ import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
-import { GOAL_LABEL, isRunGoal, type Goal } from '../../src/calendar/phases.js';
+import { FITNESS_WEEKS, GOAL_LABEL, isFitnessGoal, isRunGoal, type Goal } from '../../src/calendar/phases.js';
+import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
 import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
 
 /** Ramura de alergare: aleasă în chestionar; la cele vechi, „timp” dacă există o țintă. */
@@ -29,9 +30,15 @@ export interface IntakeLike {
   program: FreeBlock[];
   /** Ore pe săptămână pentru sport, declarate. */
   oreSport?: number | null;
-  sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null };
+  /**
+   * Avizul cardiologic se consideră dat de la început (întrebarea a fost scoasă: oamenii o ignorau și rămâneau blocați
+   * la Z1–Z2). Intensitatea se limitează doar când sportivul spune explicit că medicul i-a limitat efortul.
+   */
+  sanatate: { avizCardiolog?: 'da' | 'nu' | 'programat' | null; limitareMedic?: boolean | null };
   echipament?: { ceas?: string | null; whoop?: boolean; oura?: boolean };
   evaluare?: { inot400?: string | null; ritmUsor?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
+  /** Doar la fitness (femei): nivelul, zilele, minutele, accesul, mișcarea de acum și contextul opțional. */
+  fitness?: FitnessIntake;
 }
 
 /** Orele pe săptămână din ultimele până la 8 săptămâni, din activitățile deja sincronizate (gol = fără istoric). */
@@ -58,11 +65,16 @@ export async function saveIntake(userId: string, today: string, intake: IntakeLi
   await update('users', { id: `eq.${userId}` }, { ...(intake.nume ? { name: intake.nume } : {}), goal: intake.obiectiv, race_date: intake.dataCursa, race_name: raceName(intake.obiectiv), ...(intake.sex ? { sex: intake.sex } : {}), ...(intake.anNastere ? { birth_year: intake.anNastere } : {}), ...(intake.inaltime && intake.inaltime >= 120 && intake.inaltime <= 230 ? { height_cm: Math.round(intake.inaltime) } : {}) });
   await remove('schedules', { user_id: `eq.${userId}` });
   if (intake.program.length) await insert('schedules', intake.program.map((b) => ({ user_id: userId, day: b.day, start_min: b.startMin, end_min: b.endMin, valid_from: today })));
-  const intensity: IntensityAllowed = intake.sanatate.avizCardiolog === 'da' ? 'toate' : 'Z2';
-  await upsert('clearances', { user_id: userId, cardiology: intake.sanatate.avizCardiolog === 'da', cleared_at: intake.sanatate.avizCardiolog === 'da' ? today : null, intensity_allowed: intensity }, 'user_id');
+  const limited = medicalLimit(intake);
+  await upsert('clearances', { user_id: userId, cardiology: !limited, cleared_at: limited ? null : today, intensity_allowed: limited ? 'Z2' : 'toate' }, 'user_id');
   if (intake.consimtamant) {
     await upsert('consents', { user_id: userId, health_data: true, adult: true, not_medical_ack: true, accepted_at: new Date().toISOString(), withdrawn_at: null }, 'user_id');
   }
+}
+
+/** Limitare de efort doar când e declarată explicit (Profil → Date de sănătate); altfel avizul se consideră dat. */
+export function medicalLimit(intake: Pick<IntakeLike, 'sanatate'>): boolean {
+  return intake.sanatate?.limitareMedic === true;
 }
 
 function raceName(goal: IntakeLike['obiectiv']): string {
@@ -124,6 +136,12 @@ export async function generateAndStore(userId: string, today: string, intake: In
   // Același obiectiv și aceeași cursă: planul continuă din fazele lui (nu revine la evaluare); trecutul și săptămâna
   // curentă rămân cum sunt, se refac doar săptămânile de la lunea viitoare.
   const current = await one<{ id: string; start_date: string; race_date: string; goal: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' });
+  // Fitness: fără cursă; programul are 26 de săptămâni de la început. Același obiectiv = același program, continuat.
+  const fitness = isFitnessGoal(intake.obiectiv);
+  if (fitness) {
+    const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday;
+    intake = { ...intake, dataCursa: same ? current!.race_date : addDays(nextMonday, FITNESS_WEEKS * 7) };
+  }
   const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday;
   const startDate = continuing ? current!.start_date : nextMonday;
   const history = await historyHours(userId, today);
@@ -131,13 +149,14 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const prefs = await loadPrefs(userId);
   const result: GenerateResult = generatePlan({
     fixed: prefs.fixe,
+    fitness: fitness ? fitnessProfile(intake.obiectiv as Goal, intake.fitness) : undefined,
     startDate,
     raceDate: intake.dataCursa,
-    goal: intake.obiectiv,
+    goal: intake.obiectiv as Goal,
     freeBlocks: intake.program,
     sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
-    intensityAllowed: intake.sanatate.avizCardiolog === 'da' && !labs.limitIntensity ? 'toate' : 'Z2',
+    intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
     athlete: await athleteInfo(userId, today),
     tests: await testsAvailable(userId, intake),
@@ -199,6 +218,10 @@ export async function generateAndStore(userId: string, today: string, intake: In
     await remove('plans', { id: `eq.${plan!.id}`, active: 'eq.false' }).catch(() => undefined);
     throw e;
   }
+  // Avizul se consideră dat: și planurile refăcute (ex. din Admin) aduc intensitatea permisă în pachetul agenților.
+  await upsert('clearances', { user_id: userId, cardiology: !medicalLimit(intake), cleared_at: medicalLimit(intake) ? null : today, intensity_allowed: medicalLimit(intake) ? 'Z2' : 'toate' }, 'user_id').catch(() => undefined);
+  // Fitness: data de final e a programului (26 de săptămâni de la început), nu cea trimisă din chestionar.
+  if (fitness) await update('users', { id: `eq.${userId}` }, { race_date: intake.dataCursa }).catch(() => undefined);
   return {
     ok: true,
     budgetHours: result.budgetHours,

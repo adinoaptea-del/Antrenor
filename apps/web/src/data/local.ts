@@ -6,7 +6,8 @@ import type { BodyForm, LabsForm, Me, TestsForm } from '@core/api-types.js';
 import { computeBar } from '@core/bar/bar.js';
 import { generatePlan } from '@core/calendar/generate.js';
 import { weeklyBudget } from '@core/calendar/budget.js';
-import { GOAL_LABEL, isRunGoal } from '@core/calendar/phases.js';
+import { GOAL_LABEL, isFitnessGoal, isRunGoal } from '@core/calendar/phases.js';
+import { fitnessProfile } from '@core/strength/fitness.js';
 import { currentFromIntake, isBeginnerRunner, planTarget } from '@core/goals/run-target.js';
 import { declaredSwimM } from '@core/bar/sport-readiness.js';
 import { parsePace } from '@core/util/run.js';
@@ -72,7 +73,7 @@ function buildMe(): Me {
   missing.push('Whoop', 'Garmin / ceas (prin Strava)');
   (state.tests ? have : missing).push('zone testate (CPET / test de teren)');
   (state.labs ? have : missing).push('analize de sânge');
-  (i?.sanatate.avizCardiolog === 'da' ? have : missing).push('aviz cardiologic');
+  if (i?.sanatate.limitareMedic !== true) have.push('aviz cardiologic');
   (state.body ? have : missing).push('compoziție corporală');
   missing.push('istoric de activități');
 
@@ -84,7 +85,7 @@ function buildMe(): Me {
     profile: { sex: null, birthYear: null, heightCm: null, city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
-    baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.avizCardiolog ?? null },
+    baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.limitareMedic === true ? 'nu' : 'da' },
     user: { id: 'local', email: '', name: i?.nume ?? '', goal: i?.obiectiv ?? null, raceName: raceName(i?.obiectiv), raceDate: i?.dataCursa ?? null, tz: 'Europe/Bucharest' },
     consent: !!i?.consimtamant,
     intakeComplete: !!i?.consimtamant,
@@ -139,7 +140,8 @@ export const localServer = {
         freeBlocks: intake.program,
         sportHours: intake.oreSport ?? null,
         historyHoursPerWeek: [],
-        intensityAllowed: intake.sanatate.avizCardiolog === 'da' ? 'toate' : 'Z2',
+        intensityAllowed: intake.sanatate.limitareMedic === true ? 'Z2' : 'toate',
+        fitness: isFitnessGoal(intake.obiectiv) ? fitnessProfile(intake.obiectiv, intake.fitness) : undefined,
         swimContinuous400: intake.inot.nivel === 'continuu_400' || intake.inot.nivel === 'peste_1500',
         level: { longestRideH: intake.bicicleta.ceaMaiLungaOre, longestRunKm: intake.alergare.ceaMaiLungaKm, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare.ritmActual ?? null) },
         swim: { continuousM: declaredSwimM(intake.inot.nivel, !!intake.evaluare?.inot400) },
@@ -172,7 +174,7 @@ export const localServer = {
     } else if (kind === 'aviz') {
       const aviz = (body as { aviz: 'da' | 'nu' }).aviz;
       if (state.intake) {
-        state = { ...state, intake: { ...state.intake, sanatate: { ...state.intake.sanatate, avizCardiolog: aviz } } };
+        state = { ...state, intake: { ...state.intake, sanatate: { ...state.intake.sanatate, avizCardiolog: aviz, limitareMedic: aviz === 'nu' } } };
         save(state);
         return localServer.form('intrare', state.intake);
       }

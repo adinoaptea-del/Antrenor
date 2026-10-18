@@ -10,24 +10,30 @@ export type RunGoal = '5k' | '10k' | 'semimaraton' | 'maraton';
 export type SwimGoal = 'inot-1500' | 'inot-1900' | 'inot-3800';
 /** Doar bicicletă: distanța turei pe care vrea s-o termine. */
 export type BikeGoal = 'bike-50' | 'bike-100' | 'bike-160';
-export type Goal = TriGoal | RunGoal | SwimGoal | BikeGoal;
-export type GoalKind = 'tri' | 'run' | 'swim' | 'bike';
+/** Fitness (deocamdată doar pentru femei, programul AIRON de 26 de săptămâni): fără cursă, cu un obiectiv de corp. */
+export type FitnessGoal = 'fit-slabire' | 'fit-tonifiere' | 'fit-intretinere' | 'fit-masa';
+export type Goal = TriGoal | RunGoal | SwimGoal | BikeGoal | FitnessGoal;
+export type GoalKind = 'tri' | 'run' | 'swim' | 'bike' | 'fitness';
 
 export const TRI_GOALS: readonly TriGoal[] = ['70.3', 'olimpic', 'sprint'];
 export const RUN_GOALS: readonly RunGoal[] = ['5k', '10k', 'semimaraton', 'maraton'];
 export const SWIM_GOALS: readonly SwimGoal[] = ['inot-1500', 'inot-1900', 'inot-3800'];
 export const BIKE_GOALS: readonly BikeGoal[] = ['bike-50', 'bike-100', 'bike-160'];
-export const ALL_GOALS: readonly Goal[] = [...TRI_GOALS, ...RUN_GOALS, ...SWIM_GOALS, ...BIKE_GOALS];
+export const FITNESS_GOALS: readonly FitnessGoal[] = ['fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'];
+export const ALL_GOALS: readonly Goal[] = [...TRI_GOALS, ...RUN_GOALS, ...SWIM_GOALS, ...BIKE_GOALS, ...FITNESS_GOALS];
+/** Programul de fitness are o lungime fixă de referință: 26 de săptămâni (aproximativ șase luni). */
+export const FITNESS_WEEKS = 26;
 
 export const isRunGoal = (g: string | null | undefined): g is RunGoal => (RUN_GOALS as readonly string[]).includes(g ?? '');
 export const isSwimGoal = (g: string | null | undefined): g is SwimGoal => (SWIM_GOALS as readonly string[]).includes(g ?? '');
 export const isBikeGoal = (g: string | null | undefined): g is BikeGoal => (BIKE_GOALS as readonly string[]).includes(g ?? '');
+export const isFitnessGoal = (g: string | null | undefined): g is FitnessGoal => (FITNESS_GOALS as readonly string[]).includes(g ?? '');
 export const isTriGoal = (g: string | null | undefined): g is TriGoal => (TRI_GOALS as readonly string[]).includes(g ?? '');
 export const isGoal = (g: string | null | undefined): g is Goal => (ALL_GOALS as readonly string[]).includes(g ?? '');
 
 /** Felul obiectivului: un singur sport (alergare / înot / bicicletă) sau triatlon. null pentru obiective necunoscute (ex. „full”). */
 export function goalKind(g: string | null | undefined): GoalKind | null {
-  return isRunGoal(g) ? 'run' : isSwimGoal(g) ? 'swim' : isBikeGoal(g) ? 'bike' : isTriGoal(g) ? 'tri' : null;
+  return isRunGoal(g) ? 'run' : isSwimGoal(g) ? 'swim' : isBikeGoal(g) ? 'bike' : isTriGoal(g) ? 'tri' : isFitnessGoal(g) ? 'fitness' : null;
 }
 
 /** Sporturile din plan pentru un obiectiv: la un singur sport, doar sportul și forța; toate trei doar la triatlon. */
@@ -39,6 +45,8 @@ export function goalSports(g: string | null | undefined): ('inot' | 'bicicleta' 
       return ['inot', 'forta'];
     case 'bike':
       return ['bicicleta', 'forta'];
+    case 'fitness':
+      return ['forta'];
     default:
       return ['inot', 'bicicleta', 'alergare', 'forta'];
   }
@@ -66,6 +74,10 @@ export const GOAL_LABEL: Record<Goal, string> = {
   'bike-50': 'tură de 50 km',
   'bike-100': 'tură de 100 km',
   'bike-160': 'tură de 160 km',
+  'fit-slabire': 'scădere în greutate și tonifiere',
+  'fit-tonifiere': 'tonifiere',
+  'fit-intretinere': 'întreținere',
+  'fit-masa': 'creștere musculară',
 };
 
 export interface PhaseHours {
@@ -73,6 +85,12 @@ export interface PhaseHours {
   target: number;
   max: number;
 }
+
+const FIT_PH: PhaseHours = { min: 1, target: 2.5, max: 4.5 };
+const FIT_HOURS: Record<Phase, PhaseHours> = { evaluare: FIT_PH, baza1: FIT_PH, baza2: FIT_PH, build: FIT_PH, peak: FIT_PH, taper: FIT_PH };
+
+/** Etapele programului de fitness, așezate peste fazele planului (același tip de date, alt nume pentru om). */
+export const FITNESS_PHASE_LABEL: Record<Phase, string> = { evaluare: 'Acomodare', baza1: 'Construire', baza2: 'Progres', build: 'Consolidare', peak: 'Tranziție', taper: 'Menținere' };
 
 /** Ore pe săptămână pe faze, pentru un finisher amator cu job (orientativ, din practica planurilor de amatori). */
 export const PHASE_HOURS: Record<Goal, Record<Phase, PhaseHours>> = {
@@ -184,6 +202,11 @@ export const PHASE_HOURS: Record<Goal, Record<Phase, PhaseHours>> = {
     peak: { min: 6, target: 8.5, max: 11 },
     taper: { min: 3, target: 4, max: 6 },
   },
+  // Fitness: orele vin din zilele și minutele alese (2–4 ședințe × 35–65 min); valorile sunt doar orientative.
+  'fit-slabire': FIT_HOURS,
+  'fit-tonifiere': FIT_HOURS,
+  'fit-intretinere': FIT_HOURS,
+  'fit-masa': FIT_HOURS,
 };
 
 export interface PhaseWeek {
@@ -256,6 +279,7 @@ export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first, raceWeek) / 7) + 1;
   if (total < 4) throw new Error(`Prea puține săptămâni până la cursă (${total}); planul are nevoie de minimum 4.`);
+  if (isFitnessGoal(goal)) return fitnessPhaseWeeks(first, total, goal);
   const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined);
   const weeks: PhaseWeek[] = [];
   let index = 0;
@@ -272,4 +296,22 @@ export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 
     }
   }
   return weeks;
+}
+
+/**
+ * Fitness: etapele programului de 26 de săptămâni, așezate peste fazele planului (acomodare = evaluare, construire =
+ * baza1, progres = baza2, consolidare = build, tranziție = peak, menținere = taper). La întreținere: acomodare, apoi
+ * menținere. Revizuirea din S12 e singura săptămână „de descărcare”. (Varianta exactă, cu nivelul sportivei, e în
+ * src/strength/fitness.ts; aici e doar faza zilei, pentru pachet și ecrane.)
+ */
+function fitnessPhaseWeeks(first: string, total: number, goal: FitnessGoal): PhaseWeek[] {
+  const seq: [Phase, number][] = goal === 'fit-intretinere' ? [['evaluare', 4], ['taper', 22]] : [['evaluare', 4], ['baza1', 4], ['baza2', 4], ['build', 4], ['peak', 4], ['taper', 6]];
+  const out: PhaseWeek[] = [];
+  for (const [phase, len] of seq) {
+    for (let w = 0; w < len && out.length < total; w++) {
+      out.push({ weekStart: addDays(first, out.length * 7), index: out.length, phase, weekInPhase: w, recovery: phase === 'baza2' && w === len - 1 });
+    }
+  }
+  while (out.length < total) out.push({ weekStart: addDays(first, out.length * 7), index: out.length, phase: 'taper', weekInPhase: out.length, recovery: false });
+  return out;
 }
