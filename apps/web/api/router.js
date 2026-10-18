@@ -8246,6 +8246,11 @@ async function handler18(req, res) {
     userId = user.id;
     if (!await hasConsent(user.id)) throw new HttpError(403, "consim\u021B\u0103m\xE2ntul pentru date de s\u0103n\u0103tate lipse\u0219te sau a fost retras");
     const body = await readJson(req);
+    if (body && typeof body === "object" && body.test === true) {
+      await insert("sync_log", { user_id: user.id, provider: "android", ok: true, rows: 0, detail: "test primit (date de prob\u0103, nesalvate)" }).catch(() => void 0);
+      json(res, 200, { ok: true, test: true, mesaj: "adresa e bun\u0103; datele de prob\u0103 nu se salveaz\u0103" });
+      return;
+    }
     const parsed = parseHealthConnect(body, user.tz || "Europe/Bucharest");
     const workouts = [...new Map(parsed.workouts.map((w) => [w.id, { ...w, id: `android-${user.id}-${w.id.replace(/^android-/, "")}` }])).values()];
     await saveOthers(user.id, parsed.others.map((o) => ({ ...o, id: `android-o-${user.id}-${o.externalId}` })));

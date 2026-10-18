@@ -28,6 +28,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     userId = user.id;
     if (!(await hasConsent(user.id))) throw new HttpError(403, 'consimțământul pentru date de sănătate lipsește sau a fost retras');
     const body = await readJson(req);
+    // Butonul „Testează webhook” din HC Webhook trimite date inventate cu "test": true — nu le salvăm.
+    if (body && typeof body === 'object' && (body as { test?: unknown }).test === true) {
+      await insert('sync_log', { user_id: user.id, provider: 'android', ok: true, rows: 0, detail: 'test primit (date de probă, nesalvate)' }).catch(() => undefined);
+      json(res, 200, { ok: true, test: true, mesaj: 'adresa e bună; datele de probă nu se salvează' });
+      return;
+    }
     const parsed = parseHealthConnect(body, user.tz || 'Europe/Bucharest');
     const workouts = [...new Map(parsed.workouts.map((w) => [w.id, { ...w, id: `android-${user.id}-${w.id.replace(/^android-/, '')}` }])).values()];
     await saveOthers(user.id, parsed.others.map((o) => ({ ...o, id: `android-o-${user.id}-${o.externalId}` })));
