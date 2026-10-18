@@ -44,7 +44,7 @@ async function hasUpgrade(): Promise<boolean> {
     fetch(`${ENV.supabaseUrl()}/rest/v1/users?select=city,apple_token,calendar_prefs&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/app_settings?select=key&limit=1`, h),
     fetch(`${ENV.supabaseUrl()}/rest/v1/agent_events?select=event_key&limit=1`, h),
-    fetch(`${ENV.supabaseUrl()}/rest/v1/workouts_planned?select=original,changed_at&limit=1`, h),
+    fetch(`${ENV.supabaseUrl()}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
   ]);
   return r.ok && t.ok && e.ok && a2.ok;
 }

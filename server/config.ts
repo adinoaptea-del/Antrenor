@@ -37,7 +37,7 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
           fetch(`${supabaseUrl}/rest/v1/ai_usage?select=id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/activity_overrides?select=activity_id&limit=1`, h),
           fetch(`${supabaseUrl}/rest/v1/agent_events?select=event_key&limit=1`, h),
-          fetch(`${supabaseUrl}/rest/v1/workouts_planned?select=original,changed_at&limit=1`, h),
+          fetch(`${supabaseUrl}/rest/v1/badges_earned?select=badge_id&limit=1`, h),
         ]);
         upgrade = !c.ok || !t.ok || !l.ok || !o.ok || !w.ok || !a.ok || !ov.ok || !ev.ok || !a2.ok;
       }

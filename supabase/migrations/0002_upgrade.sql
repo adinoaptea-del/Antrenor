@@ -216,3 +216,15 @@ alter table public.workouts_planned add column if not exists original jsonb;
 alter table public.workouts_planned add column if not exists changed_at timestamptz;
 -- Preferințele de calendar: plecări (interval + ce ai la dispoziție) și întâlniri fixe (alergarea cu grupul).
 alter table public.users add column if not exists calendar_prefs jsonb not null default '{}'::jsonb;
+
+-- 9. Insignele câștigate: odată câștigată, o insignă rămâne (chiar dacă măsura scade mai târziu); „seen” = anunțul
+--    de pe Acasă a fost văzut.
+create table if not exists public.badges_earned (
+  user_id uuid not null references public.users(id) on delete cascade,
+  badge_id text not null,
+  earned_at date not null,
+  seen boolean not null default false,
+  primary key (user_id, badge_id)
+);
+alter table public.badges_earned enable row level security;
+revoke insert, update, delete on public.badges_earned from anon, authenticated;

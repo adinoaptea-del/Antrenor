@@ -1,3 +1,4 @@
+import { BadgesTeaser } from './Badges';
 import { useEffect, useState } from 'react';
 import { Card, CircleBtn, Icons, Label, LiveTitle, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
@@ -68,6 +69,8 @@ export function Profile({ onBack, onOpen }: { onBack: () => void; onOpen: (scree
             </div>
           </div>
         </Card>
+
+        <BadgesTeaser onOpen={onOpen} />
 
         <Card>
           <Label icon={Icons.edit}>Chestionare</Label>

@@ -4,6 +4,7 @@ import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
 import { loadPrefs } from './prefs.js';
+import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
@@ -210,6 +211,17 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
     ],
     prefs: await loadPrefs(userId),
+    badges: await loadBadges(userId, today, {
+      goal: user.goal ?? null,
+      planStart: planRow?.start_date ?? null,
+      raceDate: user.race_date ?? null,
+      age: u2.birth_year ? Number(today.slice(0, 4)) - u2.birth_year : null,
+      zonesTested: !!zonesRow && zonesRow.source !== 'provizoriu',
+      efficiencyPct: aerobicEfficiency(activities, today).map((e) => e.schimbare_pct),
+    }).catch((e) => {
+      console.error('insigne', e instanceof Error ? e.message : e);
+      return null;
+    }),
     zones: zonesRow
       ? {
           run: zonesRow.run_hr_zones ? `Z2 ${zonesRow.run_hr_zones[0]}–${zonesRow.run_hr_zones[1]} bpm` : null,

@@ -138,6 +138,8 @@ export interface Me {
   zones: { run: string | null; bike: string | null; swim: string | null; source: string | null } | null;
   dataAvailability: { have: string[]; missing: string[] };
   warnings: { title: string; text: string; fix: string }[];
+  /** Insignele: nivelul, insignele (câștigate și de câștigat), provocarea lunii, cursele; fresh = neanunțate încă. */
+  badges?: (import('./badges/badges.js').BadgesResult & { fresh: string[] }) | null;
   /** Decizia zilei: una singură, citită de toate ecranele. null = fără date azi. */
   day?: import('./calendar/day.js').DayDecision | null;
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */

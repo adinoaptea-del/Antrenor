@@ -19,6 +19,7 @@ import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../..
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { AWAY_LABEL, applyAway, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
+import { markBadgesSeen } from '../_lib/badges.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 
 /**
@@ -352,6 +353,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const program = (intakeRow?.answers as { program?: { day: number }[] } | undefined)?.program ?? [];
       const outside = fixe.filter((f) => !program.some((b) => b.day === f.zi)).map((f) => f.zi);
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
+      return;
+    }
+    if (kind === 'insigne-vazute') {
+      await markBadgesSeen(u.id);
+      json(res, 200, { ok: true });
       return;
     }
     if (kind === 'deconectare') {

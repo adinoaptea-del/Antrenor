@@ -12,6 +12,7 @@ import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { BaselineList } from '../forms/Baseline';
 import { Today } from './Today';
+import { NewBadge } from './Badges';
 
 // Acasă după desenul lui Cuza: numele, bara de progres, trei carduri de sport cu imagine,
 // zilele până la cursă, trei pătrate (Recuperare, Forța, Calendar). Nimic altceva.
@@ -100,6 +101,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       </div>
 
 
+      <NewBadge onOpen={onOpen} />
       <Today onOpen={onOpen} />
 
       {me.sportReady && me.sportReady.length > 0 ? (

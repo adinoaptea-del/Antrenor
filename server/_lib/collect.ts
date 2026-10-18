@@ -170,9 +170,9 @@ export async function loadPlan(userId: string, from: string, to: string): Promis
   return { planId: plan.id, workouts };
 }
 
-export async function loadActivities(userId: string, from: string): Promise<SourceActivity[]> {
+export async function loadActivities(userId: string, from: string, limit = 500): Promise<SourceActivity[]> {
   const [rows, ov] = await Promise.all([
-    select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 500 }),
+    select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit }),
     loadOverrides(userId),
   ]);
   return applyOverrides(rows.map(toSourceActivity), ov);
