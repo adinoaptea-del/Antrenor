@@ -4,6 +4,7 @@ import { SyncButton } from './SyncButton';
 import { useMe } from '../data/store';
 import { DAY_NAMES, SPORT_LABEL, fmtMinutes, sessionsInWeek, weeklyExecution, weeklyHours, weeklyKm, dayOf } from '../data/model';
 import { DayDecisionView } from './Day';
+import { RecoveryCard } from './Recovery';
 import { GOAL_NAME, overallReady } from '@core/bar/sport-readiness.js';
 import type { Goal } from '@core/calendar/phases.js';
 import { cleanRefs } from '../data/model';
@@ -90,6 +91,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
       </div>
 
       <div className="stack">
+        <RecoveryCard />
         <div className="lab" style={{ marginBottom: -4 }}>
           Statistici
         </div>

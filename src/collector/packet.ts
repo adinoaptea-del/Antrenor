@@ -145,6 +145,11 @@ export interface Packet {
    * cuvintele ei, nu o schimbi. null = aplicația n-a putut decide (fără date).
    */
   decizia_aplicatiei?: { nivel: 'verde' | 'galben' | 'rosu' | 'stop'; titlu: string; ce_faci: string; motiv: string | null } | null;
+  /**
+   * Cum răspunde corpul LUI la recuperare: dimineața de după fiecare tip (saună, baie rece, meditație…), HRV și puls față
+   * de media lui pe 7 zile, comparat cu diminețile fără recuperare. Asociere, nu cauză; doar cu ≥ 4 dimineți.
+   */
+  raspuns_recuperare: import('../recovery/recovery.js').RecoveryEffect[];
   /** Echilibrul pe ultimele 3 săptămâni: sporturi rămase în urmă, intensitate sărită. Din date, nu din impresie. */
   echilibru: Balance;
   analize: CollectorInput['labs'] | null;
@@ -685,6 +690,7 @@ export function buildPacket(input: CollectorInput): Packet {
     acoperire_azi: aziCover.extra ? aziCover.coverage : null,
     efort_ieri: { peste_plan: ieri.over, trimp_facut: ieri.facut, trimp_planificat: ieri.planificat },
     echilibru: balance,
+    raspuns_recuperare: input.recoveryEffects ?? [],
     restrictie_activa: (() => {
       const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;

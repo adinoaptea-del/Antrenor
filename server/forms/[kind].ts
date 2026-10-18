@@ -20,6 +20,7 @@ import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/d
 import { AWAY_LABEL, applyAway, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
 import { markBadgesSeen } from '../_lib/badges.js';
+import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 
 /**
@@ -353,6 +354,23 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const program = (intakeRow?.answers as { program?: { day: number }[] } | undefined)?.program ?? [];
       const outside = fixe.filter((f) => !program.some((b) => b.day === f.zi)).map((f) => f.zi);
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
+      return;
+    }
+    if (kind === 'recuperare') {
+      // Adăugare manuală: { tip, minute, date? } sau ștergere: { sterge: id } (doar ce a adăugat sportivul).
+      if (body.sterge) {
+        await remove('other_activities', { id: `eq.${String(body.sterge)}`, user_id: `eq.${u.id}`, source: 'eq.manual' });
+        json(res, 200, { ok: true });
+        return;
+      }
+      const tip = String(body.tip ?? '');
+      const minute = Number(body.minute);
+      const date = formDate(body.date, today);
+      if (!(MANUAL_TYPES as readonly string[]).includes(tip)) throw new HttpError(400, 'alege tipul de recuperare');
+      if (!Number.isInteger(minute) || minute < 1 || minute > 300) throw new HttpError(400, 'minutele între 1 și 300');
+      const id = `manual-${u.id.slice(0, 8)}-${Date.now().toString(36)}`;
+      await insert('other_activities', { id, user_id: u.id, source: 'manual', external_id: id, date, start_local: null, kind: 'recuperare', name: tip, minutes: minute, avg_hr: null, max_hr: null });
+      json(res, 200, { ok: true, id });
       return;
     }
     if (kind === 'insigne-vazute') {

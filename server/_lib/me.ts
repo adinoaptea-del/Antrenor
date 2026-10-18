@@ -4,11 +4,12 @@ import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
 import { loadPrefs } from './prefs.js';
+import { recoverySummary } from '../../src/recovery/recovery.js';
 import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
-import { loadActivities, loadForms, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
+import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
@@ -36,7 +37,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     one<BarResult & { date: string }>('bar_daily', { user_id: `eq.${userId}` }, { order: 'date.desc' }),
     one<{ verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: string | null; date: string; acwr: number | string | null; hooper_sum: number | null; sleep_min: number | null; hrv: number | string | null; hrv_baseline: number | string | null; tsb: number | string | null }>('readiness_daily', { user_id: `eq.${userId}`, date: `eq.${today}` }),
     select<{ id: string; kind: MeMessage['kind']; body: string; decision: MeMessage['decision']; created_at: string }>('messages', { user_id: `eq.${userId}` }, { order: 'created_at.desc', limit: 20 }),
-    select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -61)}` }, { limit: 400 }),
+    select<Record<string, unknown>>('wellness_daily', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -92)}` }, { limit: 600 }),
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
     select<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
@@ -211,6 +212,10 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
     ],
     prefs: await loadPrefs(userId),
+    recovery: {
+      ...recoverySummary(today, await loadOthers(userId, addDays(today, -92)), merged.map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))),
+      sleep: merged.filter((m) => m.date > addDays(today, -7)).sort((a, b) => (a.date < b.date ? 1 : -1)).map((m) => ({ date: m.date, minutes: m.sleepMin, score: m.sleepScore })),
+    },
     badges: await loadBadges(userId, today, {
       goal: user.goal ?? null,
       planStart: planRow?.start_date ?? null,

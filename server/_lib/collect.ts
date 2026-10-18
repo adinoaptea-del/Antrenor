@@ -10,6 +10,8 @@ import { isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { AI_BLOCKED_SOURCES, allowedForAI } from '../../src/collector/permissions.js';
+import { recoverySummary } from '../../src/recovery/recovery.js';
+import { mergeWellness } from '../../src/collector/packet.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { forecast } from './weather.js';
 import type { LabsForm } from '../../src/api-types.js';
@@ -303,6 +305,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     athlete: { goal: (user.goal as Goal | null) ?? null, declaredSwimM: swimDeclared(forms.intake), obiectiv: `${user.race_name ?? 'cursă'}${user.race_date ? `, ${user.race_date}` : ''}${runGoalText(user.goal, forms.intake)}${declaredLevel(forms.intake)}`, raceDate: user.race_date ?? addDays(today, 365), phase, sex: user.sex ?? null, varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null, inaltimeCm: user.height_cm ?? null },
     wellness: allowedForAI(wellness),
     activities: allowedForAI(activities),
+    recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
     // Surse conectate pe care AI-ul n-are voie să le vadă (registrul din permissions.ts); acum niciuna.
     hiddenSources: [...AI_BLOCKED_SOURCES],
     plan: planRes.workouts,

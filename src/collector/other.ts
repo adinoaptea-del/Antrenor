@@ -26,11 +26,12 @@ const RECOVERY: [RegExp, string][] = [
   [/massage|masaj/i, 'masaj'],
   [/breath|respira/i, 'respirație'],
   [/meditat|mind ?and ?body|mindful/i, 'meditație'],
-  [/cool ?down|recovery|recuperare|hot ?tub|steam/i, 'recuperare'],
+  [/steam/i, 'saună umedă'],
+  [/walk|plimb|natur/i, 'plimbare'],
+  [/cool ?down|recovery|recuperare|hot ?tub/i, 'recuperare'],
 ];
 
 const ACTIVE: [RegExp, string][] = [
-  [/walk|plimb/i, 'plimbare'],
   [/hik|drume/i, 'drumeție'],
   [/tennis|padel|squash|badminton|pickleball/i, 'sport cu racheta'],
   [/soccer|football|fotbal|basket|volley|handball/i, 'sport de echipă'],

@@ -138,6 +138,8 @@ export interface Me {
   zones: { run: string | null; bike: string | null; swim: string | null; source: string | null } | null;
   dataAvailability: { have: string[]; missing: string[] };
   warnings: { title: string; text: string; fix: string }[];
+  /** Recuperarea: somnul ultimelor nopți, sesiunile de recuperare (brățări sau adăugate), cum răspunde corpul. */
+  recovery?: import('./recovery/recovery.js').RecoverySummary & { sleep: { date: string; minutes: number | null; score: number | null }[] };
   /** Insignele: nivelul, insignele (câștigate și de câștigat), provocarea lunii, cursele; fresh = neanunțate încă. */
   badges?: (import('./badges/badges.js').BadgesResult & { fresh: string[] }) | null;
   /** Decizia zilei: una singură, citită de toate ecranele. null = fără date azi. */
