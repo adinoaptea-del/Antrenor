@@ -155,4 +155,6 @@ export interface MeSource {
   error: string | null;
   /** Ultima zi pentru care au venit date (activitate sau somn/puls). */
   lastData: string | null;
+  /** Brățară de recuperare (WHOOP, Oura, Apple) fără somn/recuperare pentru azi: decizia zilei nu poate fi verde. */
+  noRecoveryToday?: boolean;
 }

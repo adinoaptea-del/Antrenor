@@ -21,6 +21,8 @@ export interface DayDecision {
   action: string;
   /** De ce (fapte, fără jargon tehnic), sau null. */
   reason: string | null;
+  /** Zi fără ședință în plan: nu există „variantă ușoară”, e odihnă oricum (doar stopul și roșul se spun). */
+  rest?: boolean;
 }
 
 export const DAY_TEXT: Record<DayLevel, { title: string; action: string }> = {
@@ -56,6 +58,11 @@ export function decideDay(i: DayInput): DayDecision | null {
   const active = sessions.filter((w) => w.status === 'planificat' || w.status === 'mutat');
   if (sessions.length > 0 && active.length === 0 && cancelled.length > 0) candidates.push({ level: 'rosu', reason: cancelled[0]!.note ?? 'ședințele de azi au fost anulate' });
 
+  // Zi fără nicio ședință în plan (odihnă): verde sau galben nu schimbă nimic, deci nu se spune „fă varianta ușoară”.
+  if (sessions.length === 0 || (active.length === 0 && cancelled.length === 0)) {
+    const hard = candidates.filter((c) => c.level === 'stop' || c.level === 'rosu').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
+    if (!hard) return { level: 'verde', title: 'Zi de odihnă', action: 'Azi odihnă, cum e în plan.', reason: null, rest: true };
+  }
   if (!candidates.length) return null;
   const top = candidates.reduce((a, b) => (RANK[b.level] > RANK[a.level] ? b : a));
   // Motivul vine de la sursa care a decis; la egalitate, primul cu text.
@@ -66,6 +73,8 @@ export function decideDay(i: DayInput): DayDecision | null {
 /** Un mesaj (al antrenorului) se potrivește cu decizia zilei? Altfel e depășit și nu se arată. */
 export function messageMatches(decision: 'verde' | 'galben' | 'rosu' | 'stop' | null, day: DayDecision | null): boolean {
   if (!day || !decision) return true;
+  // În zi de odihnă, un mesaj verde sau galben spune tot „odihnă” (nu are ce ședință să ușureze).
+  if (day.rest) return decision === 'verde' || decision === 'galben';
   return decision === day.level;
 }
 
@@ -74,7 +83,7 @@ function plain(m: string | null): string | null {
   // „date obiective 62/100 (3 din 5 măsurate)” → limbaj de sportiv.
   return m
     .replace(/date obiective (\d+)\/100 \((\d) din 5 măsurate\)/, 'recuperarea măsurată de brățări: $1/100')
-    .replace(/fără date obiective de la brățări: cel mult galben/, 'fără date de la brățări azi, așa că nu poate fi zi verde')
+    .replace(/fără date obiective de la brățări: cel mult galben/, 'brățara n-a măsurat recuperarea din noaptea trecută (somnul nu s-a înregistrat), așa că ziua nu poate fi verde')
     .replace(/cum te simți \(Hooper (\d+)\) coboară la (\w+)/, 'cum te simți azi ($1/28) coboară ziua la $2');
 }
 

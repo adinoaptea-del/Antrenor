@@ -25,7 +25,7 @@ describe('decizia zilei', () => {
   });
   it('stopul bate tot; restricția e podea', () => {
     assert.equal(decideDay({ state: { verdict: 'verde' }, readiness: { verdict: 'stop', reason: 'febră' }, restriction: null, todayPlan: [] })!.level, 'stop');
-    assert.equal(decideDay({ state: { verdict: 'verde' }, readiness: null, restriction: { verdict: 'galben', reason: 'durere 3/10 la genunchi' }, todayPlan: [] })!.level, 'galben');
+    assert.equal(decideDay({ state: { verdict: 'verde' }, readiness: null, restriction: { verdict: 'galben', reason: 'durere 3/10 la genunchi' }, todayPlan: [w('planificat')] })!.level, 'galben');
   });
   it('mesajul scris pe altă decizie nu se arată', () => {
     const day = decideDay({ state: { verdict: 'galben' }, readiness: null, restriction: null, todayPlan: [] });
@@ -34,5 +34,19 @@ describe('decizia zilei', () => {
   });
   it('fără nicio dată: fără decizie (nu inventăm)', () => {
     assert.equal(decideDay({ state: null, readiness: null, restriction: null, todayPlan: [w('planificat')] }), null);
+  });
+});
+
+describe('zi de odihnă', () => {
+  it('fără ședință în plan nu se spune „fă varianta ușoară”, chiar dacă recuperarea e galbenă', () => {
+    const d = decideDay({ state: { verdict: 'galben', motiv: 'fără date obiective de la brățări: cel mult galben' }, readiness: null, restriction: null, todayPlan: [] })!;
+    assert.equal(d.title, 'Zi de odihnă');
+    assert.equal(d.action, 'Azi odihnă, cum e în plan.');
+    assert.equal(d.rest, true);
+    assert.equal(messageMatches('galben', d), true);
+  });
+  it('dar febra rămâne stop și într-o zi de odihnă', () => {
+    const d = decideDay({ state: null, readiness: null, restriction: { verdict: 'stop', reason: 'febră' }, todayPlan: [] })!;
+    assert.equal(d.level, 'stop');
   });
 });

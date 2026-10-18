@@ -10,10 +10,10 @@ const ICON = { verde: Icons.check, galben: Icons.alert, rosu: Icons.stop, stop: 
  */
 export function DayDecisionView({ day, compact = false }: { day: DayDecision; compact?: boolean }) {
   return (
-    <div className={`day-dec d-${day.level}`}>
+    <div className={`day-dec d-${day.rest ? 'odihna' : day.level}`}>
       <div className="dd-top">
         <span className="dd-badge">
-          {ICON[day.level]}
+          {day.rest ? Icons.moon : ICON[day.level]}
           {day.title}
         </span>
         <b className="dd-action">{day.action}</b>

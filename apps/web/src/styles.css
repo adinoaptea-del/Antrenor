@@ -1015,3 +1015,4 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .d-rosu .dd-badge, .d-stop .dd-badge { color: #fff; background: #b91c1c; border-color: #b91c1c; }
 .d-rosu, .d-stop { border-color: rgba(239, 68, 68, 0.55); }
 .cp-row.off { opacity: 0.5; text-decoration: line-through; }
+.d-odihna .dd-badge { color: var(--muted); }

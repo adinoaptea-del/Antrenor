@@ -194,9 +194,9 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       ...tokens.map((t) => {
         const ok = lastSyncRows.find((r) => r.provider === t.provider && r.ok);
         const last = lastSyncRows.find((r) => r.provider === t.provider);
-        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider) };
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok?.ran_at ?? null, error: last && !last.ok ? last.detail ?? 'eroare la citire' : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== 'strava' && !wellnessRows.some((r) => r.source === t.provider && String(r.date) === today) };
       }),
-      ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple') }] : []),
+      ...(u2.apple_token ? [{ id: 'apple' as const, name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf('apple'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'apple' && String(r.date) === today) }] : []),
     ],
     prefs: await loadPrefs(userId),
     zones: zonesRow

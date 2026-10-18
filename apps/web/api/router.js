@@ -2090,6 +2090,10 @@ function decideDay(i) {
   const cancelled = sessions.filter((w) => w.status === "anulat_sistem" && !(w.note ?? "").startsWith("plecat"));
   const active2 = sessions.filter((w) => w.status === "planificat" || w.status === "mutat");
   if (sessions.length > 0 && active2.length === 0 && cancelled.length > 0) candidates.push({ level: "rosu", reason: cancelled[0].note ?? "\u0219edin\u021Bele de azi au fost anulate" });
+  if (sessions.length === 0 || active2.length === 0 && cancelled.length === 0) {
+    const hard = candidates.filter((c) => c.level === "stop" || c.level === "rosu").sort((a, b) => RANK3[b.level] - RANK3[a.level])[0];
+    if (!hard) return { level: "verde", title: "Zi de odihn\u0103", action: "Azi odihn\u0103, cum e \xEEn plan.", reason: null, rest: true };
+  }
   if (!candidates.length) return null;
   const top = candidates.reduce((a, b) => RANK3[b.level] > RANK3[a.level] ? b : a);
   const reason = candidates.find((c) => c.level === top.level && c.reason)?.reason ?? null;
@@ -2097,11 +2101,12 @@ function decideDay(i) {
 }
 function messageMatches(decision, day2) {
   if (!day2 || !decision) return true;
+  if (day2.rest) return decision === "verde" || decision === "galben";
   return decision === day2.level;
 }
 function plain(m) {
   if (!m) return null;
-  return m.replace(/date obiective (\d+)\/100 \((\d) din 5 măsurate\)/, "recuperarea m\u0103surat\u0103 de br\u0103\u021B\u0103ri: $1/100").replace(/fără date obiective de la brățări: cel mult galben/, "f\u0103r\u0103 date de la br\u0103\u021B\u0103ri azi, a\u0219a c\u0103 nu poate fi zi verde").replace(/cum te simți \(Hooper (\d+)\) coboară la (\w+)/, "cum te sim\u021Bi azi ($1/28) coboar\u0103 ziua la $2");
+  return m.replace(/date obiective (\d+)\/100 \((\d) din 5 măsurate\)/, "recuperarea m\u0103surat\u0103 de br\u0103\u021B\u0103ri: $1/100").replace(/fără date obiective de la brățări: cel mult galben/, "br\u0103\u021Bara n-a m\u0103surat recuperarea din noaptea trecut\u0103 (somnul nu s-a \xEEnregistrat), a\u0219a c\u0103 ziua nu poate fi verde").replace(/cum te simți \(Hooper (\d+)\) coboară la (\w+)/, "cum te sim\u021Bi azi ($1/28) coboar\u0103 ziua la $2");
 }
 function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -5622,9 +5627,9 @@ async function buildMe(userId, today) {
       ...tokens.map((t) => {
         const ok2 = lastSyncRows.find((r2) => r2.provider === t.provider && r2.ok);
         const last = lastSyncRows.find((r2) => r2.provider === t.provider);
-        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok2?.ran_at ?? null, error: last && !last.ok ? last.detail ?? "eroare la citire" : null, lastData: lastDataOf(t.provider) };
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok2?.ran_at ?? null, error: last && !last.ok ? last.detail ?? "eroare la citire" : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== "strava" && !wellnessRows.some((r2) => r2.source === t.provider && String(r2.date) === today) };
       }),
-      ...u2.apple_token ? [{ id: "apple", name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf("apple") }] : []
+      ...u2.apple_token ? [{ id: "apple", name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf("apple"), noRecoveryToday: !wellnessRows.some((r2) => r2.source === "apple" && String(r2.date) === today) }] : []
     ],
     prefs: await loadPrefs(userId),
     zones: zonesRow ? {

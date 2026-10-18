@@ -31,7 +31,7 @@ export function Today({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sp
 
       {list.length === 0 ? (
         <div className="today-rest">
-          <b>Odihnă în plan.</b>
+          {!day?.rest && <b>Odihnă în plan.</b>}
           {next && (
             <span>
               Urmează: {SPORT_LABEL[next.sport].toLowerCase()} {DAY_NAMES[weekday(next.date)]}, {fmtMinutes(next.plannedMinutes)}.
@@ -68,10 +68,11 @@ function Sources() {
     <div className="sources">
       {list.map((s) => {
         const late = s.lastData == null || daysBetween(s.lastData, me.today) >= 2;
+        const warn = !!s.error || late || !!s.noRecoveryToday;
         return (
-          <span key={s.id} className={s.error || late ? 'late' : ''} title={s.error ?? undefined}>
-            {s.error || late ? Icons.alert : null}
-            <b>{s.name}</b> {s.error ? 'eroare la citire' : s.lastData == null ? 'fără date' : late ? `date de acum ${daysBetween(s.lastData, me.today)} zile` : `citit ${ago(s.lastSync, me.today)}`}
+          <span key={s.id} className={warn ? 'late' : ''} title={s.error ?? undefined}>
+            {warn ? Icons.alert : null}
+            <b>{s.name}</b> {s.error ? 'eroare la citire' : s.lastData == null ? 'fără date' : late ? `date de acum ${daysBetween(s.lastData, me.today)} zile` : s.noRecoveryToday ? `citit ${ago(s.lastSync, me.today)}, dar fără somn/recuperare azi` : `citit ${ago(s.lastSync, me.today)}`}
           </span>
         );
       })}
