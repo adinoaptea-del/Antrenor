@@ -4,15 +4,12 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 export const TOUR_KEY = 'airon.ghid.v1';
 
 const STEPS: { sel: string | null; title: string; text: string }[] = [
-  { sel: '.name-ring', title: 'Profilul tău', text: 'Apasă pe numele tău. Brățări, analize, oraș, aviz, chestionare și setări. Tot aici, ca admin, activezi brățările pentru toată lumea.' },
-  { sel: '.progress', title: 'Bara de pregătire', text: 'Cât de pregătit ești pentru cursă, din 5 componente reale. Ce nu se poate măsura rămâne „fără date”, nu se estimează.' },
-  { sel: '.sync', title: 'Citește datele', text: 'Apeși după un antrenament ca aplicația să-l vadă imediat. Altfel citește singură la 15 minute.' },
-  { sel: '.forms-row', title: 'Formularele', text: 'Dimineața (20 de secunde), după antrenament și duminica. Cu cât răspunzi, cu atât antrenorii știu mai bine.' },
-  { sel: '.sports', title: 'Cele trei sporturi', text: 'Următoarea ședință pe fiecare. Atingi un sport: detalii, recorduri și totalul de la începutul pregătirii.' },
-  { sel: '.boxes', title: 'Recuperare, forță, calendar', text: 'Calendarul are tot planul până la cursă: atingi o zi și vezi fiecare ședință pe pași.' },
-  { sel: '.nav', title: 'Navigarea', text: 'Antrenament, Acasă (la mijloc) și Recuperare.' },
-  { sel: '.fab', title: 'Antrenorul', text: 'Mesajele head coach-ului: dimineața la 5:30, după antrenament și duminica. Doar el îți scrie; specialiștii lucrează în spate.' },
-  { sel: null, title: 'Marginea ecranului', text: 'Își schimbă culoarea după cum te-ai recuperat: verde, galben, portocaliu sau roșu. Apare după analiza de dimineață.' },
+  { sel: '.today-card', title: 'Astăzi', text: 'O singură decizie pe zi: verde, galbenă, roșie sau stop, cu motivul. Ședința de azi și un singur buton. Fără date de la brățări, aplicația te întreabă pe tine.' },
+  { sel: '.race-panel', title: 'Repere pentru cursă', text: 'Un indice pe fiecare probă, față de reperele ei. O probă fără date rămâne „fără date”: nu afișăm un procent global pe jumătate.' },
+  { sel: '.sync', title: 'Citește datele', text: 'Apeși după un antrenament ca aplicația să-l vadă imediat. Altfel serverul citește singur la 15 minute.' },
+  { sel: '.avatar-btn', title: 'Profilul tău', text: 'Obiectiv și disponibilitate, dispozitive, chestionare, date de sănătate, preferințe, cont. Scurt, câte un ecran.' },
+  { sel: '.tabbar', title: 'Patru taburi', text: 'Acasă · Plan (calendar și sporturi) · Evoluție (starea de azi și obiectivul) · Coach (decizia explicată).' },
+  { sel: null, title: 'Lumina din fundal', text: 'Se colorează discret după decizia zilei; neutră când lipsesc datele. O poți opri din Profil → Preferințe.' },
 ];
 
 export function Tour({ onClose }: { onClose: () => void }) {

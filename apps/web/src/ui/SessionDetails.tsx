@@ -46,7 +46,8 @@ function metricsFor(sport: Sport, ftp: number | null): Metric[] {
       { k: 'stride', label: 'Lungimea pasului', unit: 'm', get: (a) => a.details?.strideM, fmt: (v) => dec(v, 2), better: null },
       ...COMMON_HR,
       { k: 'elev', label: 'Urcare', unit: 'm', get: (a) => a.details?.elevGainM, better: null },
-      { k: 'time', label: 'Timp în mișcare', get: (a) => (a.details?.movingMin ?? a.minutes) * 60, fmt: mmssLong, better: null },
+      { k: 'time', label: 'Timp în mișcare', get: (a) => (a.details?.movingMin ?? a.minutes) * 60, fmt: mmssLong, better: null, hint: 'fără pauze; ritmul mediu se calculează pe el' },
+      { k: 'elapsed', label: 'Timp total', get: (a) => (a.details?.elapsedMin ?? null) == null ? null : a.details!.elapsedMin! * 60, fmt: mmssLong, better: null, hint: 'de la start la stop, cu pauze' },
       ...ENERGY,
     ];
   if (sport === 'bicicleta')
@@ -124,8 +125,11 @@ export function SessionDetails({ sport }: { sport: Sport }) {
       <div className="det-pills" role="tablist" aria-label="Ședința">
         {sessions.map((s) => (
           <button key={s.id} role="tab" aria-selected={s.id === sel.id} className={`det-pill ${s.id === sel.id ? 'on' : ''}`} onClick={() => setSelId(s.id)}>
-            <b>{dayLabel(s.date)}</b>
-            <small>{s.distanceKm != null ? (sport === 'inot' ? `${Math.round(s.distanceKm * 1000)} m` : `${dec(s.distanceKm)} km`) : `${s.minutes} min`}</small>
+            <b>
+              {dayLabel(s.date)}
+              {s.startLocal ? ` · ${s.startLocal}` : ''}
+            </b>
+            <small>{s.distanceKm != null ? (sport === 'inot' ? `${Math.round(s.distanceKm * 1000)} m` : `${dec(s.distanceKm)} km`) : `${s.minutes} min`} · {s.minutes} min</small>
           </button>
         ))}
       </div>
@@ -207,7 +211,7 @@ function Splits({ splits }: { splits: number[] }) {
   const hi = Math.max(...splits);
   return (
     <div className="det-sec">
-      <div className="det-h">Timpul pe fiecare km</div>
+      <div className="det-h">Viteza pe fiecare km <small className="muted">· bara mai lungă = km mai rapid; cifra e timpul pe km</small></div>
       <div className="splits">
         {splits.map((s, i) => (
           <div key={i} className={`split ${s === lo ? 'fast' : ''}`}>
@@ -303,7 +307,10 @@ function Origin({ act }: { act: MeActivity }) {
   return (
     <div className="origin">
       <div className="tiny muted">
-        {act.name ? `Înregistrat ca „${act.name.split(' · ')[0]!.split(';')[0]}” · ` : 'Înregistrat de '}{SOURCE_NAME[act.source] ?? act.source}
+        {act.name ? `Înregistrat ca „${act.name.split(' · ')[0]!.split(';')[0]}” · ` : 'Înregistrat de '}
+        {(act.sources?.length ? act.sources : [act.source]).map((x) => SOURCE_NAME[x] ?? x).join(' + ')}
+        {act.sources && act.sources.length > 1 ? ' (aceeași ședință, o singură dată în totaluri)' : ''}
+        {act.startLocal ? ` · start ${act.startLocal}` : ''}
         {' · '}
         <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? 'Renunț' : 'Corectează activitatea'}

@@ -402,7 +402,7 @@ export function dedupeActivities(acts: SourceActivity[]): SourceActivity[] {
     }
     const chosen = pickRecording(dup, a);
     const other = chosen === dup ? a : dup;
-    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details) };
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details), mergedSources: [...new Set([...(dup.mergedSources ?? [dup.source]), a.source])] };
   }
   return kept;
 }

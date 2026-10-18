@@ -37,6 +37,8 @@ export interface SourceActivity extends Activity {
   name?: string | null;
   /** Detaliile măsurate de brățări (cel mai rapid km, pași/km, putere normalizată, ritm/100 m…). */
   details?: ActivityDetails | null;
+  /** După dedupe: toate sursele care au înregistrat aceeași ședință (proveniența rămâne la vedere). */
+  mergedSources?: Source[];
 }
 
 export interface MorningForm {

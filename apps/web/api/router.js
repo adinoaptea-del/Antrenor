@@ -235,6 +235,125 @@ async function handler(req, res) {
   }
 }
 
+// src/collector/details.ts
+var DETAILS_V = 2;
+var MIN_SWIM_SEC_100 = 60;
+var MAX_SWIM_SEC_100 = 360;
+var MIN_SWIM_PACE_M = 100;
+function swimPace100(sec, meters) {
+  if (!sec || !meters || !Number.isFinite(sec) || !Number.isFinite(meters) || sec <= 0 || meters < MIN_SWIM_PACE_M) return null;
+  const p = sec / (meters / 100);
+  return p >= MIN_SWIM_SEC_100 && p <= MAX_SWIM_SEC_100 ? Math.round(p) : null;
+}
+function swimPaceOk(p) {
+  return p != null && Number.isFinite(p) && p >= MIN_SWIM_SEC_100 && p <= MAX_SWIM_SEC_100;
+}
+function longestContinuousSwim(laps) {
+  if (!laps.length) return null;
+  let best = { m: 0, sec: 0 };
+  let cur = { m: 0, sec: 0 };
+  for (const l of laps) {
+    const t = l.elapsed_time || l.moving_time;
+    const valid = l.distance > 0 && t > 0 && t / (l.distance / 100) >= MIN_SWIM_SEC_100;
+    if (!valid) {
+      cur = { m: 0, sec: 0 };
+      continue;
+    }
+    if (l.elapsed_time - l.moving_time > 10) {
+      cur = { m: 0, sec: 0 };
+      continue;
+    }
+    cur = { m: cur.m + l.distance, sec: cur.sec + t };
+    if (cur.m > best.m) best = { ...cur };
+  }
+  return { m: Math.round(best.m), pace100: swimPace100(best.sec, best.m) };
+}
+var r1 = (x) => Math.round(x * 10) / 10;
+var ok = (x) => typeof x === "number" && Number.isFinite(x) && x > 0;
+function stepsFromCadence(spm, minPerKm) {
+  if (!ok(spm) || !ok(minPerKm)) return { stepsPerKm: null, strideM: null };
+  const s = Math.round(spm * minPerKm);
+  return { stepsPerKm: s, strideM: Math.round(1e3 / s * 100) / 100 };
+}
+var EFFORT_NAMES = { "400m": "400 m", "1k": "1 km", "1 mile": "1 mil\u0103", "5k": "5 km", "10k": "10 km", "Half-Marathon": "21,1 km", Marathon: "42,2 km" };
+function stravaDetails(a, sport) {
+  const d = {
+    movingMin: ok(a.moving_time) ? Math.round(a.moving_time / 60) : null,
+    elapsedMin: ok(a.elapsed_time) ? Math.round(a.elapsed_time / 60) : null,
+    elevGainM: ok(a.total_elevation_gain) ? Math.round(a.total_elevation_gain) : null,
+    avgSpeedKmh: ok(a.average_speed) ? r1(a.average_speed * 3.6) : null,
+    maxSpeedKmh: ok(a.max_speed) ? r1(a.max_speed * 3.6) : null,
+    kj: ok(a.kilojoules) ? Math.round(a.kilojoules) : null,
+    kcal: ok(a.calories) ? Math.round(a.calories) : null,
+    avgWatts: ok(a.average_watts) ? Math.round(a.average_watts) : null,
+    npWatts: ok(a.weighted_average_watts) ? Math.round(a.weighted_average_watts) : null,
+    maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null,
+    polyline: a.map?.summary_polyline || null
+  };
+  if (sport === "alergare") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence * 2) : null;
+    const km2 = a.distance / 1e3;
+    const minPerKm = km2 > 0.2 && ok(a.moving_time) ? a.moving_time / 60 / km2 : null;
+    Object.assign(d, stepsFromCadence(d.cadence, minPerKm));
+  } else if (sport === "bicicleta") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
+  } else if (sport === "inot") {
+    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
+    d.pace100mSec = swimPace100(a.moving_time, a.distance);
+  }
+  const det = a;
+  if (det.splits_metric || det.best_efforts || det.laps) {
+    d.detailed = true;
+    d.v = DETAILS_V;
+    if (sport === "alergare") {
+      const splits = (det.splits_metric ?? []).filter((s) => s.distance >= 950 && ok(s.moving_time)).map((s) => Math.round(s.moving_time / (s.distance / 1e3)));
+      d.splitsSecPerKm = splits.length ? splits : null;
+      const efforts = {};
+      for (const e of det.best_efforts ?? []) {
+        const n2 = EFFORT_NAMES[e.name];
+        if (n2 && ok(e.moving_time)) efforts[n2] = e.moving_time;
+      }
+      d.bestEfforts = Object.keys(efforts).length ? efforts : null;
+      d.fastestKmSec = efforts["1 km"] ?? (splits.length ? Math.min(...splits) : null);
+    }
+    if (sport === "inot") {
+      const lapPaces = (det.laps ?? []).map((l) => swimPace100(l.moving_time, l.distance)).filter(swimPaceOk);
+      d.laps = det.laps?.length ?? null;
+      const c = longestContinuousSwim(det.laps ?? []);
+      d.continuousM = c ? c.m : null;
+      d.continuousPace100mSec = c?.pace100 ?? null;
+      d.fastestLap100mSec = lapPaces.length ? Math.min(...lapPaces) : null;
+    }
+  }
+  return d;
+}
+function whoopDetails(score2) {
+  const z = score2.zone_durations;
+  return {
+    strain: ok(score2.strain) ? r1(score2.strain) : null,
+    kj: ok(score2.kilojoule) ? Math.round(score2.kilojoule) : null,
+    kcal: ok(score2.kilojoule) ? Math.round(score2.kilojoule / 4.184) : null,
+    elevGainM: ok(score2.altitude_gain_meter) ? Math.round(score2.altitude_gain_meter) : null,
+    deviceZonesMin: z ? [z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 6e4)) : null
+  };
+}
+function mergeDetails(a, b) {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  const out = { ...b };
+  for (const [k, v] of Object.entries(a)) if (v != null) out[k] = v;
+  return out;
+}
+function fadePct(splits) {
+  const xs = (splits ?? []).filter((x) => Number.isFinite(x) && x > 0);
+  if (xs.length < 6) return null;
+  const half = Math.floor(xs.length / 2);
+  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  const first2 = avg(xs.slice(0, half));
+  const second = avg(xs.slice(xs.length - half));
+  return Math.round((second / first2 - 1) * 1e3) / 10;
+}
+
 // src/util/dates.ts
 var DAY_MS = 864e5;
 function toUtc(iso) {
@@ -356,9 +475,9 @@ function sportReadiness(goal, activities, today, declared = {}) {
       parts[0].weight += W.specific;
     } else if (sport === "inot") {
       const cutoff = SWIM_CUTOFF_MIN[goal];
-      const withLaps = mine.filter((a) => a.details?.continuousPace100mSec != null && (a.details?.continuousM ?? 0) >= 100);
+      const withLaps = mine.filter((a) => swimPaceOk(a.details?.continuousPace100mSec) && (a.details?.continuousM ?? 0) >= 100);
       const longestSwim = mine.reduce((m, a) => (a.distanceKm ?? 0) > (m?.distanceKm ?? 0) ? a : m, null);
-      const pace = withLaps.length ? Math.min(...withLaps.map((a) => a.details.continuousPace100mSec)) : longestSwim?.distanceKm ? longestSwim.minutes * 60 / (longestSwim.distanceKm * 10) : null;
+      const pace = withLaps.length ? Math.min(...withLaps.map((a) => a.details.continuousPace100mSec)) : longestSwim?.distanceKm ? swimPace100(longestSwim.minutes * 60, longestSwim.distanceKm * 1e3) : null;
       if (cutoff) {
         const need = cutoff * 60 / (leg * 10);
         parts.push({
@@ -583,13 +702,13 @@ var RACE = /race|cursa|cursă|concurs|maraton|marathon|semimaraton|half|triathlo
 function historySummary(today, acts, raceIds = []) {
   const all = acts.filter((a) => a.date <= today && a.date >= addDays(today, -730)).sort((a, b) => a.date < b.date ? -1 : 1);
   if (!all.length) return { de_la: null, luni: [], cele_mai_lungi: [], cele_mai_bune_ritmuri: [], curse: [], pauze: [], consecventa_pct: null };
-  const r12 = (x) => Math.round(x * 10) / 10;
+  const r13 = (x) => Math.round(x * 10) / 10;
   const byMonth = /* @__PURE__ */ new Map();
   for (const a of all) {
     const k = a.date.slice(0, 7);
     const m = byMonth.get(k) ?? { ore: {}, km: {} };
-    m.ore[a.sport] = r12((m.ore[a.sport] ?? 0) + a.minutes / 60);
-    if (a.distanceKm) m.km[a.sport] = r12((m.km[a.sport] ?? 0) + a.distanceKm);
+    m.ore[a.sport] = r13((m.ore[a.sport] ?? 0) + a.minutes / 60);
+    if (a.distanceKm) m.km[a.sport] = r13((m.km[a.sport] ?? 0) + a.distanceKm);
     byMonth.set(k, m);
   }
   const luni = [...byMonth.entries()].map(([luna, v]) => ({ luna, ...v }));
@@ -597,7 +716,7 @@ function historySummary(today, acts, raceIds = []) {
   const cele_mai_bune_ritmuri = [];
   for (const d of [10, 21]) {
     const best = all.filter((a) => a.sport === "alergare" && (a.distanceKm ?? 0) >= d).map((a) => ({ a, p: a.minutes / (a.distanceKm ?? 1) })).sort((x, y) => x.p - y.p)[0];
-    if (best) cele_mai_bune_ritmuri.push({ distanta_min_km: d, ritm_min_km: Math.round(best.p * 100) / 100, data: best.a.date, km: r12(best.a.distanceKm ?? 0) });
+    if (best) cele_mai_bune_ritmuri.push({ distanta_min_km: d, ritm_min_km: Math.round(best.p * 100) / 100, data: best.a.date, km: r13(best.a.distanceKm ?? 0) });
   }
   const ids = new Set(raceIds);
   const curse = all.filter((a) => ids.has(a.id) || RACE.test(a.name ?? "")).map((a) => ({ data: a.date, sport: a.sport, km: a.distanceKm ?? null, minute: a.minutes, nume: a.name ?? null }));
@@ -768,115 +887,6 @@ function aerobicEfficiency(acts, today) {
     out.push({ sport, unitate: sport === "alergare" ? "metri pe b\u0103taie de inim\u0103" : "wa\u021Bi pe b\u0103taie de inim\u0103", recent: Math.round(r2 * 1e3) / 1e3, inainte: Math.round(b * 1e3) / 1e3, schimbare_pct: Math.round((r2 / b - 1) * 1e3) / 10, sedinte: { recent: rec.length, inainte: bef.length } });
   }
   return out;
-}
-
-// src/collector/details.ts
-var DETAILS_V = 2;
-var MIN_SWIM_SEC_100 = 45;
-function longestContinuousSwim(laps) {
-  if (!laps.length) return null;
-  let best = { m: 0, sec: 0 };
-  let cur = { m: 0, sec: 0 };
-  for (const l of laps) {
-    const t = l.elapsed_time || l.moving_time;
-    const valid = l.distance > 0 && t > 0 && t / (l.distance / 100) >= MIN_SWIM_SEC_100;
-    if (!valid) {
-      cur = { m: 0, sec: 0 };
-      continue;
-    }
-    if (l.elapsed_time - l.moving_time > 10) {
-      cur = { m: 0, sec: 0 };
-      continue;
-    }
-    cur = { m: cur.m + l.distance, sec: cur.sec + t };
-    if (cur.m > best.m) best = { ...cur };
-  }
-  return { m: Math.round(best.m), pace100: best.m > 0 ? Math.round(best.sec / (best.m / 100)) : null };
-}
-var r1 = (x) => Math.round(x * 10) / 10;
-var ok = (x) => typeof x === "number" && Number.isFinite(x) && x > 0;
-function stepsFromCadence(spm, minPerKm) {
-  if (!ok(spm) || !ok(minPerKm)) return { stepsPerKm: null, strideM: null };
-  const s = Math.round(spm * minPerKm);
-  return { stepsPerKm: s, strideM: Math.round(1e3 / s * 100) / 100 };
-}
-var EFFORT_NAMES = { "400m": "400 m", "1k": "1 km", "1 mile": "1 mil\u0103", "5k": "5 km", "10k": "10 km", "Half-Marathon": "21,1 km", Marathon: "42,2 km" };
-function stravaDetails(a, sport) {
-  const d = {
-    movingMin: ok(a.moving_time) ? Math.round(a.moving_time / 60) : null,
-    elapsedMin: ok(a.elapsed_time) ? Math.round(a.elapsed_time / 60) : null,
-    elevGainM: ok(a.total_elevation_gain) ? Math.round(a.total_elevation_gain) : null,
-    avgSpeedKmh: ok(a.average_speed) ? r1(a.average_speed * 3.6) : null,
-    maxSpeedKmh: ok(a.max_speed) ? r1(a.max_speed * 3.6) : null,
-    kj: ok(a.kilojoules) ? Math.round(a.kilojoules) : null,
-    kcal: ok(a.calories) ? Math.round(a.calories) : null,
-    avgWatts: ok(a.average_watts) ? Math.round(a.average_watts) : null,
-    npWatts: ok(a.weighted_average_watts) ? Math.round(a.weighted_average_watts) : null,
-    maxWatts: ok(a.max_watts) ? Math.round(a.max_watts) : null,
-    polyline: a.map?.summary_polyline || null
-  };
-  if (sport === "alergare") {
-    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence * 2) : null;
-    const km2 = a.distance / 1e3;
-    const minPerKm = km2 > 0.2 && ok(a.moving_time) ? a.moving_time / 60 / km2 : null;
-    Object.assign(d, stepsFromCadence(d.cadence, minPerKm));
-  } else if (sport === "bicicleta") {
-    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
-  } else if (sport === "inot") {
-    d.cadence = ok(a.average_cadence) ? Math.round(a.average_cadence) : null;
-    d.pace100mSec = a.distance >= 50 && ok(a.moving_time) ? Math.round(a.moving_time / (a.distance / 100)) : null;
-  }
-  const det = a;
-  if (det.splits_metric || det.best_efforts || det.laps) {
-    d.detailed = true;
-    d.v = DETAILS_V;
-    if (sport === "alergare") {
-      const splits = (det.splits_metric ?? []).filter((s) => s.distance >= 950 && ok(s.moving_time)).map((s) => Math.round(s.moving_time / (s.distance / 1e3)));
-      d.splitsSecPerKm = splits.length ? splits : null;
-      const efforts = {};
-      for (const e of det.best_efforts ?? []) {
-        const n2 = EFFORT_NAMES[e.name];
-        if (n2 && ok(e.moving_time)) efforts[n2] = e.moving_time;
-      }
-      d.bestEfforts = Object.keys(efforts).length ? efforts : null;
-      d.fastestKmSec = efforts["1 km"] ?? (splits.length ? Math.min(...splits) : null);
-    }
-    if (sport === "inot") {
-      const laps = (det.laps ?? []).filter((l) => l.distance >= 50 && ok(l.moving_time));
-      d.laps = det.laps?.length ?? null;
-      const c = longestContinuousSwim(det.laps ?? []);
-      d.continuousM = c ? c.m : null;
-      d.continuousPace100mSec = c?.pace100 ?? null;
-      d.fastestLap100mSec = laps.length ? Math.min(...laps.map((l) => Math.round(l.moving_time / (l.distance / 100)))) : null;
-    }
-  }
-  return d;
-}
-function whoopDetails(score2) {
-  const z = score2.zone_durations;
-  return {
-    strain: ok(score2.strain) ? r1(score2.strain) : null,
-    kj: ok(score2.kilojoule) ? Math.round(score2.kilojoule) : null,
-    kcal: ok(score2.kilojoule) ? Math.round(score2.kilojoule / 4.184) : null,
-    elevGainM: ok(score2.altitude_gain_meter) ? Math.round(score2.altitude_gain_meter) : null,
-    deviceZonesMin: z ? [z.zone_one_milli, z.zone_two_milli, z.zone_three_milli, z.zone_four_milli, z.zone_five_milli].map((ms) => Math.round(ms / 6e4)) : null
-  };
-}
-function mergeDetails(a, b) {
-  if (!a) return b ?? null;
-  if (!b) return a;
-  const out = { ...b };
-  for (const [k, v] of Object.entries(a)) if (v != null) out[k] = v;
-  return out;
-}
-function fadePct(splits) {
-  const xs = (splits ?? []).filter((x) => Number.isFinite(x) && x > 0);
-  if (xs.length < 6) return null;
-  const half = Math.floor(xs.length / 2);
-  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
-  const first2 = avg(xs.slice(0, half));
-  const second = avg(xs.slice(xs.length - half));
-  return Math.round((second / first2 - 1) * 1e3) / 10;
 }
 
 // src/types.ts
@@ -1193,8 +1203,8 @@ function raceReady(input) {
     onTrack = { pct: Math.round((Math.min(volumePct, 100) + keyPct) / 2), volumePct: Math.round(doneMin / Math.max(1, plannedMin) * 100), keyDone, keyPlanned: keys.length };
   }
   const swims = of("inot");
-  const contPace = swims.filter((a) => a.details?.continuousPace100mSec != null && (a.details?.continuousM ?? 0) >= 400).map((a) => a.details.continuousPace100mSec);
-  const sessPace = swims.filter((a) => (a.distanceKm ?? 0) >= 0.4).map((a) => a.minutes * 60 / ((a.distanceKm ?? 1) * 10));
+  const contPace = swims.filter((a) => (a.details?.continuousM ?? 0) >= 400).map((a) => a.details?.continuousPace100mSec).filter(swimPaceOk);
+  const sessPace = swims.filter((a) => (a.distanceKm ?? 0) >= 0.4).map((a) => swimPace100(a.minutes * 60, (a.distanceKm ?? 0) * 1e3)).filter(swimPaceOk);
   const swimPace = contPace.length ? Math.min(...contPace) : sessPace.length ? Math.min(...sessPace) : null;
   const rides = of("bicicleta").filter((a) => a.minutes >= 90 && (a.distanceKm ?? 0) > 0);
   const bikeSpeed = rides.length ? Math.max(...rides.map((a) => (a.distanceKm ?? 0) / (a.minutes / 60))) : null;
@@ -1228,7 +1238,7 @@ function raceReady(input) {
     const cont = swims.filter((a) => (a.details?.continuousM ?? 0) >= d.swim * 1e3);
     const sess = swims.filter((a) => (a.distanceKm ?? 0) >= d.swim);
     const bestM = Math.max(0, ...swims.map((a) => a.details?.continuousM ?? 0));
-    benchmarks.push({ id: "inot-continuu", title: `${Math.round(d.swim * 1e3)} m \xEEnot f\u0103r\u0103 oprire`, how: "Distan\u021Ba cursei, continuu (din turele ceasului)", done: cont.length > 0, best: bestM ? `${bestM} m f\u0103r\u0103 oprire` : sess.length ? `${Math.round((sess[0].distanceKm ?? 0) * 1e3)} m cu pauze` : null, date: firstDate(cont) });
+    benchmarks.push({ id: "inot-continuu", title: `${Math.round(d.swim * 1e3).toLocaleString("ro-RO")} m \xEEnot f\u0103r\u0103 oprire`, how: "Distan\u021Ba cursei, continuu (din turele ceasului)", done: cont.length > 0, best: bestM ? `${bestM.toLocaleString("ro-RO")} m f\u0103r\u0103 oprire` : sess.length ? `${Math.round((sess[0].distanceKm ?? 0) * 1e3).toLocaleString("ro-RO")} m cu pauze` : null, date: firstDate(cont) });
     const cut = CUTOFFS[goal]?.swim;
     if (cut) {
       const need = cut * 60 / (d.swim * 10);
@@ -1269,25 +1279,30 @@ function raceReady(input) {
     const cut = CUTOFFS[goal]?.swim;
     const swimMin = estimate?.swim ?? null;
     const paceOk = cut && swimMin ? Math.min(1, cut / swimMin) : 1;
-    links.push({ name: "\xCEnot", pct: pct2(bestM / (d.swim * 1e3) * paceOk), detail: `${bestM} m ${contM ? "f\u0103r\u0103 oprire" : "\xEEntr-o \u0219edin\u021B\u0103, cu pauze"} din ${Math.round(d.swim * 1e3)}${cut && swimMin ? `; estimat ${fmtH(swimMin)} fa\u021B\u0103 de limita ${fmtH(cut)}` : ""}` });
+    links.push({ name: "\xCEnot", pct: swims.length ? pct2(bestM / (d.swim * 1e3) * paceOk) : null, measured: swims.length ? `${bestM.toLocaleString("ro-RO")} m ${contM ? "f\u0103r\u0103 oprire" : "\xEEntr-o \u0219edin\u021B\u0103"}` : null, detail: `${bestM.toLocaleString("ro-RO")} m ${contM ? "f\u0103r\u0103 oprire (segment continuu din turele ceasului)" : "distan\u021B\u0103 total\u0103 \xEEntr-o \u0219edin\u021B\u0103, cu pauze (f\u0103r\u0103 ture de la ceas)"} \xB7 proba: ${Math.round(d.swim * 1e3).toLocaleString("ro-RO")} m${cut && swimMin ? `; estimat ${fmtH(swimMin)} fa\u021B\u0103 de limita ${fmtH(cut)}` : ""}` });
   }
   if (tri && d.bike) {
     const km2 = longest("bicicleta")?.distanceKm ?? 0;
     const cut = CUTOFFS[goal];
     const sb = estimate?.swim != null && estimate.bike != null ? estimate.swim + estimate.bike + 5 : null;
     const timeOk = cut && sb ? Math.min(1, cut.swimBike / sb) : 1;
-    links.push({ name: "Biciclet\u0103", pct: pct2(km2 / d.bike * timeOk), detail: `${Math.round(km2)} km din ${d.bike}${cut && sb ? `; \xEEnot + biciclet\u0103 estimat ${fmtH(sb)} fa\u021B\u0103 de ${fmtH(cut.swimBike)}` : ""}` });
+    const hasBike = of("bicicleta").some((a) => (a.distanceKm ?? 0) > 0);
+    links.push({ name: "Biciclet\u0103", pct: hasBike ? pct2(km2 / d.bike * timeOk) : null, measured: hasBike ? `${Math.round(km2)} km, cea mai lung\u0103 tur\u0103` : null, detail: `cea mai lung\u0103 tur\u0103: ${Math.round(km2)} km \xB7 proba: ${d.bike} km${cut && sb ? `; \xEEnot + biciclet\u0103 estimat ${fmtH(sb)} fa\u021B\u0103 de ${fmtH(cut.swimBike)}` : ""}` });
   }
   {
     const km2 = longest("alergare")?.distanceKm ?? 0;
-    links.push({ name: "Alergare", pct: pct2(km2 / d.longRun), detail: `${km2.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km din reperul de ${d.longRun}` });
+    const hasRun = of("alergare").some((a) => (a.distanceKm ?? 0) > 0);
+    links.push({ name: "Alergare", pct: hasRun ? pct2(km2 / d.longRun) : null, measured: hasRun ? `${km2.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km, cea mai lung\u0103 ie\u0219ire` : null, detail: `cea mai lung\u0103 ie\u0219ire: ${km2.toLocaleString("ro-RO", { maximumFractionDigits: 1 })} km \xB7 reperul de antrenament: ${d.longRun} km (proba are ${d.run.toLocaleString("ro-RO")} km; \xEEn preg\u0103tire nu se alearg\u0103 toat\u0103 distan\u021Ba)` });
   }
   if (tri) {
     const need = estimate?.total ? estimate.total * 0.65 : (d.bigDayH ?? 4) * 60;
-    links.push({ name: "Cumul", pct: pct2((bestDay?.min ?? 0) / need), detail: `cea mai lung\u0103 zi \xEEn mai multe sporturi: ${bestDay ? fmtH(bestDay.min) : "niciuna"}, fa\u021B\u0103 de ~${fmtH(need)} (65% din curs\u0103)` });
+    links.push({ name: "Cumul", pct: pct2((bestDay?.min ?? 0) / need), measured: bestDay ? fmtH(bestDay.min) : "nicio zi cu mai multe sporturi", detail: `cea mai lung\u0103 zi \xEEn mai multe sporturi: ${bestDay ? fmtH(bestDay.min) : "niciuna"}, fa\u021B\u0103 de ~${fmtH(need)} (65% din curs\u0103)` });
   }
-  const weakestLink = links.reduce((a, b) => b.pct < a.pct ? b : a, links[0]);
-  return { onTrack, ready: weakestLink.pct, weakest: weakestLink.name, links, benchmarks, estimate };
+  const missing = links.filter((l) => l.pct == null).map((l) => l.name);
+  const legs = links.filter((l) => l.name !== "Cumul");
+  const coverage = { withData: legs.filter((l) => l.pct != null).length, total: legs.length, missing };
+  const weakestLink = missing.length ? null : links.reduce((a, b) => (b.pct ?? 0) < (a.pct ?? 0) ? b : a, links[0]);
+  return { onTrack, ready: weakestLink?.pct ?? null, weakest: weakestLink?.name ?? null, coverage, links, benchmarks, estimate };
 }
 
 // src/calendar/load.ts
@@ -1544,7 +1559,7 @@ function dedupeActivities(acts) {
     }
     const chosen = pickRecording(dup, a);
     const other = chosen === dup ? a : dup;
-    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details) };
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details), mergedSources: [.../* @__PURE__ */ new Set([...dup.mergedSources ?? [dup.source], a.source])] };
   }
   return kept;
 }
@@ -1893,7 +1908,7 @@ var key = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replac
 function compareLabs(now, before) {
   if (!before || before.data >= now.data) return null;
   const out = [];
-  const r12 = (x) => Math.round(x * 10) / 10;
+  const r13 = (x) => Math.round(x * 10) / 10;
   for (const k of ["feritina", "vitamina_d", "hemoglobina", "ck", "crp"]) {
     const a = before[k];
     const b = now[k];
@@ -1902,7 +1917,7 @@ function compareLabs(now, before) {
     const lab = now.alte.find((x) => key(x.nume).includes(key(LABEL[k])) && (x.ref_min != null || x.ref_max != null));
     const min = lab?.ref_min ?? range.min;
     const max = lab?.ref_max ?? range.max;
-    out.push({ nume: LABEL[k], inainte: a, acum: b, unitate: range.unit, schimbare_pct: r12(a === 0 ? 0 : (b - a) / Math.abs(a) * 100), directie: direction(a, b, min, max) });
+    out.push({ nume: LABEL[k], inainte: a, acum: b, unitate: range.unit, schimbare_pct: r13(a === 0 ? 0 : (b - a) / Math.abs(a) * 100), directie: direction(a, b, min, max) });
   }
   const seen = new Set(out.map((c) => key(c.nume)));
   for (const v of now.alte) {
@@ -1915,7 +1930,7 @@ function compareLabs(now, before) {
       inainte: prev.valoare,
       acum: v.valoare,
       unitate: v.unitate,
-      schimbare_pct: r12(prev.valoare === 0 ? 0 : (v.valoare - prev.valoare) / Math.abs(prev.valoare) * 100),
+      schimbare_pct: r13(prev.valoare === 0 ? 0 : (v.valoare - prev.valoare) / Math.abs(prev.valoare) * 100),
       directie: direction(prev.valoare, v.valoare, v.ref_min, v.ref_max)
     });
   }
@@ -2207,11 +2222,43 @@ async function loadHistorySummary(userId, today) {
   return historySummary(today, acts, ev.filter((e) => e.answers?.tip_neplanificat === "cursa" && e.activity_id).map((e) => e.activity_id));
 }
 
+// src/calendar/budget.ts
+var MIN_BLOCK_MIN = 45;
+var REALITY_FACTOR = 0.8;
+function normalizeBlocks(blocks) {
+  const valid = blocks.filter((b) => Number.isInteger(b.day) && b.day >= 0 && b.day <= 6 && Number.isFinite(b.startMin) && Number.isFinite(b.endMin)).map((b) => ({ ...b, startMin: Math.max(0, Math.min(1440, b.startMin)), endMin: Math.max(0, Math.min(1440, b.endMin)) })).filter((b) => b.endMin > b.startMin).sort((a, b) => a.day - b.day || a.startMin - b.startMin);
+  const out = [];
+  for (const b of valid) {
+    const last = out[out.length - 1];
+    if (last && last.day === b.day && b.startMin <= last.endMin) last.endMin = Math.max(last.endMin, b.endMin);
+    else out.push({ ...b });
+  }
+  return out;
+}
+var MAX_SPORT_MIN_PER_DAY = 5 * 60;
+var UNDECLARED_LIMIT_H = 24;
+var r12 = (x) => Math.round(x * 10) / 10;
+function weeklyBudget(blocks, realityFactor = REALITY_FACTOR, sportCapHours = null) {
+  const usable = normalizeBlocks(blocks).filter((b) => b.endMin - b.startMin >= MIN_BLOCK_MIN);
+  const freeMin = usable.reduce((s, b) => s + (b.endMin - b.startMin), 0);
+  let dayCapped = 0;
+  for (let d = 0; d < 7; d++) dayCapped += Math.min(MAX_SPORT_MIN_PER_DAY, usable.filter((b) => b.day === d).reduce((s, b) => s + (b.endMin - b.startMin), 0));
+  const fromBlocks = dayCapped / 60 * realityFactor;
+  const cap2 = sportCapHours != null && Number.isFinite(sportCapHours) && sportCapHours > 0 ? sportCapHours : null;
+  const hours = r12(cap2 != null ? Math.min(fromBlocks, cap2) : fromBlocks);
+  const valid = usable.length > 0 && (cap2 != null || fromBlocks <= UNDECLARED_LIMIT_H);
+  return { hours, blocks: usable, freeHours: r12(freeMin / 60), declaredHours: cap2, valid };
+}
+function perDayMinutes(blocks) {
+  const usable = normalizeBlocks(blocks).filter((b) => b.endMin - b.startMin >= MIN_BLOCK_MIN);
+  return Array.from({ length: 7 }, (_, d) => Math.min(MAX_SPORT_MIN_PER_DAY, usable.filter((b) => b.day === d).reduce((s, b) => s + (b.endMin - b.startMin), 0)));
+}
+
 // server/_lib/prefs.ts
 async function loadPrefs(userId) {
   const row = await one("users", { id: `eq.${userId}` }, { select: "calendar_prefs" }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [] };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === "ape" ? "ape" : "bazin" };
 }
 async function savePrefs(userId, prefs) {
   await update("users", { id: `eq.${userId}` }, { calendar_prefs: prefs });
@@ -2222,12 +2269,13 @@ function currentAway(prefs, today) {
 
 // src/badges/badges.ts
 var LEVELS = [
-  { name: "Galben", color: "#facc15", hours: 0 },
-  { name: "Portocaliu", color: "#fb923c", hours: 25 },
-  { name: "Verde", color: "#4ade80", hours: 100 },
-  { name: "Albastru", color: "#60a5fa", hours: 250 },
-  { name: "Mov", color: "#a78bfa", hours: 450 },
-  { name: "Negru", color: "#0a0a0b", hours: 700 }
+  // Fără culorile semaforului (verde/galben/roșu sunt starea zilei): nume de drum și nuanțe neutre.
+  { name: "La \xEEnceput", color: "#7d878b", hours: 0 },
+  { name: "Pornit", color: "#a7b1b5", hours: 25 },
+  { name: "Constant", color: "#c9d3cf", hours: 100 },
+  { name: "Rezistent", color: "#e3ead9", hours: 250 },
+  { name: "Anduran\u021B\u0103", color: "#b8d94a", hours: 450 },
+  { name: "Finisher", color: "#d4fa3a", hours: 700 }
 ];
 var TRI2 = (goal) => goal === "70.3" || goal === "olimpic" || goal === "sprint";
 var active = (w) => (w.status === "planificat" || w.status === "mutat") && w.type !== "odihna";
@@ -2888,6 +2936,8 @@ async function buildMe(userId, today) {
     avgHr: a.avgHr ?? null,
     maxHr: a.maxHr ?? null,
     name: a.name ?? null,
+    startLocal: a.startLocal ?? null,
+    sources: a.mergedSources ?? [a.source],
     paceMinKm: a.avgPaceMinKm ?? null,
     cadence: a.avgCadence ?? null,
     watts: a.avgWatts ?? null,
@@ -2989,13 +3039,32 @@ async function buildMe(userId, today) {
       const l = lastSyncRows.find((r2) => r2.provider === "apple");
       return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null;
     })() },
-    totals,
+    totals: totals ? {
+      ...totals,
+      // Istoricul dinaintea planului (ultimele 6 săptămâni încărcate aici), separat de execuția planului.
+      before: (() => {
+        const out = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+        for (const a of activities.filter((x) => x.date < totals.since)) {
+          out[a.sport].km = Math.round((out[a.sport].km + (a.distanceKm ?? 0)) * 10) / 10;
+          out[a.sport].ore = Math.round((out[a.sport].ore + a.minutes / 60) * 10) / 10;
+          out[a.sport].sedinte += 1;
+        }
+        return out;
+      })(),
+      beforeFrom: from
+    } : null,
     user: { id: user.id, email: user.email, name: user.name, goal: user.goal, raceName: user.race_name, raceDate: user.race_date, tz: user.tz },
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
     today,
     phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today) : null,
     budgetHours: planRow?.budget_hours ?? null,
+    availability: (() => {
+      const prog = intake?.program ?? [];
+      if (!prog.length) return null;
+      const b = weeklyBudget(prog, void 0, intake?.oreSport ?? null);
+      return { freeHours: b.freeHours, declaredHours: b.declaredHours, sportHours: b.hours, valid: b.valid, perDay: perDayMinutes(prog), planHours: planRow?.budget_hours ?? null };
+    })(),
     planStart: planRow?.start_date ?? null,
     plan: planned,
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
@@ -3023,7 +3092,9 @@ async function buildMe(userId, today) {
       ...tokens.map((t) => {
         const ok2 = lastSyncRows.find((r2) => r2.provider === t.provider && r2.ok);
         const last = lastSyncRows.find((r2) => r2.provider === t.provider);
-        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok2?.ran_at ?? null, error: last && !last.ok ? last.detail ?? "eroare la citire" : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== "strava" && !wellnessRows.some((r2) => r2.source === t.provider && String(r2.date) === today) };
+        const todayRow = wellnessRows.find((r2) => r2.source === t.provider && String(r2.date) === today);
+        const missingToday = t.provider === "strava" ? [] : [["sleep_min", "somn"], ["recovery_score", "recuperare"], ["rhr", "puls de repaus"], ["hrv", "HRV"]].filter(([k]) => todayRow?.[k] == null).map(([, n2]) => n2);
+        return { id: t.provider, name: SOURCE_NAME[t.provider], lastSync: ok2?.ran_at ?? null, error: last && !last.ok ? last.detail ?? "eroare la citire" : null, lastData: lastDataOf(t.provider), noRecoveryToday: t.provider !== "strava" && !todayRow, connectedAt: t.connected_at ?? null, lastAttempt: last?.ran_at ?? null, missingToday };
       }),
       ...u2.apple_token ? [{ id: "apple", name: SOURCE_NAME.apple, lastSync: appleRow?.synced_at ?? null, error: null, lastData: lastDataOf("apple"), noRecoveryToday: !wellnessRows.some((r2) => r2.source === "apple" && String(r2.date) === today) }] : []
     ],
@@ -4266,6 +4337,23 @@ async function claimEvent(userId, key2) {
     return true;
   }
 }
+async function acquireLock(userId, key2, staleMs) {
+  try {
+    const rows = await insertIgnore("agent_events", { user_id: userId, event_key: key2 }, "user_id,event_key");
+    if (rows.length > 0) return true;
+    const old = await one("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` });
+    if (old && Date.now() - Date.parse(old.applied_at) > staleMs) {
+      await remove("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` });
+      return (await insertIgnore("agent_events", { user_id: userId, event_key: key2 }, "user_id,event_key")).length > 0;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+async function releaseLock(userId, key2) {
+  await remove("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` }).catch(() => void 0);
+}
 async function executedIds(userId, today, plan) {
   const acts = dedupeActivities(await loadActivities(userId, addDays(today, -3)));
   return matchActivities(plan.filter((w) => w.date <= today && w.date >= addDays(today, -3)), acts, today).matches.filter((m) => m.activity).map((m) => m.planned.id);
@@ -4300,11 +4388,18 @@ async function handler2(req, res) {
       if (!res.writableEnded) res.write(" ");
     }, 5e3);
     let out;
-    try {
-      out = await runAgents(u.id, todayIn(user.tz), body.event ?? "dimineata", body.force ?? true) ?? { skipped: "exist\u0103 deja o rulare azi pentru evenimentul \u0103sta" };
-    } catch (e) {
-      out = { error: e instanceof Error ? e.message : String(e) };
-    }
+    const event = body.event ?? "dimineata";
+    const lockKey = `rulare:${event}`;
+    const lock = await acquireLock(u.id, lockKey, 5 * 6e4);
+    if (!lock) out = { skipped: "antrenorul scrie deja mesajul; apare \xEEn c\xE2teva clipe" };
+    else
+      try {
+        out = await runAgents(u.id, todayIn(user.tz), event, body.force ?? true) ?? { skipped: "nimic nou: mesajul de azi e scris pe datele de acum" };
+      } catch (e) {
+        out = { error: e instanceof Error ? e.message : String(e) };
+      } finally {
+        await releaseLock(u.id, lockKey);
+      }
     clearInterval(beat);
     res.end(JSON.stringify(out));
   } catch (e) {
@@ -5191,17 +5286,17 @@ function parseHealthWorkouts(body) {
     const hr = w.heartRate ?? {};
     const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
     const max = qty(w.maxHeartRate) ?? qty(hr.max);
-    const r12 = (x) => x == null ? null : Math.round(x * 100) / 100;
+    const r13 = (x) => x == null ? null : Math.round(x * 100) / 100;
     out.push({
       id: `apple-${typeof w.id === "string" ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, "")}`,
       date: start.slice(0, 10),
       start_local: hm2(start),
       sport,
       minutes,
-      distance_km: dist == null || dist <= 0 ? null : r12(dist),
+      distance_km: dist == null || dist <= 0 ? null : r13(dist),
       avg_hr: avg == null ? null : Math.round(avg),
       max_hr: max == null ? null : Math.round(max),
-      avg_pace_min_km: sport === "alergare" && dist && dist > 0.2 ? r12(sec / 60 / dist) : null,
+      avg_pace_min_km: sport === "alergare" && dist && dist > 0.2 ? r13(sec / 60 / dist) : null,
       name,
       details: appleDetails(w, sport, sec, dist)
     });
@@ -5254,7 +5349,7 @@ function appleDetails(w, sport, sec, dist) {
       Object.assign(d, stepsFromCadence(spm, sec / 60 / dist));
     }
   }
-  if (sport === "inot" && dist && dist >= 0.05) d.pace100mSec = Math.round(sec / (dist * 10));
+  if (sport === "inot" && dist) d.pace100mSec = swimPace100(sec, dist * 1e3);
   return d;
 }
 
@@ -5444,31 +5539,21 @@ function dayById(id) {
   return PPL.find((d) => d.id === id);
 }
 
-// src/calendar/budget.ts
-var MIN_BLOCK_MIN = 45;
-var REALITY_FACTOR = 0.8;
-function normalizeBlocks(blocks) {
-  const valid = blocks.filter((b) => Number.isInteger(b.day) && b.day >= 0 && b.day <= 6 && Number.isFinite(b.startMin) && Number.isFinite(b.endMin)).map((b) => ({ ...b, startMin: Math.max(0, Math.min(1440, b.startMin)), endMin: Math.max(0, Math.min(1440, b.endMin)) })).filter((b) => b.endMin > b.startMin).sort((a, b) => a.day - b.day || a.startMin - b.startMin);
-  const out = [];
-  for (const b of valid) {
-    const last = out[out.length - 1];
-    if (last && last.day === b.day && b.startMin <= last.endMin) last.endMin = Math.max(last.endMin, b.endMin);
-    else out.push({ ...b });
-  }
-  return out;
-}
-function weeklyBudget(blocks, realityFactor = REALITY_FACTOR) {
-  const usable = normalizeBlocks(blocks).filter((b) => b.endMin - b.startMin >= MIN_BLOCK_MIN);
-  const minutes = usable.reduce((s, b) => s + (b.endMin - b.startMin), 0);
-  return { hours: Math.round(minutes / 60 * realityFactor * 10) / 10, blocks: usable };
-}
-
 // src/calendar/generate.ts
 var RECOVERY_FACTOR = 0.65;
 var CHANGE_MIN2 = 10;
 var MIN_SESSION_MIN = { inot: 30, alergare: 30, bicicleta: 40, forta: 30 };
 function generatePlan(input) {
-  const budget = weeklyBudget(input.freeBlocks);
+  const budget = weeklyBudget(input.freeBlocks, void 0, input.sportHours ?? null);
+  if (!budget.valid) {
+    return {
+      ok: false,
+      reason: `Ai bifat ${budget.freeHours} ore libere pe s\u0103pt\u0103m\xE2n\u0103. Timpul liber nu e timp de sport: spune c\xE2te ore pe s\u0103pt\u0103m\xE2n\u0103 po\u021Bi da, realist, antrenamentului, apoi fac planul.`,
+      budgetHours: budget.hours,
+      minimumHours: 0,
+      options: ["completeaz\u0103 \u201EC\xE2te ore pe s\u0103pt\u0103m\xE2n\u0103 ai pentru sport\u201D \xEEn chestionar (pasul Program)"]
+    };
+  }
   const age = input.athlete?.age ?? null;
   const weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4);
   const hours = PHASE_HOURS[input.goal];
@@ -5951,7 +6036,7 @@ function labsGateFrom(rows, today) {
   const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} \xB5g/L (sub 30${old(fer.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb.drawn_at)}` : null;
   return { valid, limitIntensity: !!why, why };
 }
-async function generateAndStore(userId, today, intake) {
+async function generateAndStore(userId, today, intake, opts = {}) {
   if (intake.obiectiv === "full") {
     return { ok: false, reason: "Ironman complet nu e \xEEn versiunea asta a planului; alege 70.3 pentru acum.", budgetHours: 0 };
   }
@@ -5968,6 +6053,7 @@ async function generateAndStore(userId, today, intake) {
     raceDate: intake.dataCursa,
     goal: intake.obiectiv,
     freeBlocks: intake.program,
+    sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
     intensityAllowed: intake.sanatate.avizCardiolog === "da" && !labs.limitIntensity ? "toate" : "Z2",
     swimContinuous400: intake.inot?.nivel === "continuu_400" || intake.inot?.nivel === "peste_1500",
@@ -5981,6 +6067,21 @@ async function generateAndStore(userId, today, intake) {
     } : void 0
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
+  if (opts.preview) {
+    const fut = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+    const firstWeek = fut.filter((x) => x.date < addDays(nextMonday, 7));
+    return {
+      ok: true,
+      preview: true,
+      budgetHours: result.budgetHours,
+      currentBudgetHours: (await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" }))?.budget_hours ?? null,
+      weeks: result.weeks.length,
+      workouts: fut.length,
+      from: nextMonday,
+      firstWeekHours: Math.round(firstWeek.reduce((n2, x) => n2 + x.plannedMinutes, 0) / 60 * 10) / 10,
+      firstWeekSessions: firstWeek.length
+    };
+  }
   const prev = await select("plans", { user_id: `eq.${userId}` }, { order: "version.desc", limit: 1 });
   const [plan] = await insert("plans", {
     user_id: userId,
@@ -6331,6 +6432,23 @@ async function handler8(req, res) {
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
       return;
     }
+    if (kind === "inot-mediu") {
+      const mediu = body.mediu === "ape" ? "ape" : body.mediu === "bazin" ? "bazin" : null;
+      if (!mediu) throw new HttpError(400, "mediu: bazin sau ape");
+      const prefs = await loadPrefs(u.id);
+      await savePrefs(u.id, { ...prefs, mediuInot: mediu });
+      json(res, 200, { ok: true, mediu });
+      return;
+    }
+    if (kind === "ore-sport") {
+      const ore = Number(body.ore);
+      if (!Number.isFinite(ore) || ore < 2 || ore > 30) throw new HttpError(400, "\xEEntre 2 \u0219i 30 de ore pe s\u0103pt\u0103m\xE2n\u0103");
+      const row = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+      if (!row) throw new HttpError(400, "f\u0103r\u0103 chestionar de intrare");
+      await update("questionnaires", { id: `eq.${row.id}` }, { answers: { ...row.answers, oreSport: Math.round(ore * 2) / 2 } });
+      json(res, 200, { ok: true });
+      return;
+    }
     if (kind === "recuperare") {
       if (body.sterge) {
         await remove("other_activities", { id: `eq.${String(body.sterge)}`, user_id: `eq.${u.id}`, source: "eq.manual" });
@@ -6456,7 +6574,7 @@ async function handler12(req, res) {
     const today = todayIn(user.tz);
     const { intake } = await loadForms(u.id, today);
     if (!intake) throw new HttpError(400, "f\u0103r\u0103 chestionar de intrare");
-    json(res, 200, await generateAndStore(u.id, today, intake));
+    json(res, 200, await generateAndStore(u.id, today, intake, { preview: q(req, "preview") === "1" }));
   } catch (e) {
     fail(res, e);
   }

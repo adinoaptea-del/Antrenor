@@ -110,6 +110,12 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         </div>
       )}
 
+      {!off && !done && !upcoming && color === 'asteptare' && (
+        <div className="wk-note">
+          {Icons.refresh} Așteaptă sincronizarea: fereastra se închide la finalul zilei de {DAY_NAMES[weekday(addDays(w.date, 1))]}. Lipsa datelor nu înseamnă că n-ai făcut-o.
+        </div>
+      )}
+
       {yellow && <YellowDay w={w} />}
 
       {!off && !done && (

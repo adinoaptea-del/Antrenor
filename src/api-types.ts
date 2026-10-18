@@ -28,6 +28,10 @@ export interface MeActivity {
   avgHr: number | null;
   maxHr: number | null;
   name: string | null;
+  /** Ora de start locală (HH:MM), dacă sursa o dă. */
+  startLocal?: string | null;
+  /** Sursele care au înregistrat aceeași ședință (după dedupe); una singură de obicei. */
+  sources?: string[];
   paceMinKm?: number | null;
   cadence?: number | null;
   watts?: number | null;

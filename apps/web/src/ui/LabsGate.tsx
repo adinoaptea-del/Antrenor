@@ -8,8 +8,8 @@ export function LabsGate({ onDone }: { onDone: () => void }) {
   if (mode === 'upload') return <Labs onBack={() => setMode('choice')} onDone={onDone} />;
   return (
     <div className="login">
-      <div className="hub-name" style={{ paddingTop: 40 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 40, lineHeight: 1.05 }}>Analizele tale</div>
+      <div className="login-head">
+        <h1 className="h-xl" style={{ fontSize: 32 }}>Analizele tale</h1>
         <div className="sub">ultimul pas înainte de plan</div>
       </div>
       {mode === 'choice' ? (

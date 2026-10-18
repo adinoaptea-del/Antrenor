@@ -1,8 +1,8 @@
 // Pornește și fără semnal cu ultima versiune salvată; când e net, ia mereu versiunea nouă.
 // Fișierele aplicației (assets/index-<hash>.js/.css) se salvează la prima folosire; navigarea cade pe index.html
 // doar offline. Datele (/api) nu trec niciodată prin cache.
-const CACHE = 'airon-v21';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const CACHE = 'airon-v22';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', (e) => {
   self.skipWaiting();
   // Fiecare fișier separat: unul lipsă nu strică instalarea.

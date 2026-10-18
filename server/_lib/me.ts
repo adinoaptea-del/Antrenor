@@ -64,6 +64,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     avgHr: a.avgHr ?? null,
     maxHr: a.maxHr ?? null,
     name: a.name ?? null,
+    startLocal: a.startLocal ?? null,
+    sources: a.mergedSources ?? [a.source],
     paceMinKm: a.avgPaceMinKm ?? null,
     cadence: a.avgCadence ?? null,
     watts: a.avgWatts ?? null,
