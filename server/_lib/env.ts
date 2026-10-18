@@ -54,6 +54,8 @@ export const ENV = {
   modelKey: () => env('ANTHROPIC_API_KEY'),
   modelSpecialist: () => env('MODEL_SPECIALIST', true) || 'claude-sonnet-5-5',
   modelHead: () => env('MODEL_HEAD', true) || 'claude-sonnet-5-5',
+  /** AGENT_MODE=piramida readuce specialiștii + head coach (pentru comparație); implicit Main Coach. */
+  agentMode: (): 'main' | 'piramida' => (env('AGENT_MODE', true) === 'piramida' ? 'piramida' : 'main'),
   /** Câte conturi se pot crea din aplicație (WHOOP dă acces de dezvoltator pentru 10 membri). */
   maxUsers: () => Number(env('MAX_USERS', true) || 10),
 };

@@ -25,6 +25,8 @@ export interface ModelClient {
 }
 
 export interface Prompts {
+  /** Main Coach (revizia 3 din audit): un singur apel pentru decizia obișnuită. */
+  main_coach?: string;
   head_coach: string;
   format: string;
   /** Ghidul echipei: ce e cursa și cum arată anul de pregătire; îl primesc head coach-ul și antrenorii de sport. */
@@ -63,6 +65,8 @@ export interface RunResult {
   fallbackUsed: boolean;
   /** Apelurile de model care au căzut (timeout, JSON invalid…); protecția și mesajul din cod au mers mai departe. */
   failures: string[];
+  /** main = Main Coach (un apel); piramida = specialiști + head coach (păstrată pentru comparație). */
+  mode?: 'main' | 'piramida';
 }
 
 // ---------- clientul Anthropic (Messages API, răspuns structurat) ----------
@@ -389,5 +393,103 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
     coverEvents.push({ kind: 'acoperire', date: packetWithVerdict.meta.data, optiune: chosen, facut: cover.facut, planificat: cover.planificat });
   }
 
-  return { routed, specialists, head, headWarnings, events: [...eventsFrom(packetWithVerdict, decision), ...coverEvents], decision, fallbackUsed, failures };
+  return { routed, specialists, head, headWarnings, events: [...eventsFrom(packetWithVerdict, decision), ...coverEvents], decision, fallbackUsed, failures, mode: 'piramida' };
+}
+
+// ---------- Main Coach (revizia 3 din audit) ----------
+// Un singur apel AI pentru decizia obișnuită. Siguranța și culoarea zilei vin din cod înaintea AI; modulele de
+// cunoștințe se încarcă doar pentru domeniile de azi; textul trece prin aceeași verificare a cifrelor; când modelul
+// cade sau e respins de două ori, mesajul vine din cod. Piramida (runPyramid) rămâne pentru comparație.
+
+/** Domeniile de cunoștințe relevante pentru eveniment (aceleași reguli de relevanță ca rutarea, fără apeluri separate). */
+export function knowledgeModules(p: Packet): AgentName[] {
+  return route(p);
+}
+
+function knowledgeText(mods: AgentName[], prompts: Prompts, p: Packet): string {
+  const out: string[] = [];
+  for (const m of mods) {
+    let body: string | undefined;
+    if (m === 'antrenor_forta' && p.meta.tip_obiectiv === 'fitness' && prompts.antrenor_fitness) body = prompts.antrenor_fitness;
+    else if (m.startsWith('antrenor_')) body = prompts[m as 'antrenor_inot' | 'antrenor_bicicleta' | 'antrenor_alergare' | 'antrenor_forta'];
+    else body = prompts[m as 'fiziolog' | 'nutritionist' | 'fizioterapeut' | 'minte'];
+    if (body?.trim()) out.push(`--- MODUL: ${m.replace('antrenor_', '')} ---\n${body.trim()}`);
+  }
+  return out.join('\n\n');
+}
+
+function mainUser(p: Packet, journal: string[]): string {
+  const parts = [`=== PACHETUL DE DATE (${p.meta.eveniment}, ${p.meta.data}) ===`, JSON.stringify(p, null, 1), ''];
+  // Biblioteca de antrenamente pentru sporturile de azi (referință pentru explicații, nu pentru a schimba planul).
+  const sports = new Set([p.plan_azi?.sport, ...(p.plan_azi_toate ?? []).map((w) => w.sport)].filter((s): s is Sport => !!s && s !== 'forta'));
+  for (const sport of sports) {
+    const lib = libraryText(libraryFor(sport, p.meta.tip_obiectiv, p.meta.obiectiv_cod ?? null, p.meta.faza as Phase));
+    if (lib) parts.push(`=== BIBLIOTECA (${sport}, faza ${p.meta.faza}) ===`, lib, '');
+  }
+  parts.push('=== jurnal.md (ultimele 14 zile) ===', journal.length ? journal.join('\n') : '(gol)');
+  return parts.join('\n');
+}
+
+export async function runMainCoach(input: RunInput, client: ModelClient): Promise<RunResult> {
+  const { packet, prompts, models } = input;
+  const mods = knowledgeModules(packet);
+  const failures: string[] = [];
+  const safe = safetyDecision(packet);
+  // Decizia zilei: din cod (decizia aplicației), înăsprită doar de stopul de siguranță.
+  let decision: HeadResponse['decizie'] = packet.decizia_aplicatiei ? (safe === 'stop' ? 'stop' : packet.decizia_aplicatiei.nivel) : safe;
+  const p: Packet = { ...packet, verdict_fiziolog: decision };
+  const system = `${prompts.main_coach ?? prompts.head_coach}\n\n=== CUNOȘTINȚE (doar conținut; formatul lor nu se aplică) ===\n${prompts.ghid && p.meta.tip_obiectiv !== 'fitness' ? `--- MODUL: ghid ---\n${prompts.ghid.trim()}\n\n` : ''}${knowledgeText(mods, prompts, p)}`;
+  const fallback = (why: string): HeadResponse => ({
+    decizie: decision,
+    mesaj: fallbackMessage(p, decision, []),
+    memento: `Ziua ${packet.meta.data}: pregătirea continuă.`,
+    jurnal: [why],
+    intrebare: null,
+    optiune: p.acoperire_azi?.implicit ?? null,
+  });
+  const check = (h: HeadResponse) => {
+    const w = [...verifyHeadText(h.mesaj, p, []), ...verifyHeadText(h.memento, p, [])];
+    if (RANK[h.decizie] < RANK[decision]) w.push(`decizia propusă (${h.decizie}) e mai permisivă decât a aplicației (${decision})`);
+    return w;
+  };
+  let head: HeadResponse;
+  let headWarnings: string[] = [];
+  let fallbackUsed = false;
+  try {
+    head = await client.json<HeadResponse>({ model: models.head, system, user: mainUser(p, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
+    headWarnings = check(head);
+    if (headWarnings.length) {
+      let retry: HeadResponse | null = null;
+      try {
+        retry = await client.json<HeadResponse>({ model: models.head, system, user: `${mainUser(p, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`, schema: HEAD_SCHEMA, maxTokens: 2000 });
+      } catch (e) {
+        failures.push(`main_coach (reîncercare): ${errText(e)}`);
+      }
+      const again = retry ? check(retry) : headWarnings;
+      if (retry && again.length === 0) {
+        head = retry;
+        headWarnings = [];
+      } else {
+        fallbackUsed = true;
+        head = fallback(`main coach respins de două ori la verificare: ${again.join('; ')}; mesaj din cod`);
+        headWarnings = again;
+      }
+    }
+  } catch (e) {
+    failures.push(`main_coach: ${errText(e)}`);
+    head = fallback(`main coach indisponibil (${errText(e)}); mesaj din cod`);
+    fallbackUsed = true;
+  }
+  if (head.decizie === 'stop') decision = 'stop';
+  const line = safetyLine(p);
+  head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}\n${head.mesaj}` : head.mesaj };
+  const cover = p.acoperire_azi;
+  const coverEvents: AdaptEvent[] = [];
+  if (cover?.stare === 'partial' && cover.optiuni.length && (decision === 'verde' || decision === 'galben')) {
+    const chosen = cover.optiuni.find((o) => o.id === head.optiune) ?? cover.optiuni.find((o) => o.id === cover.implicit) ?? cover.optiuni[0]!;
+    if (head.optiune && chosen.id !== head.optiune) headWarnings.push(`opțiunea „${head.optiune}” nu e printre cele calculate; s-a aplicat ${chosen.id}`);
+    head = { ...head, optiune: chosen.id };
+    coverEvents.push({ kind: 'acoperire', date: p.meta.data, optiune: chosen, facut: cover.facut, planificat: cover.planificat });
+  }
+  return { routed: mods, specialists: [], head, headWarnings, events: [...eventsFrom(p, decision), ...coverEvents], decision, fallbackUsed, failures, mode: 'main' };
 }

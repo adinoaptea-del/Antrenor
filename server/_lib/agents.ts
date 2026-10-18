@@ -10,7 +10,7 @@ import { collect, loadActivities, loadUser, toWorkoutRow } from './collect.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import { buildPacket, type Packet } from '../../src/collector/packet.js';
-import { anthropicClient, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
+import { anthropicClient, runMainCoach, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
 import { PROMPTS } from '../../src/prompts/bundle.js';
 import { adapt, eventKey, type AdaptContext, type AdaptEvent } from '../../src/calendar/adapt.js';
 import type { PlannedWorkout } from '../../src/types.js';
@@ -83,7 +83,8 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
     const err = e instanceof Error ? e : new Error(String(e));
     client = { json: () => Promise.reject(err) };
   }
-  const result = await runPyramid({ packet, files, journal, prompts: PROMPTS, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } }, client);
+  const runInput = { packet, files, journal, prompts: PROMPTS, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } };
+  const result = ENV.agentMode() === 'piramida' ? await runPyramid(runInput, client) : await runMainCoach(runInput, client);
 
   await Promise.all(usageWrites);
 
