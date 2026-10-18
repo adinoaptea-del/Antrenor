@@ -25,7 +25,7 @@ const titleOf = (w: PlannedWorkout) => (w.type === 'forta' ? sessionName(w.struc
 const subOf = (w: PlannedWorkout, css: number | null = null) =>
   w.sport === 'inot' && w.type !== 'odihna'
     ? (() => {
-        const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date });
+        const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date, structure: w.structure });
         return `${s.meters} m · ≈ ${s.estMin} min · ${PLAIN[w.type]}`;
       })()
     : [fmtMinutes(w.plannedMinutes), w.type === 'forta' || w.type === 'brick' ? null : PLAIN[w.type], w.targetZones.length ? `Z${w.targetZones.join('–')}` : null].filter(Boolean).join(' · ');

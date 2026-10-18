@@ -89,6 +89,7 @@ export const CATALOG: Record<string, Exercise> = Object.fromEntries(
     E({ id: 'legs-lying-curl', name: 'Flexii pentru coapse culcat', group: 'femurali', region: 'legs', role: 'accessory', sets: 2, reps: '10–15', cue: 'bazinul lipit de banc', alt: 'flexii pentru coapse din șezut' }),
     E({ id: 'legs-seated-calf', name: 'Ridicări pe vârfuri din șezut', group: 'gambe (solear)', region: 'legs', role: 'accessory', sets: 2, reps: '12–20', cue: 'pauză jos și sus', alt: 'ridicări pe vârfuri din picioare' }),
     E({ id: 'legs-pallof', name: 'Pallof press la cablu', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '8–12/parte', unilateral: true, cue: 'bazinul și umerii nu se rotesc', alt: 'dead bug controlat' }),
+    E({ id: 'legs-pogo', name: 'Sărituri pe loc (pogo)', group: 'gambe, tendon ahilean', region: 'legs', role: 'accessory', sets: 2, reps: '15–20', cue: 'contact scurt cu solul, genunchii aproape drepți, aterizezi pe antepicior; se oprește la primul semn de durere', alt: 'sărituri ușoare cu coarda' }),
     E({ id: 'legs-step-up', name: 'Urcare pe treaptă joasă', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12/picior', unilateral: true, cue: 'împingi din piciorul de sus, fără elan', alt: 'fandare statică asistată' }),
     // ——— Fitness pentru femei (documentul „AIRON_Antrenor_Fitness_Femei_6_Luni”, 18.10.2026) ———
     E({ id: 'fit-hip-thrust', name: 'Hip thrust la aparat sau cu bara', group: 'fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'sprijin stabil; extensie din șold, fără arcuirea forțată a spatelui', alt: 'glute bridge încărcat' }),
@@ -349,6 +350,13 @@ export function prescribeFull(spec: StrengthSpec): Prescription {
     first.sets = Math.max(1, first.sets - 2);
     const sw = CATALOG[session.legSwap]!;
     items.splice(1, 0, { ex: sw, sets: 2, reps: sw.reps, rir, rest: REST.main, note: 'dacă e tolerat; altfel rămân seturile de la prima mișcare' });
+  }
+
+  // Pliometria (Llanos-Lagos și colab. 2024: forța grea + pliometria îmbunătățesc economia de alergare): la tot corpul,
+  // din blocurile cu accent pe forță / integrare, imediat după încălzire, cu volum mic; nu cu picioarele protejate.
+  if (!isPpl && (spec.block === 'forta' || spec.block === 'integrare' || spec.block === 'consolidare') && (spec.legs ?? 'normal') === 'normal') {
+    const pg = CATALOG['legs-pogo']!;
+    items.unshift({ ex: pg, sets: 2, reps: pg.reps, rir: rir, rest: 60, note: 'înaintea greutăților, cât ești proaspăt' });
   }
 
   // Completările (a doua expunere pe săptămână), cu ~3 repetări în rezervă, incluse în durată.

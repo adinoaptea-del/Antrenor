@@ -1,5 +1,6 @@
 import { MODULE_PURPOSE, moduleSteps, parseModule } from '@core/calendar/run-modules.js';
 import { parseStrides, stridesMinutes, stridesStep, swimSet } from '@core/calendar/session-steps.js';
+import { shortIntervalSteps } from '@core/calendar/bike-swim-modules.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -270,7 +271,9 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
       { label: 'Alergare', text: `${m - bike} min ${easyTarget}, primele 5 min mai ușor până se „așază” picioarele` },
     ];
   }
-  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: t?.css ?? null, date: w.date }).steps;
+  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: t?.css ?? null, date: w.date, structure: w.structure }).steps;
+  const si = shortIntervalSteps(w.structure, m);
+  if (si) return si;
   const warm = m >= 30 ? 10 : Math.floor(m / 3);
   const cool = m >= 30 ? 5 : Math.floor(m / 6);
   // Accelerările din structură sunt un pas separat; minutele lor ies din partea ușoară (suma rămâne durata din plan).

@@ -8,6 +8,7 @@ import type { FreeBlock, IntensityAllowed, Phase, PlannedWorkout, Sport, Workout
 import { addDays, diffDays, weekStart } from '../util/dates.js';
 import { RUN_MODULES, WALK_RUN_STEPS, moduleStructure, walkRunStructure, type RunModuleId } from './run-modules.js';
 import { weeklyBudget } from './budget.js';
+import { SWIM_PYRAMID, bikeQuality, swimQuality } from './bike-swim-modules.js';
 import { generateFitnessPlan } from './fitness-plan.js';
 import type { FitnessProfile } from '../strength/fitness.js';
 import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
@@ -526,9 +527,9 @@ function swimWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longSwim:
     s.push({ sport: 'inot', type: 'tehnica', minutes: prog.longSwim, zones: [1, 2], key: true, priority: 1, structure: 'bucăți legate: cât ai demonstrat fără oprire + 25 m, pauză până respiri liniștit; ținta e 400 m legat' });
   }
   if (can400 && input.intensityAllowed !== 'Z2' && !early && p !== 'taper') {
-    s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: true, priority: 3, structure: p === 'peak' ? '6 × 200 m la ritm de obiectiv, 20 s pauză (set CSS)' : '10 × 100 m la ritmul CSS, 15 s pauză (set CSS)' });
+    s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: true, priority: 3, structure: swimQuality(p, pw.weekInPhase) ?? '10 × 100 m la ritmul CSS, 15 s pauză (set CSS)' });
   } else if (!early && p !== 'taper') {
-    s.push({ sport: 'inot', type: 'tehnica', minutes: 35, zones: [1, 2], key: false, priority: 5, structure: 'tehnică + 8 × 50 m cu accent pe alunecare' });
+    s.push({ sport: 'inot', type: 'tehnica', minutes: 35, zones: [1, 2], key: false, priority: 5, structure: can400 && pw.weekInPhase % 2 === 1 ? SWIM_PYRAMID : 'tehnică + 8 × 50 m cu accent pe alunecare' });
   }
   if (targetM >= 3800 && (p === 'build' || p === 'peak')) s.push({ sport: 'inot', type: 'z2', minutes: 45, zones: [2], key: false, priority: 6.5, structure: 'ușor, continuu, respirație la 3 brațe' });
 
@@ -565,10 +566,8 @@ function bikeWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide:
   const hard = input.intensityAllowed !== 'Z2';
 
   s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 6, structure: 'ușor, cadență 90–100' });
-  if (p === 'baza2' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3], key: true, priority: 3, structure: '3 × 10 min sweet spot (Z3), 5 min ușor între' });
-  else if (p === 'build' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [4], key: true, priority: 3, structure: '2 × 15 min la prag (Z4), 5 min ușor între' });
-  else if (p === 'peak' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3, 4], key: true, priority: 3, structure: '3 × 15 min la ritmul pe care-l ții în tura-obiectiv, 5 min ușor între' });
-  else if (p === 'taper' && hard) s.push({ sport: 'bicicleta', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 3, structure: '3 × 5 min la ritm de obiectiv, 3 min ușor între' });
+  const bq = hard ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm }) : null;
+  if (bq) s.push({ sport: 'bicicleta', type: 'calitate', minutes: bq.minutes, zones: bq.zones, key: p !== 'taper', priority: 3, structure: bq.structure, ...(bq.intervals ? { intervals: bq.intervals } : {}) });
   else s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : 70, zones: [2], key: false, priority: 5.8, structure: 'ușor, cu 6 × 1 min cadență 110' });
   if (!(p === 'taper' && pw.weekInPhase > 0)) {
     s.push({ sport: 'bicicleta', type: 'lung', minutes: prog.longRide, zones: [2], key: true, priority: 1, structure: p === 'peak' ? `tură lungă Z2, cu hrănire la fiecare 30 min (obiectiv: ${targetKm} km)` : 'tură lungă Z2, constantă, cu hrănire exersată' });
@@ -603,15 +602,16 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
   // Înot: 3 ședințe scurte, tehnica înainte de volum.
   const swimCount = p === 'taper' ? 2 : 3;
   for (let i = 0; i < swimCount; i++) {
-    if ((p === 'build' || p === 'peak') && i === 1 && input.intensityAllowed !== 'Z2' && input.swimContinuous400) s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 5, structure: p === 'peak' ? 'set CSS la ritm de cursă' : 'set CSS' });
+    if ((p === 'build' || p === 'peak') && i === 1 && input.intensityAllowed !== 'Z2' && input.swimContinuous400) s.push({ sport: 'inot', type: 'calitate', minutes: 45, zones: [3, 4], key: false, priority: 5, structure: swimQuality(p, pw.weekInPhase) ?? 'set CSS' });
     else if (p === 'peak' && i === 0) s.push({ sport: 'inot', type: 'lung', minutes: 60, zones: [2, 3], key: false, priority: 5, structure: 'distanța de cursă continuu' });
+    else if (i === 2 && input.swimContinuous400 && (p === 'baza2' || p === 'build') && pw.weekInPhase % 2 === 1) s.push({ sport: 'inot', type: 'z2', minutes: swimMin, zones: [2], key: false, priority: 5, structure: SWIM_PYRAMID });
     else s.push({ sport: 'inot', type: 'tehnica', minutes: p === 'taper' ? 35 : swimMin, zones: [1, 2], key: false, priority: 5, structure: 'un element de tehnică' });
   }
 
   // Bicicletă: a doua ședință crește și ea în trepte: Z2 în evaluare/baza1, sweet spot (Z3) în baza2, prag (Z4) în build, ritm de cursă în peak.
-  if (p === 'baza2' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3], key: false, priority: 3.5, structure: '3 × 10 min sweet spot (Z3), 5 min ușor între' });
-  else if (p === 'build' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [4], key: false, priority: 3.5, structure: '2 × 15 min la prag (Z4), 5 min ușor între' });
-  else if (p === 'peak' && input.intensityAllowed !== 'Z2') s.push({ sport: 'bicicleta', type: 'calitate', minutes: 75, zones: [3, 4], key: false, priority: 3.5, structure: '3 × 15 min la ritm de cursă, 5 min ușor între' });
+  // Triatlon: în peak, specificitate (ritm de cursă) — intervalele scurte rămân pentru obiectivele doar de bicicletă.
+  const tq = input.intensityAllowed !== 'Z2' && (p === 'baza2' || p === 'build' || p === 'peak') ? bikeQuality(p, p === 'peak' ? 1 : pw.weekInPhase) : null;
+  if (tq) s.push({ sport: 'bicicleta', type: 'calitate', minutes: tq.minutes, zones: tq.zones, key: false, priority: 3.5, structure: tq.structure, ...(tq.intervals ? { intervals: tq.intervals } : {}) });
   else s.push({ sport: 'bicicleta', type: 'z2', minutes: p === 'baza1' || p === 'evaluare' ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 5.8 });
   if (p === 'evaluare' || p === 'baza1') {
     s.push({ sport: 'bicicleta', type: 'lung', minutes: prog.longRide, zones: [2], key: true, priority: 1 });

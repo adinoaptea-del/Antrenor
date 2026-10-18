@@ -35,7 +35,7 @@ export function swimCue(date: string): string {
  * Setul de înot pentru minutele din plan. Ritmul ușor: CSS + 15 s/100 m dacă e testat, altfel 2:45/100 m (presupunere
  * prudentă de început, declarată). Întoarce pașii, metrii totali și minutele estimate.
  */
-export function swimSet(input: { type: string; minutes: number; css: number | null; date: string }): { steps: Step[]; meters: number; estMin: number } {
+export function swimSet(input: { type: string; minutes: number; css: number | null; date: string; structure?: string | null }): { steps: Step[]; meters: number; estMin: number } {
   const easy = input.css ? input.css + 15 : 165; // s/100 m
   const budget = Math.max(10, input.minutes) * 60;
   const repSec = (dist: number, rest: number, pace = easy) => (dist / 100) * pace + rest;
@@ -48,7 +48,21 @@ export function swimSet(input: { type: string; minutes: number; css: number | nu
   let meters = warm.n * warm.d + coolM;
   const left = Math.max(0, budget - used);
 
-  if (input.type === 'tehnica') {
+  const reps = /(\d+) × (\d+) m[^,]*, (\d+) s pauză/.exec(input.structure ?? '');
+  const css = input.css;
+  if (input.type === 'calitate' && reps) {
+    // Setul din plan (progresia săptămânii), exact: repetări, metri, pauză.
+    const [n, d, r] = [Number(reps[1]), Number(reps[2]), Number(reps[3])];
+    const pace = css ?? easy - 10;
+    used += n * repSec(d, r, pace);
+    meters += n * d;
+    const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    steps.push({ label: 'Principal', text: `${n} × ${d} m ${css ? `la ${fmt((css * d) / 100)} pe repetare (CSS ${fmt(css)}/100 m)` : 'susținut, controlat (efort 6–7 din 10), același ritm la toate'}, ${r} s pauză${/obiectiv/.test(input.structure ?? '') ? '; ritmul de cursă' : ''}` });
+  } else if (/^piramidă/.test(input.structure ?? '')) {
+    used += [100, 200, 300, 200, 100].reduce((n, d) => n + repSec(d, 25), 0);
+    meters += 900;
+    steps.push({ label: 'Principal', text: `piramidă 100-200-300-200-100 m, ușor spre moderat${css ? ` (în jur de ${Math.floor((css + 10) / 60)}:${String((css + 10) % 60).padStart(2, '0')}/100 m)` : ''}, 20–30 s pauză; respirație la 3 brațe` });
+  } else if (input.type === 'tehnica') {
     // Blocuri de 4 × 25 m exercițiu + 4 × 25 m înot cu reperul, 20 s pauză.
     const block = 4 * repSec(25, 20, easy + 20) + 4 * repSec(25, 20);
     const k = Math.max(1, Math.floor(left / block));
