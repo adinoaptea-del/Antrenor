@@ -73,7 +73,7 @@ function buildMe(): Me {
   missing.push('Whoop', 'Garmin / ceas (prin Strava)');
   (state.tests ? have : missing).push('zone testate (CPET / test de teren)');
   (state.labs ? have : missing).push('analize de sânge');
-  if (i?.sanatate.limitareMedic !== true) have.push('aviz cardiologic');
+  if (i?.sanatate.avizCardiolog === 'da' && i?.sanatate.limitareMedic !== true) have.push('aviz cardiologic (declarat)');
   (state.body ? have : missing).push('compoziție corporală');
   missing.push('istoric de activități');
 
@@ -85,7 +85,7 @@ function buildMe(): Me {
     profile: { sex: null, birthYear: null, heightCm: null, city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
-    baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.limitareMedic === true ? 'nu' : 'da' },
+    baseline: { labs: state.labs ? { ...state.labs, expirat: labsExpired(state.labs.data, today) } : null, tests: state.tests, body: state.body, cardiolog: i?.sanatate.limitareMedic === true ? 'nu' : i?.sanatate.avizCardiolog === 'da' ? 'da' : null },
     user: { id: 'local', email: '', name: i?.nume ?? '', goal: i?.obiectiv ?? null, raceName: raceName(i?.obiectiv), raceDate: i?.dataCursa ?? null, tz: 'Europe/Bucharest' },
     consent: !!i?.consimtamant,
     intakeComplete: !!i?.consimtamant,

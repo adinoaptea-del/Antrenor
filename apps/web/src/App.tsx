@@ -145,10 +145,7 @@ function Shell() {
     };
     window.addEventListener('touchstart', start, { passive: true });
     window.addEventListener('touchmove', move, { passive: false });
-    // Safari pe iPhone ignoră uneori user-scalable=no: oprim gestul de zoom direct.
-    const noGesture = (e: Event) => e.preventDefault();
-    document.addEventListener('gesturestart', noGesture, { passive: false } as AddEventListenerOptions);
-    document.addEventListener('gesturechange', noGesture, { passive: false } as AddEventListenerOptions);
+    // Mărirea cu două degete e permisă (text mare, accesibilitate); doar dublu-tap-ul nu mai face zoom.
     // Dublu-tap pe text nu mai face zoom.
     let lastTap = 0;
     const noDoubleTapZoom = (e: TouchEvent) => {
@@ -162,8 +159,6 @@ function Shell() {
     return () => {
       window.removeEventListener('touchstart', start);
       window.removeEventListener('touchmove', move);
-      document.removeEventListener('gesturestart', noGesture);
-      document.removeEventListener('gesturechange', noGesture);
       document.removeEventListener('touchend', noDoubleTapZoom);
       window.removeEventListener('touchend', end);
       window.removeEventListener('touchcancel', end);

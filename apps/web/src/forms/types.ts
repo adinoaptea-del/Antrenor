@@ -64,7 +64,7 @@ export const EMPTY_INTAKE: IntakeAnswers = {
   alergare: { ceaMaiLungaKm: null, curseRecente: null },
   echipament: { ceas: null, whoop: false, oura: false, cantar: false },
   program: [],
-  sanatate: { avizCardiolog: 'da', accidentari: '' },
+  sanatate: { avizCardiolog: null, accidentari: '' },
   minte: { motiveaza: '', aOprit: '' },
   consimtamant: false,
 };

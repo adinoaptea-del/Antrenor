@@ -98,6 +98,7 @@ export interface MeBaseline {
   labsCompare?: LabsComparison | null;
   tests: TestsForm | null;
   body: BodyForm | null;
+  /** 'da' = aviz declarat de sportiv; 'nu' = medicul a limitat efortul; null = necunoscut (nu blochează). */
   cardiolog: 'da' | 'nu' | 'programat' | null;
 }
 

@@ -196,13 +196,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'aviz') {
-      // O bifă: avizul se consideră dat; „nu” înseamnă că medicul a limitat efortul (planul rămâne la Z1–Z2).
-      const da = body.aviz === 'da';
-      await upsert('clearances', { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: da ? 'toate' : 'Z2' }, 'user_id');
+      // Trei stări: „da” = sportivul declară că are aviz; „nu” = medicul i-a limitat efortul (planul rămâne la Z1–Z2);
+      // „necunoscut” = nu știm (nu blochează antrenamentul obișnuit și nu e prezentat ca aviz).
+      const v = body.aviz === 'da' ? 'da' : body.aviz === 'nu' ? 'nu' : 'necunoscut';
+      const da = v === 'da';
+      await upsert('clearances', { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: v === 'nu' ? 'Z2' : 'toate' }, 'user_id');
       const intake = await one<{ id: string; answers: { sanatate?: Record<string, unknown> } }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
       let plan = null;
       if (intake) {
-        const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: da ? 'da' : 'nu', limitareMedic: !da } };
+        const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: v === 'necunoscut' ? null : v, limitareMedic: v === 'nu' } };
         await update('questionnaires', { id: `eq.${intake.id}` }, { answers });
         // Intensitatea permisă schimbă planul: îl refacem de la lunea următoare, păstrând restul răspunsurilor.
         plan = await generateAndStore(u.id, today, answers as unknown as IntakeLike);

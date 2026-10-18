@@ -34,9 +34,9 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-/* Aplicația stă pe loc ca o aplicație nativă: fără zoom, fără deplasare stânga-dreapta, fără elastic la margini.
-   Doar derularea verticală; listele orizontale (ex. ședințele) își păstrează derularea lor. */
-html, body { overscroll-behavior: none; touch-action: pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Aplicația stă pe loc: fără elastic la margini și fără zoom la dublu-tap. Mărirea cu două degete rămâne permisă
+   (accesibilitate: textul trebuie să poată fi mărit la 200%). */
+html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 #root { overflow-x: clip; max-width: 100vw; }
 .det-pills, .seg, [data-hscroll] { touch-action: pan-x pan-y; }
 body {

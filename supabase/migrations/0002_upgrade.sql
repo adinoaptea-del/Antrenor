@@ -236,15 +236,40 @@ alter table public.users add constraint users_goal_check check (goal in ('70.3',
 alter table public.plans drop constraint if exists plans_goal_check;
 alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
 
--- Avizul cardiologic se consideră dat pentru toți (întrebarea a fost scoasă). Rămân limitați doar cei care au spus
--- explicit că medicul le-a limitat efortul (Profil → Date de sănătate). Idempotent.
-update public.clearances c
-   set cardiology = true, intensity_allowed = 'toate', cleared_at = coalesce(c.cleared_at, current_date)
- where c.cardiology = false
-   and not exists (
-     select 1 from public.questionnaires q
-      where q.user_id = c.user_id and q.kind = 'intrare' and (q.answers -> 'sanatate' ->> 'limitareMedic') = 'true'
-   );
+-- Avizul cardiologic (versiunea 6, după audit): lipsa unui răspuns este „necunoscut”, nu aviz.
+-- Rulează o singură dată (când schema e sub 6), ca să nu șteargă răspunsuri date ulterior.
+-- 1) Chestionarele trimise după 18.10.2026 15:23 UTC aveau „da” precompletat fără întrebare: răspunsul nu e dovedit.
+-- 2) Rămâne „declarat” doar unde sportivul a răspuns „da”; restricțiile declarate rămân la Z2; necunoscutul păstrează
+--    intensitatea permisă (nu e restricție).
+do $$
+declare v int := 0;
+begin
+  if to_regclass('public.schema_meta') is not null then
+    select coalesce(max(value), 0) into v from public.schema_meta where key = 'version';
+  end if;
+  if v < 6 then
+    update public.questionnaires q
+       set answers = jsonb_set(q.answers, '{sanatate,avizCardiolog}', 'null'::jsonb)
+     where q.kind = 'intrare'
+       and q.created_at >= timestamptz '2026-10-18 15:23:17+00'
+       and (q.answers -> 'sanatate' ->> 'avizCardiolog') = 'da';
+    update public.clearances c
+       set cardiology = false, cleared_at = null
+     where c.cardiology = true
+       and not exists (
+         select 1 from public.questionnaires q
+          where q.user_id = c.user_id and q.kind = 'intrare' and (q.answers -> 'sanatate' ->> 'avizCardiolog') = 'da'
+       );
+    update public.clearances c
+       set intensity_allowed = 'toate'
+     where c.intensity_allowed <> 'toate'
+       and not exists (
+         select 1 from public.questionnaires q
+          where q.user_id = c.user_id and q.kind = 'intrare'
+            and ((q.answers -> 'sanatate' ->> 'limitareMedic') = 'true' or (q.answers -> 'sanatate' ->> 'avizCardiolog') = 'nu')
+       );
+  end if;
+end $$;
 
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
@@ -254,5 +279,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 5)
+insert into public.schema_meta (key, value) values ('version', 6)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

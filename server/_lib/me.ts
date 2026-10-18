@@ -142,9 +142,10 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const labsRow = labsRows[0] ?? null;
   const labsOld = !!labsRow && labsExpired(labsRow.drawn_at, today);
   (labsRow && !labsOld ? have : missing).push(labsOld ? 'analize de sânge (mai vechi de 12 luni)' : 'analize de sânge');
-  const clearance = await one<{ cardiology: boolean }>('clearances', { user_id: `eq.${userId}` });
-  // Avizul se consideră dat; doar o limitare declarată apare ca lipsă.
-  if (clearance?.cardiology !== false) have.push('aviz cardiologic');
+  const clearance = await one<{ cardiology: boolean; intensity_allowed: string }>('clearances', { user_id: `eq.${userId}` });
+  // Avizul apare doar când sportivul l-a declarat; necunoscutul nu e listat ca lipsă (întrebarea nu se mai pune).
+  const avizState: 'da' | 'nu' | null = clearance?.intensity_allowed === 'Z2' ? 'nu' : clearance?.cardiology ? 'da' : null;
+  if (avizState === 'da') have.push('aviz cardiologic (declarat)');
   (activities.length ? have : missing).push('istoric de activități');
 
   const warnings: Me['warnings'] = [];
@@ -164,7 +165,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     labsCompare: labsRow ? compareLabs(labSnapshot(labsRow), labsRows[1] ? labSnapshot(labsRows[1]) : null) : null,
     tests: testRow?.results ?? null,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
-    cardiolog: (intake as { sanatate?: { limitareMedic?: boolean } } | null)?.sanatate?.limitareMedic === true ? 'nu' : 'da',
+    cardiolog: avizState,
   };
 
   const u2 = user as UserRow;

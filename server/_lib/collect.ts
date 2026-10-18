@@ -265,8 +265,10 @@ export async function loadLabs(userId: string): Promise<LabsInput | null> {
 
 export async function loadClearance(userId: string): Promise<{ cardiolog: string; intensitate_permisa: IntensityAllowed }> {
   const c = await one<{ cardiology: boolean; cleared_at: string | null; intensity_allowed: IntensityAllowed }>('clearances', { user_id: `eq.${userId}` });
-  if (!c) return { cardiolog: 'nu', intensitate_permisa: 'Z2' };
-  return { cardiolog: c.cardiology ? (c.cleared_at ?? 'da') : 'nu', intensitate_permisa: c.intensity_allowed };
+  // „declarat” = spus de sportiv (nu verificat clinic); „necunoscut” = nu e aviz și nici restricție.
+  if (!c) return { cardiolog: 'necunoscut', intensitate_permisa: 'toate' };
+  if (c.intensity_allowed === 'Z2') return { cardiolog: 'restrictie declarata', intensitate_permisa: 'Z2' };
+  return { cardiolog: c.cardiology ? `declarat de sportiv${c.cleared_at ? ` (${c.cleared_at})` : ''}` : 'necunoscut', intensitate_permisa: c.intensity_allowed };
 }
 
 export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4): Phase | null {
@@ -322,8 +324,8 @@ export async function collect(userId: string, today: string, event: CollectorInp
     activities: allowedForAI(activities),
     trainingHistory: await loadHistorySummary(userId, today).catch(() => null),
     recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
-    // Surse conectate pe care AI-ul n-are voie să le vadă (registrul din permissions.ts); acum niciuna.
-    hiddenSources: [...AI_BLOCKED_SOURCES],
+    // Doar faptul că o sursă blocată e conectată (din tokenuri, nu din datele ei): AI-ul știe că nu vede tot.
+    hiddenSources: (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(',')})` }, { select: 'provider', limit: 5 }).catch(() => [])).map((r) => r.provider),
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
