@@ -6,15 +6,15 @@ import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import type { RunResult } from '../../src/util/run.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
-import { one, select, update, upsert } from './db.js';
-import { upgradeToSplit } from '../../src/strength/split-upgrade.js';
+import { one, select, update } from './db.js';
+import { ensureSplit } from './split.js';
 import { loadPrefs } from './prefs.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
 import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
-import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, toWorkoutRow, type UserRow } from './collect.js';
+import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
@@ -53,17 +53,9 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const outcomeRows = await select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reported_at: string }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
 
-  // Bărbații: forța viitoare trece la Push / Pull / Picioare cu exerciții care se schimbă (o singură dată; apoi nu mai
-  // e nimic de schimbat). Se salvează, ca agenții, calendarul și ecranele să vadă aceeași ședință.
-  let workouts = planLoad.workouts;
-  if (user.sex === 'm' && planLoad.planId) {
-    const up = upgradeToSplit(workouts, today);
-    if (up.length) {
-      await upsert('workouts_planned', up.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
-      const byId = new Map(up.map((w) => [w.id, w]));
-      workouts = workouts.map((w) => byId.get(w.id) ?? w);
-    }
-  }
+  // Bărbații: forța viitoare trece la Push / Pull / Picioare (și pe planurile vechi); se salvează, ca agenții,
+  // calendarul și ecranele să vadă aceeași ședință.
+  const workouts = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null)).catch(() => planLoad.workouts);
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);

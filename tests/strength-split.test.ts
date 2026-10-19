@@ -106,3 +106,12 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     for (const t of texts) assert.ok(!/\bRIR\b|calibr|unilateral|amplitudin|lombar|toleran|progresie dublă/i.test(t), t);
   });
 });
+
+describe('planurile vechi (text „Push 1 · …” / „forță”) trec și ele la Push / Pull / Picioare', () => {
+  it('cu resolve: o ședință ilizibilă primește blocul recalculat și ședința din rotație', () => {
+    const plan = [w('2026-10-20', 'forta', false, 50, 'Push 1 · programul complet'), w('2026-10-22', 'forta', false, 50, 'forță')];
+    const up = upgradeToSplit(plan, '2026-10-19', () => ({ session: 'fullA', block: 'baza', week: 1, len: 4 }));
+    assert.deepEqual(up.map((x) => parseStrength(x.structure)!.session), ['push', 'pull']);
+    assert.deepEqual(upgradeToSplit(plan, '2026-10-19'), [], 'fără resolve nu se poate citi; de asta serverul îl dă');
+  });
+});

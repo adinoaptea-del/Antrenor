@@ -207,7 +207,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     historyHoursPerWeek: history,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
-    athlete: await athleteInfo(userId, today),
+    athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },

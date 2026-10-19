@@ -4732,8 +4732,8 @@ async function loadHistorySummary(userId, today) {
 
 // src/strength/split-upgrade.ts
 var active2 = (w) => w.status === "planificat" || w.status === "mutat";
-function upgradeToSplit(plan, today) {
-  const strength = plan.filter((w) => w.type === "forta" && active2(w) && w.date >= today).map((w) => ({ w, spec: parseStrength(w.structure) })).filter((x) => !!x.spec && !isFitnessSession(x.spec.session)).sort((a, b) => a.w.date < b.w.date ? -1 : 1);
+function upgradeToSplit(plan, today, resolve2) {
+  const strength = plan.filter((w) => w.type === "forta" && active2(w) && w.date >= today).map((w) => ({ w, spec: parseStrength(w.structure) ?? resolve2?.(w) ?? null })).filter((x) => !!x.spec && !isFitnessSession(x.spec.session)).sort((a, b) => a.w.date < b.w.date ? -1 : 1);
   if (!strength.length || strength.every((x) => isSplitSession(x.spec.session))) return [];
   const keyDates = new Set(plan.filter((w) => w.key && active2(w)).map((w) => w.date));
   const st = newSplitState();
@@ -4742,6 +4742,25 @@ function upgradeToSplit(plan, today) {
     const n2 = nextSplit(st, keyDates.has(addDays(w.date, 1)) || spec.legs === "usor", nearRace);
     return { ...w, structure: strengthStructure({ ...spec, session: n2.session, variant: n2.variant, legs: nearRace ? "fara" : "normal" }) };
   });
+}
+
+// server/_lib/split.ts
+async function isMale(userId, sex) {
+  if (sex) return sex === "m";
+  const u = await one("users", { id: `eq.${userId}` }, { select: "sex" }).catch(() => null);
+  if (u?.sex) return u.sex === "m";
+  const q2 = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" }).catch(() => null);
+  return q2?.answers?.sex === "m";
+}
+async function ensureSplit(userId, today, loaded, sex) {
+  const p = loaded ?? await loadPlan(userId, addDays(today, -28), addDays(today, 400));
+  if (!p.planId || !await isMale(userId, sex)) return p.workouts;
+  const plan = await one("plans", { id: `eq.${p.planId}` }, { select: "start_date,race_date" }).catch(() => null);
+  const up = upgradeToSplit(p.workouts, today, (w) => strengthSpecFor(p.workouts, w, plan?.start_date ?? null, plan?.race_date ?? null));
+  if (!up.length) return p.workouts;
+  await upsert("workouts_planned", up.map((w) => toWorkoutRow(w, userId, p.planId)), "id");
+  const byId = new Map(up.map((w) => [w.id, w]));
+  return p.workouts.map((w) => byId.get(w.id) ?? w);
 }
 
 // server/_lib/prefs.ts
@@ -5414,15 +5433,7 @@ async function buildMe(userId, today) {
   ]);
   const outcomeRows = await select("workout_outcomes", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select("strength_log", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: "date,exercise,sets,rir,source", order: "date.asc", limit: 500 }).catch(() => []);
-  let workouts = planLoad.workouts;
-  if (user.sex === "m" && planLoad.planId) {
-    const up = upgradeToSplit(workouts, today);
-    if (up.length) {
-      await upsert("workouts_planned", up.map((w) => toWorkoutRow(w, userId, planLoad.planId)), "id").catch(() => void 0);
-      const byId = new Map(up.map((w) => [w.id, w]));
-      workouts = workouts.map((w) => byId.get(w.id) ?? w);
-    }
-  }
+  const workouts = await ensureSplit(userId, today, planLoad, user.sex ?? (forms.intake?.sex ?? null)).catch(() => planLoad.workouts);
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== "sters");
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
@@ -7409,7 +7420,7 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     historyHoursPerWeek: history,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
-    athlete: await athleteInfo(userId, today),
+    athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },
@@ -8046,6 +8057,7 @@ async function handler5(req, res) {
         await syncUser(u.id, 3);
         await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
         await labsReminder(u.id, today).catch(() => false);
+        await ensureSplit(u.id, today).catch(() => void 0);
         if (u.goal && u.goal.startsWith("fit-")) await missedStrength(u.id, today).catch(() => []);
         else await moduleProgression(u.id, today).catch(() => []);
         const r2 = await runAgents(u.id, today, "dimineata");

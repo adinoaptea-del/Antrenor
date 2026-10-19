@@ -5,15 +5,19 @@
 
 import type { PlannedWorkout } from '../types.js';
 import { addDays } from '../util/dates.js';
-import { isFitnessSession, isSplitSession, newSplitState, nextSplit, parseStrength, strengthStructure } from './ppl.js';
+import { isFitnessSession, isSplitSession, newSplitState, nextSplit, parseStrength, strengthStructure, type StrengthSpec } from './ppl.js';
 
 const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'mutat';
 
 /** Ședințele schimbate (copii), în ordinea datelor; gol dacă nu e nimic de schimbat. */
-export function upgradeToSplit(plan: PlannedWorkout[], today: string): PlannedWorkout[] {
+/**
+ * `resolve`: pentru planurile vechi al căror text nu se poate citi („Push 1 · …”, „forță”), blocul și săptămâna se
+ * recalculează cu aceeași regulă ca generatorul (plan-specs.ts); fără el, acele ședințe ar rămâne „tot corpul”.
+ */
+export function upgradeToSplit(plan: PlannedWorkout[], today: string, resolve?: (w: PlannedWorkout) => StrengthSpec | null): PlannedWorkout[] {
   const strength = plan
     .filter((w) => w.type === 'forta' && active(w) && w.date >= today)
-    .map((w) => ({ w, spec: parseStrength(w.structure) }))
+    .map((w) => ({ w, spec: parseStrength(w.structure) ?? resolve?.(w) ?? null }))
     .filter((x): x is { w: PlannedWorkout; spec: NonNullable<typeof x.spec> } => !!x.spec && !isFitnessSession(x.spec.session))
     .sort((a, b) => (a.w.date < b.w.date ? -1 : 1));
   if (!strength.length || strength.every((x) => isSplitSession(x.spec.session))) return [];
