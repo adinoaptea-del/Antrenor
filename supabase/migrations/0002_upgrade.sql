@@ -25,9 +25,9 @@ alter table public.labs add column if not exists uploaded_at timestamptz not nul
 
 -- Obiective noi: semimaraton și maraton (doar alergare).
 alter table public.users drop constraint if exists users_goal_check;
-alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa', 'mers'));
 alter table public.plans drop constraint if exists plans_goal_check;
-alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa', 'mers'));
 -- Marcaj de versiune a schemei (aplicația cere singură actualizarea când lipsește).
 alter table public.users add column if not exists schema_v smallint not null default 3;
 
@@ -232,9 +232,9 @@ revoke insert, update, delete on public.badges_earned from anon, authenticated;
 -- Obiective pe un singur sport (alergare 5 / 10 km, înot 1.500 / 1.900 / 3.800 m, bicicletă 50 / 100 / 160 km) și fitness.
 -- Lista e aceeași peste tot în fișier: rularea din nou nu pică pe rândurile existente.
 alter table public.users drop constraint if exists users_goal_check;
-alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
+alter table public.users add constraint users_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa', 'mers'));
 alter table public.plans drop constraint if exists plans_goal_check;
-alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'));
+alter table public.plans add constraint plans_goal_check check (goal in ('70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa', 'mers'));
 
 -- Avizul cardiologic (versiunea 6, după audit): lipsa unui răspuns este „necunoscut”, nu aviz.
 -- Rulează o singură dată (când schema e sub 6), ca să nu șteargă răspunsuri date ulterior.
@@ -302,6 +302,21 @@ create index if not exists workout_outcomes_user_date on public.workout_outcomes
 alter table public.workout_outcomes enable row level security;
 revoke all on public.workout_outcomes from anon, authenticated;
 
+-- Mers pe jos (schema 9): sportul „mers” în plan, în activități și în corecturi; la plimbări, ora reală, durata și timpul
+-- în mișcare (pauzele scoase, când sursa le dă), mersul alert confirmat, „scoasă din bulă” și legătura cu un import.
+alter table public.workouts_planned drop constraint if exists workouts_planned_sport_check;
+alter table public.workouts_planned add constraint workouts_planned_sport_check check (sport in ('inot', 'bicicleta', 'alergare', 'forta', 'mers'));
+alter table public.activities drop constraint if exists activities_sport_check;
+alter table public.activities add constraint activities_sport_check check (sport in ('inot', 'bicicleta', 'alergare', 'forta', 'mers'));
+alter table public.activity_overrides drop constraint if exists activity_overrides_sport_check;
+alter table public.activity_overrides add constraint activity_overrides_sport_check check (sport in ('inot', 'bicicleta', 'alergare', 'forta', 'mers'));
+alter table public.other_activities add column if not exists start_utc timestamptz;
+alter table public.other_activities add column if not exists elapsed_sec int check (elapsed_sec is null or elapsed_sec >= 0);
+alter table public.other_activities add column if not exists moving_sec int check (moving_sec is null or moving_sec >= 0);
+alter table public.other_activities add column if not exists brisk boolean not null default false;
+alter table public.other_activities add column if not exists excluded boolean not null default false;
+alter table public.other_activities add column if not exists reconciled_with text;
+
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
   key text primary key,
@@ -310,5 +325,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 8)
+insert into public.schema_meta (key, value) values ('version', 9)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

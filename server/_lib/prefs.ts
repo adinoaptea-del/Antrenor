@@ -2,6 +2,7 @@
 import { one, update } from './db.js';
 import type { Away, FixedMeet } from '../../src/calendar/actions.js';
 import { DEFAULT_PREFS, type NutritionPrefs } from '../../src/nutrition/engine.js';
+import { DEFAULT_WALK_PROFILE, type WalkProfile } from '../../src/walking/plan.js';
 
 export interface CalendarPrefs {
   plecari: Away[];
@@ -10,12 +11,26 @@ export interface CalendarPrefs {
   mediuInot?: 'bazin' | 'ape';
   /** Mesele: dietă, alergii (confirmate sau nu), buget, câte mese, alegerile „Schimbă” pe zile. */
   nutritie?: NutritionPrefs;
+  /** Mersul pe jos: ținta inițială, capacitatea declarată, mersul alert și jurnalul schimbărilor de țintă. */
+  mers?: WalkProfile;
 }
 
 export async function loadPrefs(userId: string): Promise<CalendarPrefs> {
   const row = await one<{ calendar_prefs: Partial<CalendarPrefs> | null }>('users', { id: `eq.${userId}` }, { select: 'calendar_prefs' }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) } };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) }, mers: walkProfileOf(p.mers) };
+}
+
+/** Profilul de mers, validat (valori lipsă = implicite, jurnalul păstrat întreg). */
+export function walkProfileOf(x: Partial<WalkProfile> | null | undefined): WalkProfile {
+  const d = DEFAULT_WALK_PROFILE;
+  const n = (v: unknown, lo: number, hi: number, def: number) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? Math.round(v) : def);
+  return {
+    initial: n(x?.initial, 30, 1000, d.initial),
+    capacityMin: n(x?.capacityMin, 5, 240, d.capacityMin),
+    brisk: x?.brisk === 'da' || x?.brisk === 'nu' ? x.brisk : 'nu_stiu',
+    changes: Array.isArray(x?.changes) ? x!.changes.filter((c) => c && typeof c.to === 'number' && typeof c.effectiveWeek === 'string') : [],
+  };
 }
 
 export async function savePrefs(userId: string, prefs: CalendarPrefs): Promise<void> {

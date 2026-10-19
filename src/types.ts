@@ -1,6 +1,6 @@
 // Tipurile comune ale nucleului. Toate datele vin din colector (script), niciodată din agenți.
 
-export type Sport = 'inot' | 'bicicleta' | 'alergare' | 'forta';
+export type Sport = 'inot' | 'bicicleta' | 'alergare' | 'forta' | 'mers';
 
 /** Tipul unui antrenament propus. `brick` = bicicletă urmată imediat de alergare. */
 export type WorkoutType = 'z2' | 'tehnica' | 'calitate' | 'lung' | 'brick' | 'forta' | 'odihna';

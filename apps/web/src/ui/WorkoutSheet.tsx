@@ -15,7 +15,7 @@ import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMi
 
 const NOTE_STEPS = new Set(['Plafon', 'Puls', 'Important', 'Durata']);
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
-const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
+const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell, mers: Icons.walk } as const;
 
 /** Prescripția de forță a unei ședințe: din textul din plan sau, la planurile vechi, recalculată cu aceeași regulă. */
 export function strengthOf(me: Me, w: PlannedWorkout): Prescription | null {

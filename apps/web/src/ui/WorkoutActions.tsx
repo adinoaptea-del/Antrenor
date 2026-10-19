@@ -46,7 +46,7 @@ export function YellowDay({ w }: { w: PlannedWorkout }) {
   return <div className="wk-yellow">Zi galbenă: apasă „Fă-o ușoară” și ședința rămâne, fără intensitate.</div>;
 }
 
-const SPORT_LABEL: Record<Sport, string> = { alergare: 'Alergare', bicicleta: 'Bicicletă', inot: 'Înot', forta: 'Forță' };
+const SPORT_LABEL: Record<Sport, string> = { alergare: 'Alergare', bicicleta: 'Bicicletă', inot: 'Înot', forta: 'Forță', mers: 'Mers pe jos' };
 
 export function Actions({ w }: { w: PlannedWorkout }) {
   const me = useMe();

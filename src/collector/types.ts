@@ -137,6 +137,8 @@ export interface CollectorInput {
   labs?: LabsInput | null;
   /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */
   others?: OtherActivity[];
+  /** Mersul pe jos (obiectivul „mers”): săptămâna calculată în cod (src/walking/view.ts). */
+  walking?: import('../walking/view.js').WalkingView | null;
   nutrition?: NutritionDay[];
   /** Mesele de azi calculate de motorul nutriționistului (src/nutrition): AI-ul le explică, nu le recalculează. */
   mealsToday?: import('../nutrition/engine.js').NutritionDay | null;

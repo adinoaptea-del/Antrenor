@@ -84,7 +84,7 @@ export interface DayCoverage {
   implicit: string | null;
 }
 
-const SPORT: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' };
+const SPORT: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' };
 
 /**
  * Cât din ziua planificată a acoperit ce ai făcut deja. Se calculează doar când azi a apărut ceva în plus față de plan

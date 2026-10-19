@@ -20,7 +20,7 @@ import { strengthSpecFor } from '../strength/plan-specs.js';
 import { fitnessCardio, fitnessProfile, fitnessWeekAction, fitnessWeeks } from '../strength/fitness.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
-const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
+const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta', 'mers'];
 const DAY_NAMES = ['luni', 'marti', 'miercuri', 'joi', 'vineri', 'sambata', 'duminica'];
 
 /** Cum a ieșit o ședință față de cea propusă: durată, zonă, direcție, compensare, eficiență (0–100). */
@@ -49,7 +49,7 @@ export interface Packet {
     faza: string;
     obiectiv: string;
     /** Un singur sport (alergare / înot / bicicletă) sau triatlon; sporturile din plan. La un singur sport nu există ceilalți antrenori. */
-    tip_obiectiv: 'tri' | 'run' | 'swim' | 'bike' | 'fitness' | null;
+    tip_obiectiv: 'tri' | 'run' | 'swim' | 'bike' | 'fitness' | 'walk' | null;
     /** Codul obiectivului (ex. „10k”, „inot-1900”), pentru biblioteca de antrenamente. */
     obiectiv_cod: string | null;
     sporturi: string[];
@@ -148,6 +148,8 @@ export interface Packet {
   vreme: CollectorInput['weather'] | null;
   /** Creșterea controlată (+10% volum săptămâna viitoare): eligibil doar cu 7 zile verzi la rând, încărcare sub 1,3 (total și pe fiecare sport), aderență >= 80% și fără creștere în ultimele 13 zile. */
   progres: { zile_verzi_la_rand: number | null; ultima_crestere: string | null; eligibil: boolean; motiv: string };
+  /** Mersul pe jos (obiectivul „mers”): cifrele bulei, calculate în cod. */
+  mers: ReturnType<typeof walkBrief>;
   totaluri_de_la_start: CollectorInput['totals'] | null;
   /** Recuperarea (saună, baie rece, yoga, stretching, masaj) și mișcarea în plus din ultimele 7 zile, de pe brățări. */
   /**
@@ -483,7 +485,7 @@ function minutesToHm(min: number | null): string | null {
 }
 
 function hoursBySport(acts: SourceActivity[], from: string, to: string): SportHours {
-  const h: SportHours = { inot: 0, bicicleta: 0, alergare: 0, forta: 0 };
+  const h: SportHours = { inot: 0, bicicleta: 0, alergare: 0, forta: 0, mers: 0 };
   for (const a of acts) {
     if (diffDays(from, a.date) < 0 || diffDays(a.date, to) < 0) continue;
     h[a.sport] += a.minutes / 60;
@@ -506,7 +508,7 @@ export function acwr(acts: SourceActivity[], today: string, sport?: Sport): numb
 }
 
 function planLabel(w: PlannedWorkout): string {
-  const sport = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' }[w.sport];
+  const sport = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' }[w.sport];
   const tip = w.type === 'forta' ? '' : ` ${w.type === 'z2' ? 'Z2' : w.type}`;
   return `${sport}${tip} ${w.plannedMinutes}${w.key ? ' (cheie)' : ''}`;
 }
@@ -688,7 +690,7 @@ export function buildPacket(input: CollectorInput): Packet {
     ? { timp_tinta_s: gataDeCursa.target.targetSec, ritm_tinta_s_km: Math.round(gataDeCursa.target.verdict.paceSecKm), verdict: gataDeCursa.target.verdict.verdict, motive: gataDeCursa.target.verdict.reasons, timp_estimat_s: gataDeCursa.target.predictedSec, cel_mai_bun_efort: gataDeCursa.target.best ? `${gataDeCursa.target.best.label}, ${gataDeCursa.target.best.date}` : null }
     : (input.athlete.tinta ?? null);
   const acwrTotal = acwr(acts, today);
-  const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta') };
+  const acwrBySport: Record<Sport, number | null> = { inot: acwr(acts, today, 'inot'), bicicleta: acwr(acts, today, 'bicicleta'), alergare: acwr(acts, today, 'alergare'), forta: acwr(acts, today, 'forta'), mers: acwr(acts, today, 'mers') };
   const recentActs = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= 28);
   const pastPlanned = input.plan.filter((w) => isActiveWorkout(w) && diffDays(w.date, today) >= 1 && diffDays(w.date, today) <= 14);
   // Aceeași asociere ca la scor: o activitate acoperă o singură ședință, întâi cea din ziua ei.
@@ -825,6 +827,7 @@ export function buildPacket(input: CollectorInput): Packet {
           .map((o) => ({ data: o.date, ora: o.startLocal, tip: o.kind, nume: o.name, minute: o.minutes, fc_medie: o.avgHr })),
       };
     })(),
+    mers: walkBrief(input),
     totaluri_de_la_start: input.totals ?? null,
     aderenta_14z: aderenta,
     verdict_fiziolog: null,
@@ -903,4 +906,32 @@ export function momentOfDay(hm: string | null): 'dimineata' | 'zi' | 'seara' | '
   if (!hm || !/^\d{2}:\d{2}/.test(hm)) return null;
   const h = Number(hm.slice(0, 2));
   return h >= 22 || h < 5 ? 'noapte' : h < 11 ? 'dimineata' : h < 17 ? 'zi' : 'seara';
+}
+
+/**
+ * Mersul pe jos: cifrele bulei, calculate în cod. AI-ul le citește, nu le recalculează: nu inventează minute, nu
+ * transformă pașii în minute, nu adaugă minutele rămase la ședința de azi (fără datorie).
+ */
+function walkBrief(input: CollectorInput) {
+  const v = input.walking;
+  if (!v) return null;
+  const m = (sec: number) => Math.floor(sec / 60);
+  return {
+    saptamana: `${v.week.weekStart} – ${v.week.weekEnd}`,
+    tinta_min: v.week.targetMin,
+    realizat_min: m(v.week.doneSec),
+    ramase_min: Math.ceil(v.week.remainingSec / 60),
+    peste_tinta_min: m(v.week.overSec),
+    mers_alert_confirmat_min: m(v.week.briskSec),
+    masurat_min: m(v.week.measuredSec),
+    declarat_min: m(v.week.declaredSec),
+    pauze_neseparate: v.week.pausesUnknown,
+    plimbari: v.week.walks.map((w) => ({ data: w.date, minute: m(w.sec), sursa: w.source, provenienta: w.provenance, alert: w.brisk })),
+    tinta_saptamana_viitoare: v.nextTargetMin,
+    jurnal_tinta: v.changes.map((c) => ({ de_la: c.from, la: c.to, motiv: c.reason, din_saptamana: c.effectiveWeek })),
+    recomandare_azi: v.today.spec
+      ? { total_min: v.today.spec.totalMin, incalzire_min: v.today.spec.warmup.min, principal: `${v.today.spec.main.min} min ${v.today.spec.main.what}`, revenire_min: v.today.spec.cooldown.min, scop: v.today.spec.purpose, varianta_scurta: v.today.spec.shorter?.text ?? null, nota: v.today.note }
+      : { nimic_prescris: true, nota: v.today.note },
+    regula: 'Minutele rămase nu devin datorie și nu se adaugă la ședința de azi. Simptomele au prioritate față de bulă.',
+  };
 }

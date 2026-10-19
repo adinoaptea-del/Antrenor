@@ -10,7 +10,7 @@ import { useMe } from '../data/store';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, firstSentences, fmtMinutes, isUpcoming, localDayOf, purposeOf, reasonsOf } from '../data/model';
 
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
-const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
+const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell, mers: Icons.walk } as const;
 
 /**
  * O ședință, la fel peste tot (Acasă și Calendar): ce faci, cât, ce intensitate și de ce; ce s-a schimbat și de ce

@@ -24,6 +24,8 @@ export const MET: Record<string, { usor: number; greu: number }> = {
   bicicleta: { usor: 6.8, greu: 9.5 },
   inot: { usor: 6.0, greu: 9.8 },
   forta: { usor: 5.0, greu: 5.0 },
+  // Mers: Compendium 2011 (Ainsworth și colab.), 17190 mers 2,8–3,2 mph = 3,5 MET; 17220 mers alert 4,0 mph = 5,0 MET.
+  mers: { usor: 3.5, greu: 5.0 },
 };
 
 export type Diet = 'omnivor' | 'vegetarian' | 'vegan';
@@ -46,7 +48,7 @@ export interface NutritionPrefs {
 export const DEFAULT_PREFS: NutritionPrefs = { diet: 'omnivor', exclude: [], allergiesConfirmed: false, budget: null, meals: 4 };
 
 export interface DaySession {
-  sport: 'inot' | 'bicicleta' | 'alergare' | 'forta';
+  sport: 'inot' | 'bicicleta' | 'alergare' | 'forta' | 'mers';
   type: string;
   minutes: number;
   key?: boolean;
@@ -109,7 +111,7 @@ export interface NutritionDay {
 }
 
 const SLOT_LABEL: Record<Slot, string> = { mic_dejun: 'Mic dejun', pranz: 'Prânz', cina: 'Cină', gustare: 'Gustare' };
-const SPORT_WORD: Record<DaySession['sport'], string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'sală' };
+const SPORT_WORD: Record<DaySession['sport'], string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'sală', mers: 'mers' };
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
 /** Mifflin-St Jeor (repaus), kcal/zi. */

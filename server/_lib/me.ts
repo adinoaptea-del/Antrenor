@@ -10,7 +10,9 @@ import { one, select, update } from './db.js';
 import { ensureSplit } from './split.js';
 import { fitnessWithAttendance } from './plan.js';
 import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
-import { isFitnessGoal } from '../../src/calendar/phases.js';
+import { isFitnessGoal, isWalkGoal } from '../../src/calendar/phases.js';
+import { loadWalkRows } from './walking.js';
+import { walkingView } from '../../src/walking/view.js';
 import { loadPrefs } from './prefs.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
 import { loadBadges } from './badges.js';
@@ -36,7 +38,7 @@ import type { StrengthLogEntry } from '../../src/strength/log.js';
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
   const from = addDays(today, -42);
-  const [planLoad, acts, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRows, lastSyncRows, planRow] = await Promise.all([
+  const [planLoad, acts0, forms, consent, tokens, scoresRows, barRow, readinessRow, messagesRows, wellnessRows, zonesRow, labsRows, lastSyncRows, planRow] = await Promise.all([
     loadPlan(userId, addDays(today, -28), user.race_date ?? addDays(today, 400)),
     loadActivities(userId, from),
     loadForms(userId, today),
@@ -52,6 +54,11 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
+  // Mersul pe jos (obiectivul „mers”): plimbările devin activități de mers, legate de ședințele de mers din plan.
+  const tz = (user as UserRow).tz || 'Europe/Bucharest';
+  const walkGoal = isWalkGoal(user.goal);
+  const walkLoad = walkGoal ? await loadWalkRows(userId, addDays(weekStart(today), -63)) : null;
+  const acts = acts0;
   // Jurnalul de forță (schema 7); pe o schemă veche lipsește tabela: lista rămâne goală, nu cade pagina.
   const outcomeRows = await select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reported_at: string }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
@@ -195,6 +202,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const lastDecided = todayMsgs.find((m) => m.kind !== 'memento' && m.decision);
   const memento = lastDecided && !messageMatches(lastDecided.decision, day) ? null : (todayMsgs.find((m) => m.kind === 'memento')?.body ?? null);
 
+  const prefs = await loadPrefs(userId);
   return {
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
@@ -204,7 +212,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
           ...totals,
           // Istoricul dinaintea planului (ultimele 6 săptămâni încărcate aici), separat de execuția planului.
           before: (() => {
-            const out = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+            const out = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 }, mers: { km: 0, ore: 0, sedinte: 0 } };
             for (const a of activities.filter((x) => x.date < totals.since)) {
               out[a.sport].km = Math.round((out[a.sport].km + (a.distanceKm ?? 0)) * 10) / 10;
               out[a.sport].ore = Math.round((out[a.sport].ore + a.minutes / 60) * 10) / 10;
@@ -279,7 +287,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
         ? [{ id: 'android' as const, name: SOURCE_NAME.android, lastSync: androidLast.ok ? androidLast.ran_at : (lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok && !String(r.detail ?? '').startsWith('test'))?.ran_at ?? null), lastAttempt: androidLast.ran_at, error: androidLast.ok ? null : androidLast.detail, lastData: lastDataOf('android'), noRecoveryToday: !wellnessRows.some((r) => r.source === 'android' && String(r.date) === today) }]
         : []),
     ],
-    prefs: await loadPrefs(userId),
+    prefs,
+    walking: walkLoad ? walkingView({ rows: walkLoad.rows, tz, today, profile: prefs.mers!, plan: planned, dayLevel: day?.level ?? null, dayWhy: day?.reason ?? day?.title ?? null, schemaReady: walkLoad.schemaReady }) : null,
     recovery: {
       ...recoverySummary(today, await loadOthers(userId, addDays(today, -92)), merged.map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))),
       sleep: merged.filter((m) => m.date > addDays(today, -7)).sort((a, b) => (a.date < b.date ? 1 : -1)).map((m) => ({ date: m.date, minutes: m.sleepMin, score: m.sleepScore })),

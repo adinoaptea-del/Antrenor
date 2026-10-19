@@ -12,7 +12,7 @@ import { weekday } from '../util/dates.js';
 import { easyWorkout, moveOptions, moveWorkout, withOriginal } from './actions.js';
 
 const DAY = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
-const SPORT = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' } as const;
+const SPORT = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' } as const;
 const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'mutat';
 const dm = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
 

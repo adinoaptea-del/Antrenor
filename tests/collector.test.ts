@@ -194,7 +194,7 @@ it('aderenta_14z: sărite doar când există activități de la brățară', () 
 
 describe('progresStatus', () => {
   const inp = (h: { greenStreak: number; lastIncrease: string | null } | null) => ({ today: '2026-11-08', history: h }) as unknown as CollectorInput;
-  const sport = { inot: 1.0, bicicleta: 1.1, alergare: 1.0, forta: null };
+  const sport = { inot: 1.0, bicicleta: 1.1, alergare: 1.0, forta: null, mers: null };
   it('eligibil doar cu toate condițiile', async () => {
     const { progresStatus } = await import('../src/collector/packet.js');
     assert.equal(progresStatus(inp({ greenStreak: 8, lastIncrease: null }), 1.1, sport, { planificate: 10, facute: 9 }).eligibil, true);

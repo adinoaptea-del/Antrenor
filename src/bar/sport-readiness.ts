@@ -68,6 +68,7 @@ const LEGS: Record<Goal, Partial<Record<'inot' | 'bicicleta' | 'alergare', numbe
   'fit-tonifiere': {},
   'fit-intretinere': {},
   'fit-masa': {},
+  mers: {},
 };
 
 /** Timpul-limită uzual pe înot la Ironman 70.3 (70 min la 1,9 km). */

@@ -169,9 +169,16 @@ export function parseHealthOther(body: unknown): OtherActivity[] {
     const avg = qty(w.avgHeartRate) ?? qty(hr.avg);
     const max = qty(w.maxHeartRate) ?? qty(hr.max);
     const id = typeof w.id === 'string' ? w.id : `${start}-${name}`.replace(/[^a-zA-Z0-9]/g, '');
-    out.push({ id: `apple-o-${id}`, source: 'apple', externalId: id, date: start.slice(0, 10), startLocal: hm(start), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
+    out.push({ id: `apple-o-${id}`, source: 'apple', externalId: id, date: start.slice(0, 10), startLocal: hm(start), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max), startUtc: isoOf(start), elapsedSec: Math.round(sec), movingSec: null });
   }
   return out;
+}
+
+/** „2026-10-19 07:00:00 +0300” (Health Auto Export) sau ISO → ISO UTC; null dacă nu se poate citi. */
+export function isoOf(s: string): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)\s*([+-]\d{2}):?(\d{2})$/.exec(s.trim());
+  const t = m ? Date.parse(`${m[1]}T${m[2]}${m[3]}:${m[4]}`) : Date.parse(s);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
 /** Ce mai trimite Health Auto Export pe un antrenament: energie, urcare, pași; suma eșantioanelor când vin ca listă. */

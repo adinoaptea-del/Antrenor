@@ -32,8 +32,8 @@ export interface Balance {
   avertismente: { titlu: string; text: string; ce_faci: string }[];
 }
 
-const NAME: Record<Sport, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'forța' };
-const CAP: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță' };
+const NAME: Record<Sport, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'forța', mers: 'mersul' };
+const CAP: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță', mers: 'Mers' };
 const WINDOW = 21;
 
 export function balanceCheck(today: string, plan: PlannedWorkout[], acts: Activity[], goalLabel: string): Balance {

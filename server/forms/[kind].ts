@@ -22,10 +22,12 @@ import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
 import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { AWAY_LABEL, applyAway, changeSport, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
-import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
+import { currentAway, loadPrefs, savePrefs, walkProfileOf } from '../_lib/prefs.js';
 import { markBadgesSeen } from '../_lib/badges.js';
 import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
-import { isGoal } from '../../src/calendar/phases.js';
+import { isGoal, isWalkGoal } from '../../src/calendar/phases.js';
+import { walkForm } from '../_lib/walk-forms.js';
+import type { WalkProfile } from '../../src/walking/plan.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
 import { RECIPE } from '../../src/nutrition/recipes.js';
@@ -45,12 +47,18 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const today = todayIn(user.tz);
     const kind = q(req, 'kind');
     const body = await readJson<Record<string, unknown>>(req);
+    // Mersul pe jos: plimbări, ținta (cu jurnal), profilul.
+    const walk = await walkForm(kind, body, { userId: u.id, tz: user.tz || 'Europe/Bucharest', today, goal: (user.goal as string | null) ?? null });
+    if (walk) {
+      json(res, 200, walk);
+      return;
+    }
 
     if (kind === 'intrare') {
       const intake = body as unknown as IntakeLike & { consimtamant?: boolean };
       if (!intake.consimtamant) throw new HttpError(400, 'fără consimțământ nu se salvează date de sănătate');
       // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
-      if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness');
+      if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness; mers pe jos');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
       await saveIntake(u.id, today, intake);
       // Alimentația declarată în chestionar devine preferința meselor (aceeași sursă ca ecranul „Mese recomandate”).
@@ -58,6 +66,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (diet === 'omnivor' || diet === 'vegetarian' || diet === 'vegan') {
         const prefs = await loadPrefs(u.id);
         await savePrefs(u.id, { ...prefs, nutritie: { ...prefs.nutritie!, diet } });
+      }
+      // Mersul: ținta inițială, capacitatea și mersul alert devin profilul de mers (jurnalul țintei rămâne).
+      if (isWalkGoal(intake.obiectiv)) {
+        const m = (intake as { mers?: { tinta?: unknown; capacitate?: unknown; alert?: unknown } }).mers ?? {};
+        const prefs = await loadPrefs(u.id);
+        const profile = walkProfileOf({ ...prefs.mers, initial: Number(m.tinta), capacityMin: Number(m.capacitate), brisk: m.alert as WalkProfile['brisk'] });
+        await savePrefs(u.id, { ...prefs, mers: profile });
       }
       const plan = await generateAndStore(u.id, today, intake);
       json(res, 200, { ok: true, plan });
@@ -275,7 +290,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (body.reset) {
         await remove('activity_overrides', { user_id: `eq.${u.id}`, activity_id: `eq.${id}` });
       } else {
-        const sport = ['inot', 'bicicleta', 'alergare', 'forta'].includes(String(body.sport)) ? String(body.sport) : null;
+        const sport = ['inot', 'bicicleta', 'alergare', 'forta', 'mers'].includes(String(body.sport)) ? String(body.sport) : null;
         await upsert('activity_overrides', { user_id: u.id, activity_id: id, sport, ignored: body.ignored === true, updated_at: new Date().toISOString() }, 'user_id,activity_id');
       }
       await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);

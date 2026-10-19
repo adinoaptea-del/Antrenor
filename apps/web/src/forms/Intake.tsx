@@ -8,6 +8,7 @@ import { useData, useMe } from '../data/store';
 import { EMPTY_INTAKE, runResultOk, type IntakeAnswers } from './types';
 import { FITNESS_WEEKS, goalKind, isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
 import type { FitnessIntake } from '@core/strength/fitness.js';
+import { BRISK_EXPLAIN } from '@core/walking/plan.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, parsePace, type RunResult } from '@core/util/run.js';
 
 // Chestionarul de intrare: un grup de întrebări pe ecran, totul de atins, 3–4 minute. Răspunsurile dau planul.
@@ -18,11 +19,14 @@ const SWIM_STEPS = ['Obiectiv', 'Înot', 'Echipament', 'Program', 'Sănătate', 
 const BIKE_STEPS = ['Obiectiv', 'Bicicletă', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
 // Fitness (doar la femei): nivelul, zilele și minutele de sală, apoi ferestrele libere; fără cursă și fără date de test.
 const FITNESS_STEPS = ['Obiectiv', 'Fitness', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
-type Step = (typeof TRI_STEPS)[number] | (typeof RUN_STEPS)[number] | (typeof FITNESS_STEPS)[number];
+const WALK_STEPS = ['Obiectiv', 'Mers', 'Echipament', 'Program', 'Sănătate', 'Ce te ține', 'Gata'] as const;
+type Step = (typeof TRI_STEPS)[number] | (typeof RUN_STEPS)[number] | (typeof FITNESS_STEPS)[number] | (typeof WALK_STEPS)[number];
 
 /** Întâi sportul (sau triatlonul), apoi distanța: la un singur sport, aplicația arată doar sportul acela. */
-type GoalFamily = 'alergare' | 'inot' | 'bicicleta' | 'triatlon' | 'fitness';
-const FAMILY_OF = (g: string): GoalFamily => (goalKind(g) === 'run' ? 'alergare' : goalKind(g) === 'swim' ? 'inot' : goalKind(g) === 'bike' ? 'bicicleta' : goalKind(g) === 'fitness' ? 'fitness' : 'triatlon');
+type GoalFamily = 'alergare' | 'inot' | 'bicicleta' | 'triatlon' | 'fitness' | 'mers';
+const FAMILY_OF = (g: string): GoalFamily => (goalKind(g) === 'run' ? 'alergare' : goalKind(g) === 'swim' ? 'inot' : goalKind(g) === 'bike' ? 'bicicleta' : goalKind(g) === 'fitness' ? 'fitness' : goalKind(g) === 'walk' ? 'mers' : 'triatlon');
+/** Ținta de pornire propusă după cât poate merge acum (reperul de 200 de minute nu e pentru toată lumea). */
+const walkTargetFor = (cap: number | null | undefined): number => (!cap ? 200 : cap <= 10 ? 60 : cap <= 20 ? 90 : cap <= 30 ? 150 : 200);
 /** Sfârșitul programului de fitness: 26 de săptămâni de la lunea următoare (planul începe atunci). */
 const fitnessEnd = (): string => {
   const d = new Date();
@@ -53,6 +57,7 @@ const GOALS_BY_FAMILY: Record<GoalFamily, { id: IntakeAnswers['obiectiv']; label
     { id: 'fit-intretinere', label: 'Întreținere', sub: 'păstrezi ce ai' },
     { id: 'fit-masa', label: 'Creștere musculară', sub: 'mai multă masă musculară' },
   ],
+  mers: [{ id: 'mers', label: 'Mers pe jos', sub: 'minute pe săptămână, cu mers alert dacă vrei' }],
   triatlon: [
     { id: 'sprint', label: 'Sprint', sub: '0,75 · 20 · 5' },
     { id: 'olimpic', label: 'Olimpic', sub: '1,5 · 40 · 10' },
@@ -154,7 +159,10 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const runGoal = isRunGoal(a.obiectiv);
   const kind = goalKind(a.obiectiv);
   const fit = kind === 'fitness';
-  const STEPS: readonly Step[] = runGoal ? RUN_STEPS : kind === 'swim' ? SWIM_STEPS : kind === 'bike' ? BIKE_STEPS : fit ? FITNESS_STEPS : TRI_STEPS;
+  const walk = kind === 'walk';
+  const mx = a.mers ?? {};
+  const setMx = (patch: NonNullable<IntakeAnswers['mers']>) => set({ mers: { ...mx, ...patch } });
+  const STEPS: readonly Step[] = runGoal ? RUN_STEPS : kind === 'swim' ? SWIM_STEPS : kind === 'bike' ? BIKE_STEPS : fit ? FITNESS_STEPS : walk ? WALK_STEPS : TRI_STEPS;
   const fx: FitnessIntake = a.fitness ?? {};
   const setFx = (patch: FitnessIntake) => set({ fitness: { ...fx, ...patch } });
   const dist = runGoal ? RUN_DISTANCE_KM[a.obiectiv] : 0;
@@ -203,10 +211,12 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         return a.echipament.ceas != null;
       case 'Fitness':
         return !!fx.experienta && !!fx.zile && !!fx.minute && !!fx.acces && !!fx.miscare;
+      case 'Mers':
+        return !!mx.capacitate && !!mx.alert && !!mx.tinta;
       case 'Program':
-        return a.program.length > 0 && (fit || a.oreSport != null);
+        return a.program.length > 0 && (fit || walk || a.oreSport != null);
       case 'Sănătate':
-        return fit || !!a.evaluare?.testEfort;
+        return fit || walk || !!a.evaluare?.testEfort;
       case 'Gata':
         return a.consimtamant;
       default:
@@ -266,6 +276,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 value={family}
                 options={[
                   { id: 'fitness' as const, label: 'Fitness', sub: 'sală · forță · corp' },
+                  { id: 'mers' as const, label: 'Mers pe jos', sub: 'mers ușor · mers alert' },
                   { id: 'alergare', label: 'Alergare', sub: '5 km … maraton' },
                   { id: 'inot', label: 'Înot', sub: '1.500 … 3.800 m' },
                   { id: 'bicicleta', label: 'Bicicletă', sub: '50 … 160 km' },
@@ -274,20 +285,38 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 onChange={(f) => {
                   setFamily(f);
                   const first = GOALS_BY_FAMILY[f][0]!.id;
-                  if (FAMILY_OF(a.obiectiv) !== f) set({ obiectiv: first, ...(f === 'fitness' ? { dataCursa: fitnessEnd() } : {}) });
+                  if (FAMILY_OF(a.obiectiv) !== f) set({ obiectiv: first, ...(f === 'fitness' || f === 'mers' ? { dataCursa: fitnessEnd() } : {}) });
                 }}
               />
             </Q>
+            {family !== 'mers' && (
             <Q title={family === 'fitness' ? 'Ce obiectiv ai?' : family === 'triatlon' ? 'Ce cursă?' : 'Ce distanță?'} hint={family === 'fitness' ? '„Tonifiere” înseamnă mușchi construit sau păstrat, nu slăbire localizată. Scăderea în greutate nu e necesară pentru toată lumea.' : family === 'alergare' ? 'Distanța pe care vrei s-o alergi mai bine. Timpul-țintă îl spui la pasul următor.' : family === 'inot' ? 'Distanța pe care vrei s-o înoți fără oprire.' : family === 'bicicleta' ? 'Tura pe care vrei s-o termini.' : 'Obiectivul decide fazele, orele și ce înseamnă „gata”.'}>
               <Chips value={a.obiectiv} options={GOALS_BY_FAMILY[family]} onChange={(obiectiv) => set({ obiectiv, ...(family === 'fitness' ? { dataCursa: fitnessEnd() } : {}) })} />
             </Q>
-            {family === 'fitness' ? (
+            )}
+            {family === 'mers' ? (
+              <p className="small muted">Mers pe jos, cu bula săptămânii pe ecranul principal: minutele de mers se adună, iar bula arată cât mai ai. Programul are 26 de săptămâni, de luni până pe {a.dataCursa.split('-').reverse().join('.')}.</p>
+            ) : family === 'fitness' ? (
               <p className="small muted">Programul are 26 de săptămâni (aproximativ șase luni), de luni până pe {a.dataCursa.split('-').reverse().join('.')}. Etapele se adaptează la cum răspunzi, nu la calendar.</p>
             ) : (
               <Q title={family === 'triatlon' || runGoal ? 'Data cursei' : 'Până când vrei să reușești?'} hint={runGoal ? 'Cât timp ai la dispoziție decide cât de realistă e ținta.' : undefined}>
                 <input className="date" type="date" value={a.dataCursa} onChange={(e) => set({ dataCursa: e.target.value })} />
               </Q>
             )}
+          </>
+        )}
+
+        {STEPS[step] === 'Mers' && (
+          <>
+            <Q title="Cât poți merge acum fără oprire, confortabil?" hint="Fără să forțezi. Ședințele nu trec de atât; dacă plimbările tale arată mai mult, planul ține cont.">
+              <Chips value={mx.capacitate ? String(mx.capacitate) : null} options={[{ id: '10', label: '10 min' }, { id: '20', label: '20 min' }, { id: '30', label: '30 min' }, { id: '45', label: '45 min' }, { id: '60', label: '60+ min' }]} onChange={(c) => setMx({ capacitate: Number(c), tinta: mx.tinta ?? walkTargetFor(Number(c)) })} />
+            </Q>
+            <Q title="Mers alert" hint={`${BRISK_EXPLAIN} Nu există o viteză corectă pentru toată lumea.`}>
+              <Chips value={mx.alert ?? null} options={[{ id: 'da' as const, label: 'Da, pot', sub: 'intră în unele ședințe' }, { id: 'nu_stiu' as const, label: 'Nu știu', sub: 'o probă scurtă, opțională' }, { id: 'nu' as const, label: 'Nu încă', sub: 'doar mers ușor' }]} onChange={(alert) => setMx({ alert })} />
+            </Q>
+            <Q title="Câte minute pe săptămână, la început?" hint={`200 de minute pe săptămână e reperul aplicației, nu o regulă pentru toată lumea. ${mx.capacitate ? `Pentru ${mx.capacitate} min fără oprire propunem ${walkTargetFor(mx.capacitate)}.` : ''} Ținta se schimbă oricând, cu motiv, și rămâne în istoric.`}>
+              <Chips value={mx.tinta ? String(mx.tinta) : null} options={[60, 90, 120, 150, 200].map((m) => ({ id: String(m), label: `${m} min` }))} onChange={(t) => setMx({ tinta: Number(t) })} />
+            </Q>
           </>
         )}
 
@@ -451,11 +480,11 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
         {STEPS[step] === 'Program' && (
           <>
-          <Q title="Când poți să te antrenezi?" hint={fit ? `Atinge ferestrele în care poți ajunge la sală (cel puțin ${fx.minute ?? 45} de minute). Zilele de sală le alegem cât mai depărtate între ele.` : 'Atinge ferestrele libere dintr-o săptămână obișnuită. Planul se construiește doar în ele, cu 20% rezervă.'}>
+          <Q title={walk ? 'Când poți merge?' : 'Când poți să te antrenezi?'} hint={walk ? 'Atinge ferestrele în care poți ieși la mers (măcar 10 minute). Fără ferestre bifate, ședințele se pun în toate zilele.' : fit ? `Atinge ferestrele în care poți ajunge la sală (cel puțin ${fx.minute ?? 45} de minute). Zilele de sală le alegem cât mai depărtate între ele.` : 'Atinge ferestrele libere dintr-o săptămână obișnuită. Planul se construiește doar în ele, cu 20% rezervă.'}>
             <ScheduleGrid value={a.program} onChange={(program) => set({ program })} />
             <AvailabilityDays blocks={a.program} />
           </Q>
-          {!fit && (
+          {!fit && !walk && (
           <Q title="Câte ore pe săptămână ai, realist, pentru sport?" hint="Timpul liber nu e timp de antrenament: familie, somn, drum. Planul nu trece de cifra asta.">
             <Chips value={a.oreSport != null ? String(a.oreSport) : null} options={['4', '6', '8', '10', '12', '14', '16', '20'].map((h) => ({ id: h, label: `${h} h` }))} onChange={(h) => set({ oreSport: Number(h) })} />
             <div className="budget">
@@ -467,7 +496,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             </div>
           </Q>
           )}
-          {!fit && (
+          {!fit && !walk && (
           <Q title="Câte ore pe săptămână te-ai antrenat, în medie, în ultimele 2 luni?" hint="Opțional. Contează doar dacă nu ai activități importate de pe ceas: planul pornește de aici, nu de la zero. Nu deblochează intervale grele.">
             <Chips value={a.oreRecente != null ? String(a.oreRecente) : null} options={['0', '2', '4', '6', '8', '10', '12', '15'].map((h) => ({ id: h, label: h === '0' ? 'deloc' : `${h} h` }))} onChange={(h) => set({ oreRecente: Number(h) })} />
           </Q>
@@ -477,7 +506,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
         {STEPS[step] === 'Sănătate' && (
           <>
-            {fit && a.sex === 'm' ? null : fit ? (
+            {walk || (fit && a.sex === 'm') ? null : fit ? (
               <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, nu pornim programul de slăbire: alegem varianta de întreținere, iar recomandările se fac cu medicul.">
                 <Chips value={fx.sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => setFx({ sarcina })} />
               </Q>
@@ -486,7 +515,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 <Chips value={ev.testEfort ?? null} options={[{ id: 'cpet', label: 'CPET', sub: 'ergospirometrie' }, { id: 'lactat', label: 'Test de lactat' }, { id: 'teren', label: 'Test de teren' }, { id: 'nu', label: 'Nu' }]} onChange={(testEfort) => setEv({ testEfort })} />
               </Q>
             )}
-            <Q title={fit ? 'Dureri, accidentări sau restricții de la medic' : 'Accidentări sau dureri în ultimul an'} hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
+            <Q title={fit || walk ? 'Dureri, accidentări sau restricții de la medic' : 'Accidentări sau dureri în ultimul an'} hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
               <TextBox value={a.sanatate.accidentari} onChange={(accidentari) => set({ sanatate: { ...a.sanatate, accidentari } })} placeholder="ex. genunchi drept, primăvară; tendon ahilean stâng" />
             </Q>
           </>
@@ -507,7 +536,15 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
           <>
             <Q title="Ce urmează">
               <ul className="plain">
-                {fit ? (
+                {walk ? (
+                  <>
+                    <li>
+                      Ținta: <b>{mx.tinta ?? 200} min</b> de mers pe săptămână, împărțite pe zile, câte cel mult {mx.capacitate ?? 30} min pe ședință{mx.alert === 'da' ? ', unele cu mers alert' : mx.alert === 'nu_stiu' ? ', cu o probă scurtă de mers alert' : ''}.
+                    </li>
+                    <li>Bula de pe ecranul principal arată minutele rămase ale săptămânii. Se adună plimbările de pe ceas, cele cronometrate în aplicație și cele adăugate de tine (marcate „declarat”).</li>
+                    <li>Minutele nefăcute nu devin datorie. Simptomele au prioritate față de bulă.</li>
+                  </>
+                ) : fit ? (
                   <>
                     <li>
                       {fx.experienta === 'stabila' ? `Până la ${Math.min(3, fx.zile ?? 2)} zile de sală de la început` : 'Două zile de sală în primele 4 săptămâni'}{(fx.zile ?? 2) > 2 ? `, apoi treptat până la ${fx.zile}` : ''}, câte ~{Math.max(45, fx.minute ?? 60)} min (minimum 45), în zilele cele mai depărtate din ferestrele tale. {a.sex === 'm' ? 'Push, Pull și Picioare pe rând, cu exerciții care se schimbă.' : 'Picioarele și partea de sus în zile separate: trei zile de picioare cu accente diferite, două pentru partea de sus.'}
@@ -520,7 +557,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                     Primul calendar pe <b>{budget.toLocaleString('ro-RO')} h</b> pe săptămână, din ferestrele tale.
                   </li>
                 )}
-                {fit ? null : runGoal ? (
+                {fit || walk ? null : runGoal ? (
                   <li>
                     Doar alergare și forță. Ținta: {(() => {
                       const p = paceFromResult(a.alergare.tinta, dist);

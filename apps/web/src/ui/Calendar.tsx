@@ -76,7 +76,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
               const ws2 = workoutsOn(me, d).filter((w) => w.type !== 'odihna');
               const un = activitiesOn(me, d).filter((a) => a.unplanned);
               const isAway = (me.prefs?.plecari ?? []).some((a) => d >= a.dela && d <= a.panala);
-              const isRace = d === me.user.raceDate && !isFitnessGoal(me.user.goal);
+              const isRace = d === me.user.raceDate && !isFitnessGoal(me.user.goal) && goalKind(me.user.goal) !== 'walk';
               return (
                 <button key={d} className={`week-row ${d === me.today ? 'today' : ''} ${d === selected ? 'sel' : ''}`} onClick={() => setSelected(d)} aria-pressed={d === selected}>
                   <span className="wr-d">
@@ -198,15 +198,16 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
           dayWorkouts.map((w) => <WorkoutCard key={w.id} w={w} onOpen={onOpen} />)
         )}
 
-        <AwayCard />
-        {!isFitnessGoal(me.user.goal) && <FixedCard />}
-        <PlanOverview onPick={(iso) => { pick(iso); setView('saptamana'); }} />
+        {/* Mersul: fără faze de cursă, plecări cu bazin sau întâlniri de grup; ținta și istoricul sunt pe pagina de mers. */}
+        {goalKind(me.user.goal) !== 'walk' && <AwayCard />}
+        {!isFitnessGoal(me.user.goal) && goalKind(me.user.goal) !== 'walk' && <FixedCard />}
+        {goalKind(me.user.goal) !== 'walk' && <PlanOverview onPick={(iso) => { pick(iso); setView('saptamana'); }} />}
       </div>
     </>
   );
 }
 
-const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
+const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell, mers: Icons.walk } as const;
 const MONTH_SHORT_RO = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'];
 function fmtShort(iso: string): string {
   return `${Number(iso.slice(8))} ${MONTH_SHORT_RO[Number(iso.slice(5, 7)) - 1]}`;

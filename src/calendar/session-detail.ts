@@ -18,6 +18,7 @@ import type { PlannedWorkout, Zone } from '../types.js';
 import { RUN_MODULES, moduleMinutes, parseModule } from './run-modules.js';
 import { easyWarmCool, fitStrides, openWaterSet, parseStrides, stridesMinutes, swimSet, type Step } from './session-steps.js';
 import { brickSplit, testParts } from './coherence.js';
+import { walkKindOf, walkSpec } from '../walking/plan.js';
 import { shortIntervalSteps } from './bike-swim-modules.js';
 
 export interface DetailContext {
@@ -82,6 +83,16 @@ function hrNote(hr: Hr | null): Step | null {
 /** Pașii detaliați ai ședinței. `ctx` vine din profil (vârstă) și din teste (zone, FCmax, CSS). */
 export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
   const m = Math.max(0, w.plannedMinutes);
+  // Mersul pe jos: aceeași structură ca pagina de mers (src/walking/plan.ts walkSpec), fără puls, zone sau pedalat.
+  if (w.sport === 'mers' && w.type !== 'odihna') {
+    const s = walkSpec(m, walkKindOf(w));
+    return [
+      { label: 'Încălzire', text: `${s.warmup.min} min: mers lejer, pași mai scurți, umerii relaxați` },
+      { label: s.kind === 'alert' ? 'Mers alert' : 'Principal', text: `${s.main.min} min: ${s.main.what}` },
+      { label: 'Revenire', text: `${s.cooldown.min} min: încetinești treptat până la pas lejer` },
+      { label: 'Oprește-te', text: 'la durere în piept, amețeală, lipsă de aer neobișnuită sau o durere care crește; siguranța e înaintea țintei' },
+    ];
+  }
   if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament azi. Corpul se adaptează acum: somn, mâncare, plimbare ușoară dacă ai chef.' }];
   if (w.type === 'forta') {
     const warm = Math.min(8, Math.max(5, Math.floor(m / 6)));

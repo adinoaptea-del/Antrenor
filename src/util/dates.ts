@@ -44,7 +44,15 @@ export function labsExpired(drawn: string, today: string): boolean {
 
 /** Momentul UTC (ISO) în care începe ziua locală `date` în fusul IANA `tz` (ex. 2026-10-17, Europe/Bucharest → 2026-10-16T21:00:00.000Z). */
 export function localDayStartUtc(date: string, tz: string): string {
-  const guess = toUtc(date).getTime();
+  return localTimeUtc(date, 0, tz);
+}
+
+/**
+ * Momentul UTC (ISO) al orei locale `date` + `minutes` (de la miezul nopții) în fusul `tz`. Offsetul se ia la momentul
+ * acela, nu la miezul nopții: 10:00 în ziua trecerii la ora de iarnă e la 08:00 UTC, nu 07:00.
+ */
+export function localTimeUtc(date: string, minutes: number, tz: string): string {
+  const guess = toUtc(date).getTime() + minutes * 60_000;
   const offsetAt = (ms: number) => {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms));
     const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);

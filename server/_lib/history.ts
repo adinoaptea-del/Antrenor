@@ -3,7 +3,7 @@
 // citite, corecturile sportivului): rândurile vechi se adaugă doar dacă lipsesc.
 import { insertIgnore, remove } from './db.js';
 import { accessToken, connectedProviders } from './tokens.js';
-import { activityRow, pullStrava, pullWhoop, wellnessRow } from './sync.js';
+import { activityRow, otherRows, pullStrava, pullWhoop, wellnessRow } from './sync.js';
 import { claimEvent } from './agents.js';
 
 const DAYS = { strava: 730, whoop: 730 } as const;
@@ -20,13 +20,13 @@ export async function importHistory(userId: string): Promise<Record<string, numb
       if (p === 'strava') {
         const { activities, others } = await pullStrava(token, DAYS.strava);
         const a = await insertIgnore('activities', activities.map((x) => activityRow(userId, x)), 'id');
-        await insertIgnore('other_activities', others.map((o) => ({ id: o.id, user_id: userId, source: o.source, external_id: o.externalId, date: o.date, start_local: o.startLocal, kind: o.kind, name: o.name, minutes: o.minutes, avg_hr: o.avgHr, max_hr: o.maxHr })), 'id').catch(() => []);
+        await insertIgnore('other_activities', otherRows(userId, others, true), 'id').catch(() => insertIgnore('other_activities', otherRows(userId, others, false), 'id')).catch(() => []);
         out.strava = a.length;
       } else {
         const { wellness, activities, others } = await pullWhoop(userId, token, DAYS.whoop);
         const w = await insertIgnore('wellness_daily', wellness.map((x) => wellnessRow(userId, x)), 'user_id,date,source');
         const a = await insertIgnore('activities', activities.map((x) => activityRow(userId, x)), 'id');
-        await insertIgnore('other_activities', others.map((o) => ({ id: o.id, user_id: userId, source: o.source, external_id: o.externalId, date: o.date, start_local: o.startLocal, kind: o.kind, name: o.name, minutes: o.minutes, avg_hr: o.avgHr, max_hr: o.maxHr })), 'id').catch(() => []);
+        await insertIgnore('other_activities', otherRows(userId, others, true), 'id').catch(() => insertIgnore('other_activities', otherRows(userId, others, false), 'id')).catch(() => []);
         out.whoop = w.length + a.length;
       }
     } catch (e) {

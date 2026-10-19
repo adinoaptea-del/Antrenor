@@ -71,6 +71,7 @@ const TARGETS: Record<Goal, { swimM: number; rideKm: number; runKm: number; bric
   'fit-tonifiere': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
   'fit-intretinere': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
   'fit-masa': { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
+  mers: { swimM: 0, rideKm: 0, runKm: 0, brickRunKm: 0 },
 };
 
 export function computeBar(input: BarInput): BarResult {

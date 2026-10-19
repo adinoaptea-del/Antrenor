@@ -261,7 +261,7 @@ export function parseHealthConnect(body: unknown, tz: string): HealthConnectPars
           if (!c) unknown.add(`exercise:${kind || title}`);
           continue;
         }
-        others.push({ id: `android-o-${id}`, source: 'android', externalId: id, date: l.date, startLocal: l.hm, kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max) });
+        others.push({ id: `android-o-${id}`, source: 'android', externalId: id, date: l.date, startLocal: l.hm, kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: avg == null ? null : Math.round(avg), maxHr: max == null ? null : Math.round(max), startUtc: new Date(start).toISOString(), elapsedSec: Math.round(elapsedSec), movingSec: activeSec != null && activeSec >= 60 && activeSec <= elapsedSec + 30 ? Math.round(Math.min(activeSec, elapsedSec)) : null });
       }
     } else if (type === 'steps' || type === 'heartrate' || type === 'distance' || type === 'totalcaloriesburned' || type === 'activecaloriesburned' || type === 'oxygensaturation' || type === 'respiratoryrate' || type === 'hydration' || type === 'nutrition') {
       // Le primim, nu le folosim (încă); nu sunt necunoscute.

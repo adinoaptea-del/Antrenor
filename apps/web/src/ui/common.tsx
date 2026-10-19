@@ -415,6 +415,7 @@ export const Icons = {
   waves: <I d="M3 9c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M3 15c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2" />,
   bike: <I d="M6 16l4-7h5l3 7M10 9l3 7h5M13 9l-1-3h3" extra={<><circle cx="6" cy="16" r="3.5" /><circle cx="18" cy="16" r="3.5" /></>} />,
   run: <I d="M13 7l-3 4 3 2.5-2 5.5M13 7l4 1.5 2 3M10 11l-4 1M11 13.5l-4 5" extra={<circle cx="15" cy="4" r="1.8" />} />,
+  walk: <I d="M12.5 7.5 11 13l3 3 1 5M11 13l-2.5 2-1 5M12.5 7.5l3 2.5 2.5.5M12.5 7.5 9.5 9l-1.5 3" extra={<circle cx="13.5" cy="4" r="1.8" />} />,
   dumbbell: <I d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12" />,
   check: <I d="M5 12l4.5 4.5L19 7" />,
   bell: <I d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0" />,

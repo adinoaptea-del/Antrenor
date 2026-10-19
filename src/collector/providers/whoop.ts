@@ -164,7 +164,7 @@ export function normalizeWhoopOther(w: WhoopWorkout): OtherActivity | null {
   if (!c) return null;
   const minutes = Math.round((new Date(w.end).getTime() - new Date(w.start).getTime()) / 60_000);
   if (minutes < 5) return null;
-  return { id: `whoop-o-${w.id}`, source: 'whoop', externalId: w.id, date: localDate(w.start, w.timezone_offset), startLocal: localHm(w.start, w.timezone_offset), kind: c.kind, name: c.name, minutes, avgHr: w.score?.average_heart_rate ?? null, maxHr: w.score?.max_heart_rate ?? null };
+  return { id: `whoop-o-${w.id}`, source: 'whoop', externalId: w.id, date: localDate(w.start, w.timezone_offset), startLocal: localHm(w.start, w.timezone_offset), kind: c.kind, name: c.name, minutes, avgHr: w.score?.average_heart_rate ?? null, maxHr: w.score?.max_heart_rate ?? null, startUtc: new Date(w.start).toISOString(), elapsedSec: Math.round((new Date(w.end).getTime() - new Date(w.start).getTime()) / 1000), movingSec: null };
 }
 
 /** Webhook v2: WHOOP trimite doar evenimentul și id-ul; recordul se cere apoi prin API. */

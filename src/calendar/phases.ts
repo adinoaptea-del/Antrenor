@@ -12,15 +12,20 @@ export type SwimGoal = 'inot-1500' | 'inot-1900' | 'inot-3800';
 export type BikeGoal = 'bike-50' | 'bike-100' | 'bike-160';
 /** Fitness (deocamdată doar pentru femei, programul AIRON de 26 de săptămâni): fără cursă, cu un obiectiv de corp. */
 export type FitnessGoal = 'fit-slabire' | 'fit-tonifiere' | 'fit-intretinere' | 'fit-masa';
-export type Goal = TriGoal | RunGoal | SwimGoal | BikeGoal | FitnessGoal;
-export type GoalKind = 'tri' | 'run' | 'swim' | 'bike' | 'fitness';
+/** Mers pe jos: o țintă de minute pe săptămână (bula), cu mers ușor și mers alert. */
+export type WalkGoal = 'mers';
+export type Goal = TriGoal | RunGoal | SwimGoal | BikeGoal | FitnessGoal | WalkGoal;
+export type GoalKind = 'tri' | 'run' | 'swim' | 'bike' | 'fitness' | 'walk';
 
 export const TRI_GOALS: readonly TriGoal[] = ['70.3', 'olimpic', 'sprint'];
 export const RUN_GOALS: readonly RunGoal[] = ['5k', '10k', 'semimaraton', 'maraton'];
 export const SWIM_GOALS: readonly SwimGoal[] = ['inot-1500', 'inot-1900', 'inot-3800'];
 export const BIKE_GOALS: readonly BikeGoal[] = ['bike-50', 'bike-100', 'bike-160'];
 export const FITNESS_GOALS: readonly FitnessGoal[] = ['fit-slabire', 'fit-tonifiere', 'fit-intretinere', 'fit-masa'];
-export const ALL_GOALS: readonly Goal[] = [...TRI_GOALS, ...RUN_GOALS, ...SWIM_GOALS, ...BIKE_GOALS, ...FITNESS_GOALS];
+export const WALK_GOALS: readonly WalkGoal[] = ['mers'];
+export const ALL_GOALS: readonly Goal[] = [...TRI_GOALS, ...RUN_GOALS, ...SWIM_GOALS, ...BIKE_GOALS, ...FITNESS_GOALS, ...WALK_GOALS];
+/** Programul de mers: aceeași lungime de referință ca fitness-ul; ținta săptămânii e cea din jurnal. */
+export const WALK_WEEKS = 26;
 /** Programul de fitness are o lungime fixă de referință: 26 de săptămâni (aproximativ șase luni). */
 export const FITNESS_WEEKS = 26;
 
@@ -29,16 +34,19 @@ export const isSwimGoal = (g: string | null | undefined): g is SwimGoal => (SWIM
 export const isBikeGoal = (g: string | null | undefined): g is BikeGoal => (BIKE_GOALS as readonly string[]).includes(g ?? '');
 export const isFitnessGoal = (g: string | null | undefined): g is FitnessGoal => (FITNESS_GOALS as readonly string[]).includes(g ?? '');
 export const isTriGoal = (g: string | null | undefined): g is TriGoal => (TRI_GOALS as readonly string[]).includes(g ?? '');
+export const isWalkGoal = (g: string | null | undefined): g is WalkGoal => g === 'mers';
 export const isGoal = (g: string | null | undefined): g is Goal => (ALL_GOALS as readonly string[]).includes(g ?? '');
 
 /** Felul obiectivului: un singur sport (alergare / înot / bicicletă) sau triatlon. null pentru obiective necunoscute (ex. „full”). */
 export function goalKind(g: string | null | undefined): GoalKind | null {
-  return isRunGoal(g) ? 'run' : isSwimGoal(g) ? 'swim' : isBikeGoal(g) ? 'bike' : isTriGoal(g) ? 'tri' : isFitnessGoal(g) ? 'fitness' : null;
+  return isRunGoal(g) ? 'run' : isSwimGoal(g) ? 'swim' : isBikeGoal(g) ? 'bike' : isTriGoal(g) ? 'tri' : isFitnessGoal(g) ? 'fitness' : isWalkGoal(g) ? 'walk' : null;
 }
 
 /** Sporturile din plan pentru un obiectiv: la un singur sport, doar sportul și forța; toate trei doar la triatlon. */
-export function goalSports(g: string | null | undefined): ('inot' | 'bicicleta' | 'alergare' | 'forta')[] {
+export function goalSports(g: string | null | undefined): ('inot' | 'bicicleta' | 'alergare' | 'forta' | 'mers')[] {
   switch (goalKind(g)) {
+    case 'walk':
+      return ['mers'];
     case 'run':
       return ['alergare', 'forta'];
     case 'swim':
@@ -78,6 +86,7 @@ export const GOAL_LABEL: Record<Goal, string> = {
   'fit-tonifiere': 'tonifiere',
   'fit-intretinere': 'întreținere',
   'fit-masa': 'creștere musculară',
+  mers: 'mers pe jos',
 };
 
 export interface PhaseHours {
@@ -207,6 +216,7 @@ export const PHASE_HOURS: Record<Goal, Record<Phase, PhaseHours>> = {
   'fit-tonifiere': FIT_HOURS,
   'fit-intretinere': FIT_HOURS,
   'fit-masa': FIT_HOURS,
+  mers: FIT_HOURS,
 };
 
 export interface PhaseWeek {

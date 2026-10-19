@@ -26,6 +26,8 @@ export interface StravaActivity {
   id: number;
   name: string;
   sport_type: string; // Run, TrailRun, Ride, VirtualRide, Swim, WeightTraining, Walk, Hike…
+  /** Începutul în UTC (ISO). */
+  start_date?: string;
   start_date_local: string; // „2026-10-11T08:19:17Z” — ora locală scrisă cu Z
   elapsed_time: number; // s
   moving_time: number; // s
@@ -88,7 +90,7 @@ export function normalizeStravaOther(a: StravaActivity): OtherActivity | null {
   if (!c) return null;
   const minutes = Math.round((a.elapsed_time ?? a.moving_time) / 60);
   if (minutes < 5) return null;
-  return { id: `strava-o-${a.id}`, source: 'strava', externalId: String(a.id), date: a.start_date_local.slice(0, 10), startLocal: a.start_date_local.slice(11, 16), kind: c.kind, name: c.name, minutes, avgHr: a.average_heartrate != null ? Math.round(a.average_heartrate) : null, maxHr: a.max_heartrate != null ? Math.round(a.max_heartrate) : null };
+  return { id: `strava-o-${a.id}`, source: 'strava', externalId: String(a.id), date: a.start_date_local.slice(0, 10), startLocal: a.start_date_local.slice(11, 16), kind: c.kind, name: c.name, minutes, avgHr: a.average_heartrate != null ? Math.round(a.average_heartrate) : null, maxHr: a.max_heartrate != null ? Math.round(a.max_heartrate) : null, startUtc: a.start_date ?? null, elapsedSec: a.elapsed_time ?? null, movingSec: a.moving_time != null && a.elapsed_time != null && a.moving_time <= a.elapsed_time ? a.moving_time : null };
 }
 
 export function normalizeStravaActivity(a: StravaActivity): SourceActivity | null {

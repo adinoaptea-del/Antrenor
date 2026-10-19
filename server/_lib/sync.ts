@@ -168,9 +168,26 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
 /** Recuperarea și mișcarea în plus; dacă tabelul nu există încă (schemă veche), nu oprește sincronizarea. */
 export async function saveOthers(userId: string, others: OtherActivity[]): Promise<void> {
   if (!others.length) return;
-  await upsert(
-    'other_activities',
-    others.map((o) => ({ id: o.id, user_id: userId, source: o.source, external_id: o.externalId, date: o.date, start_local: o.startLocal, kind: o.kind, name: o.name, minutes: o.minutes, avg_hr: o.avgHr, max_hr: o.maxHr, synced_at: new Date().toISOString() })),
-    'id',
-  ).catch(() => undefined);
+  // Schema 9 are și ora reală, durata și timpul în mișcare (pentru mers). Pe o schemă veche, rândul se scrie fără ele.
+  // Câmpurile sportivului (ștearsă, mers alert, legată de alt import) nu sunt în rând: reimportul nu le suprascrie.
+  const at = new Date().toISOString();
+  await upsert('other_activities', otherRows(userId, others, true).map((r) => ({ ...r, synced_at: at })), 'id').catch(() => upsert('other_activities', otherRows(userId, others, false).map((r) => ({ ...r, synced_at: at })), 'id')).catch(() => undefined);
+}
+
+/** Rândurile pentru other_activities; `walkCols` = cu coloanele de mers (schema 9). */
+export function otherRows(userId: string, others: OtherActivity[], walkCols: boolean): Record<string, unknown>[] {
+  return others.map((o) => ({
+    id: o.id,
+    user_id: userId,
+    source: o.source,
+    external_id: o.externalId,
+    date: o.date,
+    start_local: o.startLocal,
+    kind: o.kind,
+    name: o.name,
+    minutes: o.minutes,
+    avg_hr: o.avgHr,
+    max_hr: o.maxHr,
+    ...(walkCols ? { start_utc: o.startUtc ?? null, elapsed_sec: o.elapsedSec ?? null, moving_sec: o.movingSec ?? null } : {}),
+  }));
 }

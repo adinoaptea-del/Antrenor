@@ -12,6 +12,7 @@ import { weeklyBudget } from './budget.js';
 import { SWIM_PYRAMID, bikeQuality, swimQuality } from './bike-swim-modules.js';
 import { generateFitnessPlan } from './fitness-plan.js';
 import type { FitnessProfile } from '../strength/fitness.js';
+import { walkPlanWorkouts, type WalkProfile, DEFAULT_WALK_PROFILE } from '../walking/plan.js';
 import { BIKE_DISTANCE_KM, GOAL_LABEL, PHASE_HOURS, SWIM_DISTANCE_M, goalKind, isBikeGoal, isRunGoal, isSwimGoal, phaseWeeks, type Goal, type PhaseWeek, type RunGoal } from './phases.js';
 
 export interface GenerateInput {
@@ -46,6 +47,8 @@ export interface GenerateInput {
   };
   /** Doar la înot: câți metri înoată acum fără oprire (declarat sau măsurat). */
   swim?: { continuousM: number | null };
+  /** Mers pe jos: ținta, capacitatea, mersul alert, jurnalul țintei; cea mai lungă plimbare recentă (minute). */
+  walk?: { profile: WalkProfile; demonstratedMin: number | null };
   /** Intern: câte ședințe de forță încap în fazele de bază (3 când programul total o permite). */
   strengthSlots?: number;
   /** Întâlniri fixe (ex. alergarea cu grupul sâmbăta): ședința potrivită se pune în ziua aceea, dacă e în program. */
@@ -94,9 +97,15 @@ const RECOVERY_FACTOR = 0.65;
 const CHANGE_MIN = 10; // minute de schimbat/duș în jurul unei ședințe
 /** Sub aceste durate o ședință nu mai are sens; se taie, nu se scurtează. */
 // Forța: nicio ședință sub 45 de minute cu încălzirea (regula proprietarului, 19.10.2026).
-const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 45 };
+const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 45, mers: 10 };
 
 export function generatePlan(input: GenerateInput): GenerateResult {
+  if (goalKind(input.goal) === 'walk') {
+    // Mersul: ținta săptămânii împărțită pe zile (src/walking/plan.ts), fără faze de anduranță și fără datorie.
+    const w = walkPlanWorkouts({ startDate: input.startDate, endDate: input.raceDate, profile: input.walk?.profile ?? DEFAULT_WALK_PROFILE, freeBlocks: input.freeBlocks, demonstratedMin: input.walk?.demonstratedMin ?? null });
+    const weeks: WeekPlan[] = w.weeks.map((x) => ({ weekStart: x.weekStart, phase: 'baza1', recovery: false, targetHours: Math.round((x.targetMin / 60) * 10) / 10, plannedHours: Math.round((x.plannedMin / 60) * 10) / 10, workouts: x.workouts, notes: x.short ? [x.short] : [] }));
+    return { ok: true, weeks, budgetHours: Math.ceil(Math.max(0, ...w.weeks.map((x) => x.plannedMin)) / 6) / 10 };
+  }
   if (goalKind(input.goal) === 'fitness') {
     const fitness: FitnessProfile = input.fitness ?? { goal: input.goal as FitnessProfile['goal'], days: 2, minutes: 45, beginner: true };
     return generateFitnessPlan({ startDate: input.startDate, raceDate: input.raceDate, freeBlocks: input.freeBlocks, fitness, male: input.athlete?.sex === 'm' });

@@ -275,7 +275,7 @@ export function computeBadges(i: BadgesInput): BadgesResult {
       return { s, target, have, ratio: target ? have / target : 1 };
     });
     const pick = rows.sort((a, b) => a.ratio - b.ratio)[0]!;
-    const word: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' };
+    const word: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' };
     challenge = { month, title: `${pick.target} ședințe de ${word[pick.s]} luna asta`, have: Math.min(pick.have, pick.target), target: pick.target, done: pick.have >= pick.target };
   }
 

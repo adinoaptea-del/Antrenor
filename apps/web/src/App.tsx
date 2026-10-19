@@ -1,3 +1,4 @@
+import { WalkPage } from './ui/Walking';
 import { BadgesScreen } from './ui/Badges';
 import { useEffect, useRef, useState } from 'react';
 import type { Sport } from '@core/types.js';
@@ -28,7 +29,7 @@ import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
 // Trei taburi jos: Azi (bula cu ședințele zilei; Starea de azi și Obiectivul se deschid din ea), Plan, Coach.
 // Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
-type Screen = 'mese' | 'progres' | 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
+type Screen = 'mese' | 'progres' | 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne' | 'mers';
 type Tab = 'acasa' | 'plan' | 'coach';
 const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; screens: Screen[] }[] = [
   { id: 'acasa', label: 'Azi', icon: 'home', go: 'acasa', screens: ['acasa', 'recuperare', 'obiectiv', 'insigne'] },
@@ -38,7 +39,7 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; scre
 const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))?.id ?? null;
 // O singură pagină principală (Azi); restul se deschid din butoanele de sub bulă și au „înapoi”.
 const MAIN: { id: Screen }[] = [{ id: 'acasa' }];
-const ALL: Screen[] = ['mese', 'progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
+const ALL: Screen[] = ['mese', 'progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne', 'mers'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -333,7 +334,7 @@ function Shell() {
               <BackHeader title="Planul tău" onBack={() => go('acasa')} />
               <PageTitle title="" sub={planSub(me.today)} />
               <SubTabs label="Planul" value={screen === 'calendar' ? 'calendar' : 'sporturi'} onChange={(v) => go(v === 'calendar' ? 'calendar' : 'antrenament')} items={[{ id: 'calendar', label: 'Calendar' }, { id: 'sporturi', label: sportsTabLabel(me.user.goal) }]} />
-              {screen === 'calendar' ? <Calendar onBack={back} onOpen={go} /> : <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
+              {screen === 'calendar' ? <Calendar onBack={back} onOpen={go} /> : goalKind(me.user.goal) === 'walk' ? <WalkPage /> : <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
             </>
           )}
           {(screen === 'recuperare' || screen === 'obiectiv') && (
@@ -353,6 +354,7 @@ function Shell() {
             </>
           )}
           {screen === 'profil' && <Profile onBack={back} onOpen={go} ambient={ambient} onAmbient={setAmbient} />}
+          {screen === 'mers' && <WalkPage onBack={back} />}
           {screen === 'insigne' && <BadgesScreen onBack={() => go('obiectiv')} onOpen={go} />}
           {screen === 'prieteni' && me.admin && <Admin onBack={() => go('profil')} />}
           {screen === 'intake' && (
@@ -384,7 +386,7 @@ function Shell() {
 /** Eticheta tabului de sport: la un singur sport, numele sportului (nu există „Sporturi”). */
 function sportsTabLabel(goal: string | null): string {
   const k = goalKind(goal);
-  return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : k === 'fitness' ? 'Fitness' : 'Sporturi';
+  return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : k === 'fitness' ? 'Fitness' : k === 'walk' ? 'Mers' : 'Sporturi';
 }
 
 /** „Azi: 19 octombrie 2026” — doar data de azi; săptămâna afișată o spune calendarul (L-SIM-05). */

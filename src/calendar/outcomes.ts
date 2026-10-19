@@ -26,7 +26,7 @@ export interface Outcome {
 export const MOTIV_LABEL: Record<OutcomeMotiv, string> = { timp: 'lipsă de timp', oboseala: 'oboseală', durere: 'durere', boala: 'boală', altul: 'alt motiv' };
 const NOT_TOLERATED: OutcomeMotiv[] = ['oboseala', 'durere', 'boala'];
 const DAY = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
-const SPORT: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' };
+const SPORT: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' };
 const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'mutat';
 const dm = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
 const hard = (w: PlannedWorkout) => w.key || w.type === 'calitate' || w.type === 'brick' || w.targetZones.some((z) => z >= 3);

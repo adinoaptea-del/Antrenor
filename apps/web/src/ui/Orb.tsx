@@ -6,10 +6,23 @@ import { useEffect, useRef, type ReactNode } from 'react';
  * Animația se oprește când pagina e ascunsă, când bula nu e pe ecran, când e deschisă fereastra ședinței sau la
  * „mișcare redusă” (atunci rămâne un cadru static).
  */
-export function Orb({ children, onPress, label, paused = false, dim = false }: { children: ReactNode; onPress: () => void; label: string; paused?: boolean; dim?: boolean }) {
+export function Orb({ children, onPress, label, paused = false, dim = false, progress = null, celebrate = false }: { children: ReactNode; onPress: () => void; label: string; paused?: boolean; dim?: boolean; progress?: number | null; celebrate?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // Bula mersului: câte particule rămân = câte minute mai sunt (progress 0 → plină, 1 → aproape goală); culoarea merge
+  // de la turcoaz rece spre lime pe măsură ce se adună mersul. Nu depinde de recuperarea zilei.
+  const progRef = useRef<number | null>(progress);
+  progRef.current = progress == null ? null : Math.max(0, Math.min(1, progress));
+  const burstRef = useRef<number | null>(null);
+  const redrawRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    if (celebrate) burstRef.current = performance.now();
+    redrawRef.current();
+  }, [celebrate]);
+  useEffect(() => {
+    redrawRef.current();
+  }, [progress]);
 
   useEffect(() => {
     const cv = canvas.current;
@@ -70,14 +83,29 @@ export function Orb({ children, onPress, label, paused = false, dim = false }: {
       return [0, 1, 2].map((i) => Math.round(a[i]! + (b[i]! - a[i]!) * m));
     };
 
+    // Progresul mersului: puțin realizat = mai rece (turcoaz), aproape de țintă = lime.
+    const tint = (c: number[], prog: number | null) => {
+      if (prog == null) return c;
+      const to = prog < 0.5 ? TEAL.map((v, i) => v + (GREEN[i]! - v) * prog * 2) : GREEN.map((v, i) => v + (LIME[i]! - v) * (prog - 0.5) * 2);
+      return c.map((v, i) => Math.round(v * 0.5 + to[i]! * 0.5));
+    };
+
     const draw = (t: number) => {
+      const prog = progRef.current;
+      // Particulele vizibile: proporțional cu minutele rămase (un rest discret rămâne, ca bula să nu dispară).
+      const visibleN = prog == null ? N : Math.round(N * (0.06 + 0.94 * (1 - prog)));
+      // Scurta animație la atingerea țintei: o pulsație de ~1,6 s (nu și la „mișcare redusă”).
+      const bAt = burstRef.current;
+      const bT = bAt != null && !reduce ? (performance.now() - bAt) / 1600 : 2;
+      const burst = bT >= 0 && bT < 1 ? Math.sin(Math.PI * bT) : 0;
+      if (bT >= 1) burstRef.current = null;
       const W = w * dpr;
       const H = h * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
       const cx = W / 2;
       const cy = H / 2;
-      const R = Math.min(W, H) * 0.37;
+      const R = Math.min(W, H) * 0.37 * (1 + 0.06 * burst);
       const rotY = t * 0.08;
       const rotX = 0.35 + 0.12 * Math.sin(t * 0.05);
       const cY = Math.cos(rotY), sY = Math.sin(rotY), cX = Math.cos(rotX), sX = Math.sin(rotX);
@@ -144,7 +172,7 @@ export function Orb({ children, onPress, label, paused = false, dim = false }: {
       }
 
       // Particule: rotite în volum, apoi deformate în coordonatele vederii (la fel ca membrana).
-      for (let i = 0; i < N; i++) {
+      for (let i = 0; i < visibleN; i++) {
         const p = pts[i]!;
         const th = p.th + t * p.sp;
         const s = Math.sqrt(1 - p.u * p.u);
@@ -162,9 +190,9 @@ export function Orb({ children, onPress, label, paused = false, dim = false }: {
         // Centrul rămâne aerisit pentru text; marginea e mai luminoasă.
         const clear = Math.min(1, Math.max(0.08, (dc - 0.42) / 0.38));
         const rim = 0.6 + 0.6 * Math.max(0, 1 - Math.abs(dc - 1) * 4);
-        const a = Math.min(1, (0.4 + 0.7 * depth) * clear * rim * (0.8 + p.tw * Math.sin(t * 1.1 + p.ph)));
+        const a = Math.min(1, (0.4 + 0.7 * depth) * clear * rim * (0.8 + p.tw * Math.sin(t * 1.1 + p.ph)) * (1 + 0.8 * burst));
         if (a <= 0.01) continue;
-        const c = colAt(Math.atan2(Y - cy, X - cx), p.hue);
+        const c = tint(colAt(Math.atan2(Y - cy, X - cx), p.hue), prog);
         const rad = p.sz * dpr * (0.7 + 0.6 * depth);
         if (p.big) {
           const bg = ctx.createRadialGradient(X, Y, 0, X, Y, rad * 3.2);
@@ -209,12 +237,19 @@ export function Orb({ children, onPress, label, paused = false, dim = false }: {
     });
     io.observe(cv);
     document.addEventListener('visibilitychange', sync);
+    redrawRef.current = () => {
+      if (!raf) {
+        if (burstRef.current != null && running()) sync();
+        else draw(tAcc);
+      }
+    };
     const tick = window.setInterval(() => {
       if (!raf && running()) sync();
       if (raf && !running()) sync();
     }, 400);
     sync();
     return () => {
+      redrawRef.current = () => undefined;
       cancelAnimationFrame(raf);
       window.clearInterval(tick);
       io.disconnect();

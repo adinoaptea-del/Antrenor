@@ -1,15 +1,18 @@
+import { loadWalkRows, withWalks } from './walking.js';
+import { isWalkName } from '../../src/walking/rows.js';
+import { walkingView } from '../../src/walking/view.js';
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // Din baza de date în CollectorInput: tot ce intră în pachet pentru un sportiv, la o dată.
 import { select, one } from './db.js';
 import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
-import { addDays, labsExpired, weekday } from '../../src/util/dates.js';
+import { addDays, labsExpired, weekStart, weekday } from '../../src/util/dates.js';
 import { loadPrefs } from './prefs.js';
 import { DEFAULT_PREFS, nutritionDay } from '../../src/nutrition/engine.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
-import { isFitnessGoal, isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
+import { isFitnessGoal, isRunGoal, isWalkGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
 import type { FitnessIntake } from '../../src/strength/fitness.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
@@ -178,11 +181,13 @@ export async function loadPlan(userId: string, from: string, to: string): Promis
 }
 
 export async function loadActivities(userId: string, from: string, limit = 500): Promise<SourceActivity[]> {
-  const [rows, ov] = await Promise.all([
+  const [rows, ov, u] = await Promise.all([
     select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit }),
     loadOverrides(userId),
+    one<{ goal: string | null; tz: string | null }>('users', { id: `eq.${userId}` }, { select: 'goal,tz' }).catch(() => null),
   ]);
-  return applyOverrides(rows.map(toSourceActivity), ov);
+  // Obiectivul „mers”: plimbările (fără dubluri) intră ca activități de mers, peste tot (scor, agenți, pagină).
+  return withWalks(userId, u?.goal ?? null, u?.tz ?? 'Europe/Bucharest', applyOverrides(rows.map(toSourceActivity), ov), from);
 }
 
 type Override = { activity_id: string; sport: SourceActivity['sport'] | null; ignored: boolean };
@@ -303,7 +308,9 @@ export async function collect(userId: string, today: string, event: CollectorInp
     planRow ? loadTotals(userId, planRow.start_date, true) : Promise.resolve(null),
   ]);
   // Pachetul merge la AI: sursele din registrul de blocare (permissions.ts) nu intră deloc, nici prin derivate.
-  const others = allowedForAI(await loadOthers(userId, addDays(today, -8)));
+  // La obiectivul „mers”, plimbările sunt activitățile planului (nu „mișcare în plus”): nu se numără de două ori.
+  const walkGoal = isWalkGoal(user.goal);
+  const others = allowedForAI(await loadOthers(userId, addDays(today, -8))).filter((o) => !(walkGoal && isWalkName(o.name)));
   // Mesele de azi, din același motor ca ecranul „Mese recomandate” (aceleași intrări, aceeași zi a planului).
   const bodyRow = await one<{ date: string; weight_kg: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' }).catch(() => null);
   const prefs = await loadPrefs(userId).catch(() => null);
@@ -318,7 +325,9 @@ export async function collect(userId: string, today: string, event: CollectorInp
     prefs: { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) },
     blockers: { pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da', minor: age != null && age < 18 },
   });
+  const walkLoad = walkGoal ? await loadWalkRows(userId, addDays(weekStart(today), -63)).catch(() => null) : null;
   const input: CollectorInput = {
+    walking: walkLoad && prefs ? walkingView({ rows: walkLoad.rows, tz: user.tz || 'Europe/Bucharest', today, profile: prefs.mers!, plan: planRes.workouts.filter((w) => w.status !== 'sters'), schemaReady: walkLoad.schemaReady }) : null,
     mealsToday,
     others,
     today,
@@ -385,7 +394,7 @@ export async function loadTotals(userId: string, since: string, forAI = false): 
   }
   const all = applyOverrides(raw, await loadOverrides(userId));
   const acts = dedupeActivities(forAI ? allowedForAI(all) : all);
-  const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 } };
+  const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 }, mers: { km: 0, ore: 0, sedinte: 0 } };
   for (const a of acts) {
     const t = bySport[a.sport];
     t.km += a.distanceKm ?? 0;
@@ -432,7 +441,8 @@ function declaredLevel(intake: Record<string, unknown> | null): string {
 
 export async function loadOthers(userId: string, from: string): Promise<OtherActivity[]> {
   const rows = await select<{ id: string; source: string; external_id: string; date: string; start_local: string | null; kind: 'recuperare' | 'activ'; name: string; minutes: number; avg_hr: number | null; max_hr: number | null }>('other_activities', { user_id: `eq.${userId}`, date: `gte.${from}` }, { order: 'date.desc', limit: 200 }).catch(() => []);
-  return rows.map((r) => ({ id: r.id, source: r.source, externalId: r.external_id, date: r.date, startLocal: r.start_local, kind: r.kind, name: r.name, minutes: r.minutes, avgHr: r.avg_hr, maxHr: r.max_hr }));
+  // Ce a șters sportivul (schema 9: excluded) nu se mai numără nicăieri.
+  return rows.filter((r) => !(r as { excluded?: boolean | null }).excluded).map((r) => ({ id: r.id, source: r.source, externalId: r.external_id, date: r.date, startLocal: r.start_local, kind: r.kind, name: r.name, minutes: r.minutes, avgHr: r.avg_hr, maxHr: r.max_hr }));
 }
 
 /** Rezumatul istoricului (24 de luni), din coloanele ușoare ale activităților. */

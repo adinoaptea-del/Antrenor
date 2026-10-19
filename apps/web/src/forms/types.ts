@@ -48,6 +48,8 @@ export interface IntakeAnswers {
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string; limitareMedic?: boolean | null };
   /** Doar la fitness (femei). */
   fitness?: FitnessIntake;
+  /** Doar la mers pe jos: ținta de la început (minute pe săptămână), cât merge acum fără oprire, mersul alert. */
+  mers?: { tinta?: number | null; capacitate?: number | null; alert?: 'da' | 'nu' | 'nu_stiu' | null };
   minte: { motiveaza: string; aOprit: string };
   consimtamant: boolean;
 }

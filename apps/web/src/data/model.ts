@@ -1,3 +1,4 @@
+import { walkKindOf, walkSpec } from '@core/walking/plan.js';
 import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
 import { detailSteps } from '@core/calendar/session-detail.js';
 import { swimDeclared } from '@core/bar/sport-readiness.js';
@@ -12,7 +13,7 @@ import { decideDay, messageMatches, type DayDecision } from '@core/calendar/day.
 
 export type { Me, MeActivity };
 
-export const SPORT_LABEL: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță' };
+export const SPORT_LABEL: Record<Sport, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță', mers: 'Mers pe jos' };
 export const TYPE_LABEL: Record<PlannedWorkout['type'], string> = { z2: 'Z2', tehnica: 'tehnică', calitate: 'calitate', lung: 'lung', brick: 'brick', forta: 'forță', odihna: 'odihnă' };
 export const COLOR_LABEL: Record<Color, string> = {
   verde: 'conform planului',
@@ -27,7 +28,7 @@ export const DAY_NAMES = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmb�
 export const DAY_SHORT = ['lu', 'ma', 'mi', 'jo', 'vi', 'sâ', 'du'];
 export const MONTH_SHORT = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sept', 'oct', 'nov', 'dec'];
 
-const ORDER: Record<Sport, number> = { bicicleta: 1, alergare: 1, inot: 2, forta: 3 };
+const ORDER: Record<Sport, number> = { bicicleta: 1, alergare: 1, inot: 2, forta: 3, mers: 4 };
 
 export function workoutsOn(me: Me, date: string): PlannedWorkout[] {
   return me.plan.filter((w) => w.date === date && w.status !== 'sters').sort((a, b) => Number(b.key) - Number(a.key) || ORDER[a.sport] - ORDER[b.sport]);
@@ -230,6 +231,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
 /** De ce există ședința, într-o propoziție (din tipul ei). */
 export function purposeOf(w: PlannedWorkout): string {
   if (w.status === 'anulat_sistem') return 'Anulată: corpul are nevoie de odihnă sau ziua nu permite.';
+  if (w.sport === 'mers') return walkSpec(w.plannedMinutes, walkKindOf(w)).purpose;
   if (/TEST/i.test(w.structure ?? '')) return 'Test: din el ies zonele tale, ca intensitatea să fie pe corpul tău.';
   if (/4\s*×\s*4/.test(w.structure ?? '')) return 'Metoda norvegiană 4×4: ridică VO2max, plafonul motorului.';
   const mod = parseModule(w.structure);

@@ -10,7 +10,9 @@ import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed, PlannedWorkout } from '../../src/types.js';
 import { addDays, diffDays, weekStart, weekday } from '../../src/util/dates.js';
-import { FITNESS_WEEKS, GOAL_LABEL, isFitnessGoal, isRunGoal, type Goal } from '../../src/calendar/phases.js';
+import { FITNESS_WEEKS, GOAL_LABEL, WALK_WEEKS, isFitnessGoal, isRunGoal, isWalkGoal, type Goal } from '../../src/calendar/phases.js';
+import { loadWalkRows } from './walking.js';
+import { demonstratedMin, toWalkRecords } from '../../src/walking/rows.js';
 import { fitnessProfile, unlockDecision, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
 import { activeRestriction } from '../../src/calendar/safety.js';
 import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
@@ -46,6 +48,8 @@ export interface IntakeLike {
   evaluare?: { inot400?: string | null; ritmUsor?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
   /** Doar la fitness (femei): nivelul, zilele, minutele, accesul, mișcarea de acum și contextul opțional. */
   fitness?: FitnessIntake;
+  /** Doar la mers: ținta de la început, cât merge acum fără oprire, mersul alert. */
+  mers?: { tinta?: number | null; capacitate?: number | null; alert?: 'da' | 'nu' | 'nu_stiu' | null };
 }
 
 /** Orele pe săptămână din ultimele până la 8 săptămâni, din activitățile deja sincronizate (gol = fără istoric). */
@@ -186,9 +190,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const firstDay = startThisWeek ? today : nextMonday0;
   const nextMonday = firstDay;
   const fitness = isFitnessGoal(intake.obiectiv);
-  if (fitness) {
+  // Mersul pe jos: tot un program de 26 de săptămâni, fără cursă.
+  const walk = isWalkGoal(intake.obiectiv);
+  if (fitness || walk) {
     const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday0;
-    intake = { ...intake, dataCursa: same ? current!.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, FITNESS_WEEKS * 7) };
+    intake = { ...intake, dataCursa: same ? current!.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, (walk ? WALK_WEEKS : FITNESS_WEEKS) * 7) };
   }
   const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday0;
   const startDate = continuing ? current!.start_date : startThisWeek ? weekStart(today) : nextMonday0;
@@ -198,6 +204,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
   // Capacitatea la înot cu proveniență: măsurată (ceas) sau declarată; necunoscut rămâne null (V2-04).
   const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
   const result: GenerateResult = generatePlan({
+    walk: walk ? { profile: prefs.mers!, demonstratedMin: await walkDemonstrated(userId, today) } : undefined,
     fixed: prefs.fixe,
     fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv as Goal, intake.fitness), continuing ? current!.id : null) : undefined,
     startDate,
@@ -282,7 +289,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
   // Avizul se consideră dat: și planurile refăcute (ex. din Admin) aduc intensitatea permisă în pachetul agenților.
   await upsert('clearances', clearanceRow(userId, today, intake), 'user_id').catch(() => undefined);
   // Fitness: data de final e a programului (26 de săptămâni de la început), nu cea trimisă din chestionar.
-  if (fitness) await update('users', { id: `eq.${userId}` }, { race_date: intake.dataCursa }).catch(() => undefined);
+  if (fitness || walk) await update('users', { id: `eq.${userId}` }, { race_date: intake.dataCursa }).catch(() => undefined);
   return {
     ok: true,
     budgetHours: result.budgetHours,
@@ -358,4 +365,11 @@ export async function reevaluateFitnessDays(userId: string, today: string): Prom
   if (nextWeek.length === 0 || nextWeek.length === want) return { changed: false, days: nextWeek.length || null };
   const r = await generateAndStore(userId, today, intake.answers);
   return { changed: r.ok, days: want };
+}
+
+/** Cea mai lungă plimbare din ultimele 14 zile (minute): capacitatea demonstrată pentru planul de mers. */
+async function walkDemonstrated(userId: string, today: string): Promise<number | null> {
+  const u = await one<{ tz: string | null }>('users', { id: `eq.${userId}` }, { select: 'tz' }).catch(() => null);
+  const { rows } = await loadWalkRows(userId, addDays(today, -15)).catch(() => ({ rows: [] }));
+  return demonstratedMin(toWalkRecords(rows, u?.tz || 'Europe/Bucharest'), today);
 }

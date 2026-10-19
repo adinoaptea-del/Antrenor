@@ -14,6 +14,7 @@ import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
 import { Orb } from './Orb';
+import { useMetOnce, walkOrb } from './Walking';
 import { readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
@@ -54,6 +55,9 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
   const days = daysToRace(me);
   const fit = goalKind(me.user.goal) === 'fitness';
+  const walkV = goalKind(me.user.goal) === 'walk' ? (me.walking ?? null) : null;
+  const walkO = walkV ? walkOrb(walkV) : null;
+  const celebrate = useMetOnce(walkV?.week.weekStart ?? '', !!walkO?.met);
   const fitWeek = fitnessWeekOf(me.planStart, me.today);
   const goalName = me.user.goal && me.user.goal in GOAL_NAME ? GOAL_NAME[me.user.goal as Goal] : 'cursă';
   const yesterday = addDays(me.today, -1);
@@ -86,7 +90,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             : null;
 
   const shown = today.slice(0, 3);
-  const eyebrow = fit ? `Programul de fitness${fitWeek ? ` · săpt. ${fitWeek} din ${FITNESS_WEEKS}` : ''}` : me.user.raceDate ? `Pregătire pentru ${me.user.raceName ?? goalName}` : 'Antrenamentul tău';
+  const eyebrow = walkV ? 'Mers pe jos · săptămâna asta' : fit ? `Programul de fitness${fitWeek ? ` · săpt. ${fitWeek} din ${FITNESS_WEEKS}` : ''}` : me.user.raceDate ? `Pregătire pentru ${me.user.raceName ?? goalName}` : 'Antrenamentul tău';
 
   let orbBody: JSX.Element;
   let orbLabel: string;
@@ -139,15 +143,27 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       {sheet}
       <div className="azi">
         <p className="azi-k">{eyebrow}</p>
-        {!fit && me.user.raceDate && (
+        {!fit && !walkV && me.user.raceDate && (
           <button className="azi-ready" onClick={() => onOpen('progres')}>
             {rv.pct == null ? 'Pregătirea: îți evaluăm nivelul' : `Pregătit: ${rv.pct}%${rv.partial ? ` (parțial, fără ${rv.missing.join(', ').toLowerCase()})` : ''}`}
             {days != null ? ` · ${days} zile` : ''}
           </button>
         )}
-        <Orb onPress={!me.intakeComplete ? () => onOpen('intake') : openToday} label={orbLabel} paused={isOpen} dim={paused}>
-          {orbBody}
-        </Orb>
+        {walkO && me.intakeComplete ? (
+          // Bula mersului: minutele rămase ale săptămânii; culoarea arată progresul mersului, nu recuperarea zilei.
+          <Orb onPress={() => onOpen('mers')} label={walkO.label} paused={isOpen} progress={walkO.progress} celebrate={celebrate}>
+            {walkO.body}
+          </Orb>
+        ) : (
+          <Orb onPress={!me.intakeComplete ? () => onOpen('intake') : openToday} label={orbLabel} paused={isOpen} dim={paused}>
+            {orbBody}
+          </Orb>
+        )}
+        {walkV && me.intakeComplete && walkV.today.spec && !walkV.today.stop && (
+          <button className="linkish azi-form" onClick={() => onOpen('mers')}>
+            Azi: {walkV.today.spec.totalMin} min {walkV.today.spec.kind === 'alert' ? `(${walkV.today.spec.main.min} min mers alert)` : 'de mers ușor'} {Icons.chevronRight}
+          </button>
+        )}
         {today.length > shown.length && (
           <div className="azi-list">
             {today.slice(shown.length).map((w) => (

@@ -82,7 +82,7 @@ export function moveOptions(plan: PlannedWorkout[], id: string, today: string, d
   return out;
 }
 
-const SPORT_WORD: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' };
+const SPORT_WORD: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' };
 
 export function moveWorkout(plan: PlannedWorkout[], id: string, date: string, today: string, at: string, doneIds: string[] = []): PlannedWorkout {
   const w = plan.find((x) => x.id === id);
@@ -117,13 +117,14 @@ export function easyWorkout(w: PlannedWorkout, at: string): PlannedWorkout {
 
 // ——— Alt sport ———
 
-const SPORT_NAME: Record<Sport, string> = { alergare: 'alergare', bicicleta: 'bicicletă', inot: 'înot', forta: 'forță' };
+const SPORT_NAME: Record<Sport, string> = { alergare: 'alergare', bicicleta: 'bicicletă', inot: 'înot', forta: 'forță', mers: 'mers' };
 export const SWAP_SPORTS: Sport[] = ['alergare', 'bicicleta', 'inot'];
 
 /** Se poate schimba sportul ședinței? Motivul, când nu. */
 export function sportSwapBlock(w: PlannedWorkout): string | null {
   if (!active(w)) return 'ședința nu mai e activă';
   if (w.sport === 'forta') return 'forța nu se schimbă cu alt sport (alt scop și alt echipament); o poți muta în altă zi';
+  if (w.sport === 'mers') return 'mersul e obiectivul tău: ședința o poți muta sau scurta, nu schimba cu alt sport';
   if (w.type === 'brick') return 'brick-ul are deja două sporturi; îl poți muta sau face ușor';
   if (/^TEST/i.test(w.structure ?? '')) return 'un test se face în sportul lui; îl poți muta în altă zi';
   return null;
@@ -220,7 +221,7 @@ export function restoreAway(plan: PlannedWorkout[], away: Away, today: string, a
 export interface FixedMeet {
   /** 0 = luni … 6 = duminică */
   zi: number;
-  sport: Exclude<Sport, 'forta'>;
+  sport: Exclude<Sport, 'forta' | 'mers'>;
   tip: 'lung' | 'calitate' | 'usor';
   eticheta?: string;
 }

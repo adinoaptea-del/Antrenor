@@ -16,6 +16,12 @@ export interface OtherActivity {
   minutes: number;
   avgHr: number | null;
   maxHr: number | null;
+  /** Începutul real (ISO UTC), când sursa îl dă: pentru mers (împărțirea peste miezul nopții, dubluri între surse). */
+  startUtc?: string | null;
+  /** Durata de la start la stop, secunde. */
+  elapsedSec?: number | null;
+  /** Timpul în mișcare (fără pauze), secunde, doar când sursa îl dă. */
+  movingSec?: number | null;
 }
 
 const RECOVERY: [RegExp, string][] = [
