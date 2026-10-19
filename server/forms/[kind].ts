@@ -52,6 +52,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
       await saveIntake(u.id, today, intake);
+      // Alimentația declarată în chestionar devine preferința meselor (aceeași sursă ca ecranul „Mese recomandate”).
+      const diet = (intake as { alimentatie?: unknown }).alimentatie;
+      if (diet === 'omnivor' || diet === 'vegetarian' || diet === 'vegan') {
+        const prefs = await loadPrefs(u.id);
+        await savePrefs(u.id, { ...prefs, nutritie: { ...prefs.nutritie!, diet } });
+      }
       const plan = await generateAndStore(u.id, today, intake);
       json(res, 200, { ok: true, plan });
       return;
@@ -425,7 +431,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         return;
       }
       const diet = ['omnivor', 'vegetarian', 'vegan'].includes(String(body.diet)) ? (String(body.diet) as 'omnivor') : cur.diet;
-      const allowed = ['lapte', 'ou', 'gluten', 'peste', 'nuci', 'arahide', 'soia'];
+      const allowed = ['lapte', 'ou', 'gluten', 'peste', 'crustacee', 'nuci', 'arahide', 'soia', 'susan'];
       const exclude = Array.isArray(body.exclude) ? (body.exclude as unknown[]).map(String).filter((x) => allowed.includes(x)) : cur.exclude;
       const budget = body.budget == null || body.budget === '' ? null : Number(body.budget);
       if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, 'bugetul: între 20 și 150 RON pe zi');

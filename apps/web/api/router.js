@@ -832,7 +832,61 @@ var FOODS = Object.fromEntries(
     { id: "linte", name: "Linte verde, uscat\u0103", unit: "g", kcal: 336, protein: 23.5, source: "P04 / linte-verde-auchan", allergens: [], price: { ronPerUnit: 12.38, source: "P04 Auchan, linte verde 500 g", checkedAt: CHECKED } },
     { id: "mix-mexican", name: "Mix mexican de legume, congelat", unit: "g", kcal: 52.12, protein: 2.72, source: "P05 / 150460", allergens: [], price: { ronPerUnit: 10.2, source: "P05 Auchan, mix mexican 450 g", checkedAt: CHECKED } },
     { id: "ulei", name: "Ulei de m\u0103sline", unit: "ml", kcal: 823, protein: 0, source: "P06 / 952486", allergens: [], price: { ronPerUnit: 54.99, source: "P06 Auchan, ulei de m\u0103sline 1 L", checkedAt: CHECKED } },
-    { id: "iaurt", name: "Iaurt grecesc 2%", unit: "g", kcal: 65, protein: 8, source: "D02 / Olympus 2% (produc\u0103tor)", allergens: ["lapte"], animal: "lactat", price: { ronPerUnit: 23.1, source: "P08 Auchan, Olympus 2% 900 g la 20,79 RON (pre\u021B de referin\u021B\u0103, f\u0103r\u0103 promo\u021Bie)", checkedAt: CHECKED } }
+    { id: "iaurt", name: "Iaurt grecesc 2%", unit: "g", kcal: 65, protein: 8, source: "D02 / Olympus 2% (produc\u0103tor)", allergens: ["lapte"], animal: "lactat", price: { ronPerUnit: 23.1, source: "P08 Auchan, Olympus 2% 900 g la 20,79 RON (pre\u021B de referin\u021B\u0103, f\u0103r\u0103 promo\u021Bie)", checkedAt: CHECKED } },
+    // ——— Adăugate de AIRON (19.10.2026, biblioteca de 200 de rețete): USDA FoodData Central, cu codul fiecărui aliment ———
+    { id: "curcan", name: "Piept de curcan, crud, f\u0103r\u0103 piele", unit: "g", kcal: 114, protein: 23.3, source: "U / USDA FDC 174515 SR Legacy, \u201ETurkey, retail parts, breast, meat only, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [], animal: "carne" },
+    { id: "vita", name: "Carne tocat\u0103 de vit\u0103 95% slab\u0103, crud\u0103", unit: "g", kcal: 137, protein: 21.4, source: "U / USDA FDC 171790 SR Legacy, \u201EBeef, ground, 95% lean meat / 5% fat, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [], animal: "carne" },
+    { id: "porc", name: "Mu\u0219chi de porc, crud, doar carne slab\u0103", unit: "g", kcal: 109, protein: 20.9, source: "U / USDA FDC 168249 SR Legacy, \u201EPork, fresh, loin, tenderloin, separable lean only, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [], animal: "carne" },
+    { id: "cod", name: "Cod, crud", unit: "g", kcal: 82, protein: 17.8, source: "U / USDA FDC 171955 SR Legacy, \u201EFish, cod, Atlantic, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["peste"], animal: "peste" },
+    { id: "macrou", name: "Macrou, crud", unit: "g", kcal: 205, protein: 18.6, source: "U / USDA FDC 175119 SR Legacy, \u201EFish, mackerel, Atlantic, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["peste"], animal: "peste" },
+    { id: "sardine", name: "Sardine \xEEn ulei, scurse, cu os", unit: "g", kcal: 208, protein: 24.6, source: "U / USDA FDC 175139 SR Legacy, \u201EFish, sardine, Atlantic, canned in oil, drained solids with bone\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["peste"], animal: "peste" },
+    { id: "pastrav", name: "P\u0103str\u0103v curcubeu de cresc\u0103torie, crud", unit: "g", kcal: 141, protein: 19.94, source: "U / USDA SR Legacy NDB 15240, \u201EFish, trout, rainbow, farmed, raw\u201D (preluat prin nutritionvalue.org \u0219i recipal.com, 19.10.2026)", allergens: ["peste"], animal: "peste" },
+    { id: "creveti", name: "Creve\u021Bi cruzi, cur\u0103\u021Ba\u021Bi", unit: "g", kcal: 85, protein: 20.1, source: "U / USDA FDC 175179 SR Legacy, \u201ECrustaceans, shrimp, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["crustacee"], animal: "peste" },
+    { id: "telemea", name: "Telemea / br\xE2nz\u0103 feta", unit: "g", kcal: 265, protein: 14.2, source: "U / USDA FDC 173420 SR Legacy, \u201ECheese, feta\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["lapte"], animal: "lactat" },
+    { id: "mozzarella", name: "Mozzarella semidegresat\u0103", unit: "g", kcal: 254, protein: 24.3, source: "U / USDA FDC 170847 SR Legacy, \u201ECheese, mozzarella, part skim milk\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["lapte"], animal: "lactat" },
+    { id: "parmezan", name: "Parmezan", unit: "g", kcal: 392, protein: 35.8, source: "U / USDA FDC 170848 SR Legacy, \u201ECheese, parmesan, hard\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["lapte"], animal: "lactat" },
+    { id: "chefir", name: "Chefir cu gr\u0103sime redus\u0103", unit: "ml", kcal: 43, protein: 3.79, source: "U / USDA FDC 170904 SR Legacy, \u201EKefir, lowfat, plain, LIFEWAY\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["lapte"], animal: "lactat" },
+    { id: "ricotta", name: "Ricotta semidegresat\u0103", unit: "g", kcal: 138, protein: 11.4, source: "U / USDA FDC 171248 SR Legacy, \u201ECheese, ricotta, part skim milk\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["lapte"], animal: "lactat" },
+    { id: "tempeh", name: "Tempeh", unit: "g", kcal: 192, protein: 20.3, source: "U / USDA FDC 174272 SR Legacy, \u201ETempeh\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["soia"] },
+    { id: "edamame", name: "Edamame congelat", unit: "g", kcal: 109, protein: 11.2, source: "U / USDA FDC 168410 SR Legacy, \u201EEdamame, frozen, unprepared\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["soia"] },
+    { id: "mazare", name: "Maz\u0103re verde congelat\u0103", unit: "g", kcal: 77, protein: 5.22, source: "U / USDA FDC 170016 SR Legacy, \u201EPeas, green, frozen, unprepared\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "fasole-alba", name: "Fasole alb\u0103 conservat\u0103 (cu lichid)", unit: "g", kcal: 113, protein: 7.53, source: "U / USDA FDC 173747 SR Legacy, \u201EBeans, navy, mature seeds, canned\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "linte-rosie", name: "Linte ro\u0219ie, uscat\u0103", unit: "g", kcal: 358, protein: 23.9, source: "U / USDA FDC 174284 SR Legacy, \u201ELentils, pink or red, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "quinoa", name: "Quinoa, uscat\u0103", unit: "g", kcal: 368, protein: 14.1, source: "U / USDA FDC 168874 SR Legacy, \u201EQuinoa, uncooked\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "bulgur", name: "Bulgur, uscat", unit: "g", kcal: 342, protein: 12.3, source: "U / USDA FDC 170688 SR Legacy, \u201EBulgur, dry\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["gluten"] },
+    { id: "hrisca", name: "Hri\u0219c\u0103, uscat\u0103", unit: "g", kcal: 346, protein: 11.7, source: "U / USDA FDC 170685 SR Legacy, \u201EBuckwheat groats, roasted, dry\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "malai", name: "M\u0103lai", unit: "g", kcal: 370, protein: 7.11, source: "U / USDA FDC 168867 SR Legacy, \u201ECornmeal, degermed, enriched, yellow\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "cartof-dulce", name: "Cartof dulce, crud", unit: "g", kcal: 86, protein: 1.57, source: "U / USDA FDC 168482 SR Legacy, \u201ESweet potato, raw, unprepared\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "orez-brun", name: "Orez brun, uscat", unit: "g", kcal: 367, protein: 7.54, source: "U / USDA FDC 169703 SR Legacy, \u201ERice, brown, long-grain, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "tortilla", name: "Tortilla din f\u0103in\u0103 de gr\xE2u", unit: "g", kcal: 312, protein: 8.29, source: "U / USDA SR Legacy, \u201ETortillas, ready-to-bake or -fry, flour\u201D (preluat prin recipal.com, 19.10.2026; codul nu apare pe pagin\u0103)", allergens: ["gluten"] },
+    { id: "hummus", name: "Hummus", unit: "g", kcal: 237, protein: 7.78, source: "U / USDA FDC 174289 SR Legacy, \u201EHummus, commercial\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["susan"] },
+    { id: "broccoli", name: "Broccoli crud", unit: "g", kcal: 34, protein: 2.82, source: "U / USDA FDC 170379 SR Legacy, \u201EBroccoli, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "dovlecel", name: "Dovlecel cu coaj\u0103, crud", unit: "g", kcal: 17, protein: 1.21, source: "U / USDA SR Legacy NDB 11477, \u201ESquash, summer, zucchini, includes skin, raw\u201D (preluat prin recipal.com, 19.10.2026)", allergens: [] },
+    { id: "ardei", name: "Ardei gras ro\u0219u, crud", unit: "g", kcal: 26, protein: 0.99, source: "U / USDA SR Legacy NDB 11821, \u201EPeppers, bell, sweet, red, raw\u201D (preluat prin recipal.com, 19.10.2026)", allergens: [] },
+    { id: "varza", name: "Varz\u0103 alb\u0103, crud\u0103", unit: "g", kcal: 25, protein: 1.28, source: "U / USDA FDC 169975 SR Legacy, \u201ECabbage, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "ciuperci", name: "Ciuperci albe, crude", unit: "g", kcal: 22, protein: 3.09, source: "U / USDA SR Legacy NDB 11260, \u201EMushrooms, white, raw\u201D (preluat prin recipal.com, 19.10.2026)", allergens: [] },
+    { id: "vinete", name: "Vinete, crude", unit: "g", kcal: 25, protein: 0.98, source: "U / USDA FDC 169228 SR Legacy, \u201EEggplant, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "conopida", name: "Conopid\u0103, crud\u0103", unit: "g", kcal: 25, protein: 1.92, source: "U / USDA FDC 169986 SR Legacy, \u201ECauliflower, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "ceapa", name: "Ceap\u0103, crud\u0103", unit: "g", kcal: 40, protein: 1.1, source: "U / USDA FDC 170000 SR Legacy, \u201EOnions, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "fasole-verde", name: "Fasole verde, crud\u0103", unit: "g", kcal: 31, protein: 1.83, source: "U / USDA FDC 169961 SR Legacy, \u201EBeans, snap, green, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "castravete", name: "Castravete cu coaj\u0103", unit: "g", kcal: 15, protein: 0.65, source: "U / USDA FDC 168409 SR Legacy, \u201ECucumber, with peel, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "para", name: "Par\u0103, crud\u0103", unit: "g", kcal: 57, protein: 0.36, source: "U / USDA FDC 169118 SR Legacy, \u201EPears, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "portocala", name: "Portocal\u0103, f\u0103r\u0103 coaj\u0103", unit: "g", kcal: 47, protein: 0.94, source: "U / USDA FDC 169097 SR Legacy, \u201EOranges, raw, all commercial varieties\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "struguri", name: "Struguri", unit: "g", kcal: 69, protein: 0.72, source: "U / USDA FDC 174683 SR Legacy, \u201EGrapes, red or green, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "afine", name: "Afine", unit: "g", kcal: 57, protein: 0.74, source: "U / USDA FDC 171711 SR Legacy, \u201EBlueberries, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "kiwi", name: "Kiwi verde, f\u0103r\u0103 coaj\u0103", unit: "g", kcal: 58, protein: 1.06, source: "U / USDA FDC 327046 Foundation, \u201EKiwifruit, green, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "curmale", name: "Curmale Medjool, f\u0103r\u0103 s\xE2mbure", unit: "g", kcal: 277, protein: 1.81, source: "U / USDA FDC 168191 SR Legacy, \u201EDates, medjool\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "stafide", name: "Stafide", unit: "g", kcal: 299, protein: 3.3, source: "U / USDA FDC 168165 SR Legacy, \u201ERaisins, dark, seedless\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "migdale", name: "Migdale", unit: "g", kcal: 579, protein: 21.1, source: "U / USDA FDC 170567 SR Legacy, \u201ENuts, almonds\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["nuci"] },
+    { id: "seminte-dovleac", name: "Semin\u021Be de dovleac decorticate", unit: "g", kcal: 559, protein: 30.2, source: "U / USDA FDC 170556 SR Legacy, \u201ESeeds, pumpkin and squash seed kernels, dried\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "chia", name: "Semin\u021Be de chia", unit: "g", kcal: 486, protein: 16.5, source: "U / USDA FDC 170554 SR Legacy, \u201ESeeds, chia seeds, dried\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "avocado", name: "Avocado, parte comestibil\u0103", unit: "g", kcal: 160, protein: 2, source: "U / USDA FDC 171705 SR Legacy, \u201EAvocados, raw, all commercial varieties\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "miere", name: "Miere", unit: "g", kcal: 304, protein: 0.3, source: "U / USDA FDC 169640 SR Legacy, \u201EHoney\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [], animal: "miere" },
+    { id: "seminte-floarea", name: "Semin\u021Be de floarea-soarelui decorticate", unit: "g", kcal: 584, protein: 20.8, source: "U / USDA FDC 170562 SR Legacy, \u201ESeeds, sunflower seed kernels, dried\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "fructe-padure", name: "Zmeur\u0103 / fructe de p\u0103dure", unit: "g", kcal: 52, protein: 1.2, source: "U / USDA FDC 167755 SR Legacy, \u201ERaspberries, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "prune", name: "Prune, crude", unit: "g", kcal: 46, protein: 0.7, source: "U / USDA FDC 169949 SR Legacy, \u201EPlums, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "piersici", name: "Piersici, crude", unit: "g", kcal: 39, protein: 0.91, source: "U / USDA FDC 169928 SR Legacy, \u201EPeaches, yellow, raw\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: [] },
+    { id: "tahini", name: "Tahini", unit: "g", kcal: 595, protein: 17, source: "U / USDA FDC 170189 SR Legacy, \u201ESeeds, sesame butter, tahini, from roasted and toasted kernels\u201D (preluat prin getfoodfacts.com, 19.10.2026)", allergens: ["susan"] }
   ].map((f) => [f.id, f])
 );
 function foodValues(id, qty2) {
@@ -845,6 +899,193 @@ function foodCost(id, qty2) {
   if (!p) return null;
   return qty2 / 1e3 * p.ronPerUnit / (p.edible ?? 1);
 }
+
+// src/nutrition/recipes-extra.ts
+var R = (id, name, kind, family, ing, steps, minutes, f = {}, note) => ({
+  id,
+  name,
+  kind,
+  family,
+  ingredients: ing.map(([food, qty2]) => ({ food, qty: qty2 })),
+  steps,
+  minutes,
+  ...note ? { note } : {},
+  ...f.hf ? { highFiber: true } : {},
+  ...f.pre ? { preOk: true } : {},
+  airon: true
+});
+var RECIPES_EXTRA = [
+  // ——— Mic dejun (B10–B50) ———
+  R("B10", "Terci de ov\u0103z cu afine \u0219i migdale", "B", "terci", [["ovaz", 60], ["lapte", 250], ["afine", 120], ["migdale", 15]], "Fierbi ov\u0103zul \xEEn lapte; pui afinele \u0219i migdalele tocate la servire.", 10, { hf: 1 }),
+  R("B11", "Iaurt cu fructe de p\u0103dure \u0219i chia", "B", "iaurt-bol", [["iaurt", 250], ["fructe-padure", 150], ["chia", 15], ["ovaz", 30]], "Amesteci iaurtul cu chia \u0219i ov\u0103zul; la\u0219i 5 minute; fructele deasupra.", 7, { hf: 1 }),
+  R("B12", "Omlet\u0103 la cuptor cu ardei \u0219i telemea", "B", "oua", [["ou", 120], ["ardei", 120], ["telemea", 40], ["paine", 80]], "Ba\u021Bi ou\u0103le cu ardeiul t\u0103iat \u0219i telemeaua; coci 15 minute; p\xE2inea al\u0103turi.", 20),
+  R("B13", "M\u0103m\u0103lig\u0103 cu br\xE2nz\u0103 \u0219i ou", "B", "malai", [["malai", 80], ["telemea", 50], ["ou", 55], ["iaurt", 100]], "Fierbi m\u0103laiul \xEEn ap\u0103, amestec\xE2nd; serve\u0219ti cu br\xE2nza, oul fiert bine \u0219i iaurtul.", 25, { pre: 1 }),
+  R("B14", "P\xE2ine cu hummus, ou \u0219i castravete", "B", "hummus-paine", [["paine", 90], ["hummus", 60], ["ou", 55], ["castravete", 150]], "\xCEntinzi hummus pe p\xE2ine; oul fiert tare \u0219i castravetele al\u0103turi.", 12),
+  R("B15", "Chefir cu ov\u0103z, banan\u0103 \u0219i nuc\u0103", "B", "chefir-bol", [["chefir", 300], ["ovaz", 50], ["banana", 120], ["nuca", 15]], "Amesteci ov\u0103zul cu chefirul; banana \u0219i nucile la servire.", 5),
+  R("B16", "Ricotta cu p\xE2ine, miere \u0219i pere", "B", "branza-paine", [["ricotta", 150], ["paine", 80], ["miere", 15], ["para", 150]], "\xCEntinzi ricotta pe p\xE2ine, un fir de miere deasupra; para al\u0103turi.", 5),
+  R("B17", "Terci de hri\u0219c\u0103 cu mere, nuc\u0103 \u0219i semin\u021Be", "B", "hrisca", [["hrisca", 70], ["mar", 150], ["nuca", 15], ["seminte-dovleac", 20]], "Fierbi hri\u0219ca \xEEn ap\u0103; m\u0103rul ras, nucile \u0219i semin\u021Bele la final.", 20),
+  R("B18", "Quinoa cu kiwi, migdale \u0219i semin\u021Be", "B", "quinoa-dulce", [["quinoa", 70], ["kiwi", 150], ["migdale", 20], ["seminte-dovleac", 15]], "Fierbi quinoa \xEEn ap\u0103; kiwi feliat, migdalele \u0219i semin\u021Bele deasupra.", 20),
+  R("B19", "Tortilla cu ou, ardei \u0219i mozzarella", "B", "tortilla", [["tortilla", 70], ["ou", 110], ["ardei", 100], ["mozzarella", 30]], "Coci ou\u0103le cu ardeiul; pui totul \xEEn tortilla cu mozzarella \u0219i o \xEEnc\u0103lze\u0219ti \xEEn cuptor.", 15),
+  R("B20", "Iaurt cu piersici \u0219i semin\u021Be de dovleac", "B", "iaurt-bol", [["iaurt", 250], ["piersici", 200], ["seminte-dovleac", 20], ["ovaz", 30]], "Tai piersicile; amesteci cu iaurtul \u0219i ov\u0103zul; semin\u021Bele deasupra.", 5),
+  R("B21", "P\xE2ine cu avocado \u0219i ou\u0103", "B", "avocado-paine", [["paine", 90], ["avocado", 70], ["ou", 110], ["rosii", 150]], "Zdrobe\u0219ti avocado pe p\xE2ine; ou\u0103le fierte tare \u0219i ro\u0219iile al\u0103turi.", 12),
+  R("B22", "Cottage cu fructe de p\u0103dure \u0219i ov\u0103z", "B", "cottage-bol", [["cottage", 250], ["fructe-padure", 150], ["ovaz", 40], ["miere", 10]], "Amesteci totul; mierea la final.", 5),
+  R("B23", "Orez cu lapte, mere \u0219i iaurt", "B", "orez-lapte", [["orez", 70], ["lapte", 300], ["mar", 150], ["iaurt", 100]], "Fierbi orezul \xEEn lapte \u0219i ap\u0103; adaugi m\u0103rul ras, scor\u021Bi\u0219oar\u0103 dup\u0103 gust \u0219i iaurtul dup\u0103 r\u0103cire.", 25, { pre: 1 }),
+  R("B24", "Toast cu ricotta \u0219i c\u0103p\u0219uni", "B", "branza-paine", [["paine", 90], ["ricotta", 120], ["capsuni", 200]], "Ricotta pe p\xE2ine pr\u0103jit\u0103; c\u0103p\u0219unile feliate deasupra.", 5),
+  R("B25", "Tofu cu legume la cuptor \u0219i p\xE2ine", "B", "tofu-dimineata", [["tofu", 200], ["ardei", 100], ["ciuperci", 100], ["paine", 90], ["ulei", 5]], "F\u0103r\xE2mi\u021Bezi tofu cu ardeiul \u0219i ciupercile; coci 15 minute; p\xE2inea al\u0103turi.", 20),
+  R("B26", "Terci cu ap\u0103, pere \u0219i semin\u021Be", "B", "terci-vegan", [["ovaz", 70], ["para", 150], ["seminte-dovleac", 25], ["stafide", 20]], "Fierbi ov\u0103zul \xEEn ap\u0103; adaugi para t\u0103iat\u0103, stafidele \u0219i semin\u021Bele.", 10, { hf: 1 }),
+  R("B27", "Chia cu lapte \u0219i banan\u0103", "B", "chia-bol", [["chia", 30], ["lapte", 250], ["banana", 120], ["ovaz", 30]], "Amesteci chia cu laptele seara; diminea\u021Ba adaugi ov\u0103zul \u0219i banana.", 5, { hf: 1 }, "Se preg\u0103te\u0219te de cu sear\u0103."),
+  R("B28", "Ou\u0103 fierte, cartof dulce copt \u0219i spanac", "B", "oua-cartof", [["ou", 110], ["cartof-dulce", 200], ["spanac", 80]], "Coci cartoful dulce; fierbi ou\u0103le tare; spanacul la abur.", 35),
+  R("B29", "M\u0103m\u0103lig\u0103 cu iaurt \u0219i afine", "B", "malai", [["malai", 70], ["iaurt", 200], ["afine", 100], ["miere", 10]], "Fierbi m\u0103laiul; serve\u0219ti cald cu iaurtul, afinele \u0219i mierea.", 20, { pre: 1 }),
+  R("B30", "Bulgur cu curmale, nuc\u0103 \u0219i semin\u021Be", "B", "bulgur-dulce", [["bulgur", 70], ["curmale", 30], ["nuca", 15], ["seminte-dovleac", 20]], "Fierbi bulgurul \xEEn ap\u0103; curmalele tocate, nucile \u0219i semin\u021Bele la final.", 15),
+  R("B31", "P\xE2ine cu unt de arahide, kiwi \u0219i semin\u021Be", "B", "toast-arahide", [["paine", 100], ["arahide", 25], ["kiwi", 150], ["seminte-dovleac", 15]], "Untul de arahide pe p\xE2ine, semin\u021Bele deasupra; kiwi al\u0103turi.", 5),
+  R("B32", "Iaurt cu struguri, ov\u0103z \u0219i migdale", "B", "iaurt-bol", [["iaurt", 250], ["struguri", 150], ["ovaz", 40], ["migdale", 15]], "Amesteci la servire.", 5),
+  R("B33", "Omlet\u0103 cu ciuperci \u0219i p\xE2ine", "B", "oua", [["ou", 120], ["ciuperci", 150], ["paine", 90], ["ulei", 5]], "G\u0103te\u0219ti ciupercile cu pu\u021Bin\u0103 ap\u0103; adaugi ou\u0103le b\u0103tute \u0219i coci la cuptor.", 20),
+  R("B34", "Sandvi\u0219 cu hummus, ardei \u0219i tofu", "B", "hummus-paine", [["paine", 100], ["hummus", 60], ["tofu", 120], ["ardei", 100]], "Hummus pe p\xE2ine, tofu feliat \u0219i ardei.", 8),
+  R("B35", "Chefir cu fructe de p\u0103dure \u0219i ov\u0103z", "B", "chefir-bol", [["chefir", 300], ["fructe-padure", 150], ["ovaz", 50]], "Amesteci totul la servire.", 4),
+  R("B36", "Cottage cu p\xE2ine, ro\u0219ii \u0219i castravete", "B", "branza-paine", [["cottage", 200], ["paine", 90], ["rosii", 150], ["castravete", 150]], "Br\xE2nza pe p\xE2ine; legumele al\u0103turi.", 5),
+  R("B37", "Terci cu banan\u0103, unt de arahide \u0219i semin\u021Be", "B", "terci-vegan", [["ovaz", 70], ["banana", 120], ["arahide", 25], ["seminte-floarea", 15]], "Fierbi ov\u0103zul \xEEn ap\u0103; banana zdrobit\u0103, untul de arahide \u0219i semin\u021Bele la final.", 10),
+  R("B38", "Cl\u0103tite coapte din ov\u0103z \u0219i ou, cu iaurt", "B", "clatite-ovaz", [["ovaz", 60], ["ou", 110], ["banana", 100], ["iaurt", 150]], "Mixezi ov\u0103zul, ou\u0103le \u0219i banana; coci \xEEn tav\u0103 cu h\xE2rtie 15 minute; iaurtul deasupra.", 20),
+  R("B39", "Quinoa cu iaurt, piersici \u0219i miere", "B", "quinoa-dulce", [["quinoa", 60], ["iaurt", 200], ["piersici", 150], ["miere", 10]], "Fierbi quinoa \xEEn ap\u0103; dup\u0103 r\u0103cire o amesteci cu iaurtul, piersicile \u0219i mierea.", 20),
+  R("B40", "Sandvi\u0219 cu ou, mozzarella \u0219i ro\u0219ii", "B", "oua-paine", [["paine", 90], ["ou", 110], ["mozzarella", 40], ["rosii", 150]], "Ou\u0103 fierte tare feliate, mozzarella \u0219i ro\u0219ii pe p\xE2ine.", 12),
+  R("B41", "Tofu cremos cu ov\u0103z \u0219i fructe de p\u0103dure", "B", "tofu-dulce", [["tofu", 200], ["ovaz", 60], ["fructe-padure", 150], ["curmale", 20]], "Mixezi tofu cu curmalele p\xE2n\u0103 e cremos; peste ov\u0103z \u0219i fructe.", 6),
+  R("B42", "P\xE2ine cu sardine \u0219i ro\u0219ii", "B", "peste-paine", [["paine", 90], ["sardine", 80], ["rosii", 200]], "Sardinele scurse pe p\xE2ine; ro\u0219iile al\u0103turi.", 5),
+  R("B43", "Iaurt cu prune, nuc\u0103 \u0219i ov\u0103z", "B", "iaurt-bol", [["iaurt", 250], ["prune", 150], ["nuca", 15], ["ovaz", 30]], "Tai prunele; amesteci totul.", 5),
+  R("B44", "Mic dejun cu ou, cartof \u0219i ciuperci la cuptor", "B", "oua-cartof", [["ou", 110], ["cartof", 200], ["ciuperci", 120], ["ulei", 8]], "Coci cartofii felii cu ciupercile 25 de minute; adaugi ou\u0103le \u0219i mai coci 8 minute.", 35),
+  R("B45", "Terci de hri\u0219c\u0103 cu chefir \u0219i afine", "B", "hrisca", [["hrisca", 60], ["chefir", 250], ["afine", 120]], "Fierbi hri\u0219ca; dup\u0103 r\u0103cire o serve\u0219ti cu chefirul \u0219i afinele.", 20),
+  R("B46", "Tortilla cu hummus, spanac \u0219i ou", "B", "tortilla", [["tortilla", 70], ["hummus", 50], ["spanac", 60], ["ou", 110]], "Hummus pe tortilla, spanac \u0219i ou\u0103le fierte tare t\u0103iate; rulezi.", 12),
+  R("B47", "Ricotta cu ov\u0103z, pere \u0219i migdale", "B", "ricotta-bol", [["ricotta", 150], ["ovaz", 40], ["para", 150], ["migdale", 15]], "Amesteci ricotta cu ov\u0103zul; para \u0219i migdalele deasupra.", 5),
+  R("B48", "P\xE2ine cu tahini, banan\u0103 \u0219i curmale", "B", "toast-tahini", [["paine", 100], ["tahini", 25], ["banana", 120], ["curmale", 20]], "Tahini pe p\xE2ine, banana feliat\u0103 \u0219i curmalele tocate deasupra.", 5),
+  R("B49", "Bulgur cu n\u0103ut, ro\u0219ii \u0219i ou (mic dejun s\u0103rat)", "B", "bulgur-sarat", [["bulgur", 50], ["naut", 100], ["rosii", 150], ["ou", 55]], "Hidratezi bulgurul; \xEEl amesteci cu n\u0103utul \xEEnc\u0103lzit, ro\u0219iile \u0219i oul fiert.", 15, { hf: 1 }),
+  R("B50", "Iaurt cu portocal\u0103, curmale \u0219i semin\u021Be", "B", "iaurt-bol", [["iaurt", 250], ["portocala", 150], ["curmale", 25], ["seminte-dovleac", 15]], "Portocala \xEEn felii, curmalele tocate, totul peste iaurt.", 5),
+  // ——— Feluri principale (M17–M110) ———
+  R("M17", "Piept de curcan cu orez brun \u0219i broccoli", "M", "curcan-cereale", [["curcan", 150], ["orez-brun", 90], ["broccoli", 200], ["ulei", 10]], "Coci curcanul; fierbi orezul; broccoli la abur; uleiul la final.", 40),
+  R("M18", "Ardei umplu\u021Bi cu vit\u0103 \u0219i orez", "M", "ardei-umpluti", [["vita", 130], ["orez", 60], ["ardei", 250], ["rosii-conserva", 200], ["ceapa", 50]], "Amesteci carnea cu orezul \u0219i ceapa; umpli ardeii \u0219i \xEEi fierbi \xEEn sosul de ro\u0219ii 50 de minute.", 70),
+  R("M19", "Cod la cuptor cu cartofi \u0219i fasole verde", "M", "peste-cartof", [["cod", 180], ["cartof", 300], ["fasole-verde", 200], ["ulei", 10]], "Coci codul \u0219i cartofii; fasolea verde la abur.", 35, { pre: 1 }),
+  R("M20", "Mu\u0219chi de porc cu cartof dulce \u0219i varz\u0103", "M", "porc", [["porc", 150], ["cartof-dulce", 300], ["varza", 200], ["ulei", 8]], "Coci mu\u0219chiul \u0219i cartoful dulce; varza c\u0103lit\u0103 cu ap\u0103.", 45),
+  R("M21", "Macrou la cuptor cu m\u0103m\u0103lig\u0103 \u0219i varz\u0103", "M", "peste-malai", [["macrou", 150], ["malai", 80], ["varza", 200]], "Coci macroul; fierbi m\u0103m\u0103liga; varza crud\u0103 ras\u0103, ca salat\u0103.", 30),
+  R("M22", "P\u0103str\u0103v cu cartofi \u0219i salat\u0103 de castrave\u021Bi", "M", "peste-cartof", [["pastrav", 180], ["cartof", 300], ["castravete", 200], ["ulei", 8]], "Coci p\u0103str\u0103vul \u0219i cartofii; castrave\u021Bii ca salat\u0103 cu uleiul.", 35, { pre: 1 }),
+  R("M23", "Creve\u021Bi cu paste \u0219i dovlecel", "M", "paste-peste", [["creveti", 150], ["paste", 100], ["dovlecel", 200], ["rosii-conserva", 150], ["ulei", 10]], "Fierbi pastele; g\u0103te\u0219ti dovlecelul cu ro\u0219iile; creve\u021Bii 3\u20134 minute la final.", 25),
+  R("M24", "Toc\u0103ni\u021B\u0103 de ciuperci cu m\u0103m\u0103lig\u0103 \u0219i telemea", "M", "ciuperci-malai", [["ciuperci", 300], ["ceapa", 80], ["malai", 90], ["telemea", 60], ["ulei", 10]], "\xCEn\u0103bu\u0219i ceapa \u0219i ciupercile cu ap\u0103; m\u0103m\u0103liga separat; br\xE2nza la servire.", 35),
+  R("M25", "Fasole b\u0103tut\u0103 cu ceap\u0103 \u0219i p\xE2ine", "M", "leguminoase", [["fasole-alba", 250], ["ceapa", 80], ["ulei", 15], ["paine", 80], ["varza", 150]], "Pasezi fasolea cu pu\u021Bin ulei; ceapa \xEEn\u0103bu\u0219it\u0103 deasupra; varza ca salat\u0103.", 20, { hf: 1 }),
+  R("M26", "Chili sin carne cu quinoa", "M", "leguminoase", [["fasole", 200], ["quinoa", 70], ["ardei", 150], ["rosii-conserva", 200], ["ulei", 10]], "Fierbi quinoa; g\u0103te\u0219ti ardeiul \xEEn ro\u0219ii, adaugi fasolea.", 30, { hf: 1 }),
+  R("M27", "Curry de linte ro\u0219ie cu orez", "M", "leguminoase", [["linte-rosie", 80], ["orez", 70], ["rosii-conserva", 200], ["spanac", 100], ["ulei", 10]], "Fierbi lintea ro\u0219ie \xEEn ro\u0219ii 15 minute; spanacul la final; orezul separat.", 30, { hf: 1 }),
+  R("M28", "Tempeh cu orez \u0219i broccoli", "M", "tempeh", [["tempeh", 150], ["orez", 80], ["broccoli", 200], ["ulei", 10]], "Coci tempeh-ul feliat; fierbi orezul; broccoli la abur.", 30),
+  R("M29", "Bulgur cu n\u0103ut, ardei \u0219i iaurt", "M", "bulgur-naut", [["bulgur", 80], ["naut", 150], ["ardei", 150], ["iaurt", 100], ["ulei", 10]], "Hidratezi bulgurul; amesteci cu n\u0103utul \xEEnc\u0103lzit \u0219i ardeiul; iaurtul ca sos.", 20, { hf: 1 }),
+  R("M30", "Quinoa cu edamame \u0219i legume", "M", "quinoa-edamame", [["quinoa", 80], ["edamame", 150], ["ardei", 100], ["dovlecel", 150], ["ulei", 10]], "Fierbi quinoa \u0219i edamame; legumele la abur; uleiul la final.", 25),
+  R("M31", "Vit\u0103 cu cartofi la cuptor \u0219i fasole verde", "M", "vita", [["vita", 150], ["cartof", 300], ["fasole-verde", 200], ["ulei", 8]], "Coci carnea \u0219i cartofii; fasolea la abur.", 45),
+  R("M32", "Pilaf de pui cu morcov", "M", "pui-cereale", [["pui", 150], ["orez", 90], ["morcov", 150], ["ceapa", 50], ["ulei", 10]], "Fierbi puiul cu ceapa \u0219i morcovul; adaugi orezul \u0219i la\u0219i s\u0103 fiarb\u0103 p\xE2n\u0103 absoarbe zeama.", 40, { pre: 1 }),
+  R("M33", "Musaca de vinete cu vit\u0103 (la cuptor)", "M", "musaca", [["vita", 130], ["vinete", 250], ["cartof", 200], ["rosii-conserva", 150], ["iaurt", 100]], "Vinetele \u0219i cartofii felii, coapte; straturi cu carnea g\u0103tit\u0103 \xEEn ro\u0219ii; iaurtul deasupra; cuptor 30 de minute.", 70),
+  R("M34", "Paste cu ricotta, spanac \u0219i maz\u0103re", "M", "paste-branza", [["paste", 100], ["ricotta", 120], ["spanac", 100], ["mazare", 100]], "Fierbi pastele cu maz\u0103rea; amesteci cu ricotta \u0219i spanacul.", 20),
+  R("M35", "Ghiveci de legume cu ou\u0103", "M", "ghiveci", [["dovlecel", 150], ["ardei", 150], ["vinete", 150], ["rosii-conserva", 200], ["ou", 110], ["paine", 80], ["ulei", 10]], "\xCEn\u0103bu\u0219i legumele \xEEn ro\u0219ii 30 de minute; ou\u0103le fierte tare \u0219i p\xE2inea al\u0103turi.", 40, { hf: 1 }),
+  R("M36", "Somon cu quinoa \u0219i broccoli", "M", "peste-cereale", [["somon", 150], ["quinoa", 70], ["broccoli", 200]], "Coci somonul; fierbi quinoa; broccoli la abur.", 30),
+  R("M37", "Burger de curcan la cuptor cu cartof dulce", "M", "curcan-cartof", [["curcan", 150], ["cartof-dulce", 300], ["varza", 150], ["iaurt", 60]], "Formezi chiftele din carnea tocat\u0103, le coci 20 de minute; cartoful dulce la cuptor; varza ca salat\u0103 cu iaurt.", 40),
+  R("M38", "Tortilla cu fasole, ardei \u0219i br\xE2nz\u0103", "M", "tortilla", [["tortilla", 140], ["fasole", 150], ["ardei", 150], ["mozzarella", 40]], "Umpli tortillele cu fasolea, ardeiul \u0219i br\xE2nza; coci 10 minute.", 20, { hf: 1 }),
+  R("M39", "Paste cu ton, maz\u0103re \u0219i iaurt", "M", "paste-peste", [["paste", 100], ["ton", 120], ["mazare", 120], ["iaurt", 80]], "Fierbi pastele cu maz\u0103rea; amesteci cu tonul \u0219i iaurtul.", 15),
+  R("M40", "Sup\u0103 crem\u0103 de linte ro\u0219ie \u0219i p\xE2ine", "M", "supa-linte", [["linte-rosie", 90], ["morcov", 150], ["ceapa", 60], ["paine", 80], ["ulei", 10]], "Fierbi lintea cu legumele 20 de minute; pasezi; p\xE2inea al\u0103turi.", 30, { hf: 1 }),
+  R("M41", "Orez brun cu tofu \u0219i legume la abur", "M", "tofu", [["tofu", 250], ["orez-brun", 90], ["broccoli", 150], ["morcov", 100], ["ulei", 10]], "Fierbi orezul; tofu \u0219i legumele la abur; uleiul la final.", 40),
+  R("M42", "Pui la cuptor cu cartofi \u0219i varz\u0103", "M", "pui-cartof", [["pui", 160], ["cartof", 300], ["varza", 200], ["ulei", 10]], "Coci puiul \u0219i cartofii; varza ca salat\u0103 cu uleiul.", 45, { pre: 1 }),
+  R("M43", "Hri\u0219c\u0103 cu ciuperci \u0219i ou", "M", "hrisca", [["hrisca", 80], ["ciuperci", 250], ["ceapa", 50], ["ou", 110], ["ulei", 10]], "Fierbi hri\u0219ca; \xEEn\u0103bu\u0219i ciupercile cu ceapa; ou\u0103le fierte al\u0103turi.", 30),
+  R("M44", "Cod cu orez \u0219i morcov la abur", "M", "peste-cereale", [["cod", 180], ["orez", 90], ["morcov", 200], ["ulei", 10]], "Codul la abur sau cuptor; orezul fiert; morcovul la abur.", 30, { pre: 1 }),
+  R("M45", "Vit\u0103 cu bulgur \u0219i ardei", "M", "vita", [["vita", 140], ["bulgur", 80], ["ardei", 200], ["ulei", 8]], "G\u0103te\u0219ti carnea; hidratezi bulgurul; ardeiul copt.", 35),
+  R("M46", "Salat\u0103 de quinoa cu feta \u0219i castravete", "M", "quinoa-branza", [["quinoa", 80], ["telemea", 80], ["castravete", 200], ["rosii", 200], ["ulei", 10]], "Fierbi \u0219i r\u0103ce\u0219ti quinoa; amesteci cu legumele \u0219i br\xE2nza.", 20),
+  R("M47", "Tocan\u0103 de n\u0103ut cu cartof dulce", "M", "naut-cartof", [["naut", 200], ["cartof-dulce", 250], ["rosii-conserva", 200], ["spanac", 80], ["ulei", 10]], "Fierbi cartoful dulce \xEEn ro\u0219ii; adaugi n\u0103utul \u0219i spanacul.", 35, { hf: 1 }),
+  R("M48", "Macrou cu quinoa \u0219i varz\u0103", "M", "peste-cereale", [["macrou", 140], ["quinoa", 70], ["varza", 200]], "Coci macroul; quinoa fiart\u0103; varza ca salat\u0103.", 30),
+  R("M49", "Paste cu sos de ro\u0219ii \u0219i mozzarella", "M", "paste-branza", [["paste", 110], ["rosii-conserva", 250], ["mozzarella", 80], ["dovlecel", 150]], "Fierbi pastele; sosul cu dovlecel; mozzarella la final.", 20),
+  R("M50", "Iahnie de fasole alb\u0103 cu p\xE2ine", "M", "leguminoase", [["fasole-alba", 250], ["ceapa", 80], ["morcov", 100], ["rosii-conserva", 150], ["paine", 60], ["ulei", 10]], "Fierbi ceapa \u0219i morcovul \xEEn ro\u0219ii; adaugi fasolea.", 30, { hf: 1 }),
+  R("M51", "Porc cu varz\u0103 c\u0103lit\u0103 \u0219i m\u0103m\u0103lig\u0103", "M", "porc", [["porc", 140], ["varza", 300], ["rosii-conserva", 100], ["malai", 70]], "C\u0103le\u0219ti varza cu ro\u0219iile \u0219i pu\u021Bin\u0103 ap\u0103; carnea la cuptor; m\u0103m\u0103liga separat.", 50),
+  R("M52", "Curcan cu paste \u0219i broccoli", "M", "curcan-cereale", [["curcan", 150], ["paste", 90], ["broccoli", 200], ["ulei", 10]], "Coci curcanul; pastele fierte cu broccoli; uleiul la final.", 30),
+  R("M53", "Creve\u021Bi cu orez \u0219i maz\u0103re", "M", "peste-cereale", [["creveti", 160], ["orez", 90], ["mazare", 150], ["ulei", 10]], "Fierbi orezul cu maz\u0103rea; creve\u021Bii 3\u20134 minute \xEEn tigaie cu pu\u021Bin\u0103 ap\u0103.", 25),
+  R("M54", "Tofu \xEEn sos de ro\u0219ii cu paste", "M", "tofu", [["tofu", 250], ["paste", 90], ["rosii-conserva", 250], ["ulei", 10]], "Fierbi pastele; tofu t\u0103iat cubule\u021Be \xEEn sosul de ro\u0219ii.", 20),
+  R("M55", "Salat\u0103 de linte cu ou \u0219i cartof", "M", "leguminoase", [["linte", 70], ["cartof", 250], ["ou", 55], ["ceapa", 40], ["ulei", 10]], "Fierbi lintea, cartoful \u0219i oul; amesteci cu ceapa \u0219i uleiul.", 35, { hf: 1 }),
+  R("M56", "Conopid\u0103 la cuptor cu n\u0103ut \u0219i orez", "M", "naut-legume", [["conopida", 300], ["naut", 150], ["orez", 70], ["ulei", 10]], "Coci conopida cu n\u0103utul; orezul separat.", 35, { hf: 1 }),
+  R("M57", "Sardine cu cartofi \u0219i salat\u0103", "M", "peste-cartof", [["sardine", 110], ["cartof", 300], ["rosii", 200], ["castravete", 100]], "Fierbi cartofii; sardinele scurse; salata de ro\u0219ii \u0219i castravete.", 25),
+  R("M58", "Vit\u0103 cu paste \u0219i ro\u0219ii", "M", "vita-paste", [["vita", 130], ["paste", 100], ["rosii-conserva", 250], ["ceapa", 50]], "G\u0103te\u0219ti carnea tocat\u0103 cu ceapa \xEEn ro\u0219ii; amesteci cu pastele.", 30),
+  R("M59", "P\u0103str\u0103v cu quinoa \u0219i dovlecel", "M", "peste-cereale", [["pastrav", 170], ["quinoa", 70], ["dovlecel", 200], ["ulei", 8]], "Coci p\u0103str\u0103vul; fierbi quinoa; dovlecelul la abur.", 30),
+  R("M60", "Bol de orez cu tempeh \u0219i edamame", "M", "tempeh", [["tempeh", 120], ["edamame", 100], ["orez", 80], ["morcov", 100], ["castravete", 100]], "Fierbi orezul \u0219i edamame; tempeh la cuptor; legumele crude.", 30),
+  R("M61", "M\u0103m\u0103lig\u0103 cu fasole \u0219i varz\u0103", "M", "leguminoase-malai", [["malai", 90], ["fasole", 200], ["varza", 200], ["ulei", 10]], "Fierbi m\u0103m\u0103liga; fasolea \xEEnc\u0103lzit\u0103; varza ca salat\u0103.", 30, { hf: 1 }),
+  R("M62", "Pui cu bulgur \u0219i dovlecel", "M", "pui-cereale", [["pui", 150], ["bulgur", 80], ["dovlecel", 200], ["ulei", 10]], "Coci puiul; hidratezi bulgurul; dovlecelul copt.", 30),
+  R("M63", "Ou\u0103 coapte \xEEn sos de ro\u0219ii cu p\xE2ine", "M", "oua-sos", [["ou", 165], ["rosii-conserva", 300], ["ardei", 150], ["paine", 100], ["ulei", 8]], "Fierbi ardeiul \xEEn ro\u0219ii; spargi ou\u0103le \xEEn sos \u0219i coci p\xE2n\u0103 sunt bine f\u0103cute.", 25),
+  R("M64", "Cartof copt cu hummus \u0219i legume", "M", "cartof-hummus", [["cartof", 350], ["hummus", 100], ["ardei", 150], ["castravete", 150]], "Coci cartoful; serve\u0219ti cu hummus \u0219i legume crude.", 50, {}, "Vegan."),
+  R("M65", "Salat\u0103 de paste cu ton \u0219i fasole verde", "M", "salata-ton", [["paste", 90], ["ton", 120], ["fasole-verde", 150], ["rosii", 150], ["ulei", 10]], "Fierbi pastele \u0219i fasolea verde; dup\u0103 r\u0103cire amesteci cu tonul \u0219i ro\u0219iile.", 25),
+  R("M66", "Curcan cu cu\u0219cu\u0219 \u0219i legume", "M", "curcan-cereale", [["curcan", 150], ["cuscus", 80], ["dovlecel", 150], ["ardei", 100], ["ulei", 10]], "Coci curcanul; hidratezi cu\u0219cu\u0219ul; legumele la cuptor.", 30),
+  R("M67", "Maz\u0103re cu ou \u0219i p\xE2ine", "M", "mazare", [["mazare", 250], ["ceapa", 60], ["rosii-conserva", 150], ["ou", 110], ["paine", 80]], "Fierbi maz\u0103rea cu ceapa \xEEn ro\u0219ii; ou\u0103le fierte al\u0103turi.", 30, { hf: 1 }),
+  R("M68", "Cod cu cu\u0219cu\u0219 \u0219i ro\u0219ii", "M", "peste-cereale", [["cod", 180], ["cuscus", 80], ["rosii", 200], ["ulei", 10]], "Coci codul cu ro\u0219iile; cu\u0219cu\u0219ul hidratat.", 25, { pre: 1 }),
+  R("M69", "Vit\u0103 cu orez \u0219i broccoli", "M", "vita", [["vita", 140], ["orez", 90], ["broccoli", 200], ["ulei", 8]], "G\u0103te\u0219ti carnea; orezul fiert; broccoli la abur.", 35, { pre: 1 }),
+  R("M70", "Lasagna cu linte \u0219i ricotta", "M", "paste-branza", [["paste", 90], ["linte", 60], ["ricotta", 100], ["rosii-conserva", 250], ["spanac", 80]], "Fierbi lintea \xEEn ro\u0219ii; straturi cu foile de paste, ricotta \u0219i spanac; cuptor 35 de minute.", 60, { hf: 1 }),
+  R("M71", "Toc\u0103ni\u021B\u0103 de vinete \u0219i n\u0103ut cu orez", "M", "naut-legume", [["vinete", 250], ["naut", 150], ["rosii-conserva", 200], ["orez", 70], ["ulei", 10]], "\xCEn\u0103bu\u0219i vinetele \xEEn ro\u0219ii; adaugi n\u0103utul; orezul separat.", 40, { hf: 1 }),
+  R("M72", "Somon cu orez brun \u0219i castrave\u021Bi", "M", "peste-cereale", [["somon", 140], ["orez-brun", 80], ["castravete", 200], ["iaurt", 60]], "Coci somonul; orezul fiert; castrave\u021Bii cu iaurt.", 40),
+  R("M73", "Porc cu orez \u0219i ardei", "M", "porc", [["porc", 150], ["orez", 90], ["ardei", 200], ["ulei", 8]], "Coci carnea; orezul fiert; ardeiul copt.", 40),
+  R("M74", "Tofu cu hri\u0219c\u0103 \u0219i varz\u0103", "M", "tofu", [["tofu", 250], ["hrisca", 80], ["varza", 200], ["ulei", 10]], "Fierbi hri\u0219ca; tofu la cuptor; varza ca salat\u0103.", 30),
+  R("M75", "Sup\u0103 de legume cu pui \u0219i t\u0103i\u021Bei", "M", "supa-pui", [["pui", 140], ["paste", 70], ["morcov", 150], ["ceapa", 50], ["dovlecel", 150]], "Fierbi puiul cu legumele 30 de minute; pastele 8 minute la final.", 45, { pre: 1 }),
+  R("M76", "Quinoa cu n\u0103ut, spanac \u0219i tahini", "M", "quinoa-naut", [["quinoa", 70], ["naut", 150], ["spanac", 100], ["tahini", 20]], "Fierbi quinoa; amesteci cu n\u0103utul \xEEnc\u0103lzit \u0219i spanacul; tahini diluat ca sos.", 25, { hf: 1 }),
+  R("M77", "Paste integrale cu creve\u021Bi \u0219i broccoli", "M", "paste-peste", [["paste", 100], ["creveti", 140], ["broccoli", 200], ["ulei", 10]], "Fierbi pastele cu broccoli; creve\u021Bii 3\u20134 minute la final.", 20),
+  R("M78", "Cartof dulce copt cu fasole \u0219i iaurt", "M", "cartof-leguminoase", [["cartof-dulce", 350], ["fasole", 150], ["iaurt", 100], ["spanac", 60]], "Coci cartoful dulce; umplutura din fasole \xEEnc\u0103lzit\u0103 \u0219i spanac; iaurtul deasupra.", 50, { hf: 1 }),
+  R("M79", "Chiftele de curcan cu piure de cartofi", "M", "curcan-cartof", [["curcan", 150], ["cartof", 300], ["lapte", 80], ["castravete", 150]], "Chiftelele la cuptor; piureul din cartofi fier\u021Bi cu lapte; castrave\u021Bii al\u0103turi.", 45, { pre: 1 }),
+  R("M80", "Orez cu ciuperci \u0219i telemea la cuptor", "M", "orez-ciuperci", [["orez", 80], ["ciuperci", 250], ["telemea", 60], ["ceapa", 50], ["ulei", 10]], "Fierbi orezul; amesteci cu ciupercile \xEEn\u0103bu\u0219ite \u0219i br\xE2nza; cuptor 10 minute.", 35),
+  R("M81", "Pui cu quinoa \u0219i conopid\u0103", "M", "pui-cereale", [["pui", 150], ["quinoa", 70], ["conopida", 250], ["ulei", 10]], "Coci puiul \u0219i conopida; quinoa fiart\u0103.", 35),
+  R("M82", "Ton cu cartof dulce \u0219i broccoli", "M", "peste-cartof", [["ton", 130], ["cartof-dulce", 300], ["broccoli", 150], ["ulei", 10]], "Coci cartoful dulce; broccoli la abur; tonul scurs.", 40),
+  R("M83", "Bulgur cu linte \u0219i ceap\u0103 (mujaddara la cuptor)", "M", "leguminoase", [["bulgur", 70], ["linte", 60], ["ceapa", 120], ["iaurt", 100], ["ulei", 10]], "Fierbi lintea \u0219i bulgurul \xEEmpreun\u0103; ceapa coapt\u0103 deasupra; iaurtul al\u0103turi.", 40, { hf: 1 }),
+  R("M84", "Fasole verde cu vit\u0103 \u0219i cartofi", "M", "vita", [["vita", 130], ["fasole-verde", 250], ["cartof", 250], ["rosii-conserva", 150]], "Fierbi carnea cu fasolea \u0219i cartofii \xEEn ro\u0219ii.", 50),
+  R("M85", "Omlet\u0103 mare la cuptor cu legume \u0219i p\xE2ine", "M", "oua", [["ou", 165], ["dovlecel", 150], ["ardei", 100], ["telemea", 40], ["paine", 100]], "Ba\u021Bi ou\u0103le cu legumele \u0219i br\xE2nza; coci 20 de minute.", 30),
+  R("M86", "Paste cu edamame, maz\u0103re \u0219i parmezan", "M", "paste-branza", [["paste", 100], ["edamame", 100], ["mazare", 100], ["parmezan", 20], ["ulei", 10]], "Fierbi pastele cu edamame \u0219i maz\u0103rea; parmezanul la final.", 20),
+  R("M87", "Cod cu m\u0103m\u0103lig\u0103 \u0219i spanac", "M", "peste-malai", [["cod", 180], ["malai", 80], ["spanac", 150], ["ulei", 10]], "Coci codul; m\u0103m\u0103liga fiart\u0103; spanacul la abur.", 30, { pre: 1 }),
+  R("M88", "Porc cu fasole verde \u0219i orez", "M", "porc", [["porc", 140], ["fasole-verde", 200], ["orez", 80], ["ulei", 8]], "Coci carnea; orezul fiert; fasolea la abur.", 40),
+  R("M89", "Tempeh cu cartof dulce \u0219i varz\u0103", "M", "tempeh", [["tempeh", 150], ["cartof-dulce", 300], ["varza", 150]], "Coci tempeh-ul \u0219i cartoful dulce; varza ca salat\u0103.", 40),
+  R("M90", "Sup\u0103 de fasole alb\u0103 cu legume \u0219i p\xE2ine", "M", "supa-fasole", [["fasole-alba", 200], ["morcov", 100], ["ceapa", 60], ["rosii-conserva", 150], ["paine", 80], ["ulei", 8]], "Fierbi legumele 20 de minute; adaugi fasolea \u0219i mai fierbi 10.", 35, { hf: 1 }),
+  R("M91", "Curcan cu m\u0103m\u0103lig\u0103 \u0219i ciuperci", "M", "curcan-malai", [["curcan", 150], ["malai", 80], ["ciuperci", 200], ["ulei", 10]], "Coci curcanul; ciupercile \xEEn\u0103bu\u0219ite; m\u0103m\u0103liga fiart\u0103.", 40),
+  R("M92", "Salat\u0103 cu ou, n\u0103ut \u0219i cartof", "M", "salata-oua", [["ou", 110], ["naut", 120], ["cartof", 250], ["castravete", 150], ["ulei", 10]], "Fierbi cartoful \u0219i ou\u0103le; amesteci cu n\u0103utul \u0219i castravetele.", 30, { hf: 1 }),
+  R("M93", "Macrou cu cartofi \u0219i morcov", "M", "peste-cartof", [["macrou", 140], ["cartof", 300], ["morcov", 150]], "Coci macroul \u0219i cartofii; morcovul ras crud.", 35),
+  R("M94", "Toc\u0103ni\u021B\u0103 de dovlecei cu pui \u0219i orez", "M", "pui-legume", [["pui", 150], ["dovlecel", 300], ["rosii-conserva", 150], ["orez", 70], ["ulei", 8]], "Fierbi puiul cu dovleceii \xEEn ro\u0219ii; orezul separat.", 40, { pre: 1 }),
+  R("M95", "Quinoa cu tofu \u0219i ardei copt", "M", "tofu", [["tofu", 200], ["quinoa", 80], ["ardei", 200], ["ulei", 10]], "Fierbi quinoa; tofu \u0219i ardeiul la cuptor.", 30),
+  R("M96", "Paste cu sardine \u0219i ro\u0219ii", "M", "paste-peste", [["paste", 100], ["sardine", 90], ["rosii-conserva", 250], ["ceapa", 40]], "Fierbi pastele; \xEEnc\u0103lze\u0219ti ro\u0219iile cu ceapa; adaugi sardinele.", 20),
+  R("M97", "Varz\u0103 c\u0103lit\u0103 cu tofu \u0219i m\u0103m\u0103lig\u0103", "M", "tofu-varza", [["varza", 350], ["tofu", 200], ["rosii-conserva", 100], ["malai", 70], ["ulei", 10]], "C\u0103le\u0219ti varza cu ro\u0219iile \u0219i ap\u0103; tofu ad\u0103ugat la final; m\u0103m\u0103liga separat.", 50),
+  R("M98", "Pui cu cartof dulce \u0219i fasole verde", "M", "pui-cartof", [["pui", 150], ["cartof-dulce", 300], ["fasole-verde", 150], ["ulei", 8]], "Coci puiul \u0219i cartoful dulce; fasolea la abur.", 40),
+  R("M99", "Tortilla cu curcan, ardei \u0219i iaurt", "M", "tortilla", [["tortilla", 140], ["curcan", 130], ["ardei", 150], ["iaurt", 80]], "Curcanul g\u0103tit \xEEn f\xE2\u0219ii, cu ardeiul, \xEEn tortille; iaurtul ca sos.", 25),
+  R("M100", "Sup\u0103 crem\u0103 de broccoli cu ou \u0219i p\xE2ine", "M", "supa-crema", [["broccoli", 300], ["cartof", 150], ["ou", 110], ["paine", 80]], "Fierbi broccoli cu cartoful; pasezi; ou\u0103le fierte al\u0103turi.", 30),
+  R("M101", "Vit\u0103 cu quinoa \u0219i vinete coapte", "M", "vita", [["vita", 130], ["quinoa", 70], ["vinete", 250], ["iaurt", 60]], "Coci vinetele \u0219i carnea; quinoa fiart\u0103; iaurtul ca sos.", 45),
+  R("M102", "Ricotta cu cartofi la cuptor \u0219i spanac", "M", "cartof-branza", [["ricotta", 150], ["cartof", 350], ["spanac", 150], ["ulei", 8]], "Coci cartofii; spanacul \xEEn\u0103bu\u0219it cu ricotta.", 40),
+  R("M103", "Linte cu orez brun \u0219i morcov", "M", "leguminoase", [["linte", 70], ["orez-brun", 70], ["morcov", 150], ["ceapa", 50], ["ulei", 10]], "Fierbi lintea \u0219i orezul separat; legumele \xEEn\u0103bu\u0219ite.", 45, { hf: 1 }),
+  R("M104", "Creve\u021Bi cu quinoa \u0219i ardei", "M", "peste-cereale", [["creveti", 150], ["quinoa", 80], ["ardei", 200], ["ulei", 10]], "Fierbi quinoa; ardeiul la cuptor; creve\u021Bii 3\u20134 minute.", 25),
+  R("M105", "Ou\u0103 cu maz\u0103re \u0219i cartofi la cuptor", "M", "oua-cartof", [["ou", 165], ["mazare", 150], ["cartof", 250], ["ulei", 8]], "Coci cartofii cu maz\u0103rea; adaugi ou\u0103le \u0219i mai coci 8\u201310 minute.", 40),
+  R("M106", "Tempeh cu paste \u0219i ro\u0219ii", "M", "tempeh", [["tempeh", 130], ["paste", 90], ["rosii-conserva", 250], ["ulei", 8]], "Tempeh-ul f\u0103r\xE2mi\u021Bat fiert \xEEn ro\u0219ii; amesteci cu pastele.", 25),
+  R("M107", "P\u0103str\u0103v cu m\u0103m\u0103lig\u0103 \u0219i fasole verde", "M", "peste-malai", [["pastrav", 170], ["malai", 80], ["fasole-verde", 200]], "Coci p\u0103str\u0103vul; m\u0103m\u0103liga fiart\u0103; fasolea la abur.", 35),
+  R("M108", "Curry de n\u0103ut cu conopid\u0103 \u0219i orez", "M", "naut-legume", [["naut", 180], ["conopida", 250], ["rosii-conserva", 150], ["orez", 70], ["ulei", 10]], "Fierbi conopida \xEEn ro\u0219ii cu n\u0103utul; orezul separat.", 35, { hf: 1 }),
+  R("M109", "Pui cu paste \u0219i ciuperci", "M", "pui-paste", [["pui", 150], ["paste", 90], ["ciuperci", 200], ["ulei", 10]], "Coci puiul; ciupercile \xEEn\u0103bu\u0219ite; amesteci cu pastele.", 30),
+  R("M110", "Bol cu hummus, quinoa \u0219i legume coapte", "M", "quinoa-hummus", [["quinoa", 70], ["hummus", 80], ["dovlecel", 150], ["ardei", 150], ["vinete", 150]], "Coci legumele; quinoa fiart\u0103; hummus deasupra.", 40, { hf: 1 }),
+  // ——— Gustări (G09–G40) ———
+  R("G09", "Iaurt cu afine", "G", "g-iaurt", [["iaurt", 200], ["afine", 120]], "Afinele peste iaurt.", 2),
+  R("G10", "Chefir \u0219i banan\u0103", "G", "g-chefir", [["chefir", 250], ["banana", 120]], "Separat sau mixate.", 2, { pre: 1 }),
+  R("G11", "P\xE2ine cu hummus \u0219i ardei", "G", "g-hummus", [["paine", 60], ["hummus", 50], ["ardei", 100]], "Hummus pe p\xE2ine; ardeiul al\u0103turi.", 4),
+  R("G12", "Migdale \u0219i portocal\u0103", "G", "g-nuci", [["migdale", 25], ["portocala", 200]], "Ca gustare.", 2),
+  R("G13", "Edamame fiert", "G", "g-edamame", [["edamame", 150]], "Fierbi 5 minute; pu\u021Bin\u0103 sare.", 7),
+  R("G14", "Ou fiert \u0219i castravete", "G", "g-ou", [["ou", 110], ["castravete", 150]], "Ou\u0103le fierte tare, castravetele feliat.", 12),
+  R("G15", "Curmale \u0219i nuci", "G", "g-nuci", [["curmale", 40], ["nuca", 20]], "Ca gustare \xEEnainte sau dup\u0103 efort.", 1, { pre: 1 }),
+  R("G16", "Ricotta cu pere", "G", "g-branza", [["ricotta", 120], ["para", 150]], "Para t\u0103iat\u0103, ricotta al\u0103turi.", 3),
+  R("G17", "P\xE2ine cu telemea \u0219i ro\u0219ii", "G", "g-branza", [["paine", 60], ["telemea", 40], ["rosii", 150]], "Ca sandvi\u0219.", 3),
+  R("G18", "Iaurt cu chia \u0219i kiwi", "G", "g-iaurt", [["iaurt", 200], ["chia", 10], ["kiwi", 100]], "Amesteci chia cu iaurtul; kiwi deasupra.", 3),
+  R("G19", "Stafide \u0219i semin\u021Be de dovleac", "G", "g-seminte", [["stafide", 30], ["seminte-dovleac", 20]], "Ca amestec.", 1),
+  R("G20", "Banan\u0103 cu tahini", "G", "g-tahini", [["banana", 120], ["tahini", 15]], "Banana feliat\u0103, tahini deasupra.", 2, { pre: 1 }),
+  R("G21", "Cottage cu fructe de p\u0103dure", "G", "g-branza", [["cottage", 200], ["fructe-padure", 120]], "Amesteci la servire.", 2),
+  R("G22", "Tortilla cu unt de arahide \u0219i banan\u0103", "G", "g-arahide", [["tortilla", 50], ["arahide", 15], ["banana", 100]], "\xCEntinzi, pui banana \u0219i rulezi.", 3, { pre: 1 }),
+  R("G23", "Tofu cu castravete \u0219i p\xE2ine", "G", "g-tofu", [["tofu", 150], ["castravete", 150], ["paine", 40]], "Tofu feliat pe p\xE2ine, castravete al\u0103turi.", 4),
+  R("G24", "Lapte cu curmale", "G", "g-lapte", [["lapte", 250], ["curmale", 30]], "Separat sau mixate.", 2, { pre: 1 }),
+  R("G25", "Struguri \u0219i migdale", "G", "g-nuci", [["struguri", 150], ["migdale", 20]], "Ca gustare.", 1),
+  R("G26", "Iaurt cu miere \u0219i nuc\u0103", "G", "g-iaurt", [["iaurt", 200], ["miere", 10], ["nuca", 15]], "Mierea \u0219i nucile peste iaurt.", 2),
+  R("G27", "Hummus cu morcov \u0219i castravete", "G", "g-hummus", [["hummus", 80], ["morcov", 120], ["castravete", 120]], "Legumele \xEEn bastona\u0219e, cu hummus.", 5),
+  R("G28", "Mozzarella cu ro\u0219ii", "G", "g-branza", [["mozzarella", 60], ["rosii", 200]], "Felii alternate, cu busuioc dac\u0103 ai.", 3),
+  R("G29", "Chefir cu fructe de p\u0103dure", "G", "g-chefir", [["chefir", 250], ["fructe-padure", 100]], "Mixate sau separat.", 2),
+  R("G30", "M\u0103r cu unt de arahide", "G", "g-arahide", [["mar", 150], ["arahide", 15]], "M\u0103rul felii, untul de arahide al\u0103turi.", 2),
+  R("G31", "Avocado pe p\xE2ine", "G", "g-avocado", [["paine", 50], ["avocado", 60], ["rosii", 100]], "Zdrobe\u0219ti avocado pe p\xE2ine.", 3),
+  R("G32", "Ton cu castravete \u0219i p\xE2ine", "G", "g-peste", [["ton", 80], ["castravete", 150], ["paine", 40]], "Tonul scurs pe p\xE2ine, castravete al\u0103turi.", 3),
+  R("G33", "Prune \u0219i semin\u021Be de floarea-soarelui", "G", "g-seminte", [["prune", 150], ["seminte-floarea", 20]], "Ca gustare.", 1),
+  R("G34", "Ou\u0103 fierte \u0219i ro\u0219ii", "G", "g-ou", [["ou", 110], ["rosii", 150]], "Ou\u0103le fierte tare, ro\u0219iile felii.", 12),
+  R("G35", "Tempeh copt cu castravete", "G", "g-tempeh", [["tempeh", 100], ["castravete", 150]], "Tempeh-ul feliat, la cuptor 15 minute; castravetele al\u0103turi.", 18),
+  R("G36", "P\xE2ine cu ricotta \u0219i miere", "G", "g-branza", [["paine", 50], ["ricotta", 80], ["miere", 10]], "Ricotta pe p\xE2ine, mierea deasupra.", 2, { pre: 1 }),
+  R("G37", "N\u0103ut copt cu condimente", "G", "g-naut", [["naut", 180], ["ulei", 5]], "N\u0103utul scurs \u0219i uscat, cu ulei \u0219i condimente, la cuptor 25 de minute.", 30, { hf: 1 }),
+  R("G38", "Kiwi \u0219i migdale", "G", "g-nuci", [["kiwi", 150], ["migdale", 20]], "Ca gustare.", 2),
+  R("G39", "Sardine pe p\xE2ine", "G", "g-peste", [["sardine", 60], ["paine", 50], ["rosii", 100]], "Sardinele scurse pe p\xE2ine; ro\u0219iile al\u0103turi.", 3),
+  R("G40", "Shake de lapte cu ov\u0103z \u0219i banan\u0103", "G", "g-lapte", [["lapte", 250], ["ovaz", 30], ["banana", 80]], "Mixate ca shake.", 3, { pre: 1 })
+];
 
 // src/nutrition/recipes.ts
 var RECIPES = [
@@ -883,23 +1124,8 @@ var RECIPES = [
   { id: "M16", name: "Paste cu fasole \u0219i ro\u0219ii", kind: "M", family: "paste-fasole", ingredients: [{ food: "paste", qty: 90 }, { food: "fasole", qty: 180 }, { food: "rosii-conserva", qty: 250 }, { food: "morcov", qty: 100 }, { food: "ulei", qty: 10 }], steps: "Fierbi pastele; \xEEnc\u0103lze\u0219ti ro\u0219iile cu morcovul ras \u0219i fasolea scurs\u0103 \u0219i amesteci.", note: "Fibre multe.", minutes: 25, highFiber: true, airon: true },
   { id: "G08", name: "M\u0103r cu nuci", kind: "G", family: "g-mar-nuci", ingredients: [{ food: "mar", qty: 150 }, { food: "nuca", qty: 25 }], steps: "Tai m\u0103rul; nucile al\u0103turi.", minutes: 2, airon: true }
 ];
+RECIPES.push(...RECIPES_EXTRA);
 var RECIPE = Object.fromEntries(RECIPES.map((r2) => [r2.id, r2]));
-var ROTATION_14 = [
-  ["B01", "M01", "M09", "G04"],
-  ["B02", "M02", "M08", "G05"],
-  ["B03", "M03", "M11", "G06"],
-  ["B04", "M04", "M10", "G07"],
-  ["B05", "M05", "M12", "G01"],
-  ["B06", "M06", "M13", "G02"],
-  ["B07", "M07", "M14", "G03"],
-  ["B01", "M08", "M02", "G04"],
-  ["B02", "M09", "M01", "G05"],
-  ["B03", "M10", "M04", "G06"],
-  ["B04", "M11", "M03", "G07"],
-  ["B05", "M12", "M05", "G01"],
-  ["B06", "M13", "M06", "G02"],
-  ["B07", "M14", "M07", "G03"]
-];
 
 // src/nutrition/engine.ts
 var BASE_PAL = 1.4;
@@ -938,6 +1164,11 @@ var kindOf = { mic_dejun: "B", pranz: "M", cina: "M", gustare: "G" };
 var ROT_COL = { mic_dejun: 0, pranz: 1, cina: 2, gustare: 3 };
 var EPOCH = "2026-01-05";
 var dayIndex = (date) => (diffDays(EPOCH, date) % 14 + 14) % 14;
+var historyFrom = (date) => addDays(EPOCH, Math.floor(dayNum(date) / 91) * 91 - 28);
+var gcd = (a, b) => b ? gcd(b, a % b) : a;
+var dayNum = (date) => Math.max(0, diffDays(EPOCH, date));
+var KIND_POOL = { B: [], M: [], G: [] };
+for (const r2 of RECIPES) KIND_POOL[r2.kind].push(r2.id);
 var CARB_FOODS = /* @__PURE__ */ new Set(["ovaz", "orez", "paste", "cuscus", "cartof", "paine", "banana", "mar", "capsuni"]);
 var IRON_FOODS = /* @__PURE__ */ new Set(["linte", "naut", "fasole", "spanac", "ou", "ton", "somon", "tofu"]);
 var SLOT_SHARE = { mic_dejun: 0.27, pranz: 0.33, cina: 0.3, gustare: 0.1 };
@@ -959,6 +1190,16 @@ function mainProtein(r2) {
   }
   return best && isProteinFood(best) ? best : null;
 }
+function rotatePick(sorted, date, seed, salt) {
+  const top = sorted.slice(0, 5);
+  if (!top.length) return void 0;
+  return top[(dayNum(date) + (seed ? hashSeed(seed) : 0) + salt) % top.length];
+}
+var MAIN = /* @__PURE__ */ new Map();
+var mainOf = (id) => {
+  if (!MAIN.has(id)) MAIN.set(id, mainProtein(RECIPE[id]));
+  return MAIN.get(id);
+};
 function recipeFit(r2, slot, p) {
   let kcal = 0;
   let prot = 0;
@@ -990,6 +1231,15 @@ function selectDays(from, to, prefs, preSlot = () => null, profile = {}) {
   const out = /* @__PURE__ */ new Map();
   const uses = /* @__PURE__ */ new Map();
   const slots = slotsFor(prefs.meals);
+  const elig = Object.fromEntries(["mic_dejun", "pranz", "cina", "gustare"].map((sl) => [sl, KIND_POOL[kindOf[sl]].filter((id) => eligible(RECIPE[id], prefs))]));
+  const personal = !!(profile.dayKcal || profile.goal || profile.sex);
+  const tierOf = Object.fromEntries(Object.keys(elig).map((sl) => {
+    const ids = elig[sl];
+    if (!personal) return [sl, new Map(ids.map((id) => [id, 0]))];
+    const fit2 = new Map(ids.map((id) => [id, recipeFit(RECIPE[id], sl, profile)]));
+    const cut = [...fit2.values()].sort((a, b) => a - b)[Math.max(0, Math.ceil(ids.length * 0.6) - 1)] ?? Infinity;
+    return [sl, new Map(ids.map((id) => [id, fit2.get(id) <= cut ? 0 : 1]))];
+  }));
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const picks = {};
     const repeats = [];
@@ -1004,8 +1254,8 @@ function selectDays(from, to, prefs, preSlot = () => null, profile = {}) {
       if (slot === "cina" && picks.pranz && RECIPE[picks.pranz].family === RECIPE[id].family) return false;
       if (slot === "pranz" && picks.cina && RECIPE[picks.cina].family === RECIPE[id].family) return false;
       if (preSlot(d) === slot && RECIPE[id].highFiber) return false;
-      const main = mainProtein(RECIPE[id]);
-      if (main && Object.values(picks).some((x) => mainProtein(RECIPE[x]) === main)) return false;
+      const main = mainOf(id);
+      if (main && Object.values(picks).some((x) => mainOf(x) === main)) return false;
       return true;
     };
     for (const slot of slots) {
@@ -1014,19 +1264,16 @@ function selectDays(from, to, prefs, preSlot = () => null, profile = {}) {
         picks[slot] = chosen;
         continue;
       }
-      const order = [];
-      for (let k = 0; k < 14; k++) {
-        const id = ROTATION_14[(idx + k) % 14][ROT_COL[slot]];
-        if (!order.includes(id)) order.push(id);
-      }
-      for (const r2 of RECIPES) if (r2.kind === kindOf[slot] && !order.includes(r2.id)) order.push(r2.id);
-      let cands = order.filter((id) => eligible(RECIPE[id], prefs));
-      if (profile.dayKcal || profile.goal || profile.sex) {
-        const fit2 = new Map(cands.map((id) => [id, recipeFit(RECIPE[id], slot, profile)]));
-        const cut = [...fit2.values()].sort((a, b) => a - b)[Math.max(0, Math.ceil(cands.length * 0.6) - 1)] ?? Infinity;
-        cands = [...cands.filter((id) => fit2.get(id) <= cut), ...cands.filter((id) => fit2.get(id) > cut)];
-      }
-      if (preSlot(d) === slot) cands = [...cands.filter((id) => RECIPE[id].preOk), ...cands.filter((id) => !RECIPE[id].preOk)];
+      const pool = elig[slot];
+      let step = 7 + ROT_COL[slot] * 4;
+      while (pool.length > 1 && gcd(step, pool.length) !== 1) step++;
+      const start = pool.length ? (dayNum(d) * step + idx * 3) % pool.length : 0;
+      let cands = pool.map((_, k) => pool[(start + k) % pool.length]);
+      const base = tierOf[slot];
+      const pre = preSlot(d) === slot;
+      const tier = new Map(cands.map((id) => [id, base.get(id) + (pre && !RECIPE[id].preOk ? 2 : 0)]));
+      const lastUse = (id) => uses.get(id)?.at(-1) ?? "";
+      cands = cands.map((id, k) => ({ id, k })).sort((x, y) => tier.get(x.id) - tier.get(y.id) || (lastUse(x.id) < lastUse(y.id) ? -1 : lastUse(x.id) > lastUse(y.id) ? 1 : x.k - y.k)).map((x) => x.id);
       let pick2 = cands.find((id) => ok2(id, slot));
       if (!pick2 && cands.length) {
         pick2 = [...cands].filter((id) => !Object.values(picks).includes(id)).sort((a, b) => (uses.get(a) ?? ["0"]).at(-1) < (uses.get(b) ?? ["0"]).at(-1) ? -1 : 1)[0] ?? cands[0];
@@ -1127,7 +1374,7 @@ function nutritionDay(input) {
   }
   const pre = preEffortSlot(sessions, prefs.meals);
   const pick2 = { seed: input.athleteId ?? null, goal: input.goal, sex: a.sex, age: a.age, dayKcal: energy ? energy.base * (1 + adjustPct / 100) : null, meals: prefs.meals };
-  const sel = selectDays(addDays(input.date, -27), input.date, prefs, (d) => d === input.date ? pre : null, pick2).get(input.date);
+  const sel = selectDays(historyFrom(input.date), input.date, prefs, (d) => d === input.date ? pre : null, pick2).get(input.date);
   let slots = Object.keys(sel.picks);
   const base0 = slots.reduce((n2, s) => n2 + recipeValues(sel.picks[s]).kcal, 0);
   const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
@@ -1136,7 +1383,7 @@ function nutritionDay(input) {
   const fewMeals = prefs.meals <= 2;
   const maxExtra = fewMeals ? prefs.snacksOk === false ? 0 : 2 : 1;
   while (factor > 1.5 && extra.length < maxExtra) {
-    const g = RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !Object.values(sel.picks).includes(r2.id) && !extra.includes(r2)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
+    const g = rotatePick(RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !Object.values(sel.picks).includes(r2.id) && !extra.includes(r2)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein), input.date, input.athleteId, extra.length);
     if (!g) break;
     extra.push(g);
     factor = mealsTarget / (base0 + extra.reduce((n2, r2) => n2 + recipeValues(r2.id).kcal, 0));
@@ -1187,8 +1434,8 @@ function nutritionDay(input) {
   for (const g of extra) meals.push({ ...mealOf("gustare", g, eF, pF), label: fewMeals ? "Gustare \xEEn jurul antrenamentului" : "Gustare \xEEn plus", why: fewMeals ? `pe l\xE2ng\u0103 cele ${prefs.meals} ${prefs.meals === 1 ? "mas\u0103 principal\u0103" : "mese principale"}: \xEEnainte sau dup\u0103 antrenament, ca por\u021Biile s\u0103 r\u0103m\xE2n\u0103 realiste` : "azi ai nevoie de mai mult\u0103 energie: o gustare \xEEn plus \xEEn loc de por\u021Bii uria\u0219e" });
   let protein = meals.reduce((n2, m) => n2 + m.protein, 0);
   if (proteinT && protein < proteinT.target * 0.9) {
-    const g = RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !meals.some((m) => m.recipe.id === r2.id)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
-    if (g && recipeValues(g.id).protein >= 15) {
+    const g = rotatePick(RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !meals.some((m) => m.recipe.id === r2.id) && recipeValues(r2.id).protein >= 15).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein), input.date, input.athleteId, 7);
+    if (g) {
       meals.push({ ...mealOf("gustare", g, 1), label: "Gustare cu proteine", why: `proteinele zilei ar fi r\u0103mas la ${Math.round(protein)} g din ${Math.round(proteinT.target)} g` });
       protein = meals.reduce((n2, m) => n2 + m.protein, 0);
     }
@@ -3015,9 +3262,9 @@ function brickSplit2(structure, minutes) {
   const tr = /tranziție (\d+) min/.exec(structure ?? "");
   const T = tr ? Number(tr[1]) : BRICK_TRANSITION_MIN;
   const B = m ? Number(m[1]) : Math.round((minutes - T) * 0.8);
-  const R2 = m ? Number(m[2]) : Math.max(10, minutes - T - B);
-  if (B + R2 + T === minutes) return { bike: B, run: R2, transition: T };
-  const run = Math.max(10, Math.min(R2, round5((minutes - T) * R2 / (B + R2))));
+  const R3 = m ? Number(m[2]) : Math.max(10, minutes - T - B);
+  if (B + R3 + T === minutes) return { bike: B, run: R3, transition: T };
+  const run = Math.max(10, Math.min(R3, round5((minutes - T) * R3 / (B + R3))));
   return { bike: minutes - T - run, run, transition: T };
 }
 var brickText = (bike, run, transition = BRICK_TRANSITION_MIN) => `tur\u0103 ${bike} min Z2 + tranzi\u021Bie ${transition} min + alergare ${run} min imediat dup\u0103`;
@@ -6611,8 +6858,8 @@ async function hasConsent(userId) {
 
 // src/knowledge/contracts.ts
 var V = "1.1";
-var R = "2026-10-19";
-var c = (dovada, populatie, eligibil, alternativa, evaluare) => ({ versiune: V, revizuit: R, dovada, populatie, eligibil, alternativa, evaluare });
+var R2 = "2026-10-19";
+var c = (dovada, populatie, eligibil, alternativa, evaluare) => ({ versiune: V, revizuit: R2, dovada, populatie, eligibil, alternativa, evaluare });
 var EASY_EVAL = "f\u0103cut\u0103 dac\u0103 durata e aproape de plan \u0219i efortul a r\u0103mas conversa\u021Bional; mai rapid nu e mai bine.";
 var QUALITY_EVAL = "f\u0103cut\u0103 dac\u0103 repet\u0103rile au fost la efortul cerut \u0219i ultimele nu s-au destr\u0103mat; peste \u021Bint\u0103 = prea tare, nu mai bine.";
 var CONTRACTS = {
@@ -9524,6 +9771,11 @@ async function handler10(req, res) {
       if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, "obiectiv indisponibil deocamdat\u0103: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), \xEEnot (1.500 / 1.900 / 3.800 m) sau biciclet\u0103 (50 / 100 / 160 km); fitness");
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, "data cursei trebuie s\u0103 fie \xEEn viitor");
       await saveIntake(u.id, today, intake);
+      const diet = intake.alimentatie;
+      if (diet === "omnivor" || diet === "vegetarian" || diet === "vegan") {
+        const prefs = await loadPrefs(u.id);
+        await savePrefs(u.id, { ...prefs, nutritie: { ...prefs.nutritie, diet } });
+      }
       const plan = await generateAndStore(u.id, today, intake);
       json(res, 200, { ok: true, plan });
       return;
@@ -9866,7 +10118,7 @@ async function handler10(req, res) {
         return;
       }
       const diet = ["omnivor", "vegetarian", "vegan"].includes(String(body.diet)) ? String(body.diet) : cur.diet;
-      const allowed = ["lapte", "ou", "gluten", "peste", "nuci", "arahide", "soia"];
+      const allowed = ["lapte", "ou", "gluten", "peste", "crustacee", "nuci", "arahide", "soia", "susan"];
       const exclude = Array.isArray(body.exclude) ? body.exclude.map(String).filter((x) => allowed.includes(x)) : cur.exclude;
       const budget = body.budget == null || body.budget === "" ? null : Number(body.budget);
       if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, "bugetul: \xEEntre 20 \u0219i 150 RON pe zi");

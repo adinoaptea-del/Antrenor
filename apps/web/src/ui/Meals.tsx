@@ -6,7 +6,7 @@ import { Card, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 
-const ALLERGENS: Allergen[] = ['lapte', 'ou', 'gluten', 'peste', 'nuci', 'arahide', 'soia'];
+const ALLERGENS: Allergen[] = ['lapte', 'ou', 'gluten', 'peste', 'crustacee', 'nuci', 'arahide', 'soia', 'susan'];
 const n0 = (x: number) => Math.round(x).toLocaleString('ro-RO');
 const ron = (x: number) => `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON`;
 

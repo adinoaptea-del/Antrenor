@@ -3,6 +3,8 @@
 // Energia și proteinele NU sunt scrise aici: se calculează din ingrediente (foods.ts), ca suma ingredientelor să fie
 // egală cu rețeta și cu totalul zilei.
 
+import { RECIPES_EXTRA } from './recipes-extra.js';
+
 export type Slot = 'mic_dejun' | 'pranz' | 'cina' | 'gustare';
 
 export interface Recipe {
@@ -61,6 +63,9 @@ export const RECIPES: Recipe[] = [
   { id: 'M16', name: 'Paste cu fasole și roșii', kind: 'M', family: 'paste-fasole', ingredients: [{ food: 'paste', qty: 90 }, { food: 'fasole', qty: 180 }, { food: 'rosii-conserva', qty: 250 }, { food: 'morcov', qty: 100 }, { food: 'ulei', qty: 10 }], steps: 'Fierbi pastele; încălzești roșiile cu morcovul ras și fasolea scursă și amesteci.', note: 'Fibre multe.', minutes: 25, highFiber: true, airon: true },
   { id: 'G08', name: 'Măr cu nuci', kind: 'G', family: 'g-mar-nuci', ingredients: [{ food: 'mar', qty: 150 }, { food: 'nuca', qty: 25 }], steps: 'Tai mărul; nucile alături.', minutes: 2, airon: true },
 ];
+
+// Biblioteca extinsă (172 de rețete AIRON, aceleași reguli): în total 200.
+RECIPES.push(...RECIPES_EXTRA);
 
 export const RECIPE: Record<string, Recipe> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
 

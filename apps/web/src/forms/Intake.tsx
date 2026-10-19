@@ -257,6 +257,17 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Înălțimea" hint="În centimetri. Cu greutatea, dă necesarul de energie și indicele de masă corporală.">
               <input className="date" type="number" inputMode="numeric" placeholder="ex. 180" value={a.inaltime ?? ''} onChange={(e) => set({ inaltime: e.target.value ? Number(e.target.value) : null })} />
             </Q>
+            <Q title="Cum mănânci?" hint="Mesele recomandate pornesc de aici. O poți schimba oricând din „Mese recomandate”.">
+              <Chips
+                value={a.alimentatie ?? null}
+                options={[
+                  { id: 'omnivor' as const, label: 'De toate', sub: 'carne, pește, lactate, ouă' },
+                  { id: 'vegetarian' as const, label: 'Vegetarian', sub: 'fără carne și pește; cu lactate și ouă' },
+                  { id: 'vegan' as const, label: 'Vegan', sub: 'nimic de origine animală' },
+                ]}
+                onChange={(d) => set({ alimentatie: d })}
+              />
+            </Q>
             <Q title="Ce îți propui?" hint={a.sex === 'f' ? 'Fitness (sală, forță, corp) sau un sport. La fiecare, aplicația și antrenorul sunt doar pentru alegerea ta.' : 'Un singur sport sau triatlon. La un singur sport, aplicația și antrenorul sunt doar pentru sportul acela.'}>
               <Chips
                 value={family}

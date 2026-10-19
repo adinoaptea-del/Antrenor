@@ -185,3 +185,38 @@ test('în fiecare zi: aceeași persoană, zi de pauză vs zi lungă → altă ț
   const next = nutritionDay({ ...p, date: '2026-10-20', sessions: [] });
   assert.notEqual(next.meals.map((m) => m.recipe.id).join(), rest.meals.map((m) => m.recipe.id).join());
 });
+
+// Biblioteca de 200 de rețete (19.10.2026): fiecare aliment cu sursă, dietele din ingrediente, toată biblioteca folosită.
+test('biblioteca: 200 de rețete, ingrediente cu sursă, porții de referință realiste, variante vegetariene și vegane', () => {
+  assert.equal(RECIPES.length, 200);
+  assert.equal(new Set(RECIPES.map((r) => r.id)).size, 200);
+  const range = { B: [300, 650], M: [400, 850], G: [120, 350] } as const;
+  for (const r of RECIPES) {
+    for (const i of r.ingredients) assert.ok(FOODS[i.food]?.source, `${r.id}: ${i.food} fără sursă`);
+    const k = r.ingredients.reduce((n, i) => n + foodValues(i.food, i.qty).kcal, 0);
+    assert.ok(k >= range[r.kind][0] && k <= range[r.kind][1], `${r.id}: ${Math.round(k)} kcal`);
+  }
+  const veg = (r: (typeof RECIPES)[number]) => !r.ingredients.some((i) => FOODS[i.food]!.animal === 'carne' || FOODS[i.food]!.animal === 'peste');
+  const vegan = (r: (typeof RECIPES)[number]) => !r.ingredients.some((i) => FOODS[i.food]!.animal);
+  for (const kind of ['B', 'M', 'G'] as const) {
+    assert.ok(RECIPES.filter((r) => r.kind === kind && veg(r)).length >= 20, `vegetarian ${kind}`);
+    assert.ok(RECIPES.filter((r) => r.kind === kind && vegan(r)).length >= 7, `vegan ${kind}`);
+  }
+});
+
+test('vegetarian pe 180 de zile: fără carne și pește, mese complete, cel puțin 80 de rețete diferite', () => {
+  const p = { ...DEFAULT_PREFS, diet: 'vegetarian' as const };
+  const seen = new Set<string>();
+  for (let k = 0; k < 180; k++) {
+    const d = nutritionDay({ date: addDays('2026-10-19', k), athleteId: 'u-veg', goal: '10k', athlete: { sex: 'f', age: 28, heightCm: 168, weightKg: 60 }, sessions: [], prefs: p });
+    assert.ok(d.complete, d.date);
+    for (const m of d.meals) {
+      seen.add(m.recipe.id);
+      assert.ok(!m.items.some((it) => FOODS[it.food]!.animal === 'carne' || FOODS[it.food]!.animal === 'peste'), `${d.date} ${m.recipe.id}`);
+    }
+  }
+  assert.ok(seen.size >= 80, `rețete diferite: ${seen.size}`);
+  // Vegan: nimic de origine animală (nici miere).
+  const v = nutritionDay({ date: '2026-10-19', athleteId: 'u-v', goal: '10k', athlete: { sex: 'm', age: 30, heightCm: 178, weightKg: 72 }, sessions: [], prefs: { ...DEFAULT_PREFS, diet: 'vegan' } });
+  assert.ok(v.meals.every((m) => m.items.every((it) => !FOODS[it.food]!.animal)));
+});

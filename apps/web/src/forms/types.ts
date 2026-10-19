@@ -16,6 +16,8 @@ export interface IntakeAnswers {
   anNastere?: number | null;
   /** Înălțimea în cm. */
   inaltime?: number | null;
+  /** Cum mănâncă: decide ce rețete intră în mesele propuse (se salvează și în preferințele de nutriție). */
+  alimentatie?: 'omnivor' | 'vegetarian' | 'vegan' | null;
   obiectiv: Goal | 'full';
   dataCursa: string; // YYYY-MM-DD
   inot: { nivel: 'nu_stiu' | 'bazin_scurt' | 'continuu_400' | 'peste_1500' | null; apeDeschise: 'nu' | 'putin' | 'da' | null; bazin: boolean | null };

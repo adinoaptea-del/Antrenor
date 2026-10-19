@@ -15,7 +15,7 @@
 //    aceeași familie nu la prânz și la cină în aceeași zi.
 
 import { FOODS, foodCost, foodValues, type Allergen } from './foods.js';
-import { RECIPE, RECIPES, ROTATION_14, type Recipe, type Slot } from './recipes.js';
+import { RECIPE, RECIPES, type Recipe, type Slot } from './recipes.js';
 import { addDays, diffDays } from '../util/dates.js';
 
 export const BASE_PAL = 1.4;
@@ -146,6 +146,15 @@ const kindOf: Record<Slot, Recipe['kind']> = { mic_dejun: 'B', pranz: 'M', cina:
 const ROT_COL: Record<Slot, number> = { mic_dejun: 0, pranz: 1, cina: 2, gustare: 3 };
 const EPOCH = '2026-01-05';
 const dayIndex = (date: string) => ((diffDays(EPOCH, date) % 14) + 14) % 14;
+/**
+ * Începutul istoricului de varietate: ancorat pe blocuri fixe de 91 de zile (minus 28 de zile de rodaj), ca toate zilele
+ * dintr-un bloc să pornească din aceeași simulare — meniul de ieri, cel de azi și „alternativele” sunt consecvente.
+ */
+export const historyFrom = (date: string) => addDays(EPOCH, Math.floor(dayNum(date) / 91) * 91 - 28);
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+const dayNum = (date: string) => Math.max(0, diffDays(EPOCH, date));
+const KIND_POOL: Record<Recipe['kind'], string[]> = { B: [], M: [], G: [] };
+for (const r of RECIPES) KIND_POOL[r.kind].push(r.id);
 
 /**
  * Profilul de alegere a meselor (personalizarea selecției, nu doar a porțiilor). Fiecare criteriu e calculat din
@@ -194,6 +203,19 @@ export function mainProtein(r: Recipe): string | null {
   return best && isProteinFood(best) ? best : null;
 }
 
+/** Gustarea în plus: printre primele 5 potrivite (sortate), rotită pe zi și pe sportiv, ca să nu fie aceeași zilnic. */
+function rotatePick(sorted: Recipe[], date: string, seed: string | null | undefined, salt: number): Recipe | undefined {
+  const top = sorted.slice(0, 5);
+  if (!top.length) return undefined;
+  return top[(dayNum(date) + (seed ? hashSeed(seed) : 0) + salt) % top.length];
+}
+
+const MAIN = new Map<string, string | null>();
+const mainOf = (id: string) => {
+  if (!MAIN.has(id)) MAIN.set(id, mainProtein(RECIPE[id]!));
+  return MAIN.get(id)!;
+};
+
 /** Cât de potrivită e rețeta pentru sportiv (mai mic = mai potrivit). */
 export function recipeFit(r: Recipe, slot: Slot, p: PickProfile): number {
   let kcal = 0;
@@ -228,6 +250,17 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
   const out = new Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }>();
   const uses = new Map<string, string[]>();
   const slots = slotsFor(prefs.meals);
+  // Rotația merge doar prin rețetele pe care sportivul le poate mânca (altfel cele de după un șir de excluse ar ieși mai des).
+  const elig = Object.fromEntries((['mic_dejun', 'pranz', 'cina', 'gustare'] as Slot[]).map((sl) => [sl, KIND_POOL[kindOf[sl]].filter((id) => eligible(RECIPE[id]!, prefs))])) as Record<Slot, string[]>;
+  // Personalizarea (fixă pe tot intervalul): cele mai potrivite ~60% pentru sportiv sunt grupa 0, restul grupa 1.
+  const personal = !!(profile.dayKcal || profile.goal || profile.sex);
+  const tierOf = Object.fromEntries((Object.keys(elig) as Slot[]).map((sl) => {
+    const ids = elig[sl];
+    if (!personal) return [sl, new Map(ids.map((id) => [id, 0]))];
+    const fit = new Map(ids.map((id) => [id, recipeFit(RECIPE[id]!, sl, profile)]));
+    const cut = [...fit.values()].sort((a, b) => a - b)[Math.max(0, Math.ceil(ids.length * 0.6) - 1)] ?? Infinity;
+    return [sl, new Map(ids.map((id) => [id, fit.get(id)! <= cut ? 0 : 1]))];
+  })) as Record<Slot, Map<string, number>>;
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const picks: Partial<Record<Slot, string>> = {};
     const repeats: Slot[] = [];
@@ -243,8 +276,8 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
       if (slot === 'pranz' && picks.cina && RECIPE[picks.cina]!.family === RECIPE[id]!.family) return false;
       if (preSlot(d) === slot && RECIPE[id]!.highFiber) return false;
       // Aceeași sursă principală de proteine (ton, ou, pui...) o singură dată pe zi.
-      const main = mainProtein(RECIPE[id]!);
-      if (main && Object.values(picks).some((x) => mainProtein(RECIPE[x!]!) === main)) return false;
+      const main = mainOf(id);
+      if (main && Object.values(picks).some((x) => mainOf(x!) === main)) return false;
       return true;
     };
     for (const slot of slots) {
@@ -253,22 +286,22 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
         picks[slot] = chosen;
         continue;
       }
-      // Ordinea preferată: rotația din ghid, apoi celelalte rețete eligibile din același tip, în ordinea rotației.
-      const order: string[] = [];
-      for (let k = 0; k < 14; k++) {
-        const id = ROTATION_14[(idx + k) % 14]![ROT_COL[slot]]!;
-        if (!order.includes(id)) order.push(id);
-      }
-      for (const r of RECIPES) if (r.kind === kindOf[slot] && !order.includes(r.id)) order.push(r.id);
-      let cands = order.filter((id) => eligible(RECIPE[id]!, prefs));
-      // Personalizarea: întâi cele mai potrivite ~60% pentru sportiv (în ordinea rotației lui), apoi restul.
-      if (profile.dayKcal || profile.goal || profile.sex) {
-        const fit = new Map(cands.map((id) => [id, recipeFit(RECIPE[id]!, slot, profile)]));
-        const cut = [...fit.values()].sort((a, b) => a - b)[Math.max(0, Math.ceil(cands.length * 0.6) - 1)] ?? Infinity;
-        cands = [...cands.filter((id) => fit.get(id)! <= cut), ...cands.filter((id) => fit.get(id)! > cut)];
-      }
-      // Înaintea efortului: întâi rețetele familiare cu puține fibre (marcate în ghid), apoi restul fără fibre multe.
-      if (preSlot(d) === slot) cands = [...cands.filter((id) => RECIPE[id]!.preOk), ...cands.filter((id) => !RECIPE[id]!.preOk)];
+      // Ordinea: toată biblioteca tipului, rotită pe zi și pe sportiv (pas prim cu mărimea listei), ca toate rețetele
+      // să apară, nu doar primele din ghid.
+      const pool = elig[slot];
+      // Pasul e prim cu numărul de rețete, ca rotația să treacă prin toate (nu doar printr-un ciclu scurt).
+      let step = 7 + ROT_COL[slot] * 4;
+      while (pool.length > 1 && gcd(step, pool.length) !== 1) step++;
+      const start = pool.length ? (dayNum(d) * step + idx * 3) % pool.length : 0;
+      let cands = pool.map((_, k) => pool[(start + k) % pool.length]!);
+      // Grupe în ordinea preferinței: înaintea efortului întâi rețetele familiare cu puține fibre; apoi cele mai potrivite
+      // ~60% pentru sportiv (personalizarea), apoi restul. În grupă: cea folosită cel mai demult (rotația sparge egalitățile),
+      // ca rețetele să se folosească uniform, nu aceleași câteva.
+      const base = tierOf[slot];
+      const pre = preSlot(d) === slot;
+      const tier = new Map<string, number>(cands.map((id) => [id, base.get(id)! + (pre && !RECIPE[id]!.preOk ? 2 : 0)]));
+      const lastUse = (id: string) => uses.get(id)?.at(-1) ?? '';
+      cands = cands.map((id, k) => ({ id, k })).sort((x, y) => tier.get(x.id)! - tier.get(y.id)! || (lastUse(x.id) < lastUse(y.id) ? -1 : lastUse(x.id) > lastUse(y.id) ? 1 : x.k - y.k)).map((x) => x.id);
       let pick = cands.find((id) => ok(id, slot));
       if (!pick && cands.length) {
         // Biblioteca e prea mică pentru preferințe: cea folosită cel mai demult, marcată ca repetare.
@@ -394,7 +427,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   const pre = preEffortSlot(sessions, prefs.meals);
   // Profilul de alegere: aceeași energie de bază în fiecare zi (fără sport), ca istoricul de varietate să fie stabil.
   const pick: PickProfile = { seed: input.athleteId ?? null, goal: input.goal, sex: a.sex, age: a.age, dayKcal: energy ? energy.base * (1 + adjustPct / 100) : null, meals: prefs.meals };
-  const sel = selectDays(addDays(input.date, -27), input.date, prefs, (d) => (d === input.date ? pre : null), pick).get(input.date)!;
+  const sel = selectDays(historyFrom(input.date), input.date, prefs, (d) => (d === input.date ? pre : null), pick).get(input.date)!;
   let slots = Object.keys(sel.picks) as Slot[];
   const base0 = slots.reduce((n, s) => n + recipeValues(sel.picks[s]!).kcal, 0);
   const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
@@ -405,7 +438,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   const fewMeals = prefs.meals <= 2;
   const maxExtra = fewMeals ? (prefs.snacksOk === false ? 0 : 2) : 1;
   while (factor > 1.5 && extra.length < maxExtra) {
-    const g = RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !Object.values(sel.picks).includes(r.id) && !extra.includes(r)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
+    const g = rotatePick(RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !Object.values(sel.picks).includes(r.id) && !extra.includes(r)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein), input.date, input.athleteId, extra.length);
     if (!g) break;
     extra.push(g);
     factor = mealsTarget! / (base0 + extra.reduce((n, r) => n + recipeValues(r.id).kcal, 0));
@@ -464,8 +497,8 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   // Proteinele: dacă rămân sub țintă, o gustare bogată în proteine (fără a ascunde diferența).
   let protein = meals.reduce((n, m) => n + m.protein, 0);
   if (proteinT && protein < proteinT.target * 0.9) {
-    const g = RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !meals.some((m) => m.recipe.id === r.id)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
-    if (g && recipeValues(g.id).protein >= 15) {
+    const g = rotatePick(RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !meals.some((m) => m.recipe.id === r.id) && recipeValues(r.id).protein >= 15).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein), input.date, input.athleteId, 7);
+    if (g) {
       meals.push({ ...mealOf('gustare', g, 1), label: 'Gustare cu proteine', why: `proteinele zilei ar fi rămas la ${Math.round(protein)} g din ${Math.round(proteinT.target)} g` });
       protein = meals.reduce((n, m) => n + m.protein, 0);
     }
