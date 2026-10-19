@@ -752,22 +752,24 @@ const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: str
     site: 'https://cloud.ouraring.com/oauth/applications',
     // Pas cu pas: nu e nevoie de inel, doar de un cont Oura (gratuit).
     before: [
-      { text: 'Fă-ți cont Oura gratuit, dacă nu ai: din aplicația Oura (App Store / Google Play). Nu trebuie inel.', href: 'https://ouraring.com/app' },
-      { text: 'Loghează-te pe cloud.ouraring.com cu contul ăsta.', href: 'https://cloud.ouraring.com' },
-      { text: 'Deschide Applications și apasă „Create New”.', href: 'https://cloud.ouraring.com/oauth/applications' },
+      { text: 'Cont Oura (dacă nu ai): contul se face doar din aplicația Oura. iPhone: App Store → Oura (link).', href: 'https://apps.apple.com/app/oura/id1043837948' },
+      { text: 'Android: Google Play → Oura (link). În aplicație: Start → emailul tău → codul primit pe email. Setarea inelului și abonamentul le poți sări: pentru chei nu trebuie inel.', href: 'https://play.google.com/store/apps/details?id=com.ouraring.oura' },
+      { text: 'Intră pe cloud.ouraring.com cu același email; parola e codul pe care ți-l trimite Oura pe email.', href: 'https://cloud.ouraring.com/' },
+      { text: 'Your Applications → „Create New”.', href: 'https://cloud.ouraring.com/oauth/applications' },
     ],
     steps: (u) => [
       { label: 'Display Name (numele aplicației)', value: 'AIRON' },
       { label: 'Description', value: 'AIRON: antrenor personal pentru prieteni (somn, HRV, readiness, antrenamente). Datele se folosesc doar pentru planul sportivului.' },
       { label: 'Contact Email', value: 'adresa ta de email (o scrii tu)' },
       { label: 'Website', value: u },
-      { label: 'Privacy Policy URL', value: `${u}/confidentialitate.html` },
-      { label: 'Terms of Service URL', value: `${u}/confidentialitate.html` },
+      { label: 'Privacy Policy', value: `${u}/confidentialitate.html` },
+      { label: 'Terms of Service', value: `${u}/confidentialitate.html` },
       { label: 'Redirect URIs (exact, fără spațiu la final)', value: `${u}/api/oauth/oura/callback` },
-      { label: 'Scopes (bifează, dacă cere)', value: 'daily, heartrate, workout, session, personal' },
+      { label: 'Scopes: bifează exact acestea cinci', value: 'personal, daily, heartrate, workout, session' },
     ],
     after: [
-      'Apasă Save. Pagina aplicației îți arată Client ID și Client Secret (la Secret uneori apeși „Show”).',
+      'Bifează „I agree to the Oura API Agreement” și apasă „Create Application”.',
+      'La aplicația nouă: „View Details” → copiezi Client ID și Client Secret.',
     ],
     final: [
       'Verificare: Profil → Dispozitive → Oura → Conectează. Dacă Oura refuză, eroarea apare sus în Profil.',
