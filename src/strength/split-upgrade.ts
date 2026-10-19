@@ -49,7 +49,7 @@ export function upgradeStrengthRules(plan: PlannedWorkout[], today: string): Pla
   const byWeek = new Map<string, number>();
   for (const x of future) byWeek.set(weekStart(x.w.date), (byWeek.get(weekStart(x.w.date)) ?? 0) + (isFitnessSession(x.spec.session) && !isWideSession(x.spec.session) ? 1 : 0));
   let curWeek = '';
-  let queue: string[] = [];
+  let queue: { session: StrengthSpec['session']; variant?: number }[] = [];
   const out: PlannedWorkout[] = [];
   for (const { w, spec } of future) {
     let s2: StrengthSpec = spec;
@@ -59,7 +59,8 @@ export function upgradeStrengthRules(plan: PlannedWorkout[], today: string): Pla
         curWeek = ws;
         queue = rot.week(byWeek.get(ws) ?? 1);
       }
-      s2 = { ...spec, session: (queue.shift() ?? spec.session) as StrengthSpec['session'] };
+      const n = queue.shift();
+      s2 = n ? { ...spec, session: n.session, ...(n.variant != null ? { variant: n.variant } : {}) } : spec;
     }
     const structure = strengthStructure(s2);
     const minutes = prescribe(s2, Math.max(MIN_STRENGTH_MINUTES, w.plannedMinutes)).minutes;

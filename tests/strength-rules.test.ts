@@ -81,3 +81,20 @@ test('jurnalul: ținta pe serie la piramidă; „3 s ținut” nu e o durată', 
   assert.deepEqual(repRange('40: 30 cu 3 s ținut sus + 10 rapide'), [40, 40]);
   assert.equal(repRange('30–45 s'), null);
 });
+
+test('femeie: fiecare zi are 3 variante din săptămânile antrenoarei; planul trece prin ele (exercițiile se schimbă)', () => {
+  const blocks = [0, 2, 4].map((day) => ({ day: day as 0, startMin: 18 * 60, endMin: 19 * 60 + 30 }));
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-04-26', goal: 'fit-tonifiere', freeBlocks: blocks, historyHoursPerWeek: [], intensityAllowed: 'toate', swimContinuous400: false, athlete: { age: 30, sex: 'f' }, fitness: fitnessProfile('fit-tonifiere', { experienta: 'stabila', zile: 3, minute: 90, acces: 'sala', miscare: 'activa' }) });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const seen = new Map<string, Set<number>>();
+  for (const w of r.weeks.flatMap((x) => x.workouts)) {
+    const sp = parseStrength(w.structure)!;
+    if (!seen.has(sp.session)) seen.set(sp.session, new Set());
+    seen.get(sp.session)!.add(sp.variant ?? 0);
+  }
+  for (const id of ['l1', 'l2', 'l3', 'u1', 'u2']) assert.deepEqual([...(seen.get(id) ?? [])].sort(), [0, 1, 2], id);
+  const a = prescribe({ session: 'l1', block: 'progres', week: 2, len: 4, variant: 0 }, 90).items.map((i) => i.ex.id).join();
+  const b = prescribe({ session: 'l1', block: 'progres', week: 2, len: 4, variant: 2 }, 90).items.map((i) => i.ex.id).join();
+  assert.notEqual(a, b);
+});
