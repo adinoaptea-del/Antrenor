@@ -17,10 +17,19 @@ test('înot tehnic de 30 min: metri, repetări, pauze și durată estimată, nu 
   assert.match(r.steps.at(-1)!.text, /estimată/);
 });
 
-test('fără CSS: niciun înot continuu prescris, doar repetări scurte cu pauză', () => {
+test('capacitate necunoscută (V2-04, V2-10): lungimi de 25 m ca familiarizare, volum plafonat, fără să umple timpul', () => {
   const r = swimSet({ type: 'z2', minutes: 45, css: null, date: '2026-10-19' });
   const main = r.steps.find((s) => s.label === 'Principal')!.text;
-  assert.match(main, /× 50 m ușor, 30 s pauză/);
+  assert.match(main, /12 × 25 m ușor, 30 s pauză/);
+  assert.match(main, /plafonat la 300 m/);
+  assert.ok(r.estMin < 45);
+});
+
+test('V2-10 volumul recent măsurat ridică plafonul cel mult +10%', () => {
+  const r = swimSet({ type: 'z2', minutes: 60, css: null, date: '2026-10-19', continuousM: 50, recentMaxM: 800 });
+  const main = r.steps.find((s) => s.label === 'Principal')!.text;
+  const m = /(\d+) × (\d+) m/.exec(main)!;
+  assert.ok(Number(m[1]) * Number(m[2]) <= 875, main);
 });
 
 test('cu CSS: repetări de 100 m, iar calitatea e la ritmul pragului', () => {

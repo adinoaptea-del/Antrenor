@@ -31,6 +31,8 @@ export interface FitnessProfile {
    * doar pentru că trec săptămânile: planul nu trece peste acest număr până la următoarea reevaluare săptămânală.
    */
   unlocked?: FitnessDays;
+  /** Motivul deciziei de frecvență (pentru explicație). */
+  unlockWhy?: string;
 }
 
 export interface FitnessWeek {
@@ -125,25 +127,79 @@ export function wideEligible(p: Pick<FitnessProfile, 'beginner' | 'postpartum' |
   return !p.beginner && !p.postpartum && p.minutes >= 55;
 }
 
+export interface AttendanceWeek {
+  planned: number;
+  done: number;
+  /** Durere / simptom raportat în săptămână. */
+  pain?: boolean;
+  /** Câte ședințe au feedback (jurnal de forță sau formular de seară). Lipsă = necunoscut, nu „fără probleme”. */
+  feedback?: number;
+}
+
+export interface UnlockResult {
+  days: FitnessDays;
+  /** De ce nu urcă (sau de ce urcă), pentru explicație și audit. */
+  why: string;
+}
+
 /**
- * Câte zile a „deblocat” sportiva, din prezența reală (decizie de produs AIRON, nu prag fiziologic validat):
- * pornești de la frecvența de început; urci cu o zi doar după 3 săptămâni la rând la frecvența de acum cu cel puțin
- * 80% din ședințe făcute, fără durere raportată. Calendarul singur nu dovedește adaptarea.
- * `weeks`: săptămânile încheiate, cele mai vechi primele: câte ședințe de forță erau planificate și câte s-au făcut.
+ * Câte zile a „deblocat” sportiva (auditul v2, V2-07; regulă de produs AIRON, nu prag fiziologic validat). O zi în plus
+ * doar dacă TOATE sunt adevărate:
+ *  - o vrea (zilele alese în chestionar) și are timp (zile libere în program pentru încă o ședință);
+ *  - 3 săptămâni la rând la frecvența de acum, cu prezența cumulată ≥ 80% din ședințele planificate în cele 3 săptămâni
+ *    (ponderat: la 2 ședințe/săpt. înseamnă 5 din 6, nu „2 din 2 în fiecare săptămână”);
+ *  - feedback în fiecare din cele 3 săptămâni (lipsa feedbackului nu e toleranță);
+ *  - fără durere raportată și fără restricție activă.
+ * Prima săptămână cu o zi în plus distribuie doza existentă (accesoriile la o serie), nu o crește.
  */
-export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: { planned: number; done: number; pain?: boolean }[]): FitnessDays {
+export function unlockDecision(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: AttendanceWeek[], opts: { freeDays?: number; restricted?: boolean } = {}): UnlockResult {
   let level: number = startDays(p);
-  let streak = 0;
+  let why = `frecvența de început (${level} zile)`;
+  let run: AttendanceWeek[] = [];
   for (const w of weeks) {
     if (w.planned === 0) continue;
-    const ok = w.done / w.planned >= 0.8 && !w.pain;
-    streak = ok && w.planned >= level ? streak + 1 : ok ? streak : 0;
-    if (streak >= 3 && level < p.days) {
+    if (w.planned < level) {
+      // Săptămână cu mai puține ședințe planificate (deplasare, revizuire): nu dovedește frecvența de acum.
+      continue;
+    }
+    run.push(w);
+    if (run.length > 3) run = run.slice(-3);
+    const bad = w.pain || (w.feedback ?? 0) === 0 || w.done === 0;
+    if (bad) {
+      why = w.pain ? 'durere raportată: frecvența nu crește' : (w.feedback ?? 0) === 0 ? 'fără feedback într-o săptămână: lipsa datelor nu e toleranță' : 'o săptămână fără ședințe făcute';
+      run = [];
+      continue;
+    }
+    if (run.length === 3) {
+      const planned = run.reduce((n, x) => n + x.planned, 0);
+      const done = run.reduce((n, x) => n + x.done, 0);
+      if (done / planned < 0.8) {
+        why = `prezență ${done}/${planned} în ultimele 3 săptămâni (sub 80%)`;
+        continue;
+      }
+      if (level >= p.days) {
+        why = `ai ales ${p.days} zile: nu crește peste ce vrei`;
+        continue;
+      }
+      if (opts.freeDays != null && opts.freeDays <= level) {
+        why = `prezență bună (${done}/${planned}), dar programul tău are doar ${opts.freeDays} zile libere`;
+        continue;
+      }
+      if (opts.restricted) {
+        why = 'restricție activă: frecvența nu crește acum';
+        continue;
+      }
       level += 1;
-      streak = 0;
+      why = `prezență ${done}/${planned} în 3 săptămâni, cu feedback și fără durere: ${level} zile (prima săptămână distribuie doza, nu o crește)`;
+      run = [];
     }
   }
-  return Math.min(p.days, level) as FitnessDays;
+  return { days: Math.min(p.days, level) as FitnessDays, why };
+}
+
+/** Compatibilitate: doar numărul de zile. Fără `feedback` în date, se consideră că există (apel vechi). */
+export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: AttendanceWeek[], opts: { freeDays?: number; restricted?: boolean } = {}): FitnessDays {
+  return unlockDecision(p, weeks.map((w) => ({ ...w, feedback: w.feedback ?? w.done })), opts).days;
 }
 
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */
@@ -175,6 +231,27 @@ export const FITNESS_WEEK_ACTION: Record<number, string> = {
   25: 'Pregătești următorul bloc: continui menținerea sau alegi un obiectiv nou de forță/masă musculară.',
   26: 'Bilanț față de început: ședințe făcute, tehnică, greutăți, funcție, bunăstare. Nu doar kilogramele.',
 };
+
+/**
+ * Structura unică a săptămânilor de fitness (auditul v2, V2-13), cu datele calendarului: aceeași pentru plan, calendar,
+ * explicație și audit. 26 de săptămâni (sau câte încap până la data finală, exclusă), fără descărcări automate.
+ */
+export function fitnessPlanWeeks(planStart: string, raceDate: string, p: FitnessProfile): (FitnessWeek & { weekStart: string })[] {
+  const first = mondayOf(planStart);
+  const total = Math.max(1, Math.min(26, Math.floor((Date.parse(`${raceDate}T12:00:00Z`) - Date.parse(`${first}T12:00:00Z`)) / (7 * 86_400_000)) || 26));
+  return fitnessWeeks(p, total).map((w) => ({ ...w, weekStart: plusDays(first, (w.week - 1) * 7) }));
+}
+
+function mondayOf(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function plusDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 /** Ce face săptămâna în varianta amplă A–D (programul din 19.10.2026). */
 const WIDE_ACTION: [number, string][] = [

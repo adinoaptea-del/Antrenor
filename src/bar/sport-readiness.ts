@@ -108,7 +108,8 @@ export interface Declared {
 /** Răspunsul din chestionar → metri fără oprire (limita de jos a variantei alese). */
 export function declaredSwimM(nivel: string | null | undefined, has400Time = false): number | null {
   if (has400Time) return 400;
-  return nivel === 'peste_1500' ? 1500 : nivel === 'continuu_400' ? 400 : nivel === 'bazin_scurt' ? 50 : nivel === 'nu_stiu' ? 0 : null;
+  // „Nu știu” = necunoscut (null), nu 0 m și nu o valoare implicită (auditul v2, V2-04).
+  return nivel === 'peste_1500' ? 1500 : nivel === 'continuu_400' ? 400 : nivel === 'bazin_scurt' ? 50 : null;
 }
 
 /** Cât a declarat sportivul că înoată fără oprire (chestionarul de intrare). */

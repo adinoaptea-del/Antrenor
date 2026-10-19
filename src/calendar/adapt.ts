@@ -3,6 +3,7 @@
 
 import { fitStructure, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
+import { applyProgression, type Execution } from './progression.js';
 import { SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
@@ -42,7 +43,11 @@ export type AdaptEvent =
    * Fitness: ședință de sală ratată. Rotația continuă de unde ai rămas (ședința ratată trece în următorul slot al
    * săptămânii, restul se decalează); nimic nu se dublează și nu se adaugă o zi în plus.
    */
-  | { kind: 'forta-ratat'; workoutId: string };
+  | { kind: 'forta-ratat'; workoutId: string }
+  /** Dimineața: treptele modulelor (T1→T2, V10a→V10, sweet spot, seturi CSS) din execuții, nu din calendar. */
+  | { kind: 'trepte'; date: string }
+  /** Propunerea validată a antrenorului AI: devine sugestie pe ședință; o activează doar sportivul. */
+  | { kind: 'propunere'; date: string; workoutId: string; actiune: 'usureaza' | 'scurteaza'; minutes: number | null; motiv: string };
 
 export interface AdaptContext {
   today: string;
@@ -53,6 +58,8 @@ export interface AdaptContext {
   recentRepeats?: Record<string, number>;
   /** Ședințele deja executate (au activitate asociată): nicio adaptare nu le mai anulează sau schimbă. */
   done?: string[];
+  /** Execuțiile cunoscute (scor, efort, durere, scurtare pentru timp), pentru treptele modulelor. */
+  executions?: Execution[];
 }
 
 export interface AdaptResult {
@@ -77,13 +84,14 @@ export function eventKey(ev: AdaptEvent): string {
       return `durere:${ev.date}:${ev.loc}:${ev.score}`;
     case 'febra':
       return `febra:${ev.date}`;
-    // Zi + sport, nu id-ul: aceeași ședință poate sosi întâi de pe o brățară și apoi de pe alta (alt id, alte minute).
+    // Identitatea ședinței, nu id-ul unei înregistrări: aceeași ședință poate sosi de pe două brățări (alt id), dar două
+    // ședințe reale din același sport în aceeași zi (dimineața și seara) rămân două (auditul v2, V2-03).
     case 'neplanificat':
-      return `neplanificat:${ev.activity.date}:${ev.activity.sport}`;
+      return `neplanificat:${activitySlot(ev.activity)}`;
     case 'progres':
       return `progres:${ev.date}`;
     case 'efort':
-      return `efort:${ev.activity.date}:${ev.activity.sport}`;
+      return `efort:${activitySlot(ev.activity)}`;
     case 'revenire':
       return `revenire:${ev.dela}`;
     case 'bilant':
@@ -94,7 +102,21 @@ export function eventKey(ev: AdaptEvent): string {
       return `acoperire:${ev.date}`;
     case 'forta-ratat':
       return `forta-ratat:${ev.workoutId}`;
+    case 'trepte':
+      return `trepte:${ev.date}`;
+    case 'propunere':
+      return `propunere:${ev.date}:${ev.workoutId}`;
   }
+}
+
+/**
+ * Cheia ședinței pentru evenimente: zi + sport + fereastra de start de 2 h (aceeași ședință văzută de două brățări
+ * pornește la câteva minute distanță). Fără oră de start: id-ul înregistrării (prudent: nu contopește ședințe).
+ * Limită: două ședințe reale din același sport începute în aceeași fereastră de 2 h sunt tratate ca una.
+ */
+export function activitySlot(a: { date: string; sport: string; id: string; startLocal?: string | null }): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(a.startLocal ?? '');
+  return m ? `${a.date}:${a.sport}:h${Math.floor((Number(m[1]) * 60 + Number(m[2])) / 120)}` : `${a.date}:${a.sport}:id-${a.id}`;
 }
 
 export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptContext): AdaptResult {
@@ -138,6 +160,21 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
     case 'forta-ratat':
       applyMissedStrength(next, event, ctx, changes);
       break;
+    case 'propunere': {
+      const x = next.find((w) => w.id === event.workoutId);
+      if (!x || !isActiveWorkout(x) || (ctx.done ?? []).includes(x.id) || x.suggestion?.accepted != null) break;
+      const minutes = event.actiune === 'scurteaza' && event.minutes ? event.minutes : Math.max(20, Math.round((x.plannedMinutes * 0.8) / 5) * 5);
+      x.suggestion = { minutes, zones: event.actiune === 'usureaza' ? [1, 2] : x.targetZones, structure: event.actiune === 'usureaza' ? `${minutes} min ușor în Z1–Z2, fără intervale` : `aceeași ședință, scurtată la ${minutes} min`, reason: `propunerea antrenorului: ${event.motiv}`, accepted: null };
+      changes.push(`${x.id}: propunere validată (${event.actiune}) pusă ca sugestie; o activează sportivul`);
+      break;
+    }
+    case 'trepte': {
+      const r = applyProgression(next, ctx.executions ?? [], event.date);
+      for (let i = 0; i < next.length; i++) next[i] = r.plan[i]!;
+      // Și „keep” își păstrează dovezile (auditul v2, V2-16).
+      for (const d of r.decisions) changes.push(`${d.workoutId}: ${d.family} ${d.from === d.stepName ? `rămâne la ${d.stepName} [${d.decision}]` : `${d.from} → ${d.stepName} [${d.decision}]`} — ${d.evidence}`);
+      break;
+    }
   }
 
   // Trecutul nu se rescrie: ce era înainte de azi rămâne prescripția valabilă atunci (o febră raportată târziu
@@ -170,7 +207,8 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
       nextKey.note = 'treaptă coborâtă (−10%) după trei nereușite';
       changes.push(`${nextKey.id}: ${nextKey.sport} ${nextKey.type} coborât la ${nextKey.plannedMinutes} min`);
     } else {
-      nextKey.plannedMinutes = w.plannedMinutes;
+      // Repetarea treptei nu crește durata ședinței următoare (o poate doar păstra sau scădea).
+      nextKey.plannedMinutes = Math.min(nextKey.plannedMinutes, w.plannedMinutes);
       nextKey.step = w.step;
       nextKey.note = 'treaptă repetată';
       changes.push(`${nextKey.id}: ${nextKey.sport} ${nextKey.type} repetă treapta (${w.plannedMinutes} min)`);
@@ -238,31 +276,44 @@ function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   }
 }
 
-function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'durere' }>, _ctx: AdaptContext, changes: string[]): void {
+function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'durere' }>, ctx: AdaptContext, changes: string[]): void {
   if (ev.score < 3) return;
+  const done = new Set(ctx.done ?? []);
+  // ≥ 5: roșu — fără antrenament azi și mâine; zilele următoare le decide restricția activă (rămâne până la o
+  // raportare mai mică). Nicio alternativă activată automat.
+  if (ev.score >= 5) {
+    const until = addDays(ev.date, 1);
+    for (const x of plan) {
+      if (!isActiveWorkout(x) || done.has(x.id) || x.date < ev.date || x.date > until) continue;
+      x.status = 'anulat_sistem';
+      x.note = `durere ${ev.score}/10 la ${ev.loc}: pauză până la reevaluare (fizioterapeut / medic)`;
+      changes.push(`${x.id}: anulat (durere ${ev.score}/10, roșu)`);
+    }
+    changes.push(`durere ${ev.score}/10 la ${ev.loc}: restricție roșie activă până la o raportare mai mică; escaladare la fizioterapeut`);
+    return;
+  }
+  // 3–4: galben — planul nu se schimbă singur. Ședințele cu impact primesc o SUGESTIE fără impact, cu condiția scrisă
+  // (încerci 5 min; dacă doare, te oprești); sportivul o confirmă sau nu.
   const until = addDays(ev.date, 5);
   for (const x of plan) {
-    if (!isActiveWorkout(x)) continue;
-    if (diffDays(ev.date, x.date) < 0 || diffDays(x.date, until) < 0) continue;
+    if (!isActiveWorkout(x) || done.has(x.id) || x.date < ev.date || x.date > until || x.suggestion?.accepted != null) continue;
     if (x.sport === 'alergare') {
-      x.sport = 'bicicleta';
-      x.type = 'z2';
-      x.targetZones = [2];
-      x.key = false;
-      x.intervals = undefined;
-      x.structure = undefined;
-      x.note = `fără impact: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until} (se reevaluează cu chestionarul)`;
-      changes.push(`${x.id}: alergarea devine bicicletă Z2 (${x.plannedMinutes} min)`);
+      const minutes = Math.max(20, Math.round((x.plannedMinutes * 0.8) / 5) * 5);
+      x.suggestion = {
+        minutes,
+        zones: [1, 2],
+        sport: 'bicicleta',
+        structure: `${minutes} min bicicletă ușoară (Z1–Z2), DOAR dacă pedalatul nu doare: încerci 5 min; dacă apare durerea la ${ev.loc}, te oprești și azi e pauză`,
+        reason: `durere ${ev.score}/10 la ${ev.loc}; alternativa nu e presupusă potrivită, o confirmi tu`,
+        accepted: null,
+      };
+      changes.push(`${x.id}: sugestie fără impact (bicicletă ușoară, condiționată), alergarea rămâne în plan până confirmi`);
     } else if (x.type === 'brick') {
-      // Rămâne doar bicicleta: durata scade cu alergarea (nu se umple timpul cu altceva).
-      x.plannedMinutes = brickSplit(x.structure, x.plannedMinutes).bike;
-      x.type = 'lung';
-      x.structure = 'tura lungă fără alergarea de după';
-      x.note = `brick fără alergare: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until}`;
-      changes.push(`${x.id}: brick fără alergare`);
+      const { bike } = brickSplit(x.structure, x.plannedMinutes);
+      x.suggestion = { minutes: bike, zones: [1, 2], structure: `${bike} min bicicletă ușoară, fără alergarea de după; doar dacă pedalatul nu doare`, reason: `durere ${ev.score}/10 la ${ev.loc}`, accepted: null };
+      changes.push(`${x.id}: sugestie brick fără alergare (condiționată)`);
     }
   }
-  if (ev.score >= 5) changes.push(`durere ${ev.score}/10 la ${ev.loc}: escaladare la fizioterapeut în aceeași zi`);
 }
 
 function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'febra' }>, changes: string[]): void {
@@ -326,7 +377,14 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // Volumul nu mai înlocuiește automat ședințe din săptămână, iar zilele următoare nu se ușurează din prima:
   // ziua o echivalează regula „acoperit/acoperire” (efort, nu minute), iar ziua de mâine o decid datele de dimineață.
   // 3. Cursă lungă: săptămâna următoare nu progresează.
-  if (!longRace) return;
+  if (!longRace) {
+    // Și „păstrează” își scrie dovezile (auditul v2, V2-16): ce s-a contabilizat, fereastra verificată, de ce rămâne planul.
+    const weekMin = plan.filter((x) => isActiveWorkout(x) && inWeek(x.date) && x.sport === a.sport).reduce((n, x) => n + x.plannedMinutes, 0);
+    const next48 = plan.filter((x) => isActiveWorkout(x) && x.date > a.date && diffDays(a.date, x.date) <= 2);
+    const hard48 = next48.filter((x) => x.type === 'calitate' || x.type === 'brick' || x.key);
+    changes.push(`activitate neplanificată contabilizată: ${a.sport} ${a.minutes} min pe ${a.date}${ev.rpe != null ? `, efort ${ev.rpe}/10` : ''} (planul săptămânii la ${a.sport}: ${weekMin} min). Verificat: următoarele 48 h (${next48.length ? next48.map((x) => `${x.date} ${x.sport} ${x.type}`).join(', ') : 'nimic planificat'}). Planul rămâne: ${hard48.length ? 'ziua de mâine o decid datele de dimineață (recuperarea), nu minutele în plus' : 'nicio ședință grea în 48 h, efortul nu cere schimbări'}; ce s-a făcut în plus nu se scade și nu se dublează din alte ședințe.`);
+    return;
+  }
   const nextMonday = addDays(monday, 7);
   const nextSunday = addDays(nextMonday, 6);
   // Referința e cheia planificată a săptămânii cursei, chiar dacă a fost înlocuită de cursă.

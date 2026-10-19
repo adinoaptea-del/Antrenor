@@ -41,7 +41,8 @@ export interface PlannedWorkout {
    * Zilele galbene/portocalii: ședința rămâne cum e în plan, cu o SUGESTIE mai ușoară. Sportivul alege:
    * accepted = true → varianta ușoară intră în calendar; false → face ședința din plan; null → n-a ales încă.
    */
-  suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null } | null;
+  /** Varianta propusă (sportivul alege). `sport` = altă disciplină (ex. fără impact la durere), doar cu confirmare. */
+  suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null; sport?: Sport } | null;
   /** Cum arăta ședința în plan înainte de prima schimbare (de sistem sau a sportivului): pentru „Actualizat” și pentru revenire. */
   original?: WorkoutSnapshot | null;
   /** Când s-a schimbat ultima dată (ISO). */
@@ -70,6 +71,8 @@ export interface Activity {
   date: string;
   sport: Sport;
   minutes: number;
+  /** Ora de start (HH:MM, ora locală), când o știe sursa: deosebește două ședințe reale din aceeași zi. */
+  startLocal?: string | null;
   distanceKm?: number | null;
   avgHr?: number | null;
   maxHr?: number | null;

@@ -4,7 +4,7 @@
 
 import type { FreeBlock, PlannedWorkout } from '../types.js';
 import { addDays, weekStart } from '../util/dates.js';
-import { fitnessWeeks, type FitnessProfile } from '../strength/fitness.js';
+import { fitnessPlanWeeks, type FitnessProfile } from '../strength/fitness.js';
 import { prescribe, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
 import type { GenerateResult, WeekPlan } from './generate.js';
 
@@ -60,8 +60,8 @@ export function pickFitnessDays(blocks: FreeBlock[], n: number, minutes: number)
 export function generateFitnessPlan(input: { startDate: string; raceDate: string; freeBlocks: FreeBlock[]; fitness: FitnessProfile }): GenerateResult {
   const f = input.fitness;
   const first = weekStart(input.startDate);
-  const total = Math.max(1, Math.min(26, Math.floor((Date.parse(`${input.raceDate}T12:00:00Z`) - Date.parse(`${first}T12:00:00Z`)) / (7 * 86_400_000)) || 26));
-  const weeks = fitnessWeeks(f, total);
+  // Aceeași structură ca în calendar și în explicații (fitnessPlanWeeks), nu fazele de anduranță.
+  const weeks = fitnessPlanWeeks(input.startDate, input.raceDate, f);
   const maxDays = Math.max(...weeks.map((w) => w.days));
   const free = longestByDay(input.freeBlocks);
   const daysAll = pickFitnessDays(input.freeBlocks, maxDays, f.minutes);

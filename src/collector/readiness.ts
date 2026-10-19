@@ -1,6 +1,9 @@
 // Starea de azi, în ordinea importanței:
-// 1. datele obiective de sănătate: inimă (HRV, puls de repaus), respirație, recuperarea/readiness-ul brățărilor, somnul,
-//    fiecare comparat cu baseline-ul personal și transformat în 0–100, apoi mediate;
+// 1. datele obiective de sănătate: inimă (HRV, puls de repaus), respirație și somn — fiecare dintr-o singură sursă
+//    (aleasă în mergeWellness, cu sursa păstrată), comparat cu baseline-ul personal și transformat în 0–100, apoi mediate.
+//    Scorul de recuperare al brățării e construit chiar din HRV, puls și somn: NU intră în medie lângă ele (ar număra
+//    aceleași dovezi de două ori). Se folosește doar când lipsesc și HRV, și pulsul de repaus, etichetat ca scor
+//    proprietar (auditul v2, V2-02);
 // 2. cum s-a simțit sportivul (Hooper), care poate doar să coboare verdictul.
 // Totul determinist: aceleași cifre dau același verdict.
 
@@ -13,7 +16,7 @@ export interface ObjectiveInput {
   rhrBaseline: number | null;
   resp: number | null;
   respBaseline: number | null;
-  /** Scorul de recuperare / readiness al brățărilor (0–100), deja mediat între brățări. */
+  /** Scorul de recuperare / readiness al brățării principale (0–100), scara producătorului; nu e mediat între brățări. */
   recovery: number | null;
   sleepMin: number | null;
 }
@@ -59,7 +62,9 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   const rec = i.recovery != null ? clamp(i.recovery) : null;
   // Somn (aliniat cu regulile Fiziologului: sub 6 h galben, sub 5 h roșu): 7 h sau peste = 100; 6 h = 70; 5 h = 30; 4 h = 0.
   const sleep = i.sleepMin != null ? clamp(sleepScore(i.sleepMin)) : null;
-  const parts = [hrv, rhr, resp, rec, sleep].filter((x): x is number => x != null);
+  // Scorul proprietar doar ca înlocuitor al inimii (HRV și puls lipsă), nu ca dovadă în plus.
+  const recUsed = hrv == null && rhr == null ? rec : null;
+  const parts = [hrv, rhr, resp, recUsed, sleep].filter((x): x is number => x != null);
   const scor = parts.length ? clamp(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
   return {
     scor,
@@ -69,7 +74,7 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
       inima_hrv: { valoare: i.hrv, referinta: i.hrvBaseline, scor: hrv },
       inima_puls: { valoare: i.rhr, referinta: i.rhrBaseline, scor: rhr },
       respiratie: { valoare: i.resp, referinta: i.respBaseline, scor: resp },
-      recuperare: { valoare: i.recovery, referinta: null, scor: rec },
+      recuperare: { valoare: i.recovery, referinta: null, scor: recUsed },
       somn: { valoare: i.sleepMin, referinta: 420, scor: sleep },
     },
   };

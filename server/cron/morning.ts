@@ -7,7 +7,7 @@ import { syncUser } from '../_lib/sync.js';
 import { rescore } from '../_lib/score.js';
 import { runAgents } from '../_lib/agents.js';
 import { labsReminder } from '../_lib/reminders.js';
-import { missedStrength } from '../_lib/react.js';
+import { missedStrength, moduleProgression } from '../_lib/react.js';
 
 /** Dimineața (05:30 ora României): sincronizare, scor, apoi piramida pentru fiecare sportiv cu plan și consimțământ. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -24,6 +24,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         await labsReminder(u.id, today).catch(() => false);
         // Fitness: sala ratată ieri → rotația continuă (fără dublare), înaintea mesajului de dimineață.
         if (u.goal && u.goal.startsWith('fit-')) await missedStrength(u.id, today).catch(() => []);
+        // Treptele modulelor din execuții, nu din calendar (V2-05); și „rămâne” își scrie dovezile în jurnal.
+        else await moduleProgression(u.id, today).catch(() => []);
         const r = await runAgents(u.id, today, 'dimineata');
         out[u.id] = r ? { decizie: r.decision, rutati: r.routed, respinse: r.rejected, schimbari: r.changes.length } : 'deja rulat';
       } catch (e) {

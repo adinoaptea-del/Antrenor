@@ -86,13 +86,23 @@ describe('adapt', () => {
     assert.equal(q1.suggestion?.accepted, null);
   });
 
-  it('durere ≥ 3: alergările din următoarele 5 zile devin bicicletă Z2 la aceeași durată', () => {
+  it('durere 3–4 (V2-01): alergarea rămâne în plan; bicicleta e doar o SUGESTIE condiționată, nu înlocuire automată', () => {
     const r = adapt(plan(), { kind: 'durere', date: '2026-11-03', score: 4, loc: 'tibie' }, { ...ctx, today: '2026-11-03' });
     const q1 = r.plan.find((w) => w.id === 'q1')!;
-    assert.equal(q1.sport, 'bicicleta');
-    assert.equal(q1.plannedMinutes, 50);
-    assert.equal(q1.key, false);
-    assert.equal(r.plan.find((w) => w.id === 'lr2')!.sport, 'alergare');
+    assert.equal(q1.sport, 'alergare');
+    assert.equal(q1.suggestion?.sport, 'bicicleta');
+    assert.equal(q1.suggestion?.accepted, null);
+    assert.match(q1.suggestion!.structure, /DOAR dacă pedalatul nu doare/);
+  });
+
+  it('durere ≥ 5 (V2-01): roșu — fără antrenament azi și mâine, fără alternativă activată', () => {
+    const r = adapt(plan(), { kind: 'durere', date: '2026-11-03', score: 5, loc: 'genunchi' }, { ...ctx, today: '2026-11-03' });
+    const day = (d: string) => r.plan.filter((w) => w.date === d);
+    for (const w of [...day('2026-11-03'), ...day('2026-11-04')]) {
+      assert.equal(w.status, 'anulat_sistem');
+      assert.equal(w.suggestion ?? null, null);
+    }
+    assert.ok(!r.plan.some((w) => w.sport === 'bicicleta' && /durere/.test(w.note ?? '')));
   });
 
   it('febră: 48 h odihnă, apoi o săptămână la −50% fără chei', () => {
@@ -134,7 +144,10 @@ describe('adapt · activitate în afara planului', () => {
     const q1 = r.plan.find((w) => w.id === 'q1')!;
     assert.equal(r1.status, 'planificat');
     assert.equal(q1.plannedMinutes, 50);
-    assert.equal(r.changes.length, 0);
+    // V2-16: nicio schimbare de plan, dar decizia „rămâne” își scrie dovezile (ce s-a contabilizat, ce s-a verificat).
+    assert.equal(r.changes.length, 1);
+    assert.match(r.changes[0]!, /contabilizată: alergare 30 min.*Verificat: următoarele 48 h.*Planul rămâne/);
+    assert.ok(r.plan.every((w, i) => JSON.stringify(w) === JSON.stringify(plan()[i])));
   });
 
   it('antrenament liber greu (RPE 8, 60 min) marți: miercuri devine Z1, dar cheia nu e atinsă', () => {

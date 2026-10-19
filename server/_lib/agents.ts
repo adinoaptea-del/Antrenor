@@ -1,3 +1,4 @@
+import type { Execution } from '../../src/calendar/progression.js';
 import { buildMe } from './me.js';
 import { messageMatches } from '../../src/calendar/day.js';
 import { withOriginal } from '../../src/calendar/actions.js';
@@ -28,7 +29,7 @@ async function loadJournal(userId: string, today: string): Promise<string[]> {
   return rows.map((r) => `${r.date}: ${r.entry}`);
 }
 
-async function loadSchedules(userId: string) {
+export async function loadSchedules(userId: string) {
   const rows = await select<{ day: number; start_min: number; end_min: number }>('schedules', { user_id: `eq.${userId}` });
   return rows.map((r) => ({ day: r.day as 0 | 1 | 2 | 3 | 4 | 5 | 6, startMin: r.start_min, endMin: r.end_min }));
 }
@@ -131,10 +132,10 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
  * Aplică evenimentele pe planul activ, o singură dată fiecare: cheia evenimentului se rezervă în agent_events
  * (unică pe sportiv) înainte de schimbare și se eliberează dacă scrierea pică, ca o reîncercare să poată reface pasul.
  */
-export async function applyPlanEvents(userId: string, today: string, planId: string, current: PlannedWorkout[], events: AdaptEvent[], doneIds?: string[]): Promise<string[]> {
+export async function applyPlanEvents(userId: string, today: string, planId: string, current: PlannedWorkout[], events: AdaptEvent[], doneIds?: string[], executions?: Execution[]): Promise<string[]> {
   // Ce s-a făcut deja (are activitate asociată) nu se mai anulează și nu se mai schimbă.
   const done = doneIds ?? (await executedIds(userId, today, current));
-  const ctx: AdaptContext = { today, freeBlocks: await loadSchedules(userId), recentKeyScores: await recentKeyScores(userId, today), done };
+  const ctx: AdaptContext = { today, freeBlocks: await loadSchedules(userId), recentKeyScores: await recentKeyScores(userId, today), done, ...(executions ? { executions } : {}) };
   const changes: string[] = [];
   let plan = current;
   for (const ev of events) {

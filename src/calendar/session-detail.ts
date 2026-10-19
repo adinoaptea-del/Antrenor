@@ -31,6 +31,8 @@ export interface DetailContext {
   swimContinuousM?: number | null;
   /** Înotul în ape libere (alegerea din aplicație); altfel bazin. */
   openWater?: boolean;
+  /** Cea mai mare ședință de înot (metri) din ultimele 4 săptămâni, măsurată: plafonul de volum (V2-10). */
+  swimRecentMaxM?: number | null;
 }
 
 interface Hr {
@@ -71,7 +73,7 @@ const STRETCH = '5 min întinderi ușoare: gambe, coapse (față și spate), fle
 
 function hrNote(hr: Hr | null): Step | null {
   if (!hr) return { label: 'Puls', text: 'fără test și fără vârstă în profil: mergi după efort (scala 0–10) și testul vorbirii; zonele în bpm apar după test.' };
-  if (hr.estimated) return { label: 'Puls', text: `zonele sunt ESTIMATE din vârstă (puls maxim ≈ ${hr.fcmax} bpm, ±10 bpm de la om la om). Dacă efortul pare mult mai ușor sau mai greu decât spune pulsul, crede efortul; testul de teren le înlocuiește cu ale tale.` };
+  if (hr.estimated) return { label: 'Puls', text: `zonele sunt ESTIMATE din vârstă (puls maxim ≈ ${hr.fcmax} bpm, ±10 bpm de la om la om): un reper de model, nu un prag de siguranță garantat pentru tine. Dacă efortul pare mult mai ușor sau mai greu decât spune pulsul, crede efortul; testul de teren le înlocuiește cu ale tale.` };
   return null;
 }
 
@@ -97,7 +99,8 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
         : `pulsul nu trece de ${hr.up[n - 1]} bpm; dacă trece, încetinești${n >= 3 ? ', iar dacă nu coboară, oprești repetarea' : ''}.`
       : `efortul nu trece de ${n <= 2 ? '3–4 din 10 (poți vorbi în propoziții)' : n === 3 ? '6 din 10' : n === 4 ? '7–8 din 10' : '9 din 10, doar în repetări'}.`;
   const lag = (work: number) => (work <= 2 ? ' La repetări scurte pulsul nu apucă să urce în zonă: ține efortul, nu urmări cifra.' : ' Pulsul urcă cu întârziere: în primul minut e normal să fie sub zonă.');
-  const extendNote = (count: number, rest: number): Step => ({ label: 'Durata', text: `≈ ${m} min. Pauzele sunt de ${fmtMin(rest)}; dacă pulsul coboară mai greu, le lungești (ședința poate crește cu până la ~${Math.max(2, Math.ceil(((count - 1) * rest) / 2))} min). Nu scurtezi revenirea ca să recuperezi timpul.` });
+  // Pauza condiționată (auditul v2, V2-12): durata planificată, o prelungire permisă și o acțiune clară la depășire.
+  const extendNote = (count: number, rest: number): Step => ({ label: 'Durata', text: `≈ ${m} min, cu pauze de ${fmtMin(rest)}. Poți prelungi o pauză cu cel mult 1 min${hr ? ` dacă pulsul nu a coborât sub ~${hr.up[0]} bpm` : ' dacă nu respiri încă liniștit'}; dacă nici atunci nu coboară, renunți la repetarea următoare, iar dacă se întâmplă a doua oară, închei partea principală și treci la revenire. Ședința crește astfel cu cel mult ${count - 1} min. Nu scurtezi revenirea ca să recuperezi timpul.` });
   const note = hrNote(hr);
   const withNote = (steps: Step[]) => (note && (w.sport === 'alergare' || w.sport === 'bicicleta') ? [...steps, note] : steps);
 
@@ -146,16 +149,16 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   if (/TEST/i.test(w.structure ?? '')) return [{ label: 'Testul', text: w.structure!.replace(/^TEST:?\s*/i, '') }, { label: 'Important', text: 'odihnit, fără efort greu în ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de cursă.' }];
 
   if (w.sport === 'inot' && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
-  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM }).steps;
+  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM, recentMaxM: ctx.swimRecentMaxM }).steps;
   const si = shortIntervalSteps(w.structure, m);
   if (si) return withNote([...si, { label: 'Plafon', text: hr ? `în repetări poate ajunge spre ${hr.up[4]} bpm; între serii coboară sub ${hr.up[0]} înainte de seria următoare.` : 'între serii, până respiri liniștit.' }]);
 
   if (w.type === 'brick') {
-    const { bike, run: runMin } = brickSplit(w.structure, m);
+    const { bike, run: runMin, transition } = brickSplit(w.structure, m);
     const hrRun = hrFor('alergare', ctx);
     return withNote([
       { label: 'Bicicletă', text: `${bike} min în ${zoneText(hrFor('bicicleta', ctx), 2)}, constant; bei și mănânci ca în cursă (după prima oră, 60–90 g carbohidrați pe oră)` },
-      { label: 'Tranziție', text: 'exersezi ce faci la cursă, în aceeași ordine: bicicleta la loc, casca jos ULTIMA, pantofii de alergare, numărul; fără pauză lungă. Echipamentul și mâncarea de azi sunt cele de cursă: nimic nou în ziua cursei.' },
+      { label: 'Tranziție', text: `${transition} min (incluse în durată): exersezi ce faci la cursă, în aceeași ordine: bicicleta la loc, casca jos ULTIMA, pantofii de alergare, numărul; fără pauză lungă. Echipamentul și mâncarea de azi sunt cele de cursă: nimic nou în ziua cursei.` },
       { label: 'Alergare', text: `${runMin} min în ${zoneText(hrRun, 2)}; primele 5 min mai ușor, pași scurți și cadență mare, până se „așază” picioarele` },
       { label: 'Plafon', text: hrRun ? `alergarea sub ${hrRun.up[1]} bpm.` : 'alergarea să rămână conversațională.' },
     ]);

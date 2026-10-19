@@ -14,15 +14,25 @@ import type { Step } from './session-steps.js';
 
 const round5 = (m: number) => Math.round(m / 5) * 5;
 
-/** Împărțirea brick-ului pentru minutele date. Alergarea: cel mult cea din plan; bicicleta ia restul. */
-export function brickSplit(structure: string | null | undefined, minutes: number): { bike: number; run: number } {
+/** Tranziția din brick (schimbat echipamentul), minute: parte din durată și din ocuparea calendarului (V2-11). */
+export const BRICK_TRANSITION_MIN = 3;
+
+/**
+ * Împărțirea brick-ului pentru minutele date: total = bicicletă + tranziție + alergare (aceeași definiție în calendar,
+ * în verificarea timpului liber și în pași). Alergarea: cel mult cea din plan; bicicleta ia restul.
+ */
+export function brickSplit(structure: string | null | undefined, minutes: number): { bike: number; run: number; transition: number } {
   const m = /tură (\d+) min.*alergare (\d+) min/.exec(structure ?? '');
-  const B = m ? Number(m[1]) : Math.round(minutes * 0.8);
-  const R = m ? Number(m[2]) : Math.max(10, minutes - B);
-  if (B + R === minutes) return { bike: B, run: R };
-  const run = Math.max(10, Math.min(R, round5((minutes * R) / (B + R))));
-  return { bike: minutes - run, run };
+  const tr = /tranziție (\d+) min/.exec(structure ?? '');
+  const T = tr ? Number(tr[1]) : BRICK_TRANSITION_MIN;
+  const B = m ? Number(m[1]) : Math.round((minutes - T) * 0.8);
+  const R = m ? Number(m[2]) : Math.max(10, minutes - T - B);
+  if (B + R + T === minutes) return { bike: B, run: R, transition: T };
+  const run = Math.max(10, Math.min(R, round5(((minutes - T) * R) / (B + R))));
+  return { bike: minutes - T - run, run, transition: T };
 }
+
+export const brickText = (bike: number, run: number, transition = BRICK_TRANSITION_MIN) => `tură ${bike} min Z2 + tranziție ${transition} min + alergare ${run} min imediat după`;
 
 export const RUN_TEST = (warm: number, main: number, cool: number) =>
   `TEST: ${warm} min ușor, ${main} min cât de tare poți constant (${main >= 30 ? 'pulsul mediu din ultimele 20 min ≈ pragul' : 'pulsul mediu × 0,95 ≈ pragul, estimare mai grosieră'}), ${cool} min ușor`;
@@ -37,8 +47,9 @@ export function testParts(structure: string | null | undefined): number[] {
 export function normalizeWorkout(w: PlannedWorkout): PlannedWorkout {
   const m = w.plannedMinutes;
   if (w.type === 'brick' && /tură \d+ min/.test(w.structure ?? '')) {
-    const { bike, run } = brickSplit(w.structure, m);
-    return { ...w, structure: (w.structure ?? '').replace(/tură \d+ min(.*?)alergare \d+ min/, `tură ${bike} min$1alergare ${run} min`) };
+    const { bike, run, transition } = brickSplit(w.structure, m);
+    const tail = /imediat după(.*)$/.exec(w.structure ?? '')?.[1] ?? '';
+    return { ...w, structure: brickText(bike, run, transition) + tail };
   }
   if (/^TEST:/.test(w.structure ?? '') && w.sport === 'alergare') {
     const parts = testParts(w.structure);
@@ -62,7 +73,9 @@ export function coherenceIssues(w: PlannedWorkout, steps: Step[], swimCap?: numb
   const m = w.plannedMinutes;
   if (w.type === 'brick') {
     const p = /tură (\d+) min.*alergare (\d+) min/.exec(w.structure ?? '');
-    if (p && Number(p[1]) + Number(p[2]) !== m) out.push(`${w.id}: brick ${p[1]} + ${p[2]} ≠ ${m} min`);
+    const tr = Number(/tranziție (\d+) min/.exec(w.structure ?? '')?.[1] ?? 0);
+    if (p && Number(p[1]) + tr + Number(p[2]) !== m) out.push(`${w.id}: brick ${p[1]} + ${tr} + ${p[2]} ≠ ${m} min`);
+    if (p && !tr) out.push(`${w.id}: brick fără tranziție în durată`);
     const bike = /(\d+) min/.exec(steps.find((s) => s.label === 'Bicicletă')?.text ?? '');
     const run = /(\d+) min/.exec(steps.find((s) => s.label === 'Alergare')?.text ?? '');
     if (p && bike && Number(bike[1]) !== Number(p[1])) out.push(`${w.id}: brick, bicicleta ${bike[1]} în pași vs ${p[1]} în rezumat`);
@@ -87,6 +100,7 @@ export function coherenceIssues(w: PlannedWorkout, steps: Step[], swimCap?: numb
       for (const r of s.text.matchAll(/(\d+)\s*×\s*(\d+)\s*m/g)) if (Number(r[2]) > Math.max(25, swimCap)) out.push(`${w.id}: segment de ${r[2]} m peste capacitatea de ${swimCap} m (${s.label})`);
       const cont = /(\d{3,4}) m continuu/.exec(s.text);
       if (cont && swimCap < 400) out.push(`${w.id}: înot continuu ${cont[1]} m cu capacitate ${swimCap} m`);
+      if (cont && Number(cont[1]) > Math.floor((swimCap * 1.1) / 25) * 25 && Number(cont[1]) > swimCap) out.push(`${w.id}: ținta continuă ${cont[1]} m peste +10% din ${swimCap} m`);
     }
   }
   return out;

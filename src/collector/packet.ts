@@ -121,8 +121,8 @@ export interface Packet {
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
   /** Toate ședințele zilei (plan_azi / plan_maine sunt doar cea principală). */
-  plan_azi_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
-  plan_maine_toate: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  plan_azi_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  plan_maine_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
   /** Ieșirea lungă de alergare din următoarele 7 zile față de cea mai lungă alergare reală din ultimele 30 de zile: peste +10% cere revizuire (asociere observațională, nu prag sigur). */
   alergare_lunga?: { data: string; planificat_min: number; cea_mai_lunga_30_zile_min: number | null; salt_pct: number | null; revizuire: boolean } | null;
   /** Forța: prescripția motorului pentru următoarea ședință și cât s-a făcut din ce era planificat (21 de zile). */
@@ -324,12 +324,14 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
   // Auditul R05: HRV și pulsul de repaus nu se mediază între brățări (metode și scale diferite). Sursa principală pe
   // fiecare metrică e cea cu cele mai multe zile în fereastră, ca baseline-ul să rămână pe aceeași metodă; o zi fără
   // ea rămâne fără valoare (lipsă ≠ rău). Celelalte brățări rămân vizibile în perDevice / dezacord.
-  const primary = (k: 'hrv' | 'rhr') => {
+  const primary = (k: 'hrv' | 'rhr' | 'sleepMin' | 'respiratoryRate') => {
     const n = new Map<string, number>();
-    for (const r of clean) if (r[k] != null && !HRV_EXCLUDED_FOR(k).has(r.source)) n.set(r.source, (n.get(r.source) ?? 0) + 1);
+    for (const r of clean) if (r[k] != null && !((k === 'hrv' || k === 'rhr') && HRV_EXCLUDED_FOR(k).has(r.source))) n.set(r.source, (n.get(r.source) ?? 0) + 1);
     return [...n.entries()].sort((a, b) => b[1] - a[1] || (PRIORITY[a[0]] ?? 5) - (PRIORITY[b[0]] ?? 5))[0]?.[0] ?? null;
   };
-  const prim = { hrv: primary('hrv'), rhr: primary('rhr') };
+  // Auditul v2 (V2-02): și somnul, și respirația vin dintr-o singură sursă pe zi (nu media între brățări); un device în
+  // plus care repetă aceeași informație nu schimbă valoarea și nu-i dublează influența.
+  const prim = { hrv: primary('hrv'), rhr: primary('rhr'), sleepMin: primary('sleepMin'), respiratoryRate: primary('respiratoryRate') };
   // Decalajele între brățări rămân doar pentru semnalarea dezacordului, nu pentru valoare.
   const offsets = { hrv: sourceOffsets(clean, 'hrv'), rhr: sourceOffsets(clean, 'rhr') };
   const byDate = new Map<string, SourceDaily[]>();
@@ -344,21 +346,21 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       }
       return { v: null, src: null };
     };
-    const fromPrimary = (k: 'hrv' | 'rhr') => {
-      const r = prim[k] ? sorted.find((x) => x.source === prim[k] && x[k] != null) : undefined;
+    const fromPrimary = (k: 'hrv' | 'rhr' | 'sleepMin' | 'respiratoryRate', fallback = false) => {
+      const r = (prim[k] ? sorted.find((x) => x.source === prim[k] && x[k] != null) : undefined) ?? (fallback ? sorted.find((x) => x[k] != null) : undefined);
       return { v: r ? (r[k] as number) : null, src: r ? r.source : null };
     };
     const hrv = fromPrimary('hrv');
     const rhr = fromPrimary('rhr');
-    const sleeps = sorted.filter((r) => r.sleepMin != null).map((r) => r.sleepMin!);
-    const sleepSources = sorted.filter((r) => r.sleepMin != null).map((r) => r.source);
+    // Somnul: o zi fără sursa principală ia următoarea sursă (somnul lipsă nu înseamnă somn zero), etichetată.
+    const sleep = fromPrimary('sleepMin', true);
     const bedtime = sorted.find((r) => r.bedtime)?.bedtime ?? null;
     // Scorurile de somn/recuperare sunt scale proprii fiecărui producător: nu se mediază, se ia cea mai bună sursă.
     const sleepScore = pick('sleepScore');
     // Recuperarea / readiness-ul brățărilor sunt scoruri proprii (Whoop recovery ≠ Oura readiness): nu se mediază; se ia
     // sursa cu prioritate, etichetată.
     const recovery = pick('recoveryScore');
-    const resps = sorted.filter((r) => r.respiratoryRate != null).map((r) => r.respiratoryRate!);
+    const resp = fromPrimary('respiratoryRate');
     const weight = pick('weightKg');
     const fat = pick('bodyFatPct');
     const perDevice: MergedDaily['perDevice'] = {};
@@ -368,14 +370,14 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       date,
       hrv: round(hrv.v, 1),
       rhr: rhr.v == null ? null : Math.round(rhr.v),
-      sleepMin: sleeps.length ? Math.round(mean(sleeps)!) : null,
+      sleepMin: sleep.v == null ? null : Math.round(sleep.v),
       bedtime,
       sleepScore: sleepScore.v,
       recoveryScore: recovery.v,
-      respiratoryRate: resps.length ? round(mean(resps), 1) : null,
+      respiratoryRate: round(resp.v, 1),
       weightKg: weight.v,
       bodyFatPct: fat.v,
-      sources: { hrv: hrv.src, puls_repaus: rhr.src, somn: sleepSources.length ? sleepSources.join('+') : null, recuperare: recovery.src },
+      sources: { hrv: hrv.src, puls_repaus: rhr.src, somn: sleep.src, recuperare: recovery.src, respiratie: resp.src },
       perDevice,
       disagreements: sorted.length > 1 ? disagreements(sorted, offsets) : [],
     });
@@ -496,7 +498,7 @@ function planLabel(w: PlannedWorkout): string {
   return `${sport}${tip} ${w.plannedMinutes}${w.key ? ' (cheie)' : ''}`;
 }
 
-const brief = (w: PlannedWorkout) => ({ sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
+const brief = (w: PlannedWorkout) => ({ id: w.id, sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
 
 /** Saltul ieșirii lungi: planificat față de maximul real din ultimele 30 de zile (fără istoric: necunoscut, nu procent din zero). */
 function longRunJump(input: CollectorInput, acts: SourceActivity[]): Packet['alergare_lunga'] {

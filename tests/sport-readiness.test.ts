@@ -51,7 +51,7 @@ describe('pregătirea pe probă — algoritmul', () => {
   });
   it('declarația din chestionar → metri', () => {
     assert.equal(declaredSwimM('bazin_scurt'), 50);
-    assert.equal(declaredSwimM('nu_stiu'), 0);
+    assert.equal(declaredSwimM('nu_stiu'), null); // V2-04: „nu știu” = necunoscut, nu 0
     assert.equal(declaredSwimM(null, true), 400);
   });
   it('semimaraton: doar alergarea; specificul trece în rezistență', () => {

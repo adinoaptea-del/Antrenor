@@ -1,16 +1,28 @@
-// Registrul drepturilor pe sursă: ce date au voie să ajungă la modelul AI.
-// Versiunea 4 (19.10.2026), decizia proprietarului aplicației, informat despre riscul față de politica API Strava
-// (în vigoare din 1 iunie 2026: datele din API și derivatele lor nu se folosesc în operarea unui AI): Strava ajunge
-// TEMPORAR la antrenorul AI, doar pentru sportivul ei, până vin datele din Apple Health / Health Connect. Din momentul
-// în care același set de date are și activități din Health (apple / android), Strava iese automat din AI — fără
-// intervenție manuală. În aplicație (calendar, istoric) Strava rămâne vizibilă oricum.
-// (v1 17.10 blocată; v2 18.10 permisă; v3 18.10 seara blocată după audit; v4 temporar permisă până la Health.)
+// Politica pe sursă: ce observații au voie să ajungă la modelul AI. Se aplică pe FIECARE observație (activitate, zi de
+// wellness, activitate „altă”), înaintea oricărui calcul derivat care merge la AI (încărcare, istoric, rezumate).
+//
+// Versiunea 5 (19.10.2026), auditul v2 (V2-17), cerut de proprietar ca regulă permanentă: se respectă condițiile
+// autorizate ale fiecărei surse; acordul proprietarului nu e drept contractual asupra API-ului. Politica API Strava
+// (actualizată în noiembrie 2024, în vigoare din 2025) nu permite folosirea datelor din API și a derivatelor lor în
+// operarea unui model AI → Strava NU ajunge la AI, indiferent dacă există sau nu date din Apple Health / Health Connect
+// (comutatorul global din v4 fie păstra date nepermise, fie ascundea istoric util). În aplicație (calendar, istoric,
+// scoruri afișate) Strava rămâne vizibilă doar sportivului ei.
+// Istoric: v1 17.10 blocată; v2 18.10 permisă; v3 18.10 blocată; v4 temporar permisă până la Health; v5 blocată.
 
-export const AI_BLOCKED_SOURCES: ReadonlySet<string> = new Set<string>();
-/** Surse care, odată prezente, scot Strava din AI. */
+export interface SourcePolicy {
+  ai: boolean;
+  reason: string;
+}
+
+export const SOURCE_POLICY: Readonly<Record<string, SourcePolicy>> = {
+  strava: { ai: false, reason: 'termenii API Strava: datele și derivatele lor nu se folosesc în operarea unui AI' },
+};
+
+export const AI_BLOCKED_SOURCES: ReadonlySet<string> = new Set(Object.entries(SOURCE_POLICY).filter(([, p]) => !p.ai).map(([s]) => s));
+/** Păstrat pentru compatibilitate (nu mai schimbă politica). */
 export const HEALTH_SOURCES: ReadonlySet<string> = new Set(['apple', 'android']);
 
-export function allowedForAI<T extends { source?: string | null }>(rows: T[]): T[] {
-  const hasHealth = rows.some((r) => !!r.source && HEALTH_SOURCES.has(r.source));
-  return rows.filter((r) => !r.source || (!AI_BLOCKED_SOURCES.has(r.source) && !(hasHealth && r.source === 'strava')));
+/** Observațiile permise la AI, una câte una. O observație fără sursă (introdusă manual) e permisă. */
+export function allowedForAI<T extends { source?: string | null; mergedSources?: readonly string[] | null }>(rows: T[]): T[] {
+  return rows.filter((r) => !r.source || !AI_BLOCKED_SOURCES.has(r.source));
 }

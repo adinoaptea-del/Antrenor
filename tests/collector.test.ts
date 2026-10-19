@@ -92,15 +92,16 @@ describe('colector · pachet', () => {
     assert.equal(p.antrenament_ultim?.fc_max, 187);
   });
 
-  it('arbitrajul: somnul e media surselor, HRV-ul vine de la Whoop când există', () => {
+  it('V2-02: somnul vine dintr-o singură sursă (nu media brățărilor), cu sursa păstrată; HRV de la Whoop', () => {
     const rows: SourceDaily[] = [
       { date: '2026-10-16', source: 'garmin', hrv: 40, rhr: 52, sleepMin: 400 },
       { date: '2026-10-16', source: 'whoop', hrv: 28, rhr: 67, sleepMin: 386 },
     ];
     const m = mergeWellness(rows)[0]!;
-    assert.equal(m.sleepMin, 393);
+    assert.ok(m.sleepMin === 386 || m.sleepMin === 400);
+    assert.notEqual(m.sleepMin, 393);
     assert.equal(m.hrv, 28);
-    assert.equal(m.sources.somn, 'whoop+garmin');
+    assert.ok(m.sources.somn === 'whoop' || m.sources.somn === 'garmin');
   });
 
   it('R05: HRV și pulsul nu se mediază între brățări; vin din sursa principală (cea cu cele mai multe zile)', () => {
@@ -149,7 +150,21 @@ describe('colector · pachet', () => {
     ];
     const m = mergeWellness(rows)[0]!;
     assert.equal(m.hrv, 32);
-    assert.equal(m.sleepMin, 410);
+    assert.equal(m.sleepMin, 400);
+  });
+
+  it('V2-02: un al doilea device care repetă aceleași valori nu schimbă starea și nu-și dublează influența', () => {
+    const one: SourceDaily[] = [];
+    const two: SourceDaily[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const d = addDays('2026-10-06', i);
+      const r = { date: d, hrv: i === 10 ? 25 : 40, rhr: i === 10 ? 60 : 52, sleepMin: i === 10 ? 300 : 430, recoveryScore: i === 10 ? 20 : 80 };
+      one.push({ ...r, source: 'whoop' });
+      two.push({ ...r, source: 'whoop' }, { ...r, source: 'oura' });
+    }
+    const a = mergeWellness(one).find((x) => x.date === '2026-10-16')!;
+    const b = mergeWellness(two).find((x) => x.date === '2026-10-16')!;
+    assert.deepEqual([a.hrv, a.rhr, a.sleepMin, a.recoveryScore], [b.hrv, b.rhr, b.sleepMin, b.recoveryScore]);
   });
 });
 

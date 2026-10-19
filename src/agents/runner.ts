@@ -8,6 +8,7 @@ import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
 import type { Phase, Sport } from '../types.js';
 import { HEAD_SCHEMA, SPECIALIST_SCHEMA, type HeadResponse } from './schema.js';
+import { claimsActivation, validateProposal } from './proposal.js';
 import { AGENTS, getPath, measurementClaims, numbersIn, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
 
 export type AgentName = (typeof AGENTS)[number];
@@ -441,6 +442,7 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   const p: Packet = { ...packet, verdict_fiziolog: decision };
   const system = `${prompts.main_coach ?? prompts.head_coach}\n\n=== CUNOȘTINȚE (doar conținut; formatul lor nu se aplică) ===\n${prompts.ghid && p.meta.tip_obiectiv !== 'fitness' ? `--- MODUL: ghid ---\n${prompts.ghid.trim()}\n\n` : ''}${knowledgeText(mods, prompts, p)}`;
   const fallback = (why: string): HeadResponse => ({
+    propunere: null,
     decizie: decision,
     mesaj: fallbackMessage(p, decision, []),
     memento: `Ziua ${packet.meta.data}: pregătirea continuă.`,
@@ -451,6 +453,8 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   const check = (h: HeadResponse) => {
     const w = [...verifyHeadText(h.mesaj, p, []), ...verifyHeadText(h.memento, p, [])];
     if (RANK[h.decizie] < RANK[decision]) w.push(`decizia propusă (${h.decizie}) e mai permisivă decât a aplicației (${decision})`);
+    // V2-14: modelul nu activează nimic; mesajul nu poate spune că a schimbat planul.
+    if (claimsActivation(h.mesaj)) w.push('mesajul prezintă o schimbare ca deja făcută („am schimbat/redus/mutat…”); planul îl schimbă doar codul, după confirmarea ta: scrie „îți propun”');
     return w;
   };
   let head: HeadResponse;
@@ -492,5 +496,10 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
     head = { ...head, optiune: chosen.id };
     coverEvents.push({ kind: 'acoperire', date: p.meta.data, optiune: chosen, facut: cover.facut, planificat: cover.planificat });
   }
-  return { routed: mods, specialists: [], head, headWarnings, events: [...eventsFrom(p, decision), ...coverEvents], decision, fallbackUsed, failures, mode: 'main' };
+  // Propunerea modelului: validată de cod; acceptată → sugestie (o activează sportivul); respinsă → doar în jurnal.
+  const pv = fallbackUsed ? null : validateProposal(head.propunere, p, decision);
+  const proposalEvents: AdaptEvent[] = [];
+  if (pv?.ok) proposalEvents.push({ kind: 'propunere', date: p.meta.data, workoutId: pv.workoutId, actiune: pv.actiune, minutes: pv.minutes, motiv: `${pv.motiv} (dovezi: ${pv.dovezi.join(', ')})` });
+  else if (pv && !pv.ok) head = { ...head, jurnal: [...head.jurnal, `propunere respinsă de validator: ${pv.reason}`] };
+  return { routed: mods, specialists: [], head, headWarnings, events: [...eventsFrom(p, decision), ...coverEvents, ...proposalEvents], decision, fallbackUsed, failures, mode: 'main' };
 }

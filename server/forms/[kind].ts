@@ -172,7 +172,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // Sportivul alege: varianta ușoară (intră în calendar) sau ședința din plan. Se revalidează pe starea de acum.
       const id = String(body.workoutId ?? '');
       const accept = body.accept === true;
-      const row = await one<{ id: string; date: string; status: string; planned_minutes: number; target_zones: number[]; structure: string | null; intervals: unknown; suggestion: { minutes: number; zones: number[]; structure: string; reason: string; accepted: boolean | null; original?: { minutes: number; zones: number[]; structure: string | null; intervals?: unknown } } | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
+      const row = await one<{ id: string; date: string; status: string; sport: string; type: string; key: boolean; planned_minutes: number; target_zones: number[]; structure: string | null; intervals: unknown; suggestion: { minutes: number; zones: number[]; structure: string; reason: string; accepted: boolean | null; sport?: string; original?: { minutes: number; zones: number[]; structure: string | null; intervals?: unknown; sport?: string; type?: string; key?: boolean } } | null }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` });
       if (!row?.suggestion) throw new HttpError(404, 'nu există sugestie pentru ședința asta');
       const s = row.suggestion;
       if (row.status !== 'planificat' && row.status !== 'mutat') throw new HttpError(409, 'ședința nu mai e activă (anulată sau înlocuită); planul s-a schimbat');
@@ -183,11 +183,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         return;
       }
       if (accept) {
-        const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null };
-        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}`, status: 'in.(planificat,mutat)' }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, note: `varianta ușoară aleasă (în loc de ${original.minutes} min)`, suggestion: { ...s, accepted: true, original } });
+        const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null, sport: row.sport, type: row.type, key: row.key };
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}`, status: 'in.(planificat,mutat)' }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, ...(s.sport ? { sport: s.sport, type: 'z2', key: false } : {}), note: `varianta aleasă de tine (în loc de ${original.minutes} min${s.sport && original.sport && s.sport !== original.sport ? ` de ${original.sport}` : ''})`, suggestion: { ...s, accepted: true, original } });
       } else if (s.accepted === true && s.original) {
         // Revine la ședința din plan: prescripția originală se pune înapoi.
-        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, note: null, suggestion: { ...s, accepted: false } });
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, ...(s.original.sport ? { sport: s.original.sport } : {}), ...(s.original.type ? { type: s.original.type, key: !!s.original.key } : {}), note: null, suggestion: { ...s, accepted: false } });
       } else {
         await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }

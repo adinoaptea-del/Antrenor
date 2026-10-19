@@ -1,4 +1,4 @@
-import { swimDeclared } from '@core/bar/sport-readiness.js';
+import { useState } from 'react';
 import { GOAL_NAME } from '@core/bar/sport-readiness.js';
 import { FITNESS_WEEKS, goalKind, type Goal } from '@core/calendar/phases.js';
 import { fitnessWeekOf } from './FitnessProgress';
@@ -8,8 +8,8 @@ import { swimSet } from '@core/calendar/session-steps.js';
 import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
-import { useMe } from '../data/store';
-import { DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
+import { useData, useMe } from '../data/store';
+import { swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
@@ -24,10 +24,10 @@ const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 't
 
 /** Numele ședinței în bulă: la forță numele sesiunii din program, altfel sportul. */
 const titleOf = (w: PlannedWorkout) => (w.type === 'forta' ? (sessionName(w.structure)?.replace(/^[A-Z][1-3]? /, '') ?? 'Forță') : w.type === 'brick' ? 'Bicicletă + alergare' : SPORT_LABEL[w.sport]);
-const subOf = (w: PlannedWorkout, css: number | null = null, continuousM: number | null = null) =>
+const subOf = (w: PlannedWorkout, css: number | null = null, continuousM: number | null = null, recentMaxM: number | null = null) =>
   w.sport === 'inot' && w.type !== 'odihna'
     ? (() => {
-        const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date, structure: w.structure, continuousM });
+        const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date, structure: w.structure, continuousM, recentMaxM });
         return `${s.meters} m · ≈ ${s.estMin} min · ${PLAIN[w.type]}`;
       })()
     : w.type === 'forta'
@@ -117,14 +117,14 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
                 {done && <span className="orb-ok">{Icons.check}</span>}
                 {titleOf(w)}
               </b>
-              <small>{done ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimDeclared(me.forms.intake as Record<string, unknown> | null))}</small>
+              <small>{done ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}</small>
             </span>
           );
         })}
         {today.length > shown.length && <span className="orb-sub">+{today.length - shown.length} în listă</span>}
       </>
     );
-    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimDeclared(me.forms.intake as Record<string, unknown> | null))}`).join('; ')}. Deschide detaliile.`;
+    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}`).join('; ')}. Deschide detaliile.`;
   }
 
   return (
@@ -148,7 +148,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
               <button key={w.id} className="row-card" onClick={() => openSheet(w, today)}>
                 <span>
                   <b>{titleOf(w)}</b>
-                  <small>{isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimDeclared(me.forms.intake as Record<string, unknown> | null))}</small>
+                  <small>{isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}</small>
                 </span>
                 {Icons.chevronRight}
               </button>
@@ -161,6 +161,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           </p>
         )}
         {day?.ask && <AptQuestion />}
+        {day?.reason && /^Durere \d+\/10/.test(day.reason) && <PainClear reason={day.reason} />}
         {/* Chestionarul de dimineață / seară: o linie discretă, doar când lipsește (nu un al treilea buton mare). */}
         {cta && cta.kind === 'form' && (
           <button className="linkish azi-form" onClick={cta.go}>
@@ -221,5 +222,31 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Restricția de durere se ridică doar când sportivul spune că a scăzut (nu doar pentru că au trecut zile):
+ * se salvează ca raportare de seară fără activitate, cu scorul de acum.
+ */
+function PainClear({ reason }: { reason: string }) {
+  const me = useMe();
+  const { submitForm } = useData();
+  const [busy, setBusy] = useState(false);
+  const loc = /la ([^(:]+?) \(/.exec(reason)?.[1]?.trim() ?? null;
+  const send = async (scor: number) => {
+    setBusy(true);
+    try {
+      await submitForm('seara', { date: me.today, activityId: null, rpe: null, fata_de_asteptari: null, durere: { scor, loc }, ce_a_incurcat: null, fueling_conform: null, comentariu: null, tip_neplanificat: null });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="row" style={{ gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+      <span className="muted tiny" style={{ width: '100%', textAlign: 'center' }}>{reason}</span>
+      <button className="pill" disabled={busy} onClick={() => void send(0)}>Durerea a trecut</button>
+      <button className="pill" disabled={busy} onClick={() => void send(2)}>Mai e puțin (1–2)</button>
+    </div>
   );
 }

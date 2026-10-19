@@ -150,14 +150,15 @@ describe('47 / T46 · testul fără ergometru nu pune pragurile la alergare', ()
   });
 });
 
-describe('12 / T11 · registrul surselor pentru AI (v4: Strava temporar, până la Health)', () => {
-  it('fără date din Health, Strava ajunge la antrenorul sportivului', () => {
-    const rows = allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: null }]);
-    assert.deepEqual(rows.map((r) => r.source), ['strava', 'whoop', null]);
-  });
-  it('când apar activitățile din Apple Health / Health Connect, Strava iese automat', () => {
+describe('12 / T11 · politica pe sursă pentru AI (v5, auditul v2 V2-17): pe fiecare observație', () => {
+  it('Strava nu ajunge la AI, cu sau fără Health; celelalte surse și datele manuale da', () => {
+    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: null }]).map((r) => r.source), ['whoop', null]);
     assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'apple' }]).map((r) => r.source), ['apple']);
-    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'android' }, { source: 'whoop' }]).map((r) => r.source), ['android', 'whoop']);
+  });
+  it('fără comutator global: apariția Health nu schimbă ce trece din celelalte surse', () => {
+    const a = allowedForAI([{ source: 'garmin' }, { source: 'whoop' }]).map((r) => r.source);
+    const b = allowedForAI([{ source: 'garmin' }, { source: 'whoop' }, { source: 'apple' }]).map((r) => r.source);
+    assert.deepEqual(b.filter((x) => x !== 'apple'), a);
   });
 });
 

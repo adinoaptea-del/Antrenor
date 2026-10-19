@@ -99,7 +99,11 @@ describe('5–6 · ieșirea lungă și biblioteca', () => {
     assert.ok((fadePct([310, 305, 300, 295, 290, 285]) ?? 0) < 0);
     assert.equal(fadePct([300, 300]), null);
     const s = scoreWorkout({ planned: P({ type: 'lung', plannedMinutes: 90, date: '2026-10-18' }), activity: { id: 'x', date: '2026-10-18', sport: 'alergare', minutes: 92, distanceKm: 15, details: { splitsSecPerKm: [330, 330, 330, 330, 330, 330, 330, 360, 365, 370, 375, 380, 385, 390] } } as never, questionnaire: { rpe: 5 }, today: '2026-10-18' });
-    assert.ok(s.reasons.some((x) => x.includes('a căzut pe final')));
+    // V2-15: fără puls, încetinirea e semnal de urmărit, nu penalizare; cu același puls pe final, e posibilă oboseală.
+    assert.ok(s.reasons.some((x) => /mai lentă: de urmărit, nu e automat o problemă/.test(x)));
+    assert.equal(s.color, 'verde');
+    const s2 = scoreWorkout({ planned: P({ type: 'lung', plannedMinutes: 90, date: '2026-10-18' }), activity: { id: 'x', date: '2026-10-18', sport: 'alergare', minutes: 92, distanceKm: 15, firstThirdHr: 140, lastThirdHr: 146, details: { splitsSecPerKm: [330, 330, 330, 330, 330, 330, 330, 360, 365, 370, 375, 380, 385, 390] } } as never, questionnaire: { rpe: 5 }, today: '2026-10-18' });
+    assert.ok(s2.reasons.some((x) => /la același puls: posibil oboseală/.test(x)));
   });
 });
 
@@ -136,6 +140,6 @@ describe('9 · „Am doar X minute”', () => {
   });
   it('brick-ul își scurtează ambele părți', () => {
     const w = shortenWorkout(P({ sport: 'bicicleta', type: 'brick', plannedMinutes: 120, structure: 'tură 100 min Z2 + alergare 20 min imediat după' }), 60);
-    assert.match(w.structure ?? '', /tură 50 min Z2 \+ alergare 10 min/);
+    assert.match(w.structure ?? '', /tură 47 min Z2 \+ tranziție 3 min \+ alergare 10 min/); // V2-11: tranziția intră în total
   });
 });

@@ -28,7 +28,11 @@ export function morningSafetyEvents(date: string, semnale: Record<string, unknow
   return { verdict: cardiac || febra ? 'stop' : boala ? 'rosu' : null, events, message };
 }
 
-/** Durerea din chestionarul de după antrenament: ≥ 3 schimbă zilele următoare (fără impact), ≥ 5 cere și fizioterapeut. */
+/**
+ * Durerea din chestionarul de după antrenament: ≥ 3 → restricție galbenă (doar ușor, fără impact; alternativa e o
+ * SUGESTIE care cere confirmare, nu o înlocuire automată), ≥ 5 → roșu: fără antrenament până la reevaluare.
+ * Aceeași restricție guvernează calendarul, mesajul și alternativele (auditul v2, V2-01).
+ */
 export function painSafetyEvents(date: string, durere: unknown): MorningSafety {
   const d = (durere ?? {}) as { scor?: unknown; loc?: unknown };
   const score = typeof d.scor === 'number' && Number.isFinite(d.scor) ? d.scor : null;
@@ -37,7 +41,7 @@ export function painSafetyEvents(date: string, durere: unknown): MorningSafety {
   return {
     verdict: score >= 5 ? 'rosu' : null,
     events: [{ kind: 'durere', date, score, loc }],
-    message: score >= 5 ? `Durere ${score}/10 la ${loc}: următoarele 5 zile fără alergare (bicicletă ușoară în loc). Arată durerea unui fizioterapeut sau medic, ideal în 1–2 zile; dacă se umflă, nu poți călca sau doare în repaus, mergi azi.` : null,
+    message: score >= 5 ? `Durere ${score}/10 la ${loc}: fără antrenament până la reevaluare. Arată durerea unui fizioterapeut sau medic, ideal în 1–2 zile; dacă se umflă, nu poți călca sau doare în repaus, mergi azi. Restricția se ridică doar când spui că durerea a scăzut (formularul de seară sau „Durerea a trecut”), nu doar pentru că au trecut zile.` : null,
   };
 }
 
@@ -79,13 +83,30 @@ export function activeRestriction(input: {
   if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
   if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
   if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };
-  const recent = input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -2) && e.durere?.scor != null);
-  const worst = recent.reduce<{ scor: number; loc: string | null } | null>((m, e) => (!m || e.durere!.scor! > m.scor ? { scor: e.durere!.scor!, loc: e.durere!.loc } : m), null);
-  if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: fără alergare și fără intensitate până trece.` };
+  const worst = activePain(input.evenings, input.today);
+  if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): fără antrenament până la reevaluare. Când a scăzut, spune în formular.` };
   // Efortul mare de azi nu mai e o restricție de sănătate: îl echivalează regula „acoperit” (efort făcut față de cel
   // planificat), iar ziua de mâine o decid datele de dimineață.
-  if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''}: doar ușor, fără impact.` };
+  if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): doar ușor, fără impact; o alternativă se face doar dacă nu doare.` };
   return null;
+}
+
+/**
+ * Durerea activă: cea mai recentă raportare cu scor, per loc. O durere ≥ 3 rămâne activă până la o raportare ulterioară
+ * mai mică pentru același loc (sau fără loc) — trecerea timpului singură nu o ridică. Fereastra: 28 de zile (o durere
+ * mai veche, fără nicio raportare de atunci, nu mai blochează, dar o spune mesajul de dimineață).
+ */
+export function activePain(evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null }[], today: string): { scor: number; loc: string | null; date: string } | null {
+  const rows = evenings.filter((e) => e.date <= today && e.date >= addDaysIso(today, -28) && e.durere?.scor != null).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const byLoc = new Map<string, { scor: number; loc: string | null; date: string }>();
+  for (const e of rows) {
+    const loc = (e.durere!.loc ?? '').trim().toLowerCase();
+    const scor = e.durere!.scor!;
+    // O raportare fără loc, cu scor mic („nu mă doare nimic”), ridică toate durerile raportate înainte.
+    if (!loc && scor < 3) byLoc.clear();
+    byLoc.set(loc, { scor, loc: e.durere!.loc, date: e.date });
+  }
+  return [...byLoc.values()].filter((x) => x.scor >= 3).sort((a, b) => b.scor - a.scor)[0] ?? null;
 }
 
 const RANK = { verde: 0, galben: 1, portocaliu: 2, rosu: 3, stop: 4 } as const;

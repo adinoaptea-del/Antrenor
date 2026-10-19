@@ -147,7 +147,7 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
           {showData && (
             <div className="exp-body">
               <Sources />
-              <p className="tiny muted">Antrenorul primește decizia aplicației (din brățări, chestionar și plan) și o explică; nu schimbă singur culoarea zilei. Datele Strava ajung doar la antrenorul tău, nu la alți sportivi.</p>
+              <p className="tiny muted">Antrenorul primește decizia aplicației (din brățări, chestionar și plan) și o explică; nu schimbă singur culoarea zilei. Datele din Strava nu ajung la antrenorul AI (termenii Strava nu permit): le vezi tu în aplicație, iar antrenorul știe doar că există activități pe care nu le vede.</p>
             </div>
           )}
           {parts && parts.food.length > 0 && (

@@ -30,7 +30,6 @@ export interface SourceActivity extends Activity {
   source: Source;
   /** Identificatorul la producător, pentru dedupe și pentru legarea chestionarului de seară. */
   externalId: string;
-  startLocal?: string | null; // HH:MM
   avgPaceMinKm?: number | null;
   avgCadence?: number | null;
   avgWatts?: number | null;

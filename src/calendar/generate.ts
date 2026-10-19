@@ -1,7 +1,7 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
 import { FULL_ROTATION, PPL_ROTATION, isLegsSession, prescribe, strengthBlocks, strengthStructure, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
-import { BIKE_TEST, RUN_TEST, normalizeWorkout } from './coherence.js';
+import { BIKE_TEST, BRICK_TRANSITION_MIN, RUN_TEST, brickText, normalizeWorkout } from './coherence.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
 
@@ -153,7 +153,9 @@ export function generatePlan(input: GenerateInput): GenerateResult {
 
   const kind = goalKind(input.goal) ?? 'tri';
   // A treia ședință de forță (PPL) doar când programul total o permite: un singur sport de la 5 h/săpt., triatlon de la 12 h.
-  input = { ...input, experiencedBike: avgHistory >= 6 || !!input.tests?.bicicleta, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
+  // 30/15: istoricul consistent e condiția de plan; un test de bicicletă calibrează intensitatea, nu deblochează singur
+  // protocolul (auditul v2, V2-08). Toleranța la intervale se verifică înaintea fiecărei ședințe (progression.ts).
+  input = { ...input, experiencedBike: avgHistory >= 6, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? runStartLong(input.goal as RunGoal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
@@ -164,7 +166,8 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN.bicicleta, Math.round((lvl.longestRideH * 60 * 1.25) / 5) * 5)) : 60;
   const triRun = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN.alergare, Math.round((lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25) / 5) * 5)) : 45;
   // Doar înot: ședința lungă pornește de la ce înoată acum fără oprire (≈ 2,5 min la 100 m la început), minimum 30 min.
-  const swimStart = Math.max(MIN_SESSION_MIN.inot, Math.min(60, Math.round(((input.swim?.continuousM ?? 200) / 100) * 2.5 * 1.25)));
+  // Capacitate necunoscută: ședința lungă pornește de la minimul de timp (familiarizare), nu de la o distanță presupusă.
+  const swimStart = input.swim?.continuousM == null ? MIN_SESSION_MIN.inot : Math.max(MIN_SESSION_MIN.inot, Math.min(60, Math.round((input.swim.continuousM / 100) * 2.5 * 1.25)));
   const prog: { longRide: number; longRun: number; brickRun: number; longSwim: number; runExposures?: number; walkStep?: number } = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? (input.run?.beginner ? 30 : startLong) : triRun, brickRun: 15, longSwim: swimStart, walkStep: runGoal && input.run?.beginner ? 0 : undefined };
   const out: WeekPlan[] = [];
   // Ieșirea lungă nu poate depăși cel mai mare bloc liber: altfel ar cădea din plan fără explicație (bug găsit de
@@ -191,7 +194,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const wanted = { ride: prog.longRide, run: prog.longRun, brick: prog.brickRun };
     const capNotes: string[] = [];
     if (maxBlock > 0) {
-      if (kind === 'tri' && prog.longRide + prog.brickRun > maxBlock) prog.longRide = Math.max(MIN_SESSION_MIN.bicicleta, Math.floor((maxBlock - prog.brickRun) / 5) * 5);
+      if (kind === 'tri' && prog.longRide + BRICK_TRANSITION_MIN + prog.brickRun > maxBlock) prog.longRide = Math.max(MIN_SESSION_MIN.bicicleta, Math.floor((maxBlock - prog.brickRun - BRICK_TRANSITION_MIN) / 5) * 5);
       if (prog.longRide > maxBlock) prog.longRide = Math.floor(maxBlock / 5) * 5;
       if (prog.longRun > maxBlock) prog.longRun = Math.floor(maxBlock / 5) * 5;
       if (!longCapNoted && (prog.longRide < wanted.ride || prog.longRun < wanted.run)) {
@@ -665,11 +668,11 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
     s.push({
       sport: 'bicicleta',
       type: 'brick',
-      minutes: prog.longRide + prog.brickRun,
+      minutes: prog.longRide + BRICK_TRANSITION_MIN + prog.brickRun,
       zones: [2],
       key: true,
       priority: 1,
-      structure: `tură ${prog.longRide} min Z2 + alergare ${prog.brickRun} min imediat după`,
+      structure: brickText(prog.longRide, prog.brickRun),
     });
   }
 

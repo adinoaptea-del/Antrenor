@@ -8,8 +8,10 @@
 
 import { addDays } from '../../src/util/dates.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
+import type { Execution } from '../../src/calendar/progression.js';
+import type { Color } from '../../src/types.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import type { AdaptEvent } from '../../src/calendar/adapt.js';
+import { activitySlot, type AdaptEvent } from '../../src/calendar/adapt.js';
 import { detectReturn } from '../../src/calendar/pause.js';
 import { extraOn } from '../../src/calendar/load.js';
 import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
@@ -31,7 +33,7 @@ export async function reactToActivities(userId: string, today: string): Promise<
   const all = dedupeActivities(rawLong);
   const acts = all.filter((a) => a.date >= from && a.date <= today);
   const todayIds = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => a.id);
-  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => `${a.date}:${a.sport}`);
+  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => activitySlot(a));
   if (!planId || !acts.length) return { changes: [], todayIds, todayKeys };
 
   const m = matchActivities(workouts.filter((w) => w.date >= addDays(today, -3) && w.date <= today), acts, today);
@@ -85,4 +87,30 @@ export async function missedStrength(userId: string, today: string): Promise<str
   const logged = await select<{ date: string }>('strength_log', { user_id: `eq.${userId}`, date: `eq.${y}` }, { select: 'date', limit: 1 }).catch(() => []);
   if (logged.length || acts.some((a) => a.date === y && a.sport === 'forta')) return [];
   return applyPlanEvents(userId, today, planId, workouts, yesterday.map((w) => ({ kind: 'forta-ratat' as const, workoutId: w.id })));
+}
+
+/**
+ * Dimineața: treptele modulelor (T1→T2, V10a→V10, sweet spot, seturi CSS) se aleg din execuții (auditul v2, V2-05):
+ * scorul ședinței, efortul și durerea din formularul de seară, scurtarea pentru timp. Fără date = fără progres.
+ */
+export async function moduleProgression(userId: string, today: string): Promise<string[]> {
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -42), addDays(today, 14));
+  if (!planId) return [];
+  const [scores, forms, raw] = await Promise.all([
+    select<{ workout_id: string; color: Color }>('scores', { user_id: `eq.${userId}` }, { select: 'workout_id,color', limit: 400 }).catch(() => []),
+    loadForms(userId, today),
+    loadActivities(userId, addDays(today, -42)),
+  ]);
+  const acts = dedupeActivities(raw);
+  const m = matchActivities(workouts.filter((w) => w.date < today), acts, today);
+  const actOf = new Map(m.matches.filter((x) => x.activity).map((x) => [x.planned.id, x.activity!]));
+  const color = new Map(scores.map((r) => [r.workout_id, r.color]));
+  const executions: Execution[] = workouts
+    .filter((w) => w.date < today)
+    .map((w) => {
+      const a = actOf.get(w.id);
+      const ev = forms.evenings.find((e) => e.activityId === `plan-${w.id}` || (a && (e.activityId === a.id || e.activityId === (a as { externalId?: string }).externalId)));
+      return { workoutId: w.id, color: color.get(w.id) ?? null, rpe: ev?.rpe ?? null, pain: ev?.durere?.scor ?? null, shortenedForTime: /^scurtat la cererea ta/.test(w.note ?? '') };
+    });
+  return applyPlanEvents(userId, today, planId, workouts, [{ kind: 'trepte', date: today }], undefined, executions);
 }

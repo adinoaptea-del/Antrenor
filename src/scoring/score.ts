@@ -155,12 +155,17 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
 
   if (flags.cardiacDrift) bump(1, `derivație cardiacă ${cardiacDriftPct}% (peste 8%)`);
 
-  // Ieșirea lungă nu are voie să cadă pe final (regula Sang): a doua jumătate cu peste 5% mai lentă = galben.
+  // Ieșirea lungă: o a doua jumătate mult mai lentă e un SEMNAL, nu automat un eșec (auditul v2, V2-15). Contează doar
+  // pe teren fără mult urcuș și când pulsul NU a coborât (adică efortul s-a menținut și viteza a scăzut = oboseală);
+  // dacă pulsul a scăzut, sportivul a încetinit intenționat (sau a mers): se notează, fără penalizare. Vremea și
+  // alimentarea pot explica și ele; textul o spune.
   const det = (activity as Activity & { details?: { splitsSecPerKm?: number[] | null; elevGainM?: number | null } | null }).details;
   const hilly = det?.elevGainM != null && activity.distanceKm ? det.elevGainM / activity.distanceKm > 15 : false;
   const fade = planned.type === 'lung' && planned.sport === 'alergare' && !hilly ? fadePct(det?.splitsSecPerKm) : null;
-  if (fade != null && fade > 5) bump(1, `a căzut pe final: a doua jumătate cu ${fade}% mai lentă (pornește mai ușor data viitoare)`);
-  else if (fade != null && fade <= -2) reasons.push(`final mai rapid cu ${Math.abs(fade)}%: exact cum trebuie`);
+  const hrHeld = activity.firstThirdHr != null && activity.lastThirdHr != null ? activity.lastThirdHr >= activity.firstThirdHr : null;
+  if (fade != null && fade > 5 && hrHeld === true) bump(1, `a doua jumătate cu ${fade}% mai lentă la același puls: posibil oboseală (sau căldură, alimentare); data viitoare pornește puțin mai ușor`);
+  else if (fade != null && fade > 5) reasons.push(`a doua jumătate cu ${fade}% mai lentă${hrHeld === false ? ', cu pulsul mai mic (ai încetinit tu)' : ''}: de urmărit, nu e automat o problemă`);
+  else if (fade != null && fade <= -2) reasons.push(`final mai rapid cu ${Math.abs(fade)}%, cum era planificat`);
 
   metrics.eficienta = efficiency(metrics, activity, false);
   const color: Color = level === 0 ? 'verde' : level === 1 ? 'galben' : 'portocaliu';

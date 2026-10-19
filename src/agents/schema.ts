@@ -43,8 +43,21 @@ export const HEAD_SCHEMA = {
     jurnal: { type: 'array', items: { type: 'string' } },
     intrebare: { type: ['string', 'null'] },
     optiune: { type: ['string', 'null'] },
+    propunere: {
+      type: ['object', 'null'],
+      properties: {
+        actiune: { type: 'string', enum: ['usureaza', 'scurteaza'] },
+        tinta: { type: 'string', enum: ['azi', 'maine'] },
+        index: { type: 'integer' },
+        minute: { type: ['integer', 'null'] },
+        dovezi: { type: 'array', items: { type: 'string' } },
+        motiv: { type: 'string' },
+      },
+      required: ['actiune', 'tinta', 'index', 'minute', 'dovezi', 'motiv'],
+      additionalProperties: false,
+    },
   },
-  required: ['decizie', 'mesaj', 'memento', 'jurnal', 'intrebare', 'optiune'],
+  required: ['decizie', 'mesaj', 'memento', 'jurnal', 'intrebare', 'optiune', 'propunere'],
   additionalProperties: false,
 } as const;
 
@@ -55,5 +68,17 @@ export interface HeadResponse {
   jurnal: string[];
   intrebare: string | null;
   /** Doar când pachetul are acoperire_azi.stare = partial: id-ul variantei alese pentru restul zilei. */
-  optiune?: string | null;
+  optiune?: string | null;  /** O observație a antrenorului transformată în propunere structurată; validatorul o acceptă sau o respinge. */
+  propunere?: Proposal | null;
+}
+
+export interface Proposal {
+  actiune: 'usureaza' | 'scurteaza';
+  tinta: 'azi' | 'maine';
+  /** Indexul ședinței în plan_azi_toate / plan_maine_toate. */
+  index: number;
+  minute: number | null;
+  /** Câmpurile din pachet care susțin propunerea (ex. „hrv.azi”, „somn.durata_min”). */
+  dovezi: string[];
+  motiv: string;
 }

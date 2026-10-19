@@ -1,6 +1,7 @@
 import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
 import { detailSteps } from '@core/calendar/session-detail.js';
 import { swimDeclared } from '@core/bar/sport-readiness.js';
+import { swimCapacity } from '@core/calendar/swim-capacity.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -223,7 +224,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
   // plafon; pulsul din test sau estimat din vârstă, etichetat.
   const t = me.baseline.tests;
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimDeclared(me.forms.intake as Record<string, unknown> | null), openWater: me.prefs?.mediuInot === 'ape' });
+  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimCapOf(me), swimRecentMaxM: swimRecentMaxOf(me), openWater: me.prefs?.mediuInot === 'ape' });
 }
 
 /** De ce există ședința, într-o propoziție (din tipul ei). */
@@ -289,4 +290,16 @@ export function ago(iso: string | null, today: string): string {
   if (d <= 0) return `azi ${new Date(t).toTimeString().slice(0, 5)}`;
   if (d === 1) return 'ieri';
   return `acum ${d} zile`;
+}
+
+/** Cât înoată fără oprire: măsurat (ceas, test CSS) sau declarat; null = necunoscut (nu o valoare implicită). */
+export function swimCapOf(me: Me): number | null {
+  return swimCapacity({ declaredM: swimDeclared(me.forms.intake as Record<string, unknown> | null), css: me.baseline.tests?.css ?? null, activities: me.activities as never, today: me.today }).meters;
+}
+
+/** Cea mai mare ședință de înot măsurată în ultimele 4 săptămâni (metri), sau null. */
+export function swimRecentMaxOf(me: Me): number | null {
+  const from = addDays(me.today, -28);
+  const m = Math.max(0, ...me.activities.filter((a) => a.sport === 'inot' && a.date >= from && a.date <= me.today && a.distanceKm).map((a) => Math.round(a.distanceKm! * 1000)));
+  return m > 0 ? m : null;
 }

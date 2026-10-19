@@ -2,19 +2,22 @@
 import { applyAway } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs } from './prefs.js';
 import { insert, one, remove, rpc, select, update, upsert } from './db.js';
-import { loadActivities, loadZones, toWorkoutRow } from './collect.js';
+import { loadActivities, loadForms, loadZones, toWorkoutRow } from './collect.js';
+import { loadSchedules } from './agents.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
 import { FITNESS_WEEKS, GOAL_LABEL, isFitnessGoal, isRunGoal, type Goal } from '../../src/calendar/phases.js';
-import { fitnessProfile, unlockedDays, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
+import { fitnessProfile, unlockDecision, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
+import { activeRestriction } from '../../src/calendar/safety.js';
 import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
 
 /** Ramura de alergare: aleasă în chestionar; la cele vechi, „timp” dacă există o țintă. */
 const runBranch = (intake: { alergare?: { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } }): 'finalizare' | 'timp' => intake.alergare?.ramura ?? (intake.alergare?.tinta ? 'timp' : 'finalizare');
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
+import { swimCapacity } from '../../src/calendar/swim-capacity.js';
 import { parsePace, type RunResult } from '../../src/util/run.js';
 import { decideReplan } from '../../src/calendar/reevaluate.js';
 
@@ -176,6 +179,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
   const prefs = await loadPrefs(userId);
+  // Capacitatea la înot cu proveniență: măsurată (ceas) sau declarată; necunoscut rămâne null (V2-04).
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
   const result: GenerateResult = generatePlan({
     fixed: prefs.fixe,
     fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv as Goal, intake.fitness), continuing ? current!.id : null) : undefined,
@@ -186,11 +191,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
     sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
-    swimContinuous400: intake.inot?.nivel === 'continuu_400' || intake.inot?.nivel === 'peste_1500',
+    swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today),
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
-    swim: { continuousM: swimDeclared(intake as unknown as Record<string, unknown>) },
+    swim: { continuousM: swimCap.meters },
     run: isRunGoal(intake.obiectiv)
       ? {
           // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
@@ -287,13 +292,23 @@ async function fitnessWithAttendance(userId: string, today: string, p: FitnessPr
   const from = addDays(thisMonday, -42);
   const planned = await select<{ date: string; status: string }>('workouts_planned', { plan_id: `eq.${planId}`, sport: 'eq.forta', date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'date,status', limit: 200 });
   const acts = await select<{ date: string }>('activities', { user_id: `eq.${userId}`, sport: 'eq.forta', date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'date', limit: 200 });
+  // Feedback = jurnal de forță sau formular de seară în ziua ședinței; durerea ≥ 3 blochează creșterea (V2-07).
+  const logs = await select<{ date: string }>('strength_log', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'date', limit: 400 }).catch(() => []);
+  const evenings = await select<{ for_date: string; answers: { durere?: { scor?: number | null } | null } }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'for_date,answers', limit: 200 }).catch(() => []);
   const weeks = Array.from({ length: 6 }, (_, i) => addDays(from, i * 7)).map((ws) => {
     const end = addDays(ws, 7);
-    const pl = planned.filter((w) => w.date >= ws && w.date < end && w.status !== 'sters' && w.status !== 'anulat_sistem').length;
-    const dn = new Set(acts.filter((a) => a.date >= ws && a.date < end).map((a) => a.date)).size;
-    return { planned: pl, done: Math.min(pl, dn) };
+    const inW = (d: string) => d >= ws && d < end;
+    const pl = planned.filter((w) => inW(w.date) && w.status !== 'sters' && w.status !== 'anulat_sistem').length;
+    const doneDays = new Set([...acts.filter((a) => inW(a.date)).map((a) => a.date), ...logs.filter((l) => inW(l.date)).map((l) => l.date)]);
+    const fb = new Set([...logs.filter((l) => inW(l.date)).map((l) => l.date), ...evenings.filter((e) => inW(e.for_date)).map((e) => e.for_date)]).size;
+    const pain = evenings.some((e) => inW(e.for_date) && (e.answers?.durere?.scor ?? 0) >= 3);
+    return { planned: pl, done: Math.min(pl, doneDays.size), feedback: fb, pain };
   });
-  return { ...p, unlocked: unlockedDays(p, weeks) };
+  const freeDays = new Set((await loadSchedules(userId).catch(() => [])).map((b) => b.day)).size;
+  const forms = await loadForms(userId, today).catch(() => null);
+  const restricted = forms ? activeRestriction({ today, morning: forms.morning as never, evenings: forms.evenings }) != null : false;
+  const d = unlockDecision(p, weeks, { freeDays, restricted });
+  return { ...p, unlocked: d.days, unlockWhy: d.why };
 }
 
 /**

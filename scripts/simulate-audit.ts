@@ -18,7 +18,7 @@ import { WORKOUT_LIBRARY } from '../src/knowledge/workouts.js';
 import { CONTRACTS } from '../src/knowledge/contracts.js';
 import { coherenceIssues } from '../src/calendar/coherence.js';
 import { runLongitudinal } from '../src/sim/longitudinal.js';
-import { unlockedDays, daysAt } from '../src/strength/fitness.js';
+import { unlockedDays, daysAt, fitnessPlanWeeks } from '../src/strength/fitness.js';
 import { PROMPTS } from '../src/prompts/bundle.js';
 import { addDays, weekday } from '../src/util/dates.js';
 import type { PlannedWorkout, Phase } from '../src/types.js';
@@ -256,13 +256,14 @@ for (const goal of ALL_GOALS) {
     p(`Plan refuzat: ${esc(r.reason)}`);
     continue;
   }
-  const phases = phaseWeeks(inp.startDate, inp.raceDate, 3, goal);
+  // Fitness: structura proprie (26 de săptămâni, etapele programului), aceeași ca în plan și în calendar (V2-13).
+  const phases = isFitnessGoal(goal) ? fitnessPlanWeeks(inp.startDate, inp.raceDate, inp.fitness!).map((w) => ({ phase: w.phase })) : phaseWeeks(inp.startDate, inp.raceDate, 3, goal);
   const count: Record<string, number> = {};
   for (const w of phases) count[w.phase] = (count[w.phase] ?? 0) + 1;
   const why = [
-    `Durata: ${r.weeks.length} săptămâni, de la ${START} la ${inp.raceDate}${isFitnessGoal(goal) ? ' (programul de fitness)' : ''}. Faze: ${Object.entries(count).map(([k, v]) => `${PHASE[k] ?? k} ${v}`).join(' · ')}.`,
+    `Durata: ${r.weeks.length} săptămâni, de la ${START} la ${inp.raceDate}${isFitnessGoal(goal) ? ' (programul de fitness; data finală exclusă)' : ''}. ${isFitnessGoal(goal) ? 'Etape' : 'Faze'}: ${Object.entries(count).map(([k, v]) => `${(isFitnessGoal(goal) ? (FITNESS_PHASE_LABEL as Record<string, string>)[k] : PHASE[k]) ?? k} ${v}`).join(' · ')} (total ${phases.length}).`,
     `Bugetul: ${r.budgetHours} h/săpt. — programul liber 14,5 h × 0,8 = 11,6 h, plafonat la cele 8 h declarate; istoricul ultimelor 8 săptămâni: 5–6 h/săpt.; prima săptămână ${Math.round(r.weeks[0]!.plannedHours * 10) / 10} h, ancorată în istoric, nu în maximul fazei.`,
-    `Descărcare la fiecare 3 săptămâni (40 de ani; sub 40 ar fi la 4). Intensitate permisă (analize fără limită, fără restricție medicală).`,
+    isFitnessGoal(goal) ? 'Fără descărcări automate: săptămânile 4, 8, …, 24 sunt evaluări; revizuirea (mai puține serii) vine doar din oboseală raportată.' : `Descărcare la fiecare 3 săptămâni (40 de ani; sub 40 ar fi la 4). Intensitate permisă (analize fără limită, fără restricție medicală).`,
     ...(isTriGoal(goal) || isSwimGoal(goal) ? ['Înot: înoată 600 m continuu (≥ 400 m), deci are seturi CSS din build; testul CSS în evaluare.'] : []),
     ...(isRunGoal(goal) ? ['Alergare: ramura „timp” (are ritm-țintă), deci module specifice obiectivului; ieșirea lungă pornește de la 12 km declarați.'] : []),
     ...[...new Set(r.weeks.flatMap((w) => w.notes))].slice(0, 6).map((n) => `Notă din planificator: ${n}`),

@@ -3,6 +3,7 @@ import { Card, CircleBtn, Dot, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 import { FITNESS_PHASE_LABEL, isFitnessGoal, phaseWeeks } from '@core/calendar/phases.js';
+import { fitnessPlanWeeks, fitnessProfile, type FitnessIntake } from '@core/strength/fitness.js';
 import { AWAY_LABEL, type AwayKind } from '@core/calendar/actions.js';
 import { addDays, weekStart, weekday } from '@core/util/dates.js';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activitiesOn, colorOf, fmtMinutes, workoutsOn } from '../data/model';
@@ -405,7 +406,7 @@ const PHASE_WHAT: Record<string, string> = {
 const FITNESS_WHAT: Record<string, string> = {
   evaluare: 'înveți aparatele și execuția, 1–2 serii',
   baza1: 'frecvența se consolidează, repetări sau sarcină',
-  baza2: 'accent pe fesieri și picioare; revizuire la final',
+  baza2: 'accent pe fesieri și picioare; evaluare la final (nu descărcare)',
   build: 'păstrezi performanța, adaugi doar la nevoie',
   peak: 'reevaluezi obiectivul, spre menținere',
   taper: 'obiceiuri stabile, volum sustenabil',
@@ -418,7 +419,10 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
   let weeks: ReturnType<typeof phaseWeeks>;
   try {
     const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-    weeks = phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4, me.user.goal);
+    // Fitness: structura proprie (26 de săptămâni, fără descărcări automate), aceeași ca în plan (V2-13).
+    weeks = isFitnessGoal(me.user.goal)
+      ? fitnessPlanWeeks(me.planStart, me.user.raceDate, fitnessProfile(me.user.goal ?? 'fit-tonifiere', ((me.forms.intake ?? {}) as { fitness?: FitnessIntake }).fitness)).map((w) => ({ weekStart: w.weekStart, phase: w.phase, recovery: false, weekInPhase: w.blockWeek - 1 })) as never
+      : phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4, me.user.goal);
   } catch {
     return null;
   }
@@ -441,7 +445,9 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
     <Card>
       <Label>{fit ? `Programul de ${weeks.length} de săptămâni` : 'Planul până la cursă'}</Label>
       <div className="tiny muted" style={{ marginBottom: 10 }}>
-        {weeks.length} săptămâni, de la {me.planStart.split('-').reverse().join('.')} la cursă. Fiecare bară e o săptămână: înălțimea = ore planificate; barele scurte sunt descărcările.
+        {fit
+          ? `${weeks.length} săptămâni, de la ${me.planStart.split('-').reverse().join('.')}. Fiecare bară e o săptămână: înălțimea = ore planificate. Fără descărcări automate: săptămânile 4, 8, 12, 16, 20 și 24 sunt evaluări; revizuirea vine doar din oboseală.`
+          : `${weeks.length} săptămâni, de la ${me.planStart.split('-').reverse().join('.')} la cursă. Fiecare bară e o săptămână: înălțimea = ore planificate; barele scurte sunt descărcările.`}
       </div>
       <div className="po-bars" role="img" aria-label="Orele planificate pe săptămână până la cursă">
         {weeks.map((w) => {

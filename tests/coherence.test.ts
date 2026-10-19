@@ -21,13 +21,15 @@ test('T01 durate: testul de alergare scurtat la 45 min are pașii 10 + 30 + 5', 
 
 test('T01 brick: titlul, rezumatul și pașii au aceleași componente; alergarea nu crește ca să umple timpul', () => {
   const w = normalizeWorkout({ ...base, sport: 'bicicleta', type: 'brick', plannedMinutes: 200, targetZones: [2], structure: 'tură 180 min Z2 + alergare 30 min imediat după' });
-  const m = /tură (\d+) min.*alergare (\d+) min/.exec(w.structure!)!;
-  assert.equal(Number(m[1]) + Number(m[2]), 200);
+  const m = /tură (\d+) min.*tranziție (\d+) min.*alergare (\d+) min/.exec(w.structure!)!;
+  assert.equal(Number(m[1]) + Number(m[2]) + Number(m[3]), 200, 'V2-11: total = bicicletă + tranziție + alergare');
+  m[2] = m[3]!;
   assert.ok(Number(m[2]) <= 30, w.structure!);
   assert.deepEqual(coherenceIssues(w, detailSteps(w, { age: 40 })), []);
   const short = shortenWorkout(w, 90);
-  const m2 = /tură (\d+) min.*alergare (\d+) min/.exec(short.structure!)!;
-  assert.equal(Number(m2[1]) + Number(m2[2]), 90);
+  const m2 = /tură (\d+) min.*tranziție (\d+) min.*alergare (\d+) min/.exec(short.structure!)!;
+  assert.equal(Number(m2[1]) + Number(m2[2]) + Number(m2[3]), 90);
+  m2[2] = m2[3]!;
   assert.ok(Number(m2[2]) <= 30);
 });
 
@@ -112,4 +114,59 @@ test('T12 obiectiv prea aproape: refuz cu motiv, fără să comprime luni de pre
   assert.ok(!r.ok && /cel puțin 20/.test(r.reason));
   const exp = input({ goal: 'maraton', sex: 'm', age: 40, level: 'avansat', intens: 'toate' });
   assert.equal(generatePlan({ ...exp, raceDate: addDays(exp.startDate, 14 * 7) }).ok, true);
+});
+
+import { activeRestriction, activePain } from '../src/calendar/safety.js';
+test('V2-01 restricția de durere: nu expiră singură, se ridică doar la o raportare mai mică', () => {
+  const ev = [{ date: '2026-11-03', durere: { scor: 5, loc: 'genunchi' } }];
+  const r1 = activeRestriction({ today: '2026-11-10', morning: null, evenings: ev });
+  assert.equal(r1?.verdict, 'rosu');
+  // altă durere mică în alt loc nu o ridică
+  const r2 = activeRestriction({ today: '2026-11-10', morning: null, evenings: [...ev, { date: '2026-11-06', durere: { scor: 1, loc: 'umăr' } }] });
+  assert.equal(r2?.verdict, 'rosu');
+  // raportarea mai mică pentru același loc (sau „durerea a trecut” fără loc) o ridică
+  assert.equal(activeRestriction({ today: '2026-11-10', morning: null, evenings: [...ev, { date: '2026-11-07', durere: { scor: 2, loc: 'genunchi' } }] }), null);
+  assert.equal(activePain([...ev, { date: '2026-11-07', durere: { scor: 0, loc: null } }], '2026-11-10'), null);
+});
+
+import { objectiveReadiness } from '../src/collector/readiness.js';
+test('V2-02: scorul de recuperare al brățării nu se adună lângă HRV/puls/somn (aceleași dovezi de două ori)', () => {
+  const base = { hrv: 40, hrvBaseline: 40, rhr: 52, rhrBaseline: 52, resp: null, respBaseline: null, sleepMin: 450 };
+  const a = objectiveReadiness({ ...base, recovery: null });
+  const b = objectiveReadiness({ ...base, recovery: 10 });
+  assert.equal(a.scor, b.scor);
+  assert.equal(b.componente.recuperare.scor, null);
+  // fără inimă, scorul proprietar e singurul semnal al recuperării: atunci se folosește, etichetat
+  const c = objectiveReadiness({ hrv: null, hrvBaseline: null, rhr: null, rhrBaseline: null, resp: null, respBaseline: null, sleepMin: 450, recovery: 40 });
+  assert.equal(c.componente.recuperare.scor, 40);
+});
+
+import { eventKey } from '../src/calendar/adapt.js';
+import { dedupeActivities } from '../src/collector/packet.js';
+test('V2-03 două alergări într-o zi rămân două; aceeași alergare de pe două brățări rămâne una', () => {
+  const morning = { id: 'g1', source: 'garmin', externalId: 'g1', date: '2026-11-03', sport: 'alergare', minutes: 40, startLocal: '07:00' } as const;
+  const evening = { id: 'g2', source: 'garmin', externalId: 'g2', date: '2026-11-03', sport: 'alergare', minutes: 35, startLocal: '18:30' } as const;
+  const sameFromWhoop = { id: 'w1', source: 'whoop', externalId: 'w1', date: '2026-11-03', sport: 'alergare', minutes: 41, startLocal: '07:02' } as const;
+  const kept = dedupeActivities([morning, evening, sameFromWhoop] as never);
+  assert.equal(kept.length, 2);
+  const k = (a: typeof morning | typeof evening | typeof sameFromWhoop) => eventKey({ kind: 'neplanificat', activity: a as never, tip: 'antrenament' });
+  assert.notEqual(k(morning), k(evening));
+  assert.equal(k(morning), k(sameFromWhoop), 'retransmiterea aceleiași ședințe de pe altă brățară nu e un eveniment nou');
+});
+
+import { swimCapacity } from '../src/calendar/swim-capacity.js';
+import { declaredSwimM } from '../src/bar/sport-readiness.js';
+test('V2-04 înot fără capacitate declarată: nu apare o capacitate inventată de 50 m', () => {
+  assert.equal(declaredSwimM('nu_stiu'), null);
+  const c = swimCapacity({ declaredM: null, today: '2026-11-03' });
+  assert.deepEqual([c.meters, c.source], [null, null]);
+  const r = swimSet({ type: 'z2', minutes: 40, css: null, date: '2026-11-03', continuousM: null });
+  const all = r.steps.map((s) => s.text).join(' ');
+  assert.doesNotMatch(all, /50 m demonstra|cel mult 50 m/);
+  assert.match(all, /NECUNOSCUTĂ/);
+  assert.ok(r.steps.some((s) => s.label === 'Evaluare'));
+  // proveniența: ceasul bate declarația; declarația rămâne „user_reported”
+  const m = swimCapacity({ declaredM: 400, today: '2026-11-03', activities: [{ date: '2026-10-20', sport: 'inot', details: { continuousM: 650 } }] });
+  assert.deepEqual([m.meters, m.source], [650, 'measured']);
+  assert.equal(swimCapacity({ declaredM: 400, today: '2026-11-03' }).source, 'user_reported');
 });
