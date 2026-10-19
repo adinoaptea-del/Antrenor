@@ -147,7 +147,7 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
           {showData && (
             <div className="exp-body">
               <Sources />
-              <p className="tiny muted">Antrenorul primește decizia aplicației (din brățări, chestionar și plan) și o explică; nu schimbă singur culoarea zilei. Datele din Strava nu ajung la antrenorul AI (termenii Strava nu permit): le vezi tu în aplicație, iar antrenorul știe doar că există activități pe care nu le vede.</p>
+              <p className="tiny muted">Antrenorul primește decizia aplicației (din brățări, chestionar și plan) și o explică; nu schimbă singur culoarea zilei. Datele din Strava ajung la antrenorul tău AI (doar pentru tine) până conectezi Apple Health / Health Connect; de atunci antrenorul folosește datele din Health, iar Strava rămâne vizibilă în aplicație.</p>
             </div>
           )}
           {parts && parts.food.length > 0 && (

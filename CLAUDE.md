@@ -20,7 +20,7 @@ Surse: „AIRON — Corecturi pentru antrenamente” v1.0 și „AIRON — Audit
 12. Fitness: o singură structură de faze (26 de săptămâni, etichete identice în tabel și explicație). Frecvența crește doar cu dorință, timp, execuții și feedback, fără restricție activă; distribuie doza înainte s-o crești.
 13. AI-ul nu activează nimic: propune structurat (acțiune permisă, module_id, parametri, evidence_refs), validatorul acceptă sau respinge, doar codul activează. O propunere respinsă nu e prezentată ca activă.
 14. Fără reguli absolute în ghiduri (teren, vreme, scop contează). Și decizia „keep” își păstrează dovezile (ce s-a contabilizat, ce fereastră, de ce rămâne planul).
-15. Politica de surse (ex. Strava) se aplică pe fiecare observație, inclusiv derivate, rezumate și cache; acordul proprietarului nu e drept contractual asupra API-ului.
+15. Politica de surse se aplică pe fiecare observație, inclusiv derivate, rezumate și cache. EXCEPȚIE STABILĂ (decizia proprietarului, 19.10.2026, risc asumat față de termenii API Strava): Strava ajunge la AI, doar pentru sportivul ei, până apar date din Apple Health / Health Connect; atunci iese automat. NU se blochează Strava la AI din cauza unui audit sau a altei reguli fără acordul explicit al proprietarului — se semnalează riscul, nu se schimbă codul.
 16. Raportare: pentru fiecare constatare — confirmat/neconfirmat, fișier și funcție, modificare, test, rezultat, exemple înainte/după și limite rămase. Nu declara „tot rezolvat” sau „personalizare completă” fără teste.
 
 ## Securitate (neschimbat)

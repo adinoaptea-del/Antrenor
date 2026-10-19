@@ -929,12 +929,20 @@ function isBeginnerRunner(longestRunKm) {
 }
 
 // src/collector/permissions.ts
+var HEALTH_SOURCES = /* @__PURE__ */ new Set(["apple", "android"]);
 var SOURCE_POLICY = {
-  strava: { ai: false, reason: "termenii API Strava: datele \u0219i derivatele lor nu se folosesc \xEEn operarea unui AI" }
+  strava: { ai: true, untilSources: [...HEALTH_SOURCES], reason: "decizia proprietarului (risc asumat fa\u021B\u0103 de termenii API Strava): permis\u0103 p\xE2n\u0103 apar date din Apple Health / Health Connect" }
 };
 var AI_BLOCKED_SOURCES = new Set(Object.entries(SOURCE_POLICY).filter(([, p]) => !p.ai).map(([s]) => s));
 function allowedForAI(rows) {
-  return rows.filter((r2) => !r2.source || !AI_BLOCKED_SOURCES.has(r2.source));
+  const present = new Set(rows.map((r2) => r2.source).filter((x) => !!x));
+  const blocked = (src) => {
+    const p = SOURCE_POLICY[src];
+    if (!p) return false;
+    if (!p.ai) return true;
+    return (p.untilSources ?? []).some((u) => present.has(u));
+  };
+  return rows.filter((r2) => !r2.source || !blocked(r2.source));
 }
 
 // src/recovery/recovery.ts

@@ -151,8 +151,9 @@ describe('47 / T46 · testul fără ergometru nu pune pragurile la alergare', ()
 });
 
 describe('12 / T11 · politica pe sursă pentru AI (v5, auditul v2 V2-17): pe fiecare observație', () => {
-  it('Strava nu ajunge la AI, cu sau fără Health; celelalte surse și datele manuale da', () => {
-    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: null }]).map((r) => r.source), ['whoop', null]);
+  it('Strava ajunge la AI până apar date din Health (decizia proprietarului); apoi iese, observație cu observație', () => {
+    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: null }]).map((r) => r.source), ['strava', 'whoop', null]);
+    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'android' }]).map((r) => r.source), ['android']);
     assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'apple' }]).map((r) => r.source), ['apple']);
   });
   it('fără comutator global: apariția Health nu schimbă ce trece din celelalte surse', () => {
