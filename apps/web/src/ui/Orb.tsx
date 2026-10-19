@@ -227,10 +227,12 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
     const sync = () => {
       cancelAnimationFrame(raf);
       raf = 0;
+      // Un cadru imediat: bula nu apare goală cât așteaptă primul cadru de animație (ex. la revenirea pe Acasă).
+      draw(tAcc);
       if (running()) {
         t0 = performance.now();
         raf = requestAnimationFrame(loop);
-      } else draw(tAcc);
+      }
     };
     const io = new IntersectionObserver((e) => {
       visible = e[0]?.isIntersecting ?? true;

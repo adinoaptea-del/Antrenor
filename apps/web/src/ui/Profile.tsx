@@ -1,3 +1,4 @@
+import { previewCheer } from './Cheer';
 import { SamsungImport } from './SamsungImport';
 import { useCallback, useEffect, useState } from 'react';
 import { Card, Icons, Label, fmtDayMonth } from './common';
@@ -75,6 +76,20 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
             <>
               <AdminDb />
               <AdminKeys />
+              <Card tight>
+                <Label icon={Icons.sparkle}>Felicitarea după ședință: previzualizare</Label>
+                <div className="small muted">Vezi cum apare fereastra la sportivi, cu numele tău. Nu salvează nimic. La sportivi apare singură, după o ședință făcută cel puțin 60%.</div>
+                <div className="wk-btns" style={{ marginTop: 10 }}>
+                  {([['alergare', 'Alergare'], ['bicicleta', 'Bicicletă'], ['inot', 'Înot'], ['forta', 'Forță'], ['mers', 'Mers']] as const).map(([s, l]) => (
+                    <button key={s} className="pill" onClick={() => previewCheer(s)}>
+                      {l}
+                    </button>
+                  ))}
+                  <button className="pill" onClick={() => previewCheer('alergare', 'bine')}>
+                    Alergare la 75%
+                  </button>
+                </div>
+              </Card>
               <Card tight>
                 <Label icon={Icons.users}>Prietenii</Label>
                 <div className="small muted">Starea fiecărui sportiv și trei reparații (citire, plan, parolă temporară). Serverul refuză ruta fără rolul de admin.</div>

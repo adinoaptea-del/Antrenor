@@ -79,11 +79,28 @@ function nextCheer(me: Me, seen: string[]) {
   return null;
 }
 
+/** Previzualizarea (Administrare): arată felicitarea pentru un sport, cu numele tău, fără să depindă de o ședință. */
+export function previewCheer(sport: CheerSport, tier: 'fix' | 'bine' = 'fix') {
+  window.dispatchEvent(new CustomEvent('airon-cheer-preview', { detail: { sport, tier } }));
+}
+
 export function Cheer({ me, blocked }: { me: Me; blocked: boolean }) {
   const uid = me.user.id ?? 'eu';
   const [seen, setSeen] = useState<string[]>(() => readSeen(uid));
   const [closing, setClosing] = useState(false);
-  const pick = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
+  const [demo, setDemo] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>> } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ sport: CheerSport; tier: 'fix' | 'bine' }>).detail;
+      const seed = `demo-${d.sport}-${Date.now()}`;
+      const c = cheerFor({ sport: d.sport, ratio: d.tier === 'fix' ? 1 : 0.75, name: me.user.name, minutes: 45, km: d.sport === 'alergare' ? 8 : d.sport === 'bicicleta' ? 32 : null, nThisSport14: 1, nSwimTotal: 2, seed });
+      if (c) setDemo({ w: { id: seed, date: me.today, sport: d.sport, type: 'z2', plannedMinutes: 45, targetZones: [], key: false, status: 'planificat' }, c });
+    };
+    window.addEventListener('airon-cheer-preview', on);
+    return () => window.removeEventListener('airon-cheer-preview', on);
+  }, [me.user.name, me.today]);
+  const real = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
+  const pick = demo ?? real;
   const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   useEffect(() => {
     setClosing(false);
@@ -94,6 +111,10 @@ export function Cheer({ me, blocked }: { me: Me; blocked: boolean }) {
     setClosing(true);
     window.setTimeout(
       () => {
+        if (demo) {
+          setDemo(null);
+          return;
+        }
         const next = [...seen, pick.w.id];
         writeSeen(uid, next);
         setSeen(next);

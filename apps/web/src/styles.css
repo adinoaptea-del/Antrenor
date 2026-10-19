@@ -551,12 +551,15 @@ ul.plain b { color: var(--fg); }
 .po-h { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .memento .fact { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 32ch; margin-inline: auto; text-wrap: balance; }
 /* Tranziții între ecrane, ca în aplicațiile iOS: înainte intră din dreapta, înapoi din stânga, între taburi fade. */
-.screen { background: var(--bg); min-height: 100%; }
-.screen.nav-fwd { animation: scr-fwd 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
-.screen.nav-back { animation: scr-back 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+/* Ecranul e transparent și stă mereu deasupra luminii ambientale: lumina nu se mai stinge la schimbarea ecranului
+   (înainte, ecranul animat își făcea propriul strat opac și o acoperea o clipă). Fundalul vine din body. */
+.screen { background: transparent; min-height: 100%; position: relative; z-index: 1; }
+.screen.nav-fwd { animation: scr-fwd 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.screen.nav-back { animation: scr-back 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 .screen.nav-fade { animation: scr-fade 0.22s ease-out backwards; }
-@keyframes scr-fwd { from { transform: translate3d(36%, 0, 0); opacity: 0.4; } to { transform: none; opacity: 1; } }
-@keyframes scr-back { from { transform: translate3d(-24%, 0, 0); opacity: 0.5; } to { transform: none; opacity: 1; } }
+/* Deplasare mică + apariție: nu mai intră pe ecran bucăți tăiate (ex. „N” din logo) în prima fracțiune de secundă. */
+@keyframes scr-fwd { from { transform: translate3d(10%, 0, 0); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes scr-back { from { transform: translate3d(-6%, 0, 0); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes scr-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .screen.nav-fwd, .screen.nav-back, .screen.nav-fade { animation: none; } }
 .day-verdict { display: grid; gap: 4px; margin: 10px auto 0; max-width: 520px; text-align: center; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--line-2); }
