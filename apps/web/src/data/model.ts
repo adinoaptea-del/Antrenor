@@ -1,3 +1,4 @@
+import { prepDay } from '@core/calendar/prep-day.js';
 import { walkKindOf, walkSpec } from '@core/walking/plan.js';
 import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
 import { detailSteps } from '@core/calendar/session-detail.js';
@@ -86,9 +87,8 @@ export function planStart(me: Me): string | null {
 }
 
 export function dayIndex(me: Me): { day: number; total: number } | null {
-  const start = planStart(me);
-  if (!start || !me.user.raceDate) return null;
-  return { day: Math.max(1, diffDays(start, me.today) + 1), total: diffDays(start, me.user.raceDate) };
+  // Ziua pregătirii, de pe server (nu prima ședință din calendarul încărcat, care e cel mult de acum 4 săptămâni).
+  return prepDay(me.prepStart ?? planStart(me), me.today, me.user.raceDate);
 }
 
 // ---------- săptămâni încheiate, pentru grafice ----------

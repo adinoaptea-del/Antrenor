@@ -6289,6 +6289,13 @@ async function loadHistorySummary(userId, today) {
   return historySummary(today, acts, ev.filter((e) => e.answers?.tip_neplanificat === "cursa" && e.activity_id).map((e) => e.activity_id));
 }
 
+// src/calendar/prep-day.ts
+function prepStartOf(dates, today) {
+  const xs = dates.filter((d) => !!d && /^\d{4}-\d{2}-\d{2}/.test(d)).map((d) => d.slice(0, 10)).sort();
+  if (!xs.length) return null;
+  return xs[0] > today ? today : xs[0];
+}
+
 // src/strength/split-upgrade.ts
 var active2 = (w) => w.status === "planificat" || w.status === "mutat";
 function upgradeToSplit(plan, today, resolve2) {
@@ -7456,7 +7463,10 @@ async function buildMe(userId, today) {
   const lastDecided = todayMsgs.find((m) => m.kind !== "memento" && m.decision);
   const memento = lastDecided && !messageMatches(lastDecided.decision, day2) ? null : todayMsgs.find((m) => m.kind === "memento")?.body ?? null;
   const prefs = await loadPrefs(userId);
+  const firstPlan = await one("plans", { user_id: `eq.${userId}`, goal: `eq.${user.goal ?? ""}` }, { select: "created_at,start_date", order: "created_at.asc" }).catch(() => null);
+  const prepStart = prepStartOf([firstPlan ? todayIn(tz, new Date(firstPlan.created_at)) : null, firstPlan?.start_date ?? null, planRow?.start_date ?? null], today);
   return {
+    prepStart,
     baseline,
     admin: u2.role === "admin" ? { providers: { whoop: providerConfigured("whoop"), strava: providerConfigured("strava"), oura: providerConfigured("oura") }, appUrl: ENV.appUrl() } : null,
     profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => {

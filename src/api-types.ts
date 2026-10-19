@@ -128,6 +128,8 @@ export interface Me {
   budgetHours: number | null;
   /** Disponibilitatea: timpul liber bifat vs timpul de sport (declarat / numărat). null = fără program. */
   availability?: { freeHours: number; declaredHours: number | null; sportHours: number; valid: boolean; perDay: number[]; planHours: number | null } | null;
+  /** Prima zi a pregătirii pentru obiectivul de acum (pentru „Ziua X din Y”); nu se resetează la refacerea planului. */
+  prepStart?: string | null;
   /** Prima zi a planului activ (luni). */
   planStart?: string | null;
   plan: PlannedWorkout[];

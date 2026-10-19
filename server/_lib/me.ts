@@ -1,3 +1,5 @@
+import { todayIn } from './auth.js';
+import { prepStartOf } from '../../src/calendar/prep-day.js';
 import { GOAL_NAME, swimDeclared, sportReadiness } from '../../src/bar/sport-readiness.js';
 import { balanceCheck } from '../../src/calendar/balance.js';
 import { perDayMinutes, weeklyBudget } from '../../src/calendar/budget.js';
@@ -203,7 +205,12 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const memento = lastDecided && !messageMatches(lastDecided.decision, day) ? null : (todayMsgs.find((m) => m.kind === 'memento')?.body ?? null);
 
   const prefs = await loadPrefs(userId);
+  // Ziua pregătirii („Ziua X din Y” la deschidere): din prima zi în care ai avut plan pentru obiectivul de acum, nu din
+  // începutul planului activ (refacerea planului îl mută pe lunea viitoare, iar calendarul încarcă doar 4 săptămâni).
+  const firstPlan = await one<{ created_at: string; start_date: string }>('plans', { user_id: `eq.${userId}`, goal: `eq.${user.goal ?? ''}` }, { select: 'created_at,start_date', order: 'created_at.asc' }).catch(() => null);
+  const prepStart = prepStartOf([firstPlan ? todayIn(tz, new Date(firstPlan.created_at)) : null, firstPlan?.start_date ?? null, planRow?.start_date ?? null], today);
   return {
+    prepStart,
     baseline,
     admin: (u2 as UserRow & { role?: string }).role === 'admin' ? { providers: { whoop: providerConfigured('whoop'), strava: providerConfigured('strava'), oura: providerConfigured('oura') }, appUrl: ENV.appUrl() } : null,
     profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => { const l = lastSyncRows.find((r) => (r.provider as string) === 'apple'); return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null; })(), androidLastSync: lastSyncRows.find((r) => (r.provider as string) === 'android' && r.ok && !String(r.detail ?? '').startsWith('test'))?.ran_at ?? null, androidLast: androidLast ? { ok: androidLast.ok, detail: androidLast.detail, at: androidLast.ran_at } : null },
