@@ -148,6 +148,9 @@ const durSec = (w: { start_datetime: string; end_datetime: string }) => Math.rou
 
 /** Antrenamentele Oura în cele patru sporturi; ziua și ora sunt cele locale din înregistrare. */
 export function normalizeOuraWorkout(w: OuraWorkout): SourceActivity | null {
+  // Ce a „ghicit” inelul din mișcare (autodetected) nu e antrenament: Oura confundă des (ex. „bicicletă” la o zi activă).
+  // Intră doar ce a pornit sau a confirmat sportivul; restul rămâne mișcare în plus, etichetată.
+  if (w.source === 'autodetected') return null;
   const sport = OURA_SPORT[w.activity];
   const sec = durSec(w);
   if (!sport || !Number.isFinite(sec) || sec < 60) return null;
@@ -170,8 +173,10 @@ export function normalizeOuraWorkout(w: OuraWorkout): SourceActivity | null {
 
 /** Restul antrenamentelor (plimbare, drumeție, alte sporturi) → mișcare în plus; plimbările intră și în bula de mers. */
 export function normalizeOuraOther(w: OuraWorkout): OtherActivity | null {
-  if (OURA_SPORT[w.activity]) return null;
-  const c = classifyOther(w.activity);
+  const auto = w.source === 'autodetected';
+  if (OURA_SPORT[w.activity] && !auto) return null;
+  // Un sport detectat automat rămâne vizibil ca mișcare în plus, cu eticheta lui, fără să conteze la pregătire.
+  const c = OURA_SPORT[w.activity] ? { kind: 'activ' as const, name: `${w.activity.replace(/_/g, ' ')} (detectat automat de Oura, neconfirmat)` } : classifyOther(w.activity);
   const sec = durSec(w);
   if (!c || !Number.isFinite(sec) || sec < 300) return null;
   return { id: `oura-o-${w.id}`, source: 'oura', externalId: w.id, date: w.start_datetime.slice(0, 10), startLocal: hm(w.start_datetime), kind: c.kind, name: c.name, minutes: Math.round(sec / 60), avgHr: null, maxHr: null, startUtc: new Date(w.start_datetime).toISOString(), elapsedSec: sec, movingSec: null };

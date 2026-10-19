@@ -1,5 +1,5 @@
 // Sincronizarea: trage ultimele zile de la fiecare brățară conectată, normalizează, scrie în wellness_daily și activities.
-import { insert, one, select, update, upsert } from './db.js';
+import { insert, one, remove, select, update, upsert } from './db.js';
 import { hasConsent } from './consent.js';
 import { DETAILS_V, mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
@@ -165,6 +165,8 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
         rows = activities.length;
       } else if (provider === 'oura') {
         const { wellness, activities, others } = await pullOura(token, days);
+        // Curățenie: antrenamentele Oura detectate automat, importate ca sport înainte de 20.10.2026, ies din activități.
+        await remove('activities', { user_id: `eq.${userId}`, source: 'eq.oura', name: 'like.*detectat automat*' }).catch(() => undefined);
         await saveOthers(userId, others);
         if (wellness.length) await saveWellness(userId, wellness);
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');

@@ -7315,6 +7315,7 @@ var OURA_SPORT = {
 var hm2 = (iso) => iso.slice(11, 16);
 var durSec = (w) => Math.round((Date.parse(w.end_datetime) - Date.parse(w.start_datetime)) / 1e3);
 function normalizeOuraWorkout(w) {
+  if (w.source === "autodetected") return null;
   const sport = OURA_SPORT[w.activity];
   const sec = durSec(w);
   if (!sport || !Number.isFinite(sec) || sec < 60) return null;
@@ -7335,8 +7336,9 @@ function normalizeOuraWorkout(w) {
   };
 }
 function normalizeOuraOther(w) {
-  if (OURA_SPORT[w.activity]) return null;
-  const c2 = classifyOther(w.activity);
+  const auto = w.source === "autodetected";
+  if (OURA_SPORT[w.activity] && !auto) return null;
+  const c2 = OURA_SPORT[w.activity] ? { kind: "activ", name: `${w.activity.replace(/_/g, " ")} (detectat automat de Oura, neconfirmat)` } : classifyOther(w.activity);
   const sec = durSec(w);
   if (!c2 || !Number.isFinite(sec) || sec < 300) return null;
   return { id: `oura-o-${w.id}`, source: "oura", externalId: w.id, date: w.start_datetime.slice(0, 10), startLocal: hm2(w.start_datetime), kind: c2.kind, name: c2.name, minutes: Math.round(sec / 60), avgHr: null, maxHr: null, startUtc: new Date(w.start_datetime).toISOString(), elapsedSec: sec, movingSec: null };
@@ -9431,6 +9433,7 @@ async function syncUser(userId, days = 3) {
         rows = activities.length;
       } else if (provider === "oura") {
         const { wellness, activities, others } = await pullOura(token, days);
+        await remove("activities", { user_id: `eq.${userId}`, source: "eq.oura", name: "like.*detectat automat*" }).catch(() => void 0);
         await saveOthers(userId, others);
         if (wellness.length) await saveWellness(userId, wellness);
         if (activities.length) await upsert("activities", activities.map((a) => activityRow(userId, a)), "id");

@@ -38,6 +38,14 @@ it('antrenamente: cele patru sporturi devin activități; plimbarea și drumeți
   assert.equal(normalizeOuraOther(wk({})), null);
 });
 
+it('antrenamentele detectate automat de Oura nu contează ca sport (ex. „bicicletă” ghicită din mișcare)', () => {
+  assert.equal(normalizeOuraWorkout(wk({ activity: 'cycling', source: 'autodetected', distance: 5000 })), null);
+  const o = normalizeOuraOther(wk({ activity: 'cycling', source: 'autodetected' }))!;
+  assert.equal(o.kind, 'activ');
+  assert.match(o.name, /detectat automat de Oura, neconfirmat/);
+  assert.equal(normalizeOuraWorkout(wk({ activity: 'cycling', source: 'confirmed', distance: 20000 }))!.sport, 'bicicleta');
+});
+
 it('sesiunile Oura: meditația și respirația devin recuperare; siesta nu', () => {
   const s = (type: string) => normalizeOuraSession({ id: 's', day: '2026-10-19', type, start_datetime: '2026-10-19T21:00:00+03:00', end_datetime: '2026-10-19T21:10:00+03:00' });
   assert.equal(s('meditation')?.name, 'meditație');
