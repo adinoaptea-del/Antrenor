@@ -4,6 +4,7 @@ import { fail, HttpError } from './_lib/auth.js';
 import { hydrateSettings } from './_lib/settings.js';
 import type { Req, Res } from './_lib/http.js';
 import account_signup from './account/signup.js';
+import account_password from './account/password.js';
 import agents_run from './agents/run.js';
 import config from './config.js';
 import cron_evening from './cron/evening.js';
@@ -26,6 +27,7 @@ type Handler = (req: Req, res: Res) => Promise<void>;
 
 const STATIC: Record<string, Handler> = {
   'account/signup': account_signup,
+  'account/password': account_password,
   'agents/run': agents_run,
   config,
   'cron/evening': cron_evening,

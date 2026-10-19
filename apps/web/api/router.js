@@ -237,6 +237,35 @@ async function handler(req, res) {
   }
 }
 
+// server/account/password.ts
+async function handler2(req, res) {
+  try {
+    if (req.method !== "POST") throw new HttpError(405, "POST");
+    const user = await requireUser(req);
+    const body = await readJson(req);
+    const current = body.current ?? "";
+    const next = body.next ?? "";
+    if (next.length < 8) throw new HttpError(400, "parola nou\u0103: minimum 8 caractere");
+    if (next === current) throw new HttpError(400, "parola nou\u0103 e la fel ca cea actual\u0103");
+    const check = await fetch(`${ENV.supabaseUrl()}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { ...supabaseKeyHeaders(ENV.supabaseAnon()), "content-type": "application/json" },
+      body: JSON.stringify({ email: user.email, password: current })
+    });
+    if (check.status === 400) throw new HttpError(403, "parola actual\u0103 nu e corect\u0103");
+    if (!check.ok) throw new HttpError(502, `nu am putut verifica parola (${check.status})`);
+    const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${user.id}`, {
+      method: "PUT",
+      headers: { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json" },
+      body: JSON.stringify({ password: next })
+    });
+    if (!r2.ok) throw new HttpError(500, `nu am putut schimba parola (${r2.status})`);
+    json(res, 200, { ok: true });
+  } catch (e) {
+    fail(res, e);
+  }
+}
+
 // src/collector/details.ts
 var DETAILS_V = 2;
 var MIN_SWIM_SEC_100 = 60;
@@ -7918,7 +7947,7 @@ async function realign(userId, today) {
 }
 
 // server/agents/run.ts
-async function handler2(req, res) {
+async function handler3(req, res) {
   let beat = null;
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
@@ -7959,7 +7988,7 @@ async function handler2(req, res) {
 var SCHEMA_VERSION = 8;
 
 // server/config.ts
-async function handler3(_req, res) {
+async function handler4(_req, res) {
   try {
     let supabaseUrl = "";
     let publishableKey = "";
@@ -8024,7 +8053,7 @@ async function schemaOk(r2) {
 }
 
 // server/cron/evening.ts
-async function handler4(req, res) {
+async function handler5(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,consents(health_data,withdrawn_at)" });
@@ -8522,7 +8551,7 @@ async function moduleProgression(userId, today) {
 }
 
 // server/cron/morning.ts
-async function handler5(req, res) {
+async function handler6(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
@@ -8581,7 +8610,7 @@ async function importHistory(userId) {
 }
 
 // server/cron/sync.ts
-async function handler6(req, res) {
+async function handler7(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
@@ -8992,7 +9021,7 @@ function appleDetails(w, sport, sec, dist) {
 }
 
 // server/webhooks/apple.ts
-async function handler7(req, res) {
+async function handler8(req, res) {
   let userId = null;
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
@@ -9287,7 +9316,7 @@ function parseHealthConnect(body, tz) {
 }
 
 // server/webhooks/android.ts
-async function handler8(req, res) {
+async function handler9(req, res) {
   let userId = null;
   try {
     const token = q(req, "t");
@@ -9394,7 +9423,7 @@ function outcomeFeedback(plan, outcomes, now, today, at) {
 }
 
 // server/forms/[kind].ts
-async function handler9(req, res) {
+async function handler10(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -9871,7 +9900,7 @@ function paceSec(p) {
 }
 
 // server/me.ts
-async function handler10(req, res) {
+async function handler11(req, res) {
   try {
     const u = await requireUser(req);
     const user = await loadUser(u.id);
@@ -9882,7 +9911,7 @@ async function handler10(req, res) {
 }
 
 // server/oauth/[provider]/callback.ts
-async function handler11(req, res) {
+async function handler12(req, res) {
   try {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
@@ -9907,7 +9936,7 @@ async function handler11(req, res) {
 }
 
 // server/oauth/[provider]/start.ts
-async function handler12(req, res) {
+async function handler13(req, res) {
   try {
     const u = await requireUser(req);
     const provider = q(req, "provider");
@@ -9920,7 +9949,7 @@ async function handler12(req, res) {
 }
 
 // server/plan/generate.ts
-async function handler13(req, res) {
+async function handler14(req, res) {
   try {
     if (req.method !== "POST") throw new HttpError(405, "POST");
     const u = await requireUser(req);
@@ -10233,7 +10262,7 @@ commit;`);
 }
 
 // server/setup.ts
-async function handler14(req, res) {
+async function handler15(req, res) {
   try {
     if (req.method === "GET") {
       json(res, 200, await setupStatus());
@@ -10271,7 +10300,7 @@ async function hasUpgrade() {
 
 // server/admin.ts
 import { randomBytes as randomBytes4 } from "node:crypto";
-async function handler15(req, res) {
+async function handler16(req, res) {
   try {
     const u = await requireUser(req);
     const me = await one("users", { id: `eq.${u.id}` });
@@ -10377,7 +10406,7 @@ async function handler15(req, res) {
 }
 
 // server/sync.ts
-async function handler16(req, res) {
+async function handler17(req, res) {
   try {
     if (req.method !== "POST") throw Object.assign(new Error("POST"), { status: 405 });
     const u = await requireUser(req);
@@ -10394,7 +10423,7 @@ async function handler16(req, res) {
 }
 
 // server/webhooks/strava.ts
-async function handler17(req, res) {
+async function handler18(req, res) {
   try {
     if (req.method === "GET") {
       if (q(req, "hub.verify_token") !== (process.env.STRAVA_VERIFY_TOKEN ?? "")) {
@@ -10420,7 +10449,7 @@ async function handler17(req, res) {
 
 // server/webhooks/whoop.ts
 import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
-async function handler18(req, res) {
+async function handler19(req, res) {
   try {
     const chunks = [];
     for await (const c2 of req) chunks.push(typeof c2 === "string" ? Buffer.from(c2) : c2);
@@ -10459,31 +10488,32 @@ async function handler18(req, res) {
 // server/router.ts
 var STATIC = {
   "account/signup": handler,
-  "agents/run": handler2,
-  config: handler3,
-  "cron/evening": handler4,
-  "cron/morning": handler5,
-  "cron/sync": handler6,
-  me: handler10,
-  "plan/generate": handler13,
-  setup: handler14,
-  admin: handler15,
-  sync: handler16,
-  "webhooks/strava": handler17,
-  "webhooks/whoop": handler18,
-  "webhooks/apple": handler7,
-  "webhooks/android": handler8
+  "account/password": handler2,
+  "agents/run": handler3,
+  config: handler4,
+  "cron/evening": handler5,
+  "cron/morning": handler6,
+  "cron/sync": handler7,
+  me: handler11,
+  "plan/generate": handler14,
+  setup: handler15,
+  admin: handler16,
+  sync: handler17,
+  "webhooks/strava": handler18,
+  "webhooks/whoop": handler19,
+  "webhooks/apple": handler8,
+  "webhooks/android": handler9
 };
 function resolve(path) {
   const p = path.replace(/^\/+|\/+$/g, "").replace(/^api\//, "");
   if (STATIC[p]) return { handler: STATIC[p], params: {} };
   let m = /^forms\/([^/]+)$/.exec(p);
-  if (m) return { handler: handler9, params: { kind: m[1] } };
+  if (m) return { handler: handler10, params: { kind: m[1] } };
   m = /^oauth\/([^/]+)\/(start|callback)$/.exec(p);
-  if (m) return { handler: m[2] === "start" ? handler12 : handler11, params: { provider: m[1] } };
+  if (m) return { handler: m[2] === "start" ? handler13 : handler12, params: { provider: m[1] } };
   return null;
 }
-async function handler19(req, res) {
+async function handler20(req, res) {
   const raw = req.query.__p;
   const fromQuery = Array.isArray(raw) ? raw.join("/") : raw;
   const path = fromQuery ?? new URL(req.url ?? "/", "http://x").pathname;
@@ -10505,6 +10535,6 @@ async function handler19(req, res) {
   await r2.handler(req, res);
 }
 export {
-  handler19 as default,
+  handler20 as default,
   resolve
 };

@@ -217,6 +217,16 @@ export async function signUp(email: string, password: string): Promise<void> {
   await signInWithPassword(email, password);
 }
 
+/** Schimbarea parolei: serverul verifică parola actuală; apoi intrăm din nou cu cea nouă (sesiune proaspătă). */
+export async function changePassword(current: string, next: string): Promise<void> {
+  const s = await getSession();
+  if (!s) throw new Error('neautentificat');
+  const res = await fetch('/api/account/password', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}` }, body: JSON.stringify({ current, next }) });
+  const j = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(j.error ?? `nu am putut schimba parola (${res.status})`);
+  await signInWithPassword(s.user.email, next);
+}
+
 export async function runSetup(): Promise<{ ok: boolean; steps: { step: string; ok: boolean; detail?: string }[] }> {
   const s = await getSession().catch(() => null);
   const res = await fetch('/api/setup', { method: 'POST', headers: s ? { authorization: `Bearer ${s.access_token}` } : {} });

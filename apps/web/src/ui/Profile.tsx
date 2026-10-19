@@ -6,7 +6,7 @@ import { InstallCard } from './Install';
 import { SyncButton } from './SyncButton';
 import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
-import { SERVER, hardReload, loadServerConfig, runSetup, server } from '../data/api';
+import { SERVER, changePassword, hardReload, loadServerConfig, runSetup, server } from '../data/api';
 import { SCHEMA_VERSION } from '@core/schema-version.js';
 import { serverBuild } from '../data/api';
 import { GOAL_LABEL } from '@core/calendar/phases.js';
@@ -446,6 +446,7 @@ function PrefsSection({ ambient, onAmbient }: { ambient: boolean; onAmbient: (v:
 function AccountSection({ onOpen }: { onOpen: (screen: string) => void }) {
   const me = useMe();
   const { logout, local } = useData();
+  const [pw, setPw] = useState(false);
   return (
     <Card tight>
       <Label icon={Icons.user}>Cont și consimțământ</Label>
@@ -462,9 +463,66 @@ function AccountSection({ onOpen }: { onOpen: (screen: string) => void }) {
         <button className="pill" onClick={() => void logout()}>
           {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
         </button>
+        {!local && (
+          <button className="pill" onClick={() => setPw(!pw)}>
+            Schimbă parola
+          </button>
+        )}
       </div>
+      {pw && !local && <PasswordForm onDone={() => setPw(false)} />}
       {serverBuild() && <div className="tiny muted" style={{ marginTop: 8 }}>Versiunea aplicației: {serverBuild()}</div>}
     </Card>
+  );
+}
+
+function PasswordForm({ onDone }: { onDone: () => void }) {
+  const me = useMe();
+  const [cur, setCur] = useState('');
+  const [next, setNext] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const problem = next && next.length < 8 ? 'parola nouă: minimum 8 caractere' : again && again !== next ? 'parolele noi nu coincid' : null;
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await changePassword(cur, next);
+      setMsg({ ok: true, text: 'Parola a fost schimbată. Data viitoare intri cu cea nouă.' });
+      setCur('');
+      setNext('');
+      setAgain('');
+      setTimeout(onDone, 2500);
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      style={{ marginTop: 10, display: 'grid', gap: 8 }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!problem && cur && next && again) void save();
+      }}
+    >
+      <input type="email" autoComplete="username" value={me.user.email} readOnly hidden />
+      <input className="date" type="password" autoComplete="current-password" placeholder="parola actuală" value={cur} onChange={(e) => setCur(e.target.value)} />
+      <input className="date" type="password" autoComplete="new-password" placeholder="parola nouă (minimum 8 caractere)" value={next} onChange={(e) => setNext(e.target.value)} />
+      <input className="date" type="password" autoComplete="new-password" placeholder="parola nouă, încă o dată" value={again} onChange={(e) => setAgain(e.target.value)} />
+      {problem && <div className="tiny muted">{problem}</div>}
+      {msg && <div className={msg.ok ? 'tiny' : 'err tiny'}>{msg.text}</div>}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="pill" type="submit" disabled={busy || !!problem || !cur || !next || !again}>
+          {busy ? '…' : 'Salvează parola'}
+        </button>
+        <button className="pill" type="button" onClick={onDone}>
+          Renunță
+        </button>
+      </div>
+      <div className="tiny muted">Ai uitat parola actuală? Ieși din cont și cere-i adminului o parolă temporară, apoi o schimbi de aici.</div>
+    </form>
   );
 }
 
