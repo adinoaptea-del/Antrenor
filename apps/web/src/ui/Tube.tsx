@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { frontAt, meniscus } from '@core/motion/meniscus.js';
 
 /**
  * Tubul de pregătire: aceeași materie ca bula (particule lime-verde-turcoaz pe grafit), într-o capsulă orizontală care
@@ -49,6 +50,8 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
       if (W < 4 || H < 4) return;
       const target = pctRef.current == null ? 0 : Math.max(0, Math.min(100, pctRef.current)) / 100;
       shown += (target - shown) * Math.min(1, dt * 2.5);
+      // Se oprește exact pe valoare (altfel 100% n-ar închide niciodată tubul, doar s-ar apropia de el).
+      if (Math.abs(target - shown) < 0.002) shown = target;
       const capsule = () => {
         ctx.beginPath();
         ctx.moveTo(r, 1);
@@ -69,15 +72,16 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
       ctx.save();
       capsule();
       ctx.clip();
-      const fillW = W * shown;
-      if (fillW > 1) {
-        // Lichidul, cu menisc curbat și ușor ondulat: frontul e bombat (centrul înaintează), cu deformări mici și lente.
-        const bulge = Math.min(r * 1.5, fillW * 0.5);
+      // Meniscul (src/motion/meniscus.ts): centrul = valoarea, marginile puțin în urmă; la plin închide tubul.
+      const m = pctRef.current == null ? null : meniscus(shown * 100, W, r);
+      const fillW = m?.fillW ?? 0;
+      if (m && fillW > 1) {
+        const bulge = m.bulge;
         const front = (y: number) => {
           const v = (y - H / 2) / (H / 2);
-          const round = bulge * Math.sqrt(Math.max(0, 1 - v * v));
-          const wob = (Math.sin(v * 2.6 + t * 0.9) * 1.6 + Math.sin(v * 5.3 - t * 0.55) * 0.8) * dpr * Math.min(1, fillW / (40 * dpr));
-          return Math.max(0, fillW - bulge + round + wob);
+          // Ondulația e decor: mică, lentă, dispare la procente mici și la plin (nu schimbă volumul arătat).
+          const wob = (Math.sin(v * 2.6 + t * 0.9) * 1.6 + Math.sin(v * 5.3 - t * 0.55) * 0.8) * dpr * m.detail;
+          return m.full ? W + 2 : Math.min(W, Math.max(0, frontAt(m, v) + wob));
         };
         const liquid = () => {
           ctx.beginPath();
@@ -111,11 +115,11 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
         // Particulele în suspensie: trei adâncimi (mici și lente departe, bule mai mari aproape).
         ctx.globalCompositeOperation = 'lighter';
         for (const p of pts) {
-          const px = ((p.x + t * p.sp) % 1) * (fillW + bulge);
+          const px = ((p.x + t * p.sp) % 1) * fillW;
           const py = H * (0.08 + 0.84 * ((p.y + 0.08 * Math.sin(t * 0.7 + p.ph)) % 1));
           const rel = px / Math.max(1, fillW);
           const c2 = col(p.hue * (0.55 + 0.45 * rel));
-          const a = (0.3 + 0.5 * Math.sin(t * 1.3 + p.ph) ** 2) * (0.45 + 0.55 * Math.min(1, rel));
+          const a = (0.3 + 0.5 * Math.sin(t * 1.3 + p.ph) ** 2) * (0.45 + 0.55 * Math.min(1, rel)) * (m.full ? 1 : 0.35 + 0.65 * Math.min(1, fillW / (r * 4)));
           const rad = p.sz * dpr;
           if (p.sz > 1.6) {
             ctx.strokeStyle = `rgba(${c2[0]},${c2[1]},${c2[2]},${(a * 0.8).toFixed(3)})`;
@@ -133,7 +137,8 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
           }
         }
         ctx.restore();
-        // Marginea meniscului: un fir luminos lime, mai gros la mijloc.
+        // Marginea meniscului: un fir luminos lime, mai gros la mijloc. Plin = fără front (lichidul închide tubul).
+        if (!m.full) {
         ctx.beginPath();
         const M2 = 28;
         for (let i = 0; i <= M2; i++) {
@@ -147,6 +152,7 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
         ctx.shadowBlur = 10 * dpr;
         ctx.stroke();
         ctx.shadowBlur = 0;
+        }
         ctx.globalCompositeOperation = 'source-over';
       }
       ctx.restore();

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
-import { CosmicMessage, homeOrbRect } from './Cosmic';
+import { CosmicMessage } from './Cosmic';
 
 /**
  * Întâmpinarea de la intrarea în aplicație: mesajul cosmic, varianta „întâmpinare”, discret peste Acasă (care rămâne
@@ -35,5 +35,5 @@ export function Memento({ onClose }: { onClose: () => void }) {
   const me = useMe();
   const [msg] = useState(randomMotivation);
   const d = dayIndex(me);
-  return <CosmicMessage variant="intampinare" kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} seed={7} returnTo={homeOrbRect} onClose={() => { markWelcome(); onClose(); }} />;
+  return <CosmicMessage variant="intampinare" kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} seed={7} onClose={() => { markWelcome(); onClose(); }} />;
 }

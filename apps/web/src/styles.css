@@ -1398,32 +1398,65 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .ok-alert { background: radial-gradient(110% 70% at 90% 115%, rgba(87, 217, 154, 0.16), transparent 60%), var(--glass-fill); border-color: rgba(87, 217, 154, 0.4); }
 .sheet > :not(.sheet-body):not(.glass-fx) { flex-shrink: 0; }
 
-/* Mesajul cosmic (ui/Cosmic.tsx): întâmpinarea și felicitarea, același corp de sticlă. Acasă rămâne vizibil în spate. */
-.cosmic { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; align-content: center; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: rgba(3, 7, 7, 0.24); cursor: pointer; animation: cosmic-bg 0.6s ease both; }
-.cosmic-reusita { background: rgba(3, 7, 7, 0.46); }
-.cosmic.out { pointer-events: none; animation: cosmic-bg-out 0.5s ease both; }
+/* Mesajul cosmic (ui/Cosmic.tsx): scena de teleportare. Fundalul îl întunecă scena din canvas; textul e DOM stabil. */
+.cosmic { position: fixed; inset: 0; z-index: 120; cursor: pointer; }
+.cosmic.out { pointer-events: none; }
 .cosmic-cv { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
-.cosmic-box { position: relative; width: min(calc(100vw - 150px), 250px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; opacity: 0; animation: cosmic-text 0.35s 0.3s ease both; }
+.cosmic-box { position: fixed; transform: translate(-50%, -50%); width: min(calc(100vw - 26vw - 32px), 232px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; }
 .cosmic-k { font: 600 12px var(--font-ui); letter-spacing: 0.08em; color: var(--accent); }
 .cosmic-reusita .cosmic-k { font: 700 19px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--fg); }
 .cosmic-t { margin: 0; font: 600 clamp(19px, 5.4vw, 23px)/1.3 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; color: var(--fg); }
 .cosmic-reusita .cosmic-t { font: 500 16px/1.42 var(--font-ui); letter-spacing: 0; }
 .cosmic-ok { width: 30px; height: 30px; fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(212, 250, 58, 0.45)); }
 .cosmic-x { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 4px 10px; cursor: pointer; }
-.cosmic-go { position: relative; margin-top: 66px; min-width: 160px; padding: 12px 34px; border-radius: 999px; border: 1px solid rgba(110, 236, 140, 0.45); background: rgba(10, 22, 20, 0.72); color: var(--fg); font: 600 15px var(--font-ui); cursor: pointer; box-shadow: inset 0 0 16px rgba(110, 236, 140, 0.16), 0 0 22px rgba(110, 236, 140, 0.14); opacity: 0; animation: cosmic-text 0.35s 0.6s ease both; }
-.cosmic.out .cosmic-box, .cosmic.out .cosmic-go { animation: cosmic-text-out 0.22s ease both; }
-.cosmic.still .cosmic-box.glass { width: min(100%, 340px); padding: 26px 22px; border-radius: 30px; }
-.cosmic.still .cosmic-go { margin-top: 16px; }
-@keyframes cosmic-bg { from { background-color: transparent; } }
-@keyframes cosmic-bg-out { to { background-color: transparent; } }
-@keyframes cosmic-text { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cosmic-text-out { from { opacity: 1; } to { opacity: 0; } }
+.cosmic-go { position: absolute; top: calc(100% + 64px); left: 50%; transform: translateX(-50%); min-width: 160px; padding: 12px 34px; border-radius: 999px; border: 1px solid rgba(110, 236, 140, 0.45); background: rgba(10, 22, 20, 0.72); color: var(--fg); font: 600 15px var(--font-ui); cursor: pointer; box-shadow: inset 0 0 16px rgba(110, 236, 140, 0.16), 0 0 22px rgba(110, 236, 140, 0.14); }
+/* Mișcare redusă: o fereastră de sticlă, estompare scurtă, fără scenă. */
+.cosmic.still { background: rgba(3, 7, 7, 0.4); animation: cosmic-fade 0.25s ease both; }
+.cosmic.still.out { animation: cosmic-fade-out 0.25s ease both; }
+.cosmic.still .cosmic-box.glass { width: min(calc(100vw - 32px), 340px); padding: 26px 22px; border-radius: 30px; }
+.cosmic.still .cosmic-go { position: static; transform: none; margin-top: 10px; }
+@keyframes cosmic-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cosmic-fade-out { from { opacity: 1; } to { opacity: 0; } }
 .orb-absorb { animation: orb-absorb 0.9s ease; }
 @keyframes orb-absorb { 40% { filter: brightness(1.16) drop-shadow(0 0 16px rgba(110, 236, 140, 0.35)); } }
-@media (prefers-reduced-motion: reduce) {
-  .cosmic, .cosmic.out { animation-duration: 0.25s; }
-  .cosmic-box, .cosmic-go { animation: cosmic-text 0.25s ease both; }
-  .orb-absorb { animation: none; }
-}
+@media (prefers-reduced-motion: reduce) { .orb-absorb { animation: none; } }
+
 .cosmic-go:focus { outline: none; }
 .cosmic-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Varianta scurtă a teleportării (ui/OpenFrom.tsx): fereastra/rețeta se deschide din punctul atins, ~420 ms. */
+.open-burst { position: fixed; width: 260px; height: 260px; pointer-events: none; z-index: 95; }
+.sheet.open-from { animation: open-from 0.42s cubic-bezier(0.4, 0.1, 0.3, 1) backwards; }
+@keyframes open-from {
+  from { clip-path: circle(0px at var(--ox, 50%) var(--oy, 50%)); opacity: 0.6; transform: scale(0.985); }
+  60% { opacity: 1; }
+  to { clip-path: circle(150% at var(--ox, 50%) var(--oy, 50%)); transform: none; }
+}
+.meal-body.open-from { animation: meal-in 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+@keyframes meal-in { from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(-6px); } to { opacity: 1; clip-path: inset(0 0 0 0); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sheet.open-from, .meal-body.open-from { animation: none; } .open-burst { display: none; } }
+/* Stratificarea ferestrelor (auditul grafic): cardurile din interior sunt sticlă, nu plăci opace; lichidul și
+   particulele recipientului rămân vizibile la periferie, iar centrul cardului rămâne destul de închis pentru text. */
+.sheet :is(.str-row, .sheet-tip, .route, .rec-chip, .row-card) { background: rgba(18, 27, 28, 0.52); border-color: rgba(160, 240, 200, 0.1); }
+.sheet .str-row { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+/* Laboratorul grafic (Administrare): previzualizare izolată. */
+.gfx-lab { position: fixed; inset: 0; z-index: 110; background: radial-gradient(70% 45% at 50% 22%, rgba(110, 236, 140, 0.06), transparent 70%), var(--bg); color: var(--fg); overflow: hidden; padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-left, 0px)) 0 max(16px, env(safe-area-inset-right, 0px)); }
+.gfx-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gfx-modes { margin-top: 8px; position: relative; z-index: 140; }
+.gfx-home { width: min(62vw, 240px); margin: 18px auto 0; }
+.gfx-home .orb { width: 100%; }
+.gfx-orb-t { font: 700 20px var(--font-display); }
+.gfx-card { margin: 14px auto 0; max-width: 420px; cursor: default; }
+.gfx-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 140; display: grid; gap: 6px; padding: 8px max(16px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: linear-gradient(to top, rgba(6, 10, 10, 0.95) 70%, transparent); }
+.gfx-bar input[type='range'] { width: 100%; accent-color: var(--accent); }
+.gfx-phase { font: 600 13px var(--font-ui); color: var(--accent); }
+.gfx-jumps .pill { font-size: 12px; padding: 6px 10px; }
+.gfx-pad { display: grid; gap: 12px; margin-top: 24px; justify-items: center; }
+.gfx-pad > * { width: min(100%, 420px); }
+.gfx-pad > .pill { width: auto; }
+.gfx-tubes { display: grid; gap: 14px; margin-top: 20px; }
+.gfx-tube { display: grid; gap: 6px; }
+.gfx-bar .pill { font-size: 12px; padding: 6px 10px; min-height: 0; }
+.gfx-bar .wk-btns { gap: 6px; }
+.gfx-bar .tiny { display: none; }
+@media (min-height: 800px) { .gfx-bar .tiny { display: block; } }

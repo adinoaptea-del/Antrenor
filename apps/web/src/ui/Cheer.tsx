@@ -120,5 +120,5 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
     setSeen(next);
   };
   const id = pick.w.id;
-  return <CosmicMessage key={id} variant="reusita" kicker="Antrenament finalizat" text={pick.c.text} seed={id.length + 3} origin={() => workoutRect(id) ?? homeOrbRect()} returnTo={homeOrbRect} onClose={done} />;
+  return <CosmicMessage key={id} variant="reusita" kicker="Antrenament finalizat" text={pick.c.text} seed={id.length + 3} origin={() => workoutRect(id) ?? homeOrbRect()} onClose={done} />;
 }

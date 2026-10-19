@@ -1,4 +1,5 @@
 import { previewCheer } from './Cheer';
+import { GraphicsLab } from './Lab';
 import { SamsungImport } from './SamsungImport';
 import { useCallback, useEffect, useState } from 'react';
 import { Card, Icons, Label, fmtDayMonth } from './common';
@@ -46,6 +47,7 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
   useEffect(() => {
     if (oauthMsg) history.replaceState(history.state, '', '#profil');
   }, [oauthMsg]);
+  const [lab, setLab] = useState(false);
   const toIndex = useCallback(() => setSection('index'), []);
   useLocalBack(section !== 'index', toIndex);
 
@@ -54,6 +56,7 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
     return (
       <>
         <BackHeader title={title} onBack={() => setSection('index')} />
+        {lab && <GraphicsLab name={me.user.name} onClose={() => setLab(false)} />}
         <div className="stack">
           {oauthMsg && section === 'dispozitive' && (
             <button type="button" className={oauthMsg.ok ? 'labs-alert ok-alert' : 'labs-alert'} onClick={() => setOauthMsg(null)}>
@@ -90,6 +93,9 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
                   </button>
                   <button className="pill" onClick={() => window.dispatchEvent(new Event('airon-welcome-preview'))}>
                     Întâmpinarea
+                  </button>
+                  <button className="pill on" onClick={() => setLab(true)}>
+                    Laborator grafic
                   </button>
                 </div>
               </Card>

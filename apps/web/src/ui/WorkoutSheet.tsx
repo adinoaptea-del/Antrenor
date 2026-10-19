@@ -11,6 +11,7 @@ import { Actions, YellowDay } from './WorkoutActions';
 import { StrengthHint, StrengthLogForm } from './StrengthLog';
 import { useLocalBack } from './Shell';
 import { GlassFX } from './Glass';
+import { BurstAtTap, useOpenOrigin } from './OpenFrom';
 import { useData, useMe } from '../data/store';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMinutes, isUpcoming, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
@@ -72,6 +73,8 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
     };
   }, [onClose]);
 
+  // Varianta scurtă a teleportării: fereastra se deschide din punctul atins (o singură dată, la deschidere).
+  const tap = useOpenOrigin(box);
   const rx = w.type === 'forta' ? strengthOf(me, w) : null;
   const fitness = goalKind(me.user.goal) === 'fitness';
   const day = w.date === me.today ? dayOf(me) : null;
@@ -91,6 +94,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
 
   return createPortal(
     <div className="sheet-wrap" role="dialog" aria-modal="true" aria-label="Ședința" onClick={onClose}>
+      <BurstAtTap tap={tap} />
       <div className="sheet" data-wid={w.id} ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <GlassFX level={0.16} />
         <div className="sheet-grab" aria-hidden="true" />

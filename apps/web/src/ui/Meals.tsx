@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { BurstAtTap, useOpenOrigin } from './OpenFrom';
 import type { Allergen } from '@core/nutrition/foods.js';
 import { NUTRITION_DISCLAIMER, alternatives, type Diet, type Meal } from '@core/nutrition/engine.js';
 import { nutritionForMe, nutritionInputFromMe, recentRecipes } from '@core/nutrition/from-me.js';
@@ -156,7 +157,7 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose,
       <div className="small" style={{ marginTop: 4 }}>{m.items.map((it) => `${it.qty} ${it.unit} ${it.name.split(',')[0]!.toLowerCase()}`).join(' · ')}</div>
       {m.why && <div className="tiny" style={{ marginTop: 4 }}>{m.why}</div>}
       {open && (
-        <div className="meal-body">
+        <MealOpen>
           <div className="sheet-k">Ce și cât (cântărit cum scrie)</div>
           <ul className="meal-items">
             {m.items.map((it) => (
@@ -177,7 +178,7 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose,
             Alergeni: {m.allergens.length ? m.allergens.join(', ') : 'niciunul din cei urmăriți'} (verifică etichetele){m.missingPrices.length ? ` · fără preț: ${m.missingPrices.join(', ')}` : ''}
             {m.repeat ? ' · se repetă mai des decât regula, din cauza preferințelor' : ''}
           </div>
-        </div>
+        </MealOpen>
       )}
       <div className="wk-btns" style={{ marginTop: 8 }}>
         <button className="pill" onClick={onSwap} disabled={busy} aria-expanded={swapping}>
@@ -289,6 +290,18 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
       <button className="btn sm" style={{ marginTop: 10 }} onClick={() => void save()} disabled={busy || local}>
         {busy ? 'Salvez…' : 'Salvează'}
       </button>
+    </div>
+  );
+}
+
+/** Rețeta se extinde din cardul atins: același material, varianta scurtă (fără explozie la fiecare deschidere). */
+function MealOpen({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const tap = useOpenOrigin(ref);
+  return (
+    <div className="meal-body" ref={ref}>
+      <BurstAtTap tap={tap} />
+      {children}
     </div>
   );
 }
