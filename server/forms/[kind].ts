@@ -429,8 +429,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const exclude = Array.isArray(body.exclude) ? (body.exclude as unknown[]).map(String).filter((x) => allowed.includes(x)) : cur.exclude;
       const budget = body.budget == null || body.budget === '' ? null : Number(body.budget);
       if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, 'bugetul: între 20 și 150 RON pe zi');
-      const meals = Number(body.meals) === 3 ? 3 : 4;
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals } });
+      const mn = Number(body.meals);
+      const meals = ([1, 2, 3, 4].includes(mn) ? mn : 4) as 1 | 2 | 3 | 4;
+      const cm = Number(body.currentMeals);
+      const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, snacksOk: body.snacksOk !== false } });
       json(res, 200, { ok: true });
       return;
     }

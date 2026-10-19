@@ -34,7 +34,12 @@ export interface NutritionPrefs {
   allergiesConfirmed: boolean;
   /** RON/zi pentru ingredientele consumate (20–150), sau null. */
   budget: number | null;
-  meals: 3 | 4;
+  /** Mesele principale dorite (1–4); 4 = cu gustare. Alimentarea din efort e separată. */
+  meals: 1 | 2 | 3 | 4;
+  /** Câte mese mănâncă acum (obiceiul), separat de cele dorite. */
+  currentMeals?: number | null;
+  /** Acceptă gustări în jurul antrenamentului când mesele principale nu ajung (implicit da). */
+  snacksOk?: boolean;
   /** Mesele alese de sportiv cu „Schimbă”, pe zi. */
   choices?: Record<string, Partial<Record<Slot, string>>>;
 }
@@ -144,7 +149,7 @@ const dayIndex = (date: string) => ((diffDays(EPOCH, date) % 14) + 14) % 14;
 export function selectDays(from: string, to: string, prefs: NutritionPrefs, preSlot: (date: string) => Slot | null = () => null): Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }> {
   const out = new Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }>();
   const uses = new Map<string, string[]>();
-  const slots: Slot[] = prefs.meals === 3 ? ['mic_dejun', 'pranz', 'cina'] : ['mic_dejun', 'pranz', 'cina', 'gustare'];
+  const slots = slotsFor(prefs.meals);
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const picks: Partial<Record<Slot, string>> = {};
     const repeats: Slot[] = [];
@@ -222,12 +227,18 @@ export function recipeValues(id: string): { kcal: number; protein: number } {
 }
 
 /** Slotul mesei dinaintea primei ședințe a zilei (dacă se știe ora): acolo nu punem fibre multe. */
-export function preEffortSlot(sessions: DaySession[], meals: 3 | 4): Slot | null {
+/** Mesele zilei după numărul dorit: 1 = cina; 2 = prânz + cină (mesele principale); 3 = + mic dejun; 4 = + gustare. */
+export function slotsFor(n: number): Slot[] {
+  return n <= 1 ? ['cina'] : n === 2 ? ['pranz', 'cina'] : n === 3 ? ['mic_dejun', 'pranz', 'cina'] : ['mic_dejun', 'pranz', 'cina', 'gustare'];
+}
+
+export function preEffortSlot(sessions: DaySession[], meals: number): Slot | null {
   const first = sessions.filter((s) => s.sport !== 'forta' || s.minutes >= 45).map((s) => s.startMin).filter((x): x is number => x != null).sort((a, b) => a - b)[0];
   if (first == null) return null;
-  if (first < 11 * 60) return 'mic_dejun';
-  if (first < 17 * 60) return 'pranz';
-  return meals === 4 ? 'gustare' : 'pranz';
+  const has = slotsFor(meals);
+  if (first < 11 * 60 && has.includes('mic_dejun')) return 'mic_dejun';
+  if (first < 17 * 60 && has.includes('pranz')) return 'pranz';
+  return has.includes('gustare') ? 'gustare' : has.includes('pranz') && first >= 11 * 60 ? 'pranz' : null;
 }
 
 export function nutritionDay(input: NutritionInput): NutritionDay {
@@ -294,13 +305,19 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
   let factor = mealsTarget ? mealsTarget / base0 : 1;
   const extra: Recipe[] = [];
-  if (factor > 1.5) {
-    // Porții realiste: mai bine o gustare în plus decât farfurii de 1,7×.
-    const g = RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !Object.values(sel.picks).includes(r.id)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
-    if (g) {
-      extra.push(g);
-      factor = mealsTarget! / (base0 + recipeValues(g.id).kcal);
-    }
+  // Porții realiste: mai bine gustări în jurul antrenamentului decât farfurii de 1,7× (auditul M35, D: nu redistribui
+  // mecanic toate caloriile în două porții uriașe). Cu 1–2 mese, gustările intră doar dacă sportivul le acceptă.
+  const fewMeals = prefs.meals <= 2;
+  const maxExtra = fewMeals ? (prefs.snacksOk === false ? 0 : 2) : 1;
+  while (factor > 1.5 && extra.length < maxExtra) {
+    const g = RECIPES.filter((r) => r.kind === 'G' && eligible(r, prefs) && !Object.values(sel.picks).includes(r.id) && !extra.includes(r)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
+    if (!g) break;
+    extra.push(g);
+    factor = mealsTarget! / (base0 + extra.reduce((n, r) => n + recipeValues(r.id).kcal, 0));
+  }
+  if (factor > 1.6 && mealsTarget) {
+    const short = Math.round(mealsTarget - (base0 + extra.reduce((n, r) => n + recipeValues(r.id).kcal, 0)) * 1.6);
+    warnings.push(`cu ${prefs.meals} ${prefs.meals === 1 ? 'masă' : 'mese'}${fewMeals && prefs.snacksOk === false ? ' și fără gustări' : ''}, ținta nu încape în porții realiste: lipsesc ~${short} kcal. Nu tai din necesar: o gustare în jurul antrenamentului sau încă o masă ar acoperi diferența`);
   }
   if (factor < 0.7) {
     warnings.push('ținta calculată e sub porțiile minime realiste din bibliotecă; nu tai mai mult — mai bine discutăm ținta');
@@ -316,7 +333,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     const why = s === pre ? `înaintea ${sessions.length ? 'antrenamentului' : 'efortului'}: masă cu puține fibre, familiară` : s === 'gustare' && sessions.length ? 'gustarea ține energia între mese' : null;
     meals.push({ ...m, why, ...(sel.repeats.includes(s) ? { repeat: true } : {}) });
   }
-  for (const g of extra) meals.push({ ...mealOf('gustare', g, factor), label: 'Gustare în plus', why: 'azi ai nevoie de mai multă energie: o gustare în plus în loc de porții uriașe' });
+  for (const g of extra) meals.push({ ...mealOf('gustare', g, factor), label: fewMeals ? 'Gustare în jurul antrenamentului' : 'Gustare în plus', why: fewMeals ? `pe lângă cele ${prefs.meals} ${prefs.meals === 1 ? 'masă principală' : 'mese principale'}: înainte sau după antrenament, ca porțiile să rămână realiste` : 'azi ai nevoie de mai multă energie: o gustare în plus în loc de porții uriașe' });
 
   // Proteinele: dacă rămân sub țintă, o gustare bogată în proteine (fără a ascunde diferența).
   let protein = meals.reduce((n, m) => n + m.protein, 0);

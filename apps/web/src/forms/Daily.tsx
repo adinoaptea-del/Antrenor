@@ -21,7 +21,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   // Contează și răspunsurile parțiale; totalul apare de la 3 din 4 răspunsuri (cu mai puține nu inventăm restul).
   const { suma, raspunse } = hooperSum(m.hooper);
   // Semnalele de siguranță au prioritate față de scorul notelor: nu scrie „în regulă” lângă un simptom (L-SIM-03).
-  const safety = activeRestriction({ today: date, morning: { date, semnale: m.semnale as never }, evenings: [] });
+  const safety = activeRestriction({ today: date, morning: { date, semnale: m.semnale as never, hooper: m.hooper, dureri_zona: m.dureri_zona ?? null, dureri_mers: m.dureri_mers ?? null }, evenings: [] });
   const anyAnswer = raspunse > 0 || Object.values(m.semnale).some((v) => v === true);
 
   return (
@@ -53,6 +53,13 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
         </Q>
         <Q title="Dureri musculare">
           <Scale value={m.hooper.dureri} min={1} max={7} onChange={(v) => setH('dureri', v)} lowLabel="nimic" highLabel="peste tot" />
+          {(m.hooper.dureri ?? 0) >= 6 && (
+            <div style={{ marginTop: 8 }}>
+              <div className="small">Unde te dor mușchii cel mai tare?</div>
+              <Chips value={m.dureri_zona ?? null} options={[{ id: 'picioare', label: 'Picioare' }, { id: 'spate', label: 'Spate' }, { id: 'brate', label: 'Umeri, brațe' }, { id: 'tot', label: 'Tot corpul' }]} onChange={(dureri_zona) => setM({ ...m, dureri_zona })} />
+              <Toggle label="Doare și la mers" value={m.dureri_mers ?? null} onChange={(v) => setM({ ...m, dureri_mers: v })} />
+            </div>
+          )}
         </Q>
         <Q title="Semnale" hint="Rămân pe „nu” dacă nu e cazul. Un „da” la febră sau simptom cardiac oprește antrenamentul și te trimite la om.">
           <div className="grid-2">

@@ -463,6 +463,11 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             </div>
           </Q>
           )}
+          {!fit && (
+          <Q title="Câte ore pe săptămână te-ai antrenat, în medie, în ultimele 2 luni?" hint="Opțional. Contează doar dacă nu ai activități importate de pe ceas: planul pornește de aici, nu de la zero. Nu deblochează intervale grele.">
+            <Chips value={a.oreRecente != null ? String(a.oreRecente) : null} options={['0', '2', '4', '6', '8', '10', '12', '15'].map((h) => ({ id: h, label: h === '0' ? 'deloc' : `${h} h` }))} onChange={(h) => set({ oreRecente: Number(h) })} />
+          </Q>
+          )}
           </>
         )}
 
@@ -473,7 +478,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 <Chips value={fx.sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => setFx({ sarcina })} />
               </Q>
             ) : (
-              <Q title="Ai făcut un test de efort?" hint="Zonele vin dintr-un test, nu din estimări. Dacă ai raportul, îl urci după chestionar din Profil → Date de bază → Test de efort.">
+              <Q title="Ai făcut un test de efort?" hint="Cu un test, zonele sunt ale tale; fără test, folosim zone estimate din vârstă, marcate provizorii. Dacă ai raportul, îl urci după chestionar din Profil → Date de bază → Test de efort.">
                 <Chips value={ev.testEfort ?? null} options={[{ id: 'cpet', label: 'CPET', sub: 'ergospirometrie' }, { id: 'lactat', label: 'Test de lactat' }, { id: 'teren', label: 'Test de teren' }, { id: 'nu', label: 'Nu' }]} onChange={(testEfort) => setEv({ testEfort })} />
               </Q>
             )}

@@ -39,8 +39,14 @@ const subOf = (w: PlannedWorkout, css: number | null = null, continuousM: number
  * ședință rămasă; cu mai multe ședințe, sus în fereastră alegi între ele. Sub bulă, separat: un singur buton principal,
  * starea de azi și progresul către obiectiv. Bula nu e procent și nu e culoarea recuperării.
  */
+function weeklyDecision(me: ReturnType<typeof useMe>): string | null {
+  const w = me.forms.weekly as { decizie?: { text?: string }; weekStart?: string } | null | undefined;
+  return w?.decizie?.text ?? null;
+}
+
 export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Sport; activityId?: string }) => void }) {
   const me = useMe();
+  const weeklyNote = weeklyDecision(me);
   const morning = me.forms.morning as MorningForm | null;
   const lastDone = lastDoneWorkout(me);
   const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && (a.date === lastDone.date || a.date > lastDone.date) && !a.unplanned) : null;
@@ -158,8 +164,12 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         {day && me.plan.length > 0 && (day.level !== 'verde' || day.ask) && !day.rest && (
           <p className="azi-day">
             <b>{day.title}.</b> {day.action}
+            {day.reason && !/^Durere \d+\/10/.test(day.reason) && <span className="azi-why"> {day.reason}</span>}
           </p>
         )}
+        {/* Zi de pauză cu semnal (ex. oboseală): spune explicit că planul rămâne și când se reevaluează (auditul M35, H). */}
+        {day && day.rest && day.reason && <p className="azi-day azi-why">{day.reason}</p>}
+        {weeklyNote && <p className="azi-day azi-why">Bilanțul săptămânii: {weeklyNote}.</p>}
         {day?.ask && <AptQuestion />}
         {day?.reason && /^Durere \d+\/10/.test(day.reason) && <PainClear reason={day.reason} />}
         {/* Chestionarul de dimineață / seară: o linie discretă, doar când lipsește (nu un al treilea buton mare). */}

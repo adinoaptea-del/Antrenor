@@ -40,6 +40,8 @@ export interface IntakeAnswers {
   program: FreeBlock[];
   /** Câte ore pe săptămână are, realist, pentru sport (timpul liber ≠ timp de sport). */
   oreSport?: number | null;
+  /** Ore/săpt. antrenate în ultimele ~2 luni (declarate). Folosite doar fără activități importate. */
+  oreRecente?: number | null;
   /** Avizul se consideră dat (întrebarea nu mai e în chestionar); limitareMedic = medicul a limitat efortul. */
   sanatate: { avizCardiolog: 'da' | 'nu' | 'programat' | null; accidentari: string; limitareMedic?: boolean | null };
   /** Doar la fitness (femei). */

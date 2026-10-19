@@ -46,6 +46,9 @@ export interface MorningForm {
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null; /** După un simptom cardiac: „am fost evaluat medical și pot face efort” (declarat de sportiv). */ cardiac_evaluat?: boolean | null };
   /** Doar când brățările n-au date: „ești odihnit și apt de antrenament azi?”. Sportivul decide. */
   apt?: 'da' | 'partial' | 'nu' | null;
+  /** La dureri musculare 6–7/7: unde (picioare, spate, umeri și brațe, tot corpul) și dacă dor la mers. */
+  dureri_zona?: 'picioare' | 'spate' | 'brate' | 'tot' | null;
+  dureri_mers?: boolean | null;
 }
 
 export interface EveningForm {

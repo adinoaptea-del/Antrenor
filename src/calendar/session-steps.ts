@@ -80,8 +80,10 @@ export function swimMainCap(cap: number | null, recentMaxM: number | null | unde
   return Infinity;
 }
 
-export function swimSet(input: { type: string; minutes: number; css: number | null; date: string; structure?: string | null; continuousM?: number | null; recentMaxM?: number | null }): { steps: Step[]; meters: number; estMin: number } {
-  const easy = input.css ? input.css + 15 : 165; // s/100 m
+export function swimSet(input: { type: string; minutes: number; css: number | null; date: string; structure?: string | null; continuousM?: number | null; recentMaxM?: number | null; declared400Sec?: number | null }): { steps: Step[]; meters: number; estMin: number } {
+  // Ritmul ușor: CSS testat + 15 s; altfel timpul declarat pe 400 m (media pe 100 m + 15 s, declarat, nu test); altfel 2:45.
+  const declaredEasy = !input.css && input.declared400Sec ? Math.round(input.declared400Sec / 4) + 15 : null;
+  const easy = input.css ? input.css + 15 : declaredEasy ?? 165; // s/100 m
   // Cu CSS testat, 400 m au fost înotați deja fără oprire (testul).
   const cap = swimMaxSegment(input.continuousM ?? (input.css ? 400 : null));
   const budget = Math.max(10, input.minutes) * 60;
@@ -172,7 +174,7 @@ export function swimSet(input: { type: string; minutes: number; css: number | nu
   steps.push({ label: 'Revenire', text: coolN > 1 ? `${coolN} × ${cd} m foarte ușor, orice stil, 15 s pauză` : `${coolM} m foarte ușor, orice stil` });
   const estMin = Math.round(used / 60);
   const capNote = input.continuousM == null && !input.css ? ' · capacitatea fără oprire: NECUNOSCUTĂ (nu e declarată sau măsurată); lungimi de 25 m doar ca familiarizare' : ` · cea mai lungă porțiune propusă fără oprire: ${longestSegment(steps)} m`;
-  steps.push({ label: 'Total', text: `${fmtM(meters)} m în bazin de 25 m · durata ≈ ${estMin} min, estimată din ritm${input.css ? ' (CSS testat)' : ' (fără test de înot: ritm presupus 2:45/100 m)'}${capNote}` });
+  steps.push({ label: 'Total', text: `${fmtM(meters)} m în bazin de 25 m · durata ≈ ${estMin} min, estimată din ritm${input.css ? ' (CSS testat)' : declaredEasy ? ` (din timpul tău declarat pe 400 m: ușor ~${Math.floor(declaredEasy / 60)}:${String(declaredEasy % 60).padStart(2, '0')}/100 m; un test CSS îl înlocuiește)` : ' (fără test de înot și fără timp declarat: ritm presupus 2:45/100 m)'}${capNote}` });
   return { steps, meters, estMin };
 }
 

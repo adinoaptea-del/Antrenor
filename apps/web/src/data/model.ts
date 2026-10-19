@@ -224,7 +224,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
   // plafon; pulsul din test sau estimat din vârstă, etichetat.
   const t = me.baseline.tests;
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimCapOf(me), swimRecentMaxM: swimRecentMaxOf(me), openWater: me.prefs?.mediuInot === 'ape' });
+  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimCapOf(me), swimRecentMaxM: swimRecentMaxOf(me), openWater: me.prefs?.mediuInot === 'ape', swimDeclared400Sec: declared400(me) });
 }
 
 /** De ce există ședința, într-o propoziție (din tipul ei). */
@@ -302,4 +302,11 @@ export function swimRecentMaxOf(me: Me): number | null {
   const from = addDays(me.today, -28);
   const m = Math.max(0, ...me.activities.filter((a) => a.sport === 'inot' && a.date >= from && a.date <= me.today && a.distanceKm).map((a) => Math.round(a.distanceKm! * 1000)));
   return m > 0 ? m : null;
+}
+
+/** Timpul declarat pe 400 m în chestionar („8:30” → 510 s), sau null. */
+export function declared400(me: Me): number | null {
+  const t = (me.forms.intake as { evaluare?: { inot400?: string | null } } | null)?.evaluare?.inot400 ?? null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec((t ?? '').trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }

@@ -116,7 +116,7 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
             <b>Preferințe</b>
             <small>
               {prefs.diet}
-              {prefs.exclude.length ? ` · fără ${prefs.exclude.join(', ')}` : ''} · {prefs.meals} mese · {prefs.budget ? `${prefs.budget} RON/zi` : 'fără buget'}
+              {prefs.exclude.length ? ` · fără ${prefs.exclude.join(', ')}` : ''} · {prefs.meals} {prefs.meals === 1 ? 'masă' : 'mese'}{prefs.currentMeals ? ` (acum ${prefs.currentMeals})` : ''} · {prefs.budget ? `${prefs.budget} RON/zi` : 'fără buget'}
               {prefs.allergiesConfirmed ? '' : ' · alergii neconfirmate'}
             </small>
           </span>
@@ -213,14 +213,16 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
   const [exclude, setExclude] = useState<Allergen[]>(cur.exclude);
   const [confirmed, setConfirmed] = useState(cur.allergiesConfirmed);
   const [budget, setBudget] = useState(cur.budget != null ? String(cur.budget) : '');
-  const [meals, setMeals] = useState<3 | 4>(cur.meals);
+  const [meals, setMeals] = useState<1 | 2 | 3 | 4>(cur.meals);
+  const [currentMeals, setCurrentMeals] = useState<number | null>(cur.currentMeals ?? null);
+  const [snacksOk, setSnacksOk] = useState(cur.snacksOk !== false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const save = async () => {
     setBusy(true);
     setErr(null);
     try {
-      await submitForm('nutritie', { diet, exclude, allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals });
+      await submitForm('nutritie', { diet, exclude, allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals, currentMeals, snacksOk });
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -253,15 +255,31 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
         <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Lista de alergii e completă (confirm)
       </label>
       <div className="small" style={{ marginTop: 8 }}>
-        Câte mese pe zi
+        Câte mese mănânci acum, de obicei
       </div>
       <div className="wk-btns">
-        {([3, 4] as const).map((n) => (
-          <button key={n} className={`pill ${meals === n ? 'on' : ''}`} onClick={() => setMeals(n)}>
-            {n === 3 ? '3 (fără gustare)' : '4 (cu gustare)'}
+        {[1, 2, 3, 4].map((n) => (
+          <button key={n} className={`pill ${currentMeals === n ? 'on' : ''}`} onClick={() => setCurrentMeals(n)}>
+            {n}
           </button>
         ))}
       </div>
+      <div className="small" style={{ marginTop: 8 }}>
+        Câte mese vrei să ai
+      </div>
+      <div className="wk-btns">
+        {([1, 2, 3, 4] as const).map((n) => (
+          <button key={n} className={`pill ${meals === n ? 'on' : ''}`} onClick={() => setMeals(n)}>
+            {n === 1 ? '1' : n === 2 ? '2 principale' : n === 3 ? '3' : '4 (cu gustare)'}
+          </button>
+        ))}
+      </div>
+      {meals <= 2 && (
+        <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={snacksOk} onChange={(e) => setSnacksOk(e.target.checked)} /> Accept o gustare înainte sau după antrenament, dacă mesele nu ajung
+        </label>
+      )}
+      <div className="tiny muted" style={{ marginTop: 4 }}>Ce iei în timpul antrenamentului (geluri, băutură) e separat de mese.</div>
       <label className="small" style={{ display: 'block', marginTop: 8 }}>
         Buget pe zi (RON, 20–150, opțional){' '}
         <input inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} style={{ width: 70 }} aria-label="buget pe zi" />

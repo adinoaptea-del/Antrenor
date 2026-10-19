@@ -106,7 +106,7 @@ export function Tests({ onBack, onDone }: { onBack: () => void; onDone: () => vo
       </header>
       <div className="wizard">
         <p className="hint" style={{ marginTop: 0 }}>
-          Zonele vin dintr-un test, nu din estimările ceasului: test de efort cardiopulmonar (CPET), test de lactat sau test de teren. Până atunci planul rămâne pe Z1–Z2 și pe testul vorbirii.
+          Zonele tale exacte vin dintr-un test (efort cardiopulmonar, lactat sau test de teren), nu din estimările ceasului. Până atunci aplicația folosește zone estimate din vârstă, marcate ca provizorii, plus testul vorbirii; testul le înlocuiește.
         </p>
         {!local && <TestUpload current={t} onRead={(x) => setT(x)} />}
         <Q title="Ce test?">

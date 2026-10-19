@@ -94,7 +94,7 @@ export function urgentText(text: string | null | undefined): string | null {
 
 export function activeRestriction(input: {
   today: string;
-  morning: { date?: string; semnale?: Record<string, unknown> | null } | null;
+  morning: { date?: string; semnale?: Record<string, unknown> | null; hooper?: { oboseala?: number | null; dureri?: number | null } | null; dureri_zona?: string | null; dureri_mers?: boolean | null } | null;
   evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null; comentariu?: string | null }[];
   savedVerdict?: 'verde' | 'galben' | 'rosu' | 'stop' | null;
   /** Activitățile de azi (după dedublare) și RPE-ul declarat: un efort mare azi închide ziua. */
@@ -109,6 +109,21 @@ export function activeRestriction(input: {
   if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
   if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
   if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };
+  // Semnalele individuale înaintea sumei (auditul M35, E01): epuizare sau dureri musculare 6–7/7 nu sunt „în regulă”
+  // doar pentru că celelalte note sunt bune. Oboseala nu e diagnostic; durerea musculară se separă de durerea focală.
+  const hm = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;
+  const dureri = hm?.hooper?.dureri ?? null;
+  const oboseala = hm?.hooper?.oboseala ?? null;
+  if (dureri != null && dureri >= 6) {
+    const zona = hm?.dureri_zona;
+    const where = zona === 'picioare' ? ' la picioare' : zona === 'spate' ? ' la spate' : zona === 'brate' ? ' la umeri și brațe' : zona === 'tot' ? ' pe tot corpul' : '';
+    const act = zona === 'picioare' ? 'azi fără alergare și fără picioare la sală; înot sau bicicletă doar foarte ușor și doar dacă nu încarcă zona' : zona === 'brate' ? 'azi fără înot și fără partea de sus la sală; alergare sau bicicletă doar ușor' : zona === 'spate' ? 'azi fără sală și fără ședințe lungi; doar ușor, dacă nu doare' : zona === 'tot' ? 'azi pauză sau doar mers ușor' : 'azi doar ușor; spune unde (picioare, spate, umeri) ca să știm ce ședințe rămân';
+    return { verdict: 'galben', reason: `Dureri musculare ${dureri}/7${where}: ${act}.${hm?.dureri_mers ? ' Doare și la mers: dacă e într-un singur punct sau ascuțită, e durere, nu oboseală — spune-o în formularul de seară.' : ''} Reevaluăm mâine dimineață.` };
+  }
+  if (oboseala != null && oboseala >= 6) {
+    const days = (input.mornings ?? []).filter((m) => m.date && m.date < input.today && m.date >= addDaysIso(input.today, -3) && Number((m as { hooper?: { oboseala?: number } }).hooper?.oboseala ?? 0) >= 6).length;
+    return { verdict: 'galben', reason: `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ''}: doar ușor sau pauză. ${days >= 2 ? 'E persistentă: verificăm cauza (somn, mâncare, boală) înainte de următoarea ședință grea; obiectivul rămâne, planul se reevaluează.' : 'Dacă ține 2–3 zile, verificăm cauza (somn, mâncare, boală).'}` };
+  }
   const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
   const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
   if (cardiacSince && cardiacSince < input.today) return { verdict: 'galben', reason: `Simptom cardiac raportat pe ${cardiacSince}: până la o evaluare medicală, doar ușor — fără teste, intervale sau ieșiri lungi. Când medicul ți-a permis efortul, bifează în chestionarul de dimineață.` };

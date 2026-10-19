@@ -35,6 +35,7 @@ export interface IntakeLike {
   program: FreeBlock[];
   /** Ore pe săptămână pentru sport, declarate. */
   oreSport?: number | null;
+  oreRecente?: number | null;
   /**
    * Avizul cardiologic: întrebarea nu se mai pune la intrare (oamenii o ignorau). Lipsa răspunsului rămâne „necunoscut”,
    * nu devine aviz; necunoscutul nu blochează antrenamentul obișnuit. Intensitatea se limitează doar la o restricție
@@ -205,6 +206,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     freeBlocks: intake.program,
     sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
+    declaredRecentHours: intake.oreRecente ?? null,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),

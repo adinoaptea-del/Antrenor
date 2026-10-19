@@ -33,6 +33,8 @@ export interface DetailContext {
   openWater?: boolean;
   /** Cea mai mare ședință de înot (metri) din ultimele 4 săptămâni, măsurată: plafonul de volum (V2-10). */
   swimRecentMaxM?: number | null;
+  /** Timpul declarat pe 400 m (s), din chestionar: ritm de referință fără test CSS. */
+  swimDeclared400Sec?: number | null;
 }
 
 interface Hr {
@@ -96,7 +98,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
     hr
       ? n >= 5
         ? `pulsul nu trece de ${hr.up[4]} bpm (${hr.estimated ? 'maximul estimat' : 'maximul tău'}); repetările le conduci după efort, nu după cifră. Dacă tehnica se strică sau nu poți ține ritmul, oprești repetarea.`
-        : `pulsul nu trece de ${hr.up[n - 1]} bpm; dacă trece, încetinești${n >= 3 ? ', iar dacă nu coboară, oprești repetarea' : ''}.`
+        : `${hr.estimated ? 'reper provizoriu, estimat din vârstă (nu e o limită de siguranță): ' : ''}pulsul nu trece de ${hr.up[n - 1]} bpm; dacă trece, încetinești${n >= 3 ? ', iar dacă nu coboară, oprești repetarea' : ''}${hr.estimated ? '. Dacă vorbitul și respirația spun altceva, ele au prioritate; un test îl înlocuiește' : ''}.`
       : `efortul nu trece de ${n <= 2 ? '3–4 din 10 (poți vorbi în propoziții)' : n === 3 ? '6 din 10' : n === 4 ? '7–8 din 10' : '9 din 10, doar în repetări'}.`;
   const lag = (work: number) => (work <= 2 ? ' La repetări scurte pulsul nu apucă să urce în zonă: ține efortul, nu urmări cifra.' : ' Pulsul urcă cu întârziere: în primul minut e normal să fie sub zonă.');
   // Pauza condiționată (auditul v2, V2-12): durata planificată, o prelungire permisă și o acțiune clară la depășire.
@@ -149,7 +151,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   if (/TEST/i.test(w.structure ?? '')) return [{ label: 'Testul', text: w.structure!.replace(/^TEST:?\s*/i, '') }, { label: 'Important', text: 'odihnit, fără efort greu în ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de cursă.' }];
 
   if (w.sport === 'inot' && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
-  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM, recentMaxM: ctx.swimRecentMaxM }).steps;
+  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM, recentMaxM: ctx.swimRecentMaxM, declared400Sec: ctx.swimDeclared400Sec ?? null }).steps;
   const si = shortIntervalSteps(w.structure, m);
   if (si) return withNote([...si, { label: 'Plafon', text: hr ? `în repetări poate ajunge spre ${hr.up[4]} bpm; între serii coboară sub ${hr.up[0]} înainte de seria următoare.` : 'între serii, până respiri liniștit.' }]);
 
@@ -195,7 +197,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   const talk = target <= 2 ? ' — poți vorbi în propoziții întregi' : '';
   const run = w.sport === 'alergare';
   return withNote([
-    { label: 'Încălzire', text: run ? `${warm} min alergare foarte ușoară în ${z(1)}${strides ? '; opțional 3 min mobilitate dinamică' : ''}` : `${warm} min pedalat ușor în ${z(1)}, cadență 85–95` },
+    { label: 'Încălzire', text: run ? `${warm} min alergare foarte ușoară în ${z(1)}${strides ? ' (primele 2–3 min pot fi mobilitate dinamică, în aceleași minute)' : ''}` : `${warm} min pedalat ușor în ${z(1)}, cadență 85–95` },
     { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? (m > 75 ? ', constant; apă și 30–60 g carbohidrați pe oră, din prima jumătate de oră' : ', constant') : ''}${talk}` },
     ...(planned && !strides ? [{ label: 'Accelerări', text: 'azi fără: ședința e prea scurtă ca să încapă și partea ușoară; le faci data viitoare.' }] : []),
     ...(strides && sMin ? [{ label: 'Accelerări', text: `${strides.n} × ${strides.sec} s rapid dar relaxat (nu sprint), pe teren drept, cu ~1 min mers sau trap între ele (${sMin} min)${planned && planned.n !== strides.n ? `; azi ${strides.n}, nu ${planned.n}: ședința e scurtă și partea ușoară are prioritate` : ''}` }] : []),

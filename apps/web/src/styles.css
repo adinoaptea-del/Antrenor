@@ -1211,3 +1211,4 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .meal-alts { display: grid; gap: 8px; margin-top: 8px; }
 .meal-prefs { margin-top: 10px; }
 .meal-how p { margin: 6px 0; }
+.azi-why { opacity: .8; font-size: 13px; }

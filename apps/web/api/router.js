@@ -912,7 +912,7 @@ var dayIndex = (date) => (diffDays(EPOCH, date) % 14 + 14) % 14;
 function selectDays(from, to, prefs, preSlot = () => null) {
   const out = /* @__PURE__ */ new Map();
   const uses = /* @__PURE__ */ new Map();
-  const slots = prefs.meals === 3 ? ["mic_dejun", "pranz", "cina"] : ["mic_dejun", "pranz", "cina", "gustare"];
+  const slots = slotsFor(prefs.meals);
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const picks = {};
     const repeats = [];
@@ -982,12 +982,16 @@ function recipeValues(id) {
   const m = mealOf("pranz", RECIPE[id], 1);
   return { kcal: m.kcal, protein: m.protein };
 }
+function slotsFor(n2) {
+  return n2 <= 1 ? ["cina"] : n2 === 2 ? ["pranz", "cina"] : n2 === 3 ? ["mic_dejun", "pranz", "cina"] : ["mic_dejun", "pranz", "cina", "gustare"];
+}
 function preEffortSlot(sessions, meals) {
   const first2 = sessions.filter((s) => s.sport !== "forta" || s.minutes >= 45).map((s) => s.startMin).filter((x) => x != null).sort((a, b) => a - b)[0];
   if (first2 == null) return null;
-  if (first2 < 11 * 60) return "mic_dejun";
-  if (first2 < 17 * 60) return "pranz";
-  return meals === 4 ? "gustare" : "pranz";
+  const has = slotsFor(meals);
+  if (first2 < 11 * 60 && has.includes("mic_dejun")) return "mic_dejun";
+  if (first2 < 17 * 60 && has.includes("pranz")) return "pranz";
+  return has.includes("gustare") ? "gustare" : has.includes("pranz") && first2 >= 11 * 60 ? "pranz" : null;
 }
 function nutritionDay(input) {
   const { athlete: a, prefs } = input;
@@ -1040,12 +1044,17 @@ function nutritionDay(input) {
   const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
   let factor = mealsTarget ? mealsTarget / base0 : 1;
   const extra = [];
-  if (factor > 1.5) {
-    const g = RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !Object.values(sel.picks).includes(r2.id)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
-    if (g) {
-      extra.push(g);
-      factor = mealsTarget / (base0 + recipeValues(g.id).kcal);
-    }
+  const fewMeals = prefs.meals <= 2;
+  const maxExtra = fewMeals ? prefs.snacksOk === false ? 0 : 2 : 1;
+  while (factor > 1.5 && extra.length < maxExtra) {
+    const g = RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !Object.values(sel.picks).includes(r2.id) && !extra.includes(r2)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
+    if (!g) break;
+    extra.push(g);
+    factor = mealsTarget / (base0 + extra.reduce((n2, r2) => n2 + recipeValues(r2.id).kcal, 0));
+  }
+  if (factor > 1.6 && mealsTarget) {
+    const short = Math.round(mealsTarget - (base0 + extra.reduce((n2, r2) => n2 + recipeValues(r2.id).kcal, 0)) * 1.6);
+    warnings.push(`cu ${prefs.meals} ${prefs.meals === 1 ? "mas\u0103" : "mese"}${fewMeals && prefs.snacksOk === false ? " \u0219i f\u0103r\u0103 gust\u0103ri" : ""}, \u021Binta nu \xEEncape \xEEn por\u021Bii realiste: lipsesc ~${short} kcal. Nu tai din necesar: o gustare \xEEn jurul antrenamentului sau \xEEnc\u0103 o mas\u0103 ar acoperi diferen\u021Ba`);
   }
   if (factor < 0.7) {
     warnings.push("\u021Binta calculat\u0103 e sub por\u021Biile minime realiste din bibliotec\u0103; nu tai mai mult \u2014 mai bine discut\u0103m \u021Binta");
@@ -1060,7 +1069,7 @@ function nutritionDay(input) {
     const why = s === pre ? `\xEEnaintea ${sessions.length ? "antrenamentului" : "efortului"}: mas\u0103 cu pu\u021Bine fibre, familiar\u0103` : s === "gustare" && sessions.length ? "gustarea \u021Bine energia \xEEntre mese" : null;
     meals.push({ ...m, why, ...sel.repeats.includes(s) ? { repeat: true } : {} });
   }
-  for (const g of extra) meals.push({ ...mealOf("gustare", g, factor), label: "Gustare \xEEn plus", why: "azi ai nevoie de mai mult\u0103 energie: o gustare \xEEn plus \xEEn loc de por\u021Bii uria\u0219e" });
+  for (const g of extra) meals.push({ ...mealOf("gustare", g, factor), label: fewMeals ? "Gustare \xEEn jurul antrenamentului" : "Gustare \xEEn plus", why: fewMeals ? `pe l\xE2ng\u0103 cele ${prefs.meals} ${prefs.meals === 1 ? "mas\u0103 principal\u0103" : "mese principale"}: \xEEnainte sau dup\u0103 antrenament, ca por\u021Biile s\u0103 r\u0103m\xE2n\u0103 realiste` : "azi ai nevoie de mai mult\u0103 energie: o gustare \xEEn plus \xEEn loc de por\u021Bii uria\u0219e" });
   let protein = meals.reduce((n2, m) => n2 + m.protein, 0);
   if (proteinT && protein < proteinT.target * 0.9) {
     const g = RECIPES.filter((r2) => r2.kind === "G" && eligible(r2, prefs) && !meals.some((m) => m.recipe.id === r2.id)).sort((x, y) => recipeValues(y.id).protein - recipeValues(x.id).protein)[0];
@@ -1508,6 +1517,19 @@ function activeRestriction(input) {
   if (s.febra === true) return { verdict: "stop", reason: "Febr\u0103 raportat\u0103 azi: f\u0103r\u0103 antrenament." };
   if (input.savedVerdict === "stop") return { verdict: "stop", reason: "Stop pentru azi." };
   if (s.boala === true) return { verdict: "rosu", reason: "Boal\u0103 raportat\u0103 azi: pauz\u0103." };
+  const hm3 = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;
+  const dureri = hm3?.hooper?.dureri ?? null;
+  const oboseala = hm3?.hooper?.oboseala ?? null;
+  if (dureri != null && dureri >= 6) {
+    const zona = hm3?.dureri_zona;
+    const where = zona === "picioare" ? " la picioare" : zona === "spate" ? " la spate" : zona === "brate" ? " la umeri \u0219i bra\u021Be" : zona === "tot" ? " pe tot corpul" : "";
+    const act = zona === "picioare" ? "azi f\u0103r\u0103 alergare \u0219i f\u0103r\u0103 picioare la sal\u0103; \xEEnot sau biciclet\u0103 doar foarte u\u0219or \u0219i doar dac\u0103 nu \xEEncarc\u0103 zona" : zona === "brate" ? "azi f\u0103r\u0103 \xEEnot \u0219i f\u0103r\u0103 partea de sus la sal\u0103; alergare sau biciclet\u0103 doar u\u0219or" : zona === "spate" ? "azi f\u0103r\u0103 sal\u0103 \u0219i f\u0103r\u0103 \u0219edin\u021Be lungi; doar u\u0219or, dac\u0103 nu doare" : zona === "tot" ? "azi pauz\u0103 sau doar mers u\u0219or" : "azi doar u\u0219or; spune unde (picioare, spate, umeri) ca s\u0103 \u0219tim ce \u0219edin\u021Be r\u0103m\xE2n";
+    return { verdict: "galben", reason: `Dureri musculare ${dureri}/7${where}: ${act}.${hm3?.dureri_mers ? " Doare \u0219i la mers: dac\u0103 e \xEEntr-un singur punct sau ascu\u021Bit\u0103, e durere, nu oboseal\u0103 \u2014 spune-o \xEEn formularul de sear\u0103." : ""} Reevalu\u0103m m\xE2ine diminea\u021B\u0103.` };
+  }
+  if (oboseala != null && oboseala >= 6) {
+    const days = (input.mornings ?? []).filter((m) => m.date && m.date < input.today && m.date >= addDaysIso(input.today, -3) && Number(m.hooper?.oboseala ?? 0) >= 6).length;
+    return { verdict: "galben", reason: `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ""}: doar u\u0219or sau pauz\u0103. ${days >= 2 ? "E persistent\u0103: verific\u0103m cauza (somn, m\xE2ncare, boal\u0103) \xEEnainte de urm\u0103toarea \u0219edin\u021B\u0103 grea; obiectivul r\u0103m\xE2ne, planul se reevalueaz\u0103." : "Dac\u0103 \u021Bine 2\u20133 zile, verific\u0103m cauza (somn, m\xE2ncare, boal\u0103)."}` };
+  }
   const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
   const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
   if (cardiacSince && cardiacSince < input.today) return { verdict: "galben", reason: `Simptom cardiac raportat pe ${cardiacSince}: p\xE2n\u0103 la o evaluare medical\u0103, doar u\u0219or \u2014 f\u0103r\u0103 teste, intervale sau ie\u0219iri lungi. C\xE2nd medicul \u021Bi-a permis efortul, bifeaz\u0103 \xEEn chestionarul de diminea\u021B\u0103.` };
@@ -3560,8 +3582,11 @@ function generatePlan(input) {
       ]
     };
   }
-  const history = input.historyHoursPerWeek.filter((h2) => h2 > 0);
+  const measured = input.historyHoursPerWeek.filter((h2) => h2 > 0);
+  const declaredUsed = !measured.length && (input.declaredRecentHours ?? 0) > 0;
+  const history = declaredUsed ? [input.declaredRecentHours] : measured;
   const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
+  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : 0;
   const beginner = !!input.run?.beginner || (isSwimGoal(input.goal) ? !input.swimContinuous400 : avgHistory === 0);
   const need = MIN_WEEKS2[input.goal];
   if (need && weeks.length < need[beginner ? 0 : 1]) {
@@ -3577,7 +3602,7 @@ function generatePlan(input) {
   const firstPhase = weeks[0].phase;
   let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
   const kind = goalKind(input.goal) ?? "tri";
-  input = { ...input, experiencedBike: avgHistory >= 6, strengthSlots: input.strengthSlots ?? ((kind === "tri" ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
+  input = { ...input, experiencedBike: measuredAvg >= 6, strengthSlots: input.strengthSlots ?? ((kind === "tri" ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === "run";
   const startLong = runGoal ? runStartLong(input.goal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
   const lvl = input.level ?? {};
@@ -3622,6 +3647,11 @@ function generatePlan(input) {
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round12(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
+    const days = new Set(placed.workouts.map((w) => w.date)).size;
+    if (days >= 7 && out.length === 0) {
+      const mins = Object.entries(minCount).map(([sp, n2]) => `${n2} \xD7 ${{ inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" }[sp]}`).join(", ");
+      placed.notes.push(`De ce \xEEn fiecare zi: obiectivul cere cel pu\u021Bin ${mins} pe s\u0103pt\u0103m\xE2n\u0103; \u0219edin\u021Bele sunt scurte (${Math.min(...placed.workouts.map((w) => w.plannedMinutes))}\u2013${Math.max(...placed.workouts.map((w) => w.plannedMinutes))} min) ca s\u0103 construiasc\u0103 obi\u0219nuin\u021Ba, nu ca s\u0103 umple timpul liber (${round12(plannedHours)} h din ${budget.hours} h). Dac\u0103 vrei o zi liber\u0103, mut\u0103 o \u0219edin\u021B\u0103 scurt\u0103 \xEEn aceea\u0219i zi cu alta.`);
+    }
     out.push({
       weekStart: pw.weekStart,
       phase: pw.phase,
@@ -3629,7 +3659,7 @@ function generatePlan(input) {
       targetHours: target,
       plannedHours,
       workouts: placed.workouts,
-      notes: [...capNotes, ...fitted.notes, ...placed.notes]
+      notes: [...capNotes, ...declaredUsed && out.length === 0 ? [`Doza de start: ${round12(avgHistory)} h/s\u0103pt. declarate de tine (nu avem \xEEnc\u0103 activit\u0103\u021Bi importate). C\xE2nd apar activit\u0103\u021Bile, planul porne\u0219te din ele.`] : [], ...fitted.notes, ...placed.notes]
     });
   }
   assignStrengthDays(out, input.raceDate, input.athlete?.sex === "m" ? "ppl" : void 0);
@@ -5397,6 +5427,7 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     freeBlocks: intake.program,
     sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
+    declaredRecentHours: intake.oreRecente ?? null,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
@@ -9723,8 +9754,11 @@ async function handler9(req, res) {
       const exclude = Array.isArray(body.exclude) ? body.exclude.map(String).filter((x) => allowed.includes(x)) : cur.exclude;
       const budget = body.budget == null || body.budget === "" ? null : Number(body.budget);
       if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, "bugetul: \xEEntre 20 \u0219i 150 RON pe zi");
-      const meals = Number(body.meals) === 3 ? 3 : 4;
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals } });
+      const mn = Number(body.meals);
+      const meals = [1, 2, 3, 4].includes(mn) ? mn : 4;
+      const cm = Number(body.currentMeals);
+      const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, snacksOk: body.snacksOk !== false } });
       json(res, 200, { ok: true });
       return;
     }

@@ -23,6 +23,9 @@ export interface GenerateInput {
   sportHours?: number | null;
   /** Ore totale pe săptămână, ultimele până la 8 săptămâni (din activități). Gol = fără istoric. */
   historyHoursPerWeek: number[];
+  /** Ore/săpt. antrenate recent, DECLARATE de sportiv (user_reported). Folosite doar când nu există istoric importat:
+   *  dau doza de start și pragul de debutant, NU deblochează protocoale intense (30/15). */
+  declaredRecentHours?: number | null;
   intensityAllowed: IntensityAllowed;
   swimContinuous400: boolean;
   /** Nivelul de acum din chestionar: de aici pornesc ședințele lungi (nu de la o valoare fixă). */
@@ -134,8 +137,11 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     };
   }
 
-  const history = input.historyHoursPerWeek.filter((h) => h > 0);
+  const measured = input.historyHoursPerWeek.filter((h) => h > 0);
+  const declaredUsed = !measured.length && (input.declaredRecentHours ?? 0) > 0;
+  const history = declaredUsed ? [input.declaredRecentHours!] : measured;
   const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
+  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : 0;
 
   // Obiectiv prea aproape: nu comprimăm mecanic luni de pregătire în câteva săptămâni (auditul T12). Pragurile sunt
   // decizii de produs AIRON (prudente, nu standarde): debutant = fără istoric de antrenament sau debutant declarat.
@@ -161,7 +167,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // A treia ședință de forță (PPL) doar când programul total o permite: un singur sport de la 5 h/săpt., triatlon de la 12 h.
   // 30/15: istoricul consistent e condiția de plan; un test de bicicletă calibrează intensitatea, nu deblochează singur
   // protocolul (auditul v2, V2-08). Toleranța la intervale se verifică înaintea fiecărei ședințe (progression.ts).
-  input = { ...input, experiencedBike: avgHistory >= 6, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
+  input = { ...input, experiencedBike: measuredAvg >= 6, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? runStartLong(input.goal as RunGoal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
@@ -218,6 +224,12 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
+    // Distribuția explicată (auditul M35, V02): ședințe în toate cele 7 zile = minimul pe sport, scurte, nu timp umplut.
+    const days = new Set(placed.workouts.map((w) => w.date)).size;
+    if (days >= 7 && out.length === 0) {
+      const mins = Object.entries(minCount).map(([sp, n]) => `${n} × ${({ inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' } as Record<string, string>)[sp]}`).join(', ');
+      placed.notes.push(`De ce în fiecare zi: obiectivul cere cel puțin ${mins} pe săptămână; ședințele sunt scurte (${Math.min(...placed.workouts.map((w) => w.plannedMinutes))}–${Math.max(...placed.workouts.map((w) => w.plannedMinutes))} min) ca să construiască obișnuința, nu ca să umple timpul liber (${round1(plannedHours)} h din ${budget.hours} h). Dacă vrei o zi liberă, mută o ședință scurtă în aceeași zi cu alta.`);
+    }
 
     out.push({
       weekStart: pw.weekStart,
@@ -226,7 +238,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
       targetHours: target,
       plannedHours,
       workouts: placed.workouts,
-      notes: [...capNotes, ...fitted.notes, ...placed.notes],
+      notes: [...capNotes, ...(declaredUsed && out.length === 0 ? [`Doza de start: ${round1(avgHistory)} h/săpt. declarate de tine (nu avem încă activități importate). Când apar activitățile, planul pornește din ele.`] : []), ...fitted.notes, ...placed.notes],
     });
   }
 
