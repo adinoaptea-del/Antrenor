@@ -33,3 +33,11 @@ test('biblioteca pentru agenți are ședințele noi, pe faze', () => {
   assert.ok(libraryFor('alergare', 'run', '10k', 'baza2').some((w) => w.id === 'run-subT'));
   assert.ok(libraryFor('inot', 'tri', '70.3', 'build').some((w) => w.id === 'swim-css-prog'));
 });
+
+import { generatePlan } from '../src/calendar/generate.js';
+test('bicicletă, 55+ ani: fără intervale 30/15 (plafon Z4), doar ritm de obiectiv în peak', () => {
+  const free = [0, 1, 2, 3, 4].map((d) => ({ day: d as 0, startMin: 1080, endMin: 1170 })).concat([{ day: 5 as 0, startMin: 480, endMin: 720 }, { day: 6 as 0, startMin: 480, endMin: 660 }]);
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-06-20', goal: 'bike-100', freeBlocks: free, sportHours: 8, historyHoursPerWeek: [5, 5, 5, 5], intensityAllowed: 'toate', swimContinuous400: false, athlete: { age: 60, sex: 'f' } } as never);
+  assert.ok(r.ok);
+  if (r.ok) assert.ok(!r.weeks.flatMap((w) => w.workouts).some((x) => /30 s tare/.test(x.structure ?? '')));
+});

@@ -446,8 +446,10 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
 
   if (mod) {
     const b = moduleStructure(mod, null, pace);
-    const z = RUN_MODULES[mod].zone;
-    s.push({ sport: 'alergare', type: 'calitate', minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
+    // De la 55 de ani (sau intensitate plafonată la Z4), modulele cu Z5 rămân la Z4: același format, efort plafonat.
+    const cap4 = input.intensityAllowed === 'pana_la_Z4' || (input.athlete?.age ?? 0) >= 55;
+    const z = (cap4 && RUN_MODULES[mod].zone === 5 ? 4 : RUN_MODULES[mod].zone) as Zone;
+    s.push({ sport: 'alergare', type: 'calitate', minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: cap4 && RUN_MODULES[mod].zone === 5 ? `${b.text} · plafonat la Z4 (vârsta)` : b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
   } else if (branch === 'timp' && p === 'baza1' && !beginner && input.intensityAllowed !== 'Z2') {
     // Baza pe ramura „timp”: o alergare progresivă la două săptămâni (moderat la final), altfel ușor cu accelerări.
     if (pw.weekInPhase % 2 === 1) s.push({ sport: 'alergare', type: 'calitate', minutes: 45, zones: [2, 3], key: true, priority: 3, structure: 'progresiv: primele două treimi ușor (RPE 2–3), apoi crești treptat până la moderat (RPE 4–5) în ultimele 10–15 min; nu termini în sprint' });
@@ -566,7 +568,7 @@ function bikeWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide:
   const hard = input.intensityAllowed !== 'Z2';
 
   s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : p === 'taper' ? 45 : 75, zones: [2], key: false, priority: 6, structure: 'ușor, cadență 90–100' });
-  const bq = hard ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm }) : null;
+  const bq = hard ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm, capZ4: input.intensityAllowed === 'pana_la_Z4' || (input.athlete?.age ?? 0) >= 55 }) : null;
   if (bq) s.push({ sport: 'bicicleta', type: 'calitate', minutes: bq.minutes, zones: bq.zones, key: p !== 'taper', priority: 3, structure: bq.structure, ...(bq.intervals ? { intervals: bq.intervals } : {}) });
   else s.push({ sport: 'bicicleta', type: 'z2', minutes: early ? 60 : 70, zones: [2], key: false, priority: 5.8, structure: 'ușor, cu 6 × 1 min cadență 110' });
   if (!(p === 'taper' && pw.weekInPhase > 0)) {

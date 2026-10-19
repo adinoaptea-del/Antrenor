@@ -2511,7 +2511,7 @@ function bikeQuality(phase, weekInPhase, opts = {}) {
     return { structure: `${n2} \xD7 ${m} min la prag (Z4, 95\u2013100% FTP), 5 min u\u0219or \xEEntre`, zones: [4], minutes: total(n2 * m, (n2 - 1) * 5), intervals: { count: n2, minutes: m, zone: 4 } };
   }
   if (phase === "peak") {
-    if (w % 2 === 0) {
+    if (w % 2 === 0 && !opts.capZ4) {
       const reps = w === 0 ? 10 : 12;
       return { structure: `3 serii \xD7 ${reps} \xD7 (30 s tare / 15 s u\u0219or), 3 min u\u0219or \xEEntre serii \u2014 intervale scurte 30/15`, zones: [4, 5], minutes: total(3 * reps * 0.75, 6) };
     }
@@ -2985,8 +2985,9 @@ function runWeekTemplate(pw, input, prog) {
   })();
   if (mod) {
     const b = moduleStructure(mod, null, pace);
-    const z = RUN_MODULES[mod].zone;
-    s.push({ sport: "alergare", type: "calitate", minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
+    const cap4 = input.intensityAllowed === "pana_la_Z4" || (input.athlete?.age ?? 0) >= 55;
+    const z = cap4 && RUN_MODULES[mod].zone === 5 ? 4 : RUN_MODULES[mod].zone;
+    s.push({ sport: "alergare", type: "calitate", minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: cap4 && RUN_MODULES[mod].zone === 5 ? `${b.text} \xB7 plafonat la Z4 (v\xE2rsta)` : b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
   } else if (branch === "timp" && p === "baza1" && !beginner && input.intensityAllowed !== "Z2") {
     if (pw.weekInPhase % 2 === 1) s.push({ sport: "alergare", type: "calitate", minutes: 45, zones: [2, 3], key: true, priority: 3, structure: "progresiv: primele dou\u0103 treimi u\u0219or (RPE 2\u20133), apoi cre\u0219ti treptat p\xE2n\u0103 la moderat (RPE 4\u20135) \xEEn ultimele 10\u201315 min; nu termini \xEEn sprint" });
     else s.push({ sport: "alergare", type: "z2", minutes: 40, zones: [2], key: false, priority: 5, structure: "u\u0219or + 6 acceler\u0103ri relaxate de 15\u201320 s, recuperare ampl\u0103" });
@@ -3080,7 +3081,7 @@ function bikeWeekTemplate(pw, input, prog) {
   const targetKm = isBikeGoal(input.goal) ? BIKE_DISTANCE_KM[input.goal] : 100;
   const hard = input.intensityAllowed !== "Z2";
   s.push({ sport: "bicicleta", type: "z2", minutes: early ? 60 : p === "taper" ? 45 : 75, zones: [2], key: false, priority: 6, structure: "u\u0219or, caden\u021B\u0103 90\u2013100" });
-  const bq = hard ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm }) : null;
+  const bq = hard ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm, capZ4: input.intensityAllowed === "pana_la_Z4" || (input.athlete?.age ?? 0) >= 55 }) : null;
   if (bq) s.push({ sport: "bicicleta", type: "calitate", minutes: bq.minutes, zones: bq.zones, key: p !== "taper", priority: 3, structure: bq.structure, ...bq.intervals ? { intervals: bq.intervals } : {} });
   else s.push({ sport: "bicicleta", type: "z2", minutes: early ? 60 : 70, zones: [2], key: false, priority: 5.8, structure: "u\u0219or, cu 6 \xD7 1 min caden\u021B\u0103 110" });
   if (!(p === "taper" && pw.weekInPhase > 0)) {

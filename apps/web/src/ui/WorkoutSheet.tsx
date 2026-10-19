@@ -12,6 +12,7 @@ import { useLocalBack } from './Shell';
 import { useMe } from '../data/store';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMinutes, isUpcoming, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
+const NOTE_STEPS = new Set(['Plafon', 'Puls', 'Important']);
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
 
@@ -187,19 +188,17 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                     <b>Pe scurt</b> {w.structure!.replace(/\s*\(fără calitate în evaluare\)/, '')}
                   </li>
                 )}
-                {steps.map((st) => (
+                {steps.filter((st) => !NOTE_STEPS.has(st.label)).map((st) => (
                   <li key={st.label}>
                     <b>{st.label}</b> {st.text}
                   </li>
                 ))}
               </ol>
-              {w.type !== 'odihna' && (
-                <div className="sheet-tip">
-                  {w.targetZones.every((z) => z <= 2)
-                    ? 'Dacă nu mai poți vorbi în propoziții, încetinește: ritmul nu contează azi, efortul da.'
-                    : 'Intervalele le faci la efortul cerut, nu mai tare. Dacă ultima repetare nu iese curat, o oprești.'}
+              {steps.filter((st) => NOTE_STEPS.has(st.label)).map((st) => (
+                <div key={st.label} className="sheet-tip">
+                  <b>{st.label === 'Plafon' ? 'Plafon' : st.label === 'Puls' ? 'Despre puls' : st.label}:</b> {st.text.replace(/^Plafon: /, '')}
                 </div>
-              )}
+              ))}
             </>
           )}
 

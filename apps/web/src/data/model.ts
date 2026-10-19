@@ -1,6 +1,5 @@
-import { MODULE_PURPOSE, moduleSteps, parseModule } from '@core/calendar/run-modules.js';
-import { parseStrides, stridesMinutes, stridesStep, swimSet } from '@core/calendar/session-steps.js';
-import { shortIntervalSteps } from '@core/calendar/bike-swim-modules.js';
+import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
+import { detailSteps } from '@core/calendar/session-detail.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -219,73 +218,11 @@ export function dayOf(me: Me): DayDecision | null {
  * Dimineața, antrenorul sportului poate ajusta ședința zilei în mesajul head coach-ului.
  */
 export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: string }[] {
-  // Aceeași ședință ca în plan: minutele însumate dau exact durata planificată, nicio parte negativă, zonele din prescripție.
+  // Aceeași funcție ca în simularea de audit (src/calendar/session-detail.ts): pași, școala alergării, pauze după puls,
+  // plafon; pulsul din test sau estimat din vârstă, etichetat.
   const t = me.baseline.tests;
-  const zonesFor = w.sport === 'alergare' ? t?.alergare_z : w.sport === 'bicicleta' ? t?.bicicleta_z : null;
-  const z = (n: number) => {
-    const up = zonesFor?.[n - 1];
-    const lo = n > 1 ? zonesFor?.[n - 2] : null;
-    if (up == null) return `Z${n}`;
-    return lo != null ? `Z${n} (${lo + 1}–${up} bpm)` : `Z${n} (sub ${up} bpm)`;
-  };
-  const target = w.targetZones.length ? (w.targetZones.length > 1 ? `${z(Math.min(...w.targetZones))}–${z(Math.max(...w.targetZones))}` : z(w.targetZones[0]!)) : z(2);
-  const easyTarget = w.targetZones.some((x) => x > 2) ? z(2) : target;
-  const talk = w.targetZones.every((x) => x <= 2) ? ' – poți vorbi în propoziții întregi' : '';
-  const m = Math.max(0, w.plannedMinutes);
-  if (w.type === 'odihna') return [{ label: 'Odihnă', text: 'Fără antrenament azi. Corpul se adaptează acum.' }];
-  if (w.type === 'forta') {
-    const warm = Math.min(5, Math.floor(m / 4));
-    const cool = Math.min(5, Math.floor(m / 6));
-    return [
-      { label: 'Încălzire', text: `${warm} min mobilitate (șolduri, umeri, glezne)` },
-      { label: 'Principal', text: `${m - warm - cool} min: exercițiile zilei din programul de forță, fără epuizare` },
-      { label: 'Revenire', text: `${cool} min întinderi ușoare` },
-    ];
-  }
-  const mod = moduleSteps(w.structure, m);
-  if (mod) return mod;
-  if (/^mers-alergare/.test(w.structure ?? '')) return [{ label: 'Ședința', text: w.structure! }];
-  if (w.type === 'calitate' && w.intervals) {
-    const iv = w.intervals;
-    const restMatch = /(\d+)\s*min ușor între/.exec(w.structure ?? '');
-    const rest = restMatch ? Number(restMatch[1]) : Math.max(1, Math.round(iv.minutes / 2));
-    let count = iv.count;
-    // Câte repetări încap realist în durata planificată, cu minimum 10 min încălzire + revenire.
-    while (count > 1 && count * iv.minutes + (count - 1) * rest + 10 > m) count -= 1;
-    const work = count * iv.minutes + (count - 1) * rest;
-    const left = Math.max(0, m - work);
-    const warm = Math.min(15, Math.max(0, left - Math.min(5, Math.floor(left / 3))));
-    const cool = left - warm;
-    return [
-      { label: 'Încălzire', text: `${warm} min ${z(1)}–${z(2)}${warm >= 10 ? ', la final 3 accelerări scurte' : ''}` },
-      { label: 'Principal', text: `${count} × ${iv.minutes} min în ${z(iv.zone)}${count > 1 ? `, pauză ${rest} min ușor între ele` : ''}` },
-      { label: 'Revenire', text: `${cool} min ${z(1)}` },
-    ];
-  }
-  if (w.type === 'brick') {
-    const parsed = /tură (\d+) min.*alergare (\d+) min/.exec(w.structure ?? '');
-    const bike = parsed && Number(parsed[1]) + Number(parsed[2]) === m ? Number(parsed[1]) : Math.round((m * 0.7) / 5) * 5;
-    return [
-      { label: 'Bicicletă', text: `${bike} min ${easyTarget}${talk}` },
-      { label: 'Tranziție', text: 'schimbi echipamentul cât mai repede, fără pauză lungă' },
-      { label: 'Alergare', text: `${m - bike} min ${easyTarget}, primele 5 min mai ușor până se „așază” picioarele` },
-    ];
-  }
-  if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: t?.css ?? null, date: w.date, structure: w.structure }).steps;
-  const si = shortIntervalSteps(w.structure, m);
-  if (si) return si;
-  const warm = m >= 30 ? 10 : Math.floor(m / 3);
-  const cool = m >= 30 ? 5 : Math.floor(m / 6);
-  // Accelerările din structură sunt un pas separat; minutele lor ies din partea ușoară (suma rămâne durata din plan).
-  const strides = w.sport === 'alergare' ? parseStrides(w.structure) : null;
-  const sMin = strides ? Math.min(stridesMinutes(strides), Math.max(0, m - warm - cool - 5)) : 0;
-  const main = m - warm - cool - sMin;
-  return [
-    { label: 'Încălzire', text: `${warm} min ${z(1)}` },
-    { label: 'Principal', text: `${main} min ${target}${w.type === 'lung' ? ', constant' : ''}${talk}` },
-    ...(strides && sMin ? [{ ...stridesStep(strides), text: `${stridesStep(strides).text} (${sMin} min)` }] : []),
-    { label: 'Revenire', text: `${cool} min ${z(1)}` },
-  ];
+  const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
+  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age });
 }
 
 /** De ce există ședința, într-o propoziție (din tipul ei). */
