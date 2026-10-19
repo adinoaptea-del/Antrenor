@@ -1,4 +1,4 @@
-// Oura API v2. OAuth 2.0; scope-uri: daily, heartrate, workout, session, personal. Documentație: https://cloud.ouraring.com/v2/docs
+// Oura API v2. OAuth 2.0; scope-uri: daily, heartrate, workout, session, personal. Documentație: https://cloud.ouraring.com/v2/docs; aplicațiile noi se fac pe https://developer.ouraring.com/
 //
 // Ce aducem (optimizarea din 19.10.2026):
 //  - noaptea principală (long_sleep; dacă lipsește, cel mai lung somn de peste 3 ore din zi), cu HRV, puls minim,

@@ -749,13 +749,13 @@ const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: str
   {
     id: 'oura',
     name: 'Oura',
-    site: 'https://cloud.ouraring.com/oauth/applications',
-    // Pas cu pas: nu e nevoie de inel, doar de un cont Oura (gratuit).
+    site: 'https://developer.ouraring.com/',
+    // Pas cu pas (portalul nou: cloud.ouraring.com a fost retras pentru aplicații noi): nu e nevoie de inel, doar de un cont Oura (gratuit).
     before: [
       { text: 'Cont Oura (dacă nu ai): contul se face doar din aplicația Oura. iPhone: App Store → Oura (link).', href: 'https://apps.apple.com/app/oura/id1043837948' },
       { text: 'Android: Google Play → Oura (link). În aplicație: Start → emailul tău → codul primit pe email. Setarea inelului și abonamentul le poți sări: pentru chei nu trebuie inel.', href: 'https://play.google.com/store/apps/details?id=com.ouraring.oura' },
-      { text: 'Intră pe cloud.ouraring.com cu același email; parola e codul pe care ți-l trimite Oura pe email.', href: 'https://cloud.ouraring.com/' },
-      { text: 'Your Applications → „Create New”.', href: 'https://cloud.ouraring.com/oauth/applications' },
+      { text: 'Deschide developer.ouraring.com (portalul nou pentru aplicații) și intră cu același email; Oura îți trimite un cod pe email.', href: 'https://developer.ouraring.com/' },
+      { text: 'Creează o aplicație API nouă (Create / New application).', href: 'https://developer.ouraring.com/' },
     ],
     steps: (u) => [
       { label: 'Display Name (numele aplicației)', value: 'AIRON' },
@@ -773,6 +773,7 @@ const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: str
     ],
     final: [
       'Verificare: Profil → Dispozitive → Oura → Conectează. Dacă Oura refuză, eroarea apare sus în Profil.',
+      'Prietenii cu inel Gen3 sau Ring 4 au nevoie de abonament Oura activ: fără el, Oura nu dă datele nicio aplicației.',
       'Aplicația nouă primește până la 10 oameni. Peste 10: în pagina aplicației, „Request more users” (după ce s-a conectat primul om).',
     ],
   },
