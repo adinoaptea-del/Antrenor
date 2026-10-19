@@ -144,3 +144,18 @@ describe('minimum două serii de lucru pe exercițiu, în orice bloc și orice �
           }
   });
 });
+
+describe('plafon pe ședință: cel mult 10 serii de lucru pe același mușchi', () => {
+  it('nicio ședință, în niciun bloc sau variantă, nu trece de 10 serii pe grupa principală', () => {
+    for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[])
+      for (const block of ['baza', 'forta', 'hipertrofie', 'integrare', 'construire', 'progres'] as Block[])
+        for (const variant of [0, 1, 2]) {
+          const m: Record<string, number> = {};
+          for (const r of prescribeFull({ session: id, block, week: 2, len: 4, variant }).items) {
+            const g = r.ex.group.split(/[,(]/)[0]!.trim();
+            m[g] = (m[g] ?? 0) + r.sets;
+          }
+          for (const [g, n] of Object.entries(m)) assert.ok(n <= 10, `${id} ${block} v${variant}: ${g} ${n} serii`);
+        }
+  });
+});

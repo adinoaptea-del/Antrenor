@@ -24,7 +24,7 @@ Surse: „AIRON — Corecturi pentru antrenamente” v1.0 și „AIRON — Audit
 17. Refacerea planului (auditul de simulări live, 19.10.2026): candidatul complet = generat + plecări + ajustările sportivului (src/calendar/regen-carry.ts); previzualizarea și activarea folosesc același candidat și aceeași amprentă; o ajustare care cade apare cu motiv înainte de confirmare.
 18. Ședința nefăcută/parțială e un eveniment cu motiv și oră (workout_outcomes), separat de anulată și de „fără date”; motivul schimbă progresia (timp = neutru; oboseală/durere/boală = netolerat). Simulatorul offline: `npx tsx scripts/simulate-live.ts`.
 19. Siguranța: semnalul declarat are prioritate peste scoruri pe toate ecranele (aceeași acțiune: safety.ts stopAction); simptomul cardiac rămâne restricție (doar ușor) până la evaluarea declarată de sportiv.
-20. Forța: minimum două serii de lucru pe exercițiu, în orice bloc și program (MIN_WORK_SETS); bărbații: Push / Pull / Picioare cu exerciții care se schimbă; explicații pe înțeles, fără jargon.
+20. Forța: minimum două serii de lucru pe exercițiu, în orice bloc și program (MIN_WORK_SETS), și cel mult 10 serii pe același mușchi într-o ședință (testat); bărbații: Push / Pull / Picioare cu exerciții care se schimbă; explicații pe înțeles, fără jargon.
 16. Raportare: pentru fiecare constatare — confirmat/neconfirmat, fișier și funcție, modificare, test, rezultat, exemple înainte/după și limite rămase. Nu declara „tot rezolvat” sau „personalizare completă” fără teste.
 
 ## Securitate (neschimbat)
