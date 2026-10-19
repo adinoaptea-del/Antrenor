@@ -170,7 +170,7 @@ export interface Packet {
     proteine_g: number | null;
     tip_zi: string;
     obiectiv: string;
-    mese: { masa: string; reteta_id: string; nume: string; kcal: number; proteine_g: number; de_ce: string | null }[];
+    mese: { masa: string; reteta_id: string; nume: string; cantitati: string; kcal: number; proteine_g: number; de_ce: string | null }[];
     efort: { sedinta: string; carbohidrati_g: number; interval_g_ora: [number, number] }[];
     cost: string;
     avertizari: string[];
@@ -847,7 +847,7 @@ export function buildPacket(input: CollectorInput): Packet {
           proteine_g: input.mealsToday.protein ? Math.round(input.mealsToday.protein.target) : null,
           tip_zi: input.mealsToday.dayType,
           obiectiv: input.mealsToday.goalNote,
-          mese: input.mealsToday.meals.map((m) => ({ masa: m.label, reteta_id: m.recipe.id, nume: m.recipe.name, kcal: Math.round(m.kcal), proteine_g: Math.round(m.protein), de_ce: m.why })),
+          mese: input.mealsToday.meals.map((m) => ({ masa: m.label, reteta_id: m.recipe.id, nume: m.recipe.name, cantitati: m.items.map((it) => `${it.qty} ${it.unit} ${it.name.split(',')[0]!.toLowerCase()}`).join(', '), kcal: Math.round(m.kcal), proteine_g: Math.round(m.protein), de_ce: m.why })),
           efort: input.mealsToday.fuel.map((f) => ({ sedinta: f.sessionLabel, carbohidrati_g: f.plannedG, interval_g_ora: f.carbsPerHour })),
           cost: input.mealsToday.totals.costComplete ? `~${input.mealsToday.totals.costKnown.toFixed(2)} RON` : 'incomplet (lipsesc prețuri)',
           avertizari: input.mealsToday.warnings,

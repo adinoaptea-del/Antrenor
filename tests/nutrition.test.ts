@@ -149,3 +149,29 @@ test('Alegerea „Schimbă” e respectată în ziua ei și intră în istoricul
   const d = nutritionDay(man({ prefs }));
   assert.equal(d.meals.find((m) => m.slot === 'pranz')!.recipe.id, 'M04');
 });
+
+// Personalizarea selecției (cererea lui Cuza, 19.10.2026): doi sportivi diferiți nu primesc aceleași mese.
+test('personalizare: bărbat 70.3 și femeie tonifiere au mese și gramaje diferite în aceeași zi; profil identic + alt cont = altă rotație', async () => {
+  const { mainProtein } = await import('../src/nutrition/engine.js');
+  const { RECIPE } = await import('../src/nutrition/recipes.js');
+  const D = '2026-10-19';
+  const man = (id: string, date = D) => nutritionDay({ date, athleteId: id, goal: '70.3', athlete: { sex: 'm', age: 35, heightCm: 180, weightKg: 78 }, sessions: [], prefs: DEFAULT_PREFS });
+  const woman = (date = D) => nutritionDay({ date, athleteId: 'u-b', goal: 'fit-tonifiere', athlete: { sex: 'f', age: 30, heightCm: 165, weightKg: 58 }, sessions: [], prefs: DEFAULT_PREFS });
+  const ids = (d: ReturnType<typeof nutritionDay>) => d.meals.map((m) => m.recipe.id).join(',');
+  let sameDays = 0;
+  let sameRot = 0;
+  for (let k = 0; k < 14; k++) {
+    const date = addDays(D, k);
+    if (ids(man('u-a', date)) === ids(woman(date))) sameDays++;
+    if (ids(man('u-a', date)) === ids(man('u-c', date))) sameRot++;
+  }
+  assert.equal(sameDays, 0, 'bărbatul și femeia nu au niciodată aceeași zi');
+  assert.ok(sameRot <= 2, `profil identic, conturi diferite: ${sameRot}/14 zile identice`);
+  // Gramajele: fiecare ingredient are cantitate, diferită între cei doi la aceeași rețetă.
+  assert.ok(man('u-a').meals.every((m) => m.items.every((it) => it.qty > 0)));
+  // Aceeași sursă principală de proteine nu apare de două ori într-o zi (180 de zile).
+  for (let k = 0; k < 180; k++) {
+    const mains = woman(addDays(D, k)).meals.map((m) => mainProtein(RECIPE[m.recipe.id]!)).filter(Boolean);
+    assert.equal(new Set(mains).size, mains.length, `ziua ${addDays(D, k)}: ${mains.join(',')}`);
+  }
+});

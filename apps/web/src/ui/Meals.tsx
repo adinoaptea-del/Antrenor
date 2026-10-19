@@ -153,10 +153,11 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose,
         </span>
         {Icons.chevronDown}
       </button>
+      <div className="small" style={{ marginTop: 4 }}>{m.items.map((it) => `${it.qty} ${it.unit} ${it.name.split(',')[0]!.toLowerCase()}`).join(' · ')}</div>
       {m.why && <div className="tiny" style={{ marginTop: 4 }}>{m.why}</div>}
       {open && (
         <div className="meal-body">
-          <div className="sheet-k">Ce și cât</div>
+          <div className="sheet-k">Ce și cât (cântărit cum scrie)</div>
           <ul className="meal-items">
             {m.items.map((it) => (
               <li key={it.food}>

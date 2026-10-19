@@ -17,6 +17,7 @@ export function nutritionInputFromMe(me: Me, date = me.today): NutritionInput {
     date,
     athlete: { sex: me.profile.sex, age, heightCm: me.profile.heightCm, weightKg: body?.greutate ?? null, weightDate: body?.data ?? null },
     goal: me.user.goal ?? null,
+    athleteId: me.user.id,
     sessions,
     prefs: { ...DEFAULT_PREFS, ...(me.prefs?.nutritie ?? {}) },
     blockers: { restriction: date === me.today && (lvl === 'stop' || lvl === 'rosu') ? lvl : null, fatigue: tired, pregnancy: intake.fitness?.sarcina === 'da', minor: age != null && age < 18 },

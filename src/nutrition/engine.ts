@@ -60,6 +60,8 @@ export interface NutritionInput {
   goal: string | null;
   sessions: DaySession[];
   prefs: NutritionPrefs;
+  /** Identitatea sportivului: doi sportivi cu același profil nu primesc aceeași rotație de mese. */
+  athleteId?: string | null;
   /** Ce oprește deficitul: restricție de sănătate, oboseală declarată repetat, sarcină/postpartum, minor. */
   blockers?: { restriction?: 'stop' | 'rosu' | 'galben' | null; fatigue?: boolean; pregnancy?: boolean; minor?: boolean };
 }
@@ -145,8 +147,84 @@ const ROT_COL: Record<Slot, number> = { mic_dejun: 0, pranz: 1, cina: 2, gustare
 const EPOCH = '2026-01-05';
 const dayIndex = (date: string) => ((diffDays(EPOCH, date) % 14) + 14) % 14;
 
+/**
+ * Profilul de alegere a meselor (personalizarea selecției, nu doar a porțiilor). Fiecare criteriu e calculat din
+ * ingredientele rețetei (energie și proteine din foods.ts), nu ghicit:
+ *  - energia porției de referință față de energia unei mese pentru sportivul ăsta (sex, vârstă, greutate, obiectiv):
+ *    rețetele care se potrivesc ies în porții normale, nu micșorate sau umflate;
+ *  - obiectivul: slăbire / tonifiere / peste 50 de ani → proteine mai dense; masă musculară → porții mai consistente;
+ *    rezistență (triatlon, alergare, bicicletă, înot) → mai multă energie din cereale, cartof, fructe;
+ *  - femei: surse de fier (linte, năut, fasole, spanac, ouă, pește) — riscul de deficit de fier e mai mare la
+ *    sportivele de anduranță (practică de nutriție sportivă, nu o normă AIRON);
+ *  - rotația pornește din alt punct pentru fiecare sportiv (din identitatea lui), ca doi oameni să nu mănânce la fel.
+ * Regulile de varietate și preferințele rămân aceleași.
+ */
+export interface PickProfile {
+  seed?: string | null;
+  goal?: string | null;
+  sex?: 'm' | 'f' | null;
+  age?: number | null;
+  /** Energia unei zile fără sport pentru sportiv (kcal), cu ajustarea obiectivului; null = nepersonalizat. */
+  dayKcal?: number | null;
+  meals?: number;
+}
+
+const CARB_FOODS = new Set(['ovaz', 'orez', 'paste', 'cuscus', 'cartof', 'paine', 'banana', 'mar', 'capsuni']);
+const IRON_FOODS = new Set(['linte', 'naut', 'fasole', 'spanac', 'ou', 'ton', 'somon', 'tofu']);
+const SLOT_SHARE: Record<Slot, number> = { mic_dejun: 0.27, pranz: 0.33, cina: 0.3, gustare: 0.1 };
+const ENDURANCE = /^(70\.3|olimpic|sprint|5k|10k|semimaraton|maraton|inot-|bike-|full)/;
+
+function hashSeed(x: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < x.length; i++) h = Math.imul(h ^ x.charCodeAt(i), 16777619);
+  return Math.abs(h);
+}
+
+/** Sursa principală de proteine a rețetei (ingredientul care dă cele mai multe proteine), dacă e o sursă de proteine. */
+export function mainProtein(r: Recipe): string | null {
+  let best: string | null = null;
+  let max = 0;
+  for (const i of r.ingredients) {
+    const p = foodValues(i.food, i.qty).protein;
+    if (p > max) {
+      max = p;
+      best = i.food;
+    }
+  }
+  return best && isProteinFood(best) ? best : null;
+}
+
+/** Cât de potrivită e rețeta pentru sportiv (mai mic = mai potrivit). */
+export function recipeFit(r: Recipe, slot: Slot, p: PickProfile): number {
+  let kcal = 0;
+  let prot = 0;
+  let carbK = 0;
+  let iron = 0;
+  for (const i of r.ingredients) {
+    const v = foodValues(i.food, i.qty);
+    kcal += v.kcal;
+    prot += v.protein;
+    if (CARB_FOODS.has(i.food)) carbK += v.kcal;
+    if (IRON_FOODS.has(i.food)) iron += 1;
+  }
+  const protShare = (prot * 4) / Math.max(1, kcal);
+  const carbShare = carbK / Math.max(1, kcal);
+  let score = 0;
+  if (p.dayKcal) {
+    const slots = slotsFor(p.meals ?? 3);
+    const share = SLOT_SHARE[slot] / slots.reduce((n, s) => n + SLOT_SHARE[s], 0);
+    score += Math.abs(Math.log(kcal / (p.dayKcal * share)));
+  }
+  const g = p.goal ?? '';
+  if (g === 'fit-slabire' || g === 'fit-tonifiere' || (p.age ?? 0) >= 50) score -= protShare * 1.2;
+  if (g === 'fit-masa') score -= Math.min(1, kcal / 900) * 0.6 + protShare * 0.4;
+  if (ENDURANCE.test(g)) score -= carbShare * 0.8;
+  if (p.sex === 'f') score -= Math.min(2, iron) * 0.12;
+  return score;
+}
+
 /** Selecția zilelor de la `from` la `to`, cu ferestrele de varietate (istoric calculat, nu ghicit). */
-export function selectDays(from: string, to: string, prefs: NutritionPrefs, preSlot: (date: string) => Slot | null = () => null): Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }> {
+export function selectDays(from: string, to: string, prefs: NutritionPrefs, preSlot: (date: string) => Slot | null = () => null, profile: PickProfile = {}): Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }> {
   const out = new Map<string, { picks: Partial<Record<Slot, string>>; repeats: Slot[]; empty: Slot[] }>();
   const uses = new Map<string, string[]>();
   const slots = slotsFor(prefs.meals);
@@ -154,7 +232,7 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
     const picks: Partial<Record<Slot, string>> = {};
     const repeats: Slot[] = [];
     const empty: Slot[] = [];
-    const idx = dayIndex(d);
+    const idx = (dayIndex(d) + (profile.seed ? hashSeed(profile.seed) % 14 : 0)) % 14;
     const ok = (id: string, slot: Slot) => {
       const dates = uses.get(id) ?? [];
       const last = dates.at(-1);
@@ -164,6 +242,9 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
       if (slot === 'cina' && picks.pranz && RECIPE[picks.pranz]!.family === RECIPE[id]!.family) return false;
       if (slot === 'pranz' && picks.cina && RECIPE[picks.cina]!.family === RECIPE[id]!.family) return false;
       if (preSlot(d) === slot && RECIPE[id]!.highFiber) return false;
+      // Aceeași sursă principală de proteine (ton, ou, pui...) o singură dată pe zi.
+      const main = mainProtein(RECIPE[id]!);
+      if (main && Object.values(picks).some((x) => mainProtein(RECIPE[x!]!) === main)) return false;
       return true;
     };
     for (const slot of slots) {
@@ -180,6 +261,12 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
       }
       for (const r of RECIPES) if (r.kind === kindOf[slot] && !order.includes(r.id)) order.push(r.id);
       let cands = order.filter((id) => eligible(RECIPE[id]!, prefs));
+      // Personalizarea: întâi cele mai potrivite ~60% pentru sportiv (în ordinea rotației lui), apoi restul.
+      if (profile.dayKcal || profile.goal || profile.sex) {
+        const fit = new Map(cands.map((id) => [id, recipeFit(RECIPE[id]!, slot, profile)]));
+        const cut = [...fit.values()].sort((a, b) => a - b)[Math.max(0, Math.ceil(cands.length * 0.6) - 1)] ?? Infinity;
+        cands = [...cands.filter((id) => fit.get(id)! <= cut), ...cands.filter((id) => fit.get(id)! > cut)];
+      }
       // Înaintea efortului: întâi rețetele familiare cu puține fibre (marcate în ghid), apoi restul fără fibre multe.
       if (preSlot(d) === slot) cands = [...cands.filter((id) => RECIPE[id]!.preOk), ...cands.filter((id) => !RECIPE[id]!.preOk)];
       let pick = cands.find((id) => ok(id, slot));
@@ -197,10 +284,16 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
   return out;
 }
 
-function mealOf(slot: Slot, r: Recipe, factor: number): Omit<Meal, 'why' | 'repeat'> {
+/** Sursa de proteine a rețetei: cel puțin 30% din energie din proteine și nu o legumă (porția se scalează după proteine). */
+export function isProteinFood(id: string): boolean {
+  const f = FOODS[id]!;
+  return f.kcal >= 60 && (f.protein * 4) / f.kcal >= 0.3;
+}
+
+function mealOf(slot: Slot, r: Recipe, factor: number, proteinFactor = factor): Omit<Meal, 'why' | 'repeat'> {
   const items: MealItem[] = r.ingredients.map((i) => {
     const f = FOODS[i.food]!;
-    const raw = i.qty * factor;
+    const raw = i.qty * (isProteinFood(i.food) ? proteinFactor : factor);
     const qty = f.id === 'ulei' ? Math.max(1, Math.round(raw)) : Math.max(5, Math.round(raw / 5) * 5);
     return { food: f.id, name: f.name, qty, unit: f.unit };
   });
@@ -299,7 +392,9 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
 
   // Mesele: selecția cu varietate (ultimele 27 de zile calculate, ca ferestrele să fie reale), apoi porțiile.
   const pre = preEffortSlot(sessions, prefs.meals);
-  const sel = selectDays(addDays(input.date, -27), input.date, prefs, (d) => (d === input.date ? pre : null)).get(input.date)!;
+  // Profilul de alegere: aceeași energie de bază în fiecare zi (fără sport), ca istoricul de varietate să fie stabil.
+  const pick: PickProfile = { seed: input.athleteId ?? null, goal: input.goal, sex: a.sex, age: a.age, dayKcal: energy ? energy.base * (1 + adjustPct / 100) : null, meals: prefs.meals };
+  const sel = selectDays(addDays(input.date, -27), input.date, prefs, (d) => (d === input.date ? pre : null), pick).get(input.date)!;
   let slots = Object.keys(sel.picks) as Slot[];
   const base0 = slots.reduce((n, s) => n + recipeValues(sel.picks[s]!).kcal, 0);
   const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
@@ -327,13 +422,44 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   if (!slots.length) warnings.push('preferințele și alergiile excluse nu lasă nicio rețetă din bibliotecă; e nevoie de rețete noi');
   for (const e of sel.empty) warnings.push(`${SLOT_LABEL[e].toLowerCase()}: nicio rețetă din bibliotecă nu se potrivește cu preferințele (${prefs.diet}${prefs.exclude.length ? `, fără ${prefs.exclude.join(', ')}` : ''}); nu inventez una`);
 
+  // Porțiile pe ingrediente, nu cu un singur factor: sursele de proteine se dozează după ținta de proteine a
+  // sportivului, restul (cereale, cartof, fructe, legume, grăsimi) după energia rămasă. Așa gramajele diferă de la om
+  // la om și în proporții (ex. mai mult iaurt și mai puțin ovăz pentru cine are nevoie de proteine, nu de energie).
+  let pF = factor;
+  let eF = factor;
+  if (proteinT && mealsTarget) {
+    const all = [...slots.map((s) => RECIPE[sel.picks[s]!]!), ...extra];
+    let Kp = 0, Ko = 0, Pp = 0, Po = 0;
+    for (const r of all)
+      for (const i of r.ingredients) {
+        const v = foodValues(i.food, i.qty);
+        if (isProteinFood(i.food)) {
+          Kp += v.kcal;
+          Pp += v.protein;
+        } else {
+          Ko += v.kcal;
+          Po += v.protein;
+        }
+      }
+    // Ținta de proteine pe mese, apoi energia: pF·Pp + eF·Po = P, pF·Kp + eF·Ko = K.
+    const P = proteinT.target * 0.95;
+    const det = Pp * Ko - Po * Kp;
+    if (Pp > 0 && Ko > 0 && Math.abs(det) > 1e-6) {
+      const p = (P * Ko - Po * mealsTarget) / det;
+      const e = (Pp * mealsTarget - Kp * P) / det;
+      pF = Math.min(1.8, Math.max(0.8, p));
+      eF = Math.min(1.6, Math.max(0.6, (mealsTarget - pF * Kp) / Ko));
+      if (!(Number.isFinite(e) && Number.isFinite(p))) pF = eF = factor;
+    }
+  }
+
   const meals: Meal[] = [];
   for (const s of slots) {
-    const m = mealOf(s, RECIPE[sel.picks[s]!]!, factor);
+    const m = mealOf(s, RECIPE[sel.picks[s]!]!, eF, pF);
     const why = s === pre ? `înaintea ${sessions.length ? 'antrenamentului' : 'efortului'}: masă cu puține fibre, familiară` : s === 'gustare' && sessions.length ? 'gustarea ține energia între mese' : null;
     meals.push({ ...m, why, ...(sel.repeats.includes(s) ? { repeat: true } : {}) });
   }
-  for (const g of extra) meals.push({ ...mealOf('gustare', g, factor), label: fewMeals ? 'Gustare în jurul antrenamentului' : 'Gustare în plus', why: fewMeals ? `pe lângă cele ${prefs.meals} ${prefs.meals === 1 ? 'masă principală' : 'mese principale'}: înainte sau după antrenament, ca porțiile să rămână realiste` : 'azi ai nevoie de mai multă energie: o gustare în plus în loc de porții uriașe' });
+  for (const g of extra) meals.push({ ...mealOf('gustare', g, eF, pF), label: fewMeals ? 'Gustare în jurul antrenamentului' : 'Gustare în plus', why: fewMeals ? `pe lângă cele ${prefs.meals} ${prefs.meals === 1 ? 'masă principală' : 'mese principale'}: înainte sau după antrenament, ca porțiile să rămână realiste` : 'azi ai nevoie de mai multă energie: o gustare în plus în loc de porții uriașe' });
 
   // Proteinele: dacă rămân sub țintă, o gustare bogată în proteine (fără a ascunde diferența).
   let protein = meals.reduce((n, m) => n + m.protein, 0);

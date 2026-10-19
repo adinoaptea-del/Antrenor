@@ -313,6 +313,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     date: today,
     athlete: { sex: user.sex ?? null, age, heightCm: user.height_cm ?? null, weightKg: bodyRow?.weight_kg != null ? Number(bodyRow.weight_kg) : null, weightDate: bodyRow?.date ?? null },
     goal: user.goal ?? null,
+    athleteId: userId,
     sessions: planRes.workouts.filter((w) => w.date === today && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna').map((w, i) => ({ sport: w.sport, type: w.type, minutes: w.plannedMinutes, key: w.key, startMin: program[i] ?? program[0] ?? null })),
     prefs: { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) },
     blockers: { pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da', minor: age != null && age < 18 },
