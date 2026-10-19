@@ -94,6 +94,9 @@ export interface NutritionDay {
   /** kcal = mesele; dayKcal = mesele + alimentarea din efort (numărată o singură dată). */
   totals: { kcal: number; dayKcal: number; protein: number; cost: number | null; costKnown: number; costComplete: boolean };
   budgetNote: string | null;
+  /** Meniu complet = câte mese s-au promis (3 sau 4) chiar există; altfel „Meniu incomplet: 3/4 mese”. */
+  complete: boolean;
+  mealsPromised: number;
   message: string;
   warnings: string[];
 }
@@ -340,7 +343,12 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   if (!prefs.allergiesConfirmed) warnings.push('alergii neconfirmate: verifică ingredientele fiecărei mese');
   if (sel.repeats.length) warnings.push('cu preferințele de acum biblioteca e mică: unele mese se repetă mai des decât regula de varietate');
 
-  const message = !personalized
+  const promised = prefs.meals;
+  const baseMeals = meals.filter((m) => m.label === SLOT_LABEL[m.slot]).length;
+  const complete = sel.empty.length === 0;
+  const message = !complete
+    ? `Meniu incomplet: ${baseMeals}/${promised} mese — pentru preferințele tale biblioteca nu are încă ${sel.empty.map((e) => SLOT_LABEL[e].toLowerCase()).join(', ')}. Totalul de mai jos nu acoperă ținta zilei.`
+    : !personalized
     ? `Porții de referință, nepersonalizate: lipsește ${missing.join(', ')}.`
     : fuel.length
       ? `Azi e ${dayType}: am pus mai multă energie decât într-o zi de pauză, iar ${fuel.map((f) => `în ${f.sessionLabel} ~${f.plannedG} g carbohidrați`).join(', ')} intră în același total.`
@@ -360,6 +368,8 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     meals,
     totals: { kcal, dayKcal: kcal + fuelKcal, protein, cost: costComplete ? costKnown : null, costKnown, costComplete },
     budgetNote,
+    complete,
+    mealsPromised: promised,
     message,
     warnings,
   };

@@ -846,7 +846,13 @@ var RECIPES = [
   { id: "G04", name: "Ou \u0219i p\xE2ine integral\u0103", kind: "G", family: "g-ou", ingredients: [{ food: "ou", qty: 55 }, { food: "paine", qty: 60 }, { food: "morcov", qty: 100 }], steps: "Fierbi oul bine; \xEEl serve\u0219ti cu p\xE2ine \u0219i morcov.", minutes: 12 },
   { id: "G05", name: "Iaurt, c\u0103p\u0219uni \u0219i ov\u0103z", kind: "G", family: "g-iaurt", ingredients: [{ food: "iaurt", qty: 200 }, { food: "capsuni", qty: 150 }, { food: "ovaz", qty: 20 }], steps: "Amesteci la servire.", minutes: 3 },
   { id: "G06", name: "Banan\u0103 cu unt de arahide", kind: "G", family: "g-arahide", ingredients: [{ food: "banana", qty: 120 }, { food: "arahide", qty: 20 }], steps: "Tai banana \u0219i adaugi untul de arahide.", note: "Pu\u021Bine proteine fa\u021B\u0103 de o mas\u0103.", minutes: 3, preOk: true },
-  { id: "G07", name: "M\u0103r, nuci \u0219i lapte", kind: "G", family: "g-nuci", ingredients: [{ food: "mar", qty: 150 }, { food: "nuca", qty: 20 }, { food: "lapte", qty: 200 }], steps: "Ca gustare; laptele p\u0103strat dup\u0103 ambalaj.", minutes: 3 }
+  { id: "G07", name: "M\u0103r, nuci \u0219i lapte", kind: "G", family: "g-nuci", ingredients: [{ food: "mar", qty: 150 }, { food: "nuca", qty: 20 }, { food: "lapte", qty: 200 }], steps: "Ca gustare; laptele p\u0103strat dup\u0103 ambalaj.", minutes: 3 },
+  // ——— Adăugate de AIRON (auditul F55, F08): acoperire pentru vegan / fără lapte, din alimentele cu compoziție cunoscută ———
+  { id: "B08", name: "Terci cu ap\u0103, banan\u0103 \u0219i unt de arahide", kind: "B", family: "terci-vegan", ingredients: [{ food: "ovaz", qty: 70 }, { food: "banana", qty: 120 }, { food: "arahide", qty: 20 }, { food: "nuca", qty: 10 }], steps: "Fierbi ov\u0103zul \xEEn ap\u0103; adaugi banana feliat\u0103, untul de arahide \u0219i nucile.", note: "F\u0103r\u0103 lapte; proteine mai pu\u021Bine dec\xE2t un mic dejun cu iaurt.", minutes: 10, airon: true },
+  { id: "B09", name: "Tofu la cuptor cu p\xE2ine, ro\u0219ii \u0219i spanac", kind: "B", family: "tofu-dimineata", ingredients: [{ food: "tofu", qty: 200 }, { food: "paine", qty: 90 }, { food: "rosii", qty: 200 }, { food: "spanac", qty: 50 }, { food: "ulei", qty: 5 }], steps: "F\u0103r\xE2mi\u021Bezi tofu, \xEEl amesteci cu spanacul \u0219i \xEEl coci 15 minute; serve\u0219ti cu p\xE2inea \u0219i ro\u0219iile.", note: "Tofu difer\u0103 \xEEntre m\u0103rci: verific\u0103 eticheta.", minutes: 20, airon: true },
+  { id: "M15", name: "N\u0103ut cu cartofi la cuptor \u0219i spanac", kind: "M", family: "naut-cartof", ingredients: [{ food: "naut", qty: 200 }, { food: "cartof", qty: 300 }, { food: "spanac", qty: 100 }, { food: "ulei", qty: 10 }], steps: "Coci cartofii t\u0103ia\u021Bi cubule\u021Be cu n\u0103utul scurs \u0219i uleiul; spanacul \xEEl adaugi la final.", note: "Fibre multe: departe de start.", minutes: 40, highFiber: true, airon: true },
+  { id: "M16", name: "Paste cu fasole \u0219i ro\u0219ii", kind: "M", family: "paste-fasole", ingredients: [{ food: "paste", qty: 90 }, { food: "fasole", qty: 180 }, { food: "rosii-conserva", qty: 250 }, { food: "morcov", qty: 100 }, { food: "ulei", qty: 10 }], steps: "Fierbi pastele; \xEEnc\u0103lze\u0219ti ro\u0219iile cu morcovul ras \u0219i fasolea scurs\u0103 \u0219i amesteci.", note: "Fibre multe.", minutes: 25, highFiber: true, airon: true },
+  { id: "G08", name: "M\u0103r cu nuci", kind: "G", family: "g-mar-nuci", ingredients: [{ food: "mar", qty: 150 }, { food: "nuca", qty: 25 }], steps: "Tai m\u0103rul; nucile al\u0103turi.", minutes: 2, airon: true }
 ];
 var RECIPE = Object.fromEntries(RECIPES.map((r2) => [r2.id, r2]));
 var ROTATION_14 = [
@@ -1077,7 +1083,10 @@ function nutritionDay(input) {
   }
   if (!prefs.allergiesConfirmed) warnings.push("alergii neconfirmate: verific\u0103 ingredientele fiec\u0103rei mese");
   if (sel.repeats.length) warnings.push("cu preferin\u021Bele de acum biblioteca e mic\u0103: unele mese se repet\u0103 mai des dec\xE2t regula de varietate");
-  const message = !personalized ? `Por\u021Bii de referin\u021B\u0103, nepersonalizate: lipse\u0219te ${missing.join(", ")}.` : fuel.length ? `Azi e ${dayType}: am pus mai mult\u0103 energie dec\xE2t \xEEntr-o zi de pauz\u0103, iar ${fuel.map((f) => `\xEEn ${f.sessionLabel} ~${f.plannedG} g carbohidra\u021Bi`).join(", ")} intr\u0103 \xEEn acela\u0219i total.` : pre ? `Azi e ${dayType}: masa dinaintea antrenamentului e u\u0219or de digerat; ${goalNote}.` : `Azi e ${dayType}: ${goalNote}.`;
+  const promised = prefs.meals;
+  const baseMeals = meals.filter((m) => m.label === SLOT_LABEL[m.slot]).length;
+  const complete = sel.empty.length === 0;
+  const message = !complete ? `Meniu incomplet: ${baseMeals}/${promised} mese \u2014 pentru preferin\u021Bele tale biblioteca nu are \xEEnc\u0103 ${sel.empty.map((e) => SLOT_LABEL[e].toLowerCase()).join(", ")}. Totalul de mai jos nu acoper\u0103 \u021Binta zilei.` : !personalized ? `Por\u021Bii de referin\u021B\u0103, nepersonalizate: lipse\u0219te ${missing.join(", ")}.` : fuel.length ? `Azi e ${dayType}: am pus mai mult\u0103 energie dec\xE2t \xEEntr-o zi de pauz\u0103, iar ${fuel.map((f) => `\xEEn ${f.sessionLabel} ~${f.plannedG} g carbohidra\u021Bi`).join(", ")} intr\u0103 \xEEn acela\u0219i total.` : pre ? `Azi e ${dayType}: masa dinaintea antrenamentului e u\u0219or de digerat; ${goalNote}.` : `Azi e ${dayType}: ${goalNote}.`;
   return {
     date: input.date,
     personalized,
@@ -1090,6 +1099,8 @@ function nutritionDay(input) {
     meals,
     totals: { kcal, dayKcal: kcal + fuelKcal, protein, cost: costComplete ? costKnown : null, costKnown, costComplete },
     budgetNote,
+    complete,
+    mealsPromised: promised,
     message,
     warnings
   };
@@ -2167,6 +2178,7 @@ function overYesterday(today, plan, acts) {
 }
 
 // src/strength/ppl.ts
+var HOME_EQUIP = ["gantere", "banda", "corp", "scaun"];
 var E = (x) => x;
 var CATALOG = Object.fromEntries(
   [
@@ -2261,39 +2273,57 @@ var CATALOG = Object.fromEntries(
     E({ id: "core-plank", name: "Plan\u0219\u0103 pe antebra\u021Be", group: "abdomen", region: "core", role: "core", sets: 2, reps: "30\u201345 s", cue: "corpul drept de la cap la c\u0103lc\xE2ie; str\xE2ngi abdomenul \u0219i fesierii", alt: "plan\u0219\u0103 pe genunchi" }),
     E({ id: "core-ab-wheel", name: "Roata pentru abdomen, din genunchi", group: "abdomen", region: "core", role: "core", sets: 2, reps: "6\u201310", cue: "mergi \xEEn fa\u021B\u0103 doar c\xE2t spatele nu se las\u0103", alt: "plan\u0219\u0103 pe antebra\u021Be" }),
     // ——— Fitness pentru femei (documentul „AIRON_Antrenor_Fitness_Femei_6_Luni”, 18.10.2026) ———
-    E({ id: "fit-hip-thrust", name: "Hip thrust la aparat sau cu bara", group: "fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "sprijin stabil; extensie din \u0219old, f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele", alt: "glute bridge \xEEnc\u0103rcat" }),
-    E({ id: "fit-leg-press", name: "Pres\u0103 pentru picioare", group: "cvadriceps, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "mi\u0219care confortabil\u0103, cu bazinul stabil; nu for\u021Ba ad\xE2ncimea", alt: "genuflexiune goblet la banc\u0103" }),
-    E({ id: "fit-reverse-lunge", name: "Fandare \xEEnapoi cu sprijin", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 90, cue: "control, sprijin dac\u0103 e nevoie; sarcina nu compromite echilibrul", alt: "step-up pe treapt\u0103 joas\u0103" }),
-    E({ id: "fit-leg-ext", name: "Extensii genunchi la aparat", group: "cvadriceps", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "mi\u0219care controlat\u0103, f\u0103r\u0103 durere articular\u0103", alt: "pres\u0103 cu mi\u0219care prea scurt\u0103" }),
-    E({ id: "fit-calf", name: "Ridic\u0103ri pe v\xE2rfuri", group: "gambe", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "mi\u0219care f\u0103r\u0103 durere, f\u0103r\u0103 balans", alt: "ridic\u0103ri pe v\xE2rfuri din \u0219ezut" }),
-    E({ id: "fit-calf-seated", name: "Ridic\u0103ri pe v\xE2rfuri din \u0219ezut", group: "gambe", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "c\xE2t po\u021Bi f\u0103r\u0103 durere, ritm controlat", alt: "ridic\u0103ri pe v\xE2rfuri din picioare" }),
-    E({ id: "fit-dead-bug", name: "Dead bug simplificat", group: "trunchi", region: "core", role: "core", sets: 2, reps: "6\u20138/parte", unilateral: true, rest: 50, cue: "respira\u021Bie confortabil\u0103; c\xE2t controlezi", alt: "Pallof press" }),
-    E({ id: "fit-rdl", name: "\xCEndrept\u0103ri rom\xE2ne\u0219ti cu gantere", group: "femurali, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201310", rest: 120, cue: "\u0219oldurile merg \xEEnapoi; cobori doar p\xE2n\u0103 unde controlezi trunchiul", alt: "glute bridge, iar aplecarea din \u0219old se \xEEnva\u021B\u0103 separat" }),
-    E({ id: "fit-leg-curl", name: "Flexii femurali la aparat", group: "femurali", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "bazin stabil, f\u0103r\u0103 impuls", alt: "flexii femurali culcat" }),
-    E({ id: "fit-step-up", name: "Step-up pe treapt\u0103 joas\u0103", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 90, cue: "\xEEn\u0103l\u021Bimea care permite control; sprijin la nevoie", alt: "fandare \xEEnapoi cu sprijin" }),
-    E({ id: "fit-kickback", name: "Extensia \u0219oldului la cablu (kickback)", group: "fesieri", region: "legs", role: "accessory", sets: 2, reps: "12\u201315/picior", unilateral: true, rest: 75, cue: "mi\u0219care din \u0219old, f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele", alt: "extensie de \u0219old cu band\u0103" }),
-    E({ id: "fit-abduction", name: "Abduc\u021Bie \u0219old la aparat sau cu band\u0103", group: "fesieri (lateral)", region: "legs", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "control, f\u0103r\u0103 smucituri; banda nu e obligatorie", alt: "abduc\u021Bie culcat pe o parte" }),
-    E({ id: "fit-lat", name: "Trac\u021Biuni la helcometru, priz\u0103 confortabil\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "tragi cu coatele spre \u0219olduri, f\u0103r\u0103 balans", alt: "trac\u021Biuni asistate" }),
-    E({ id: "fit-chest-press", name: "\xCEmpins la aparat pentru piept", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "omopla\u021Bii stabili, cobor\xE2re controlat\u0103", alt: "flot\u0103ri la suport \xEEnalt" }),
-    E({ id: "fit-row", name: "Ramat cu pieptul sprijinit", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "pieptul r\u0103m\xE2ne pe sprijin, pauz\u0103 scurt\u0103 la final", alt: "ramat la cablu" }),
-    E({ id: "fit-cable-row", name: "Ramat la cablu, priz\u0103 confortabil\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "trunchiul fix, tragi cu coatele", alt: "ramat cu pieptul sprijinit" }),
-    E({ id: "fit-incline", name: "\xCEmpins \xEEnclinat cu gantere sau la aparat", group: "piept, umeri", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "banca pu\u021Bin \xEEnclinat\u0103, cobor\xE2re controlat\u0103", alt: "\xEEmpins la aparat pentru piept" }),
-    E({ id: "fit-shoulder", name: "\xCEmpins umeri la aparat, dac\u0103 nu doare", group: "umeri", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele; cobori c\xE2t nu doare", alt: "\xEEmpins landmine" }),
-    E({ id: "fit-pushup-high", name: "Flot\u0103ri la suport \xEEnalt sau \xEEmpins la aparat pentru piept", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "corpul drept; \xEEn\u0103l\u021Bimea suportului d\u0103 dificultatea", alt: "\xEEmpins la aparat pentru piept" }),
-    E({ id: "fit-lateral", name: "Ridic\u0103ri laterale cu gantere", group: "umeri", region: "upper", role: "accessory", sets: 2, reps: "12\u201315", rest: 75, cue: "p\xE2n\u0103 la nivelul umerilor, f\u0103r\u0103 balans", alt: "ridic\u0103ri laterale la cablu" }),
-    E({ id: "fit-triceps", name: "Extensii triceps la cablu", group: "triceps", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "coatele l\xE2ng\u0103 corp", alt: "extensii triceps la aparat" }),
-    E({ id: "fit-biceps", name: "Flexii biceps cu gantere", group: "biceps", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "coatele fixe, f\u0103r\u0103 balans", alt: "flexii biceps la cablu" }),
-    E({ id: "fit-rev-fly", name: "Reverse fly la aparat sau cu band\u0103", group: "um\u0103r posterior", region: "upper", role: "accessory", sets: 2, reps: "12\u201315", rest: 75, cue: "bra\u021Bele lungi, mi\u0219carea din um\u0103r", alt: "flutur\u0103ri inverse la cablu" }),
-    E({ id: "fit-pallof", name: "Pallof press la cablu sau cu band\u0103", group: "trunchi", region: "core", role: "core", sets: 2, reps: "8\u201312/parte", unilateral: true, rest: 50, cue: "bazinul \u0219i umerii nu se rotesc", alt: "dead bug simplificat" }),
+    E({ id: "fit-hip-thrust", equip: ["aparat", "bara", "banca"], name: "Hip thrust la aparat sau cu bara", group: "fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "sprijin stabil; extensie din \u0219old, f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele", alt: "glute bridge \xEEnc\u0103rcat" }),
+    E({ id: "fit-leg-press", equip: ["aparat"], name: "Pres\u0103 pentru picioare", group: "cvadriceps, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "mi\u0219care confortabil\u0103, cu bazinul stabil; nu for\u021Ba ad\xE2ncimea", alt: "genuflexiune goblet la banc\u0103" }),
+    E({ id: "fit-reverse-lunge", equip: ["corp", "gantere"], name: "Fandare \xEEnapoi cu sprijin", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 90, cue: "control, sprijin dac\u0103 e nevoie; sarcina nu compromite echilibrul", alt: "step-up pe treapt\u0103 joas\u0103" }),
+    E({ id: "fit-leg-ext", equip: ["aparat"], name: "Extensii genunchi la aparat", group: "cvadriceps", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "mi\u0219care controlat\u0103, f\u0103r\u0103 durere articular\u0103", alt: "pres\u0103 cu mi\u0219care prea scurt\u0103" }),
+    E({ id: "fit-calf", equip: ["corp", "scaun"], name: "Ridic\u0103ri pe v\xE2rfuri", group: "gambe", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "mi\u0219care f\u0103r\u0103 durere, f\u0103r\u0103 balans", alt: "ridic\u0103ri pe v\xE2rfuri din \u0219ezut" }),
+    E({ id: "fit-calf-seated", equip: ["aparat"], name: "Ridic\u0103ri pe v\xE2rfuri din \u0219ezut", group: "gambe", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "c\xE2t po\u021Bi f\u0103r\u0103 durere, ritm controlat", alt: "ridic\u0103ri pe v\xE2rfuri din picioare" }),
+    E({ id: "fit-dead-bug", equip: ["corp"], name: "Dead bug simplificat", group: "trunchi", region: "core", role: "core", sets: 2, reps: "6\u20138/parte", unilateral: true, rest: 50, cue: "respira\u021Bie confortabil\u0103; c\xE2t controlezi", alt: "Pallof press" }),
+    E({ id: "fit-rdl", equip: ["gantere"], name: "\xCEndrept\u0103ri rom\xE2ne\u0219ti cu gantere", group: "femurali, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201310", rest: 120, cue: "\u0219oldurile merg \xEEnapoi; cobori doar p\xE2n\u0103 unde controlezi trunchiul", alt: "glute bridge, iar aplecarea din \u0219old se \xEEnva\u021B\u0103 separat" }),
+    E({ id: "fit-leg-curl", equip: ["aparat"], name: "Flexii femurali la aparat", group: "femurali", region: "legs", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "bazin stabil, f\u0103r\u0103 impuls", alt: "flexii femurali culcat" }),
+    E({ id: "fit-step-up", equip: ["scaun", "gantere"], name: "Step-up pe treapt\u0103 joas\u0103", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 90, cue: "\xEEn\u0103l\u021Bimea care permite control; sprijin la nevoie", alt: "fandare \xEEnapoi cu sprijin" }),
+    E({ id: "fit-kickback", equip: ["cablu"], name: "Extensia \u0219oldului la cablu (kickback)", group: "fesieri", region: "legs", role: "accessory", sets: 2, reps: "12\u201315/picior", unilateral: true, rest: 75, cue: "mi\u0219care din \u0219old, f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele", alt: "extensie de \u0219old cu band\u0103" }),
+    E({ id: "fit-abduction", equip: ["aparat"], name: "Abduc\u021Bie \u0219old la aparat sau cu band\u0103", group: "fesieri (lateral)", region: "legs", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "control, f\u0103r\u0103 smucituri; banda nu e obligatorie", alt: "abduc\u021Bie culcat pe o parte" }),
+    E({ id: "fit-lat", equip: ["aparat"], name: "Trac\u021Biuni la helcometru, priz\u0103 confortabil\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "tragi cu coatele spre \u0219olduri, f\u0103r\u0103 balans", alt: "trac\u021Biuni asistate" }),
+    E({ id: "fit-chest-press", equip: ["aparat"], name: "\xCEmpins la aparat pentru piept", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "omopla\u021Bii stabili, cobor\xE2re controlat\u0103", alt: "flot\u0103ri la suport \xEEnalt" }),
+    E({ id: "fit-row", equip: ["aparat", "banca"], name: "Ramat cu pieptul sprijinit", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "pieptul r\u0103m\xE2ne pe sprijin, pauz\u0103 scurt\u0103 la final", alt: "ramat la cablu" }),
+    E({ id: "fit-cable-row", equip: ["cablu"], name: "Ramat la cablu, priz\u0103 confortabil\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "trunchiul fix, tragi cu coatele", alt: "ramat cu pieptul sprijinit" }),
+    E({ id: "fit-incline", equip: ["banca", "gantere"], name: "\xCEmpins \xEEnclinat cu gantere sau la aparat", group: "piept, umeri", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "banca pu\u021Bin \xEEnclinat\u0103, cobor\xE2re controlat\u0103", alt: "\xEEmpins la aparat pentru piept" }),
+    E({ id: "fit-shoulder", equip: ["aparat"], name: "\xCEmpins umeri la aparat, dac\u0103 nu doare", group: "umeri", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele; cobori c\xE2t nu doare", alt: "\xEEmpins landmine" }),
+    E({ id: "fit-pushup-high", equip: ["corp", "scaun"], name: "Flot\u0103ri la suport \xEEnalt sau \xEEmpins la aparat pentru piept", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "corpul drept; \xEEn\u0103l\u021Bimea suportului d\u0103 dificultatea", alt: "\xEEmpins la aparat pentru piept" }),
+    E({ id: "fit-lateral", equip: ["gantere"], name: "Ridic\u0103ri laterale cu gantere", group: "umeri", region: "upper", role: "accessory", sets: 2, reps: "12\u201315", rest: 75, cue: "p\xE2n\u0103 la nivelul umerilor, f\u0103r\u0103 balans", alt: "ridic\u0103ri laterale cu banda" }),
+    E({ id: "fit-triceps", equip: ["cablu"], name: "Extensii triceps la cablu", group: "triceps", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "coatele l\xE2ng\u0103 corp", alt: "extensii triceps la aparat" }),
+    E({ id: "fit-biceps", equip: ["gantere"], name: "Flexii biceps cu gantere", group: "biceps", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "coatele fixe, f\u0103r\u0103 balans", alt: "flexii cu banda (sub t\u0103lpi)" }),
+    E({ id: "fit-rev-fly", equip: ["aparat"], name: "Reverse fly la aparat sau cu band\u0103", group: "um\u0103r posterior", region: "upper", role: "accessory", sets: 2, reps: "12\u201315", rest: 75, cue: "bra\u021Bele lungi, mi\u0219carea din um\u0103r", alt: "flutur\u0103ri inverse la cablu" }),
+    E({ id: "fit-pallof", equip: ["cablu"], name: "Pallof press la cablu sau cu band\u0103", group: "trunchi", region: "core", role: "core", sets: 2, reps: "8\u201312/parte", unilateral: true, rest: 50, cue: "bazinul \u0219i umerii nu se rotesc", alt: "dead bug simplificat" }),
     // ——— Fitness, varianta amplă A–D (documentul „AIRON_Fitness_Femei_26_Saptamani”, 19.10.2026) ———
-    E({ id: "fit-bulgarian", name: "Bulgarian split squat", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 105, cue: "sprijinul pentru echilibru e permis; cobor\xE2re controlat\u0103", alt: "fandare \xEEnapoi cu sprijin", purpose: "for\u021B\u0103 \u0219i control pe un picior, fesieri \u0219i coapse", setup: "piciorul din spate pe o banc\u0103 de \xEEn\u0103l\u021Bimea genunchiului; distan\u021Ba c\xE2t s\u0103 cobori drept", mistakes: "genunchiul din fa\u021B\u0103 cade spre interior; elan din trunchi; pas prea scurt" }),
-    E({ id: "fit-goblet", name: "Genuflexiune goblet la banc\u0103", group: "cvadriceps, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 120, cue: "gantera la piept, cobori controlat p\xE2n\u0103 atingi banca", alt: "pres\u0103 pentru picioare", purpose: "genuflexiunea, cu ad\xE2ncimea dat\u0103 de banc\u0103", setup: "banca la \xEEn\u0103l\u021Bimea la care cobori cu spatele neutru", mistakes: "te la\u0219i greu pe banc\u0103; c\u0103lc\xE2iele se ridic\u0103" }),
-    E({ id: "fit-abduction-cable", name: "Abduc\u021Bie la cablu", group: "fesieri (lateral)", region: "legs", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "piciorul pleac\u0103 lateral din \u0219old, f\u0103r\u0103 balans", alt: "abduc\u021Bie la aparat", purpose: "fesierul mijlociu, stabilitatea bazinului", setup: "man\u0219eta la glezn\u0103, scripetele jos; te \u021Bii de aparat", mistakes: "\xEEnclini trunchiul ca s\u0103 ridici piciorul mai sus" }),
-    E({ id: "fit-db-press", name: "\xCEmpins cu gantere, banc\u0103 orizontal\u0103", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "omopla\u021Bii str\xE2n\u0219i, cobor\xE2re controlat\u0103", alt: "\xEEmpins la aparat pentru piept", purpose: "piept \u0219i triceps, cu stabilizare", setup: "urci ganterele de pe genunchi \xEEn pozi\u021Bie, apoi te \xEEntinzi", mistakes: "coatele larg la 90\xB0; ganterele se lovesc sus" }),
-    E({ id: "fit-lateral-cable", name: "Ridic\u0103ri laterale la cablu", group: "umeri", region: "upper", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "ridici f\u0103r\u0103 av\xE2nt, p\xE2n\u0103 la um\u0103r", alt: "ridic\u0103ri laterale cu gantere", purpose: "deltoidul lateral", setup: "scripetele jos, m\xE2nerul \xEEn m\xE2na opus\u0103, lateral fa\u021B\u0103 de aparat", mistakes: "ridici um\u0103rul spre ureche; balans din corp" }),
-    E({ id: "fit-lat-neutral", name: "Helcometru, priz\u0103 neutr\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "10\u201312", rest: 105, cue: "tragi f\u0103r\u0103 impuls \u0219i controlezi revenirea", alt: "alt\u0103 priz\u0103 confortabil\u0103", purpose: "spatele (dorsalii), cu umerii \xEEntr-o pozi\u021Bie comod\u0103", setup: "genunchii fixa\u021Bi sub pern\u0103; m\xE2nerul neutru (palmele fa\u021B\u0103 \xEEn fa\u021B\u0103)", mistakes: "te la\u0219i pe spate ca s\u0103 tragi; bara coboar\u0103 la ceaf\u0103" }),
-    E({ id: "fit-hammer", name: "Biceps hammer cu gantere", group: "biceps, antebra\u021B", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "\xEEncheietura neutr\u0103, cotul stabil", alt: "flexii la cablu cu funie", purpose: "biceps \u0219i antebra\u021B", setup: "\xEEn picioare sau a\u0219ezat\u0103, ganterele cu palmele spre corp", mistakes: "coatele pleac\u0103 \xEEn fa\u021B\u0103; balans din spate" }),
-    E({ id: "fit-carry", name: "Transport gantere (farmer carry)", group: "trunchi, prindere", region: "carry", role: "carry", sets: 2, reps: "20\u201330 m", rest: 75, cue: "mers stabil \u0219i respira\u021Bie confortabil\u0103", alt: "alt exerci\u021Biu de trunchi, dac\u0103 spa\u021Biul nu permite distan\u021Ba" })
+    E({ id: "fit-bulgarian", equip: ["banca", "gantere"], name: "Bulgarian split squat", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 105, cue: "sprijinul pentru echilibru e permis; cobor\xE2re controlat\u0103", alt: "fandare \xEEnapoi cu sprijin", purpose: "for\u021B\u0103 \u0219i control pe un picior, fesieri \u0219i coapse", setup: "piciorul din spate pe o banc\u0103 de \xEEn\u0103l\u021Bimea genunchiului; distan\u021Ba c\xE2t s\u0103 cobori drept", mistakes: "genunchiul din fa\u021B\u0103 cade spre interior; elan din trunchi; pas prea scurt" }),
+    E({ id: "fit-goblet", equip: ["gantere", "banca"], name: "Genuflexiune goblet la banc\u0103", group: "cvadriceps, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 120, cue: "gantera la piept, cobori controlat p\xE2n\u0103 atingi banca", alt: "pres\u0103 pentru picioare", purpose: "genuflexiunea, cu ad\xE2ncimea dat\u0103 de banc\u0103", setup: "banca la \xEEn\u0103l\u021Bimea la care cobori cu spatele neutru", mistakes: "te la\u0219i greu pe banc\u0103; c\u0103lc\xE2iele se ridic\u0103" }),
+    E({ id: "fit-abduction-cable", equip: ["cablu"], name: "Abduc\u021Bie la cablu", group: "fesieri (lateral)", region: "legs", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "piciorul pleac\u0103 lateral din \u0219old, f\u0103r\u0103 balans", alt: "abduc\u021Bie la aparat", purpose: "fesierul mijlociu, stabilitatea bazinului", setup: "man\u0219eta la glezn\u0103, scripetele jos; te \u021Bii de aparat", mistakes: "\xEEnclini trunchiul ca s\u0103 ridici piciorul mai sus" }),
+    E({ id: "fit-db-press", equip: ["gantere", "banca"], name: "\xCEmpins cu gantere, banc\u0103 orizontal\u0103", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "omopla\u021Bii str\xE2n\u0219i, cobor\xE2re controlat\u0103", alt: "\xEEmpins la aparat pentru piept", purpose: "piept \u0219i triceps, cu stabilizare", setup: "urci ganterele de pe genunchi \xEEn pozi\u021Bie, apoi te \xEEntinzi", mistakes: "coatele larg la 90\xB0; ganterele se lovesc sus" }),
+    E({ id: "fit-lateral-cable", equip: ["cablu"], name: "Ridic\u0103ri laterale la cablu", group: "umeri", region: "upper", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "ridici f\u0103r\u0103 av\xE2nt, p\xE2n\u0103 la um\u0103r", alt: "ridic\u0103ri laterale cu gantere", purpose: "deltoidul lateral", setup: "scripetele jos, m\xE2nerul \xEEn m\xE2na opus\u0103, lateral fa\u021B\u0103 de aparat", mistakes: "ridici um\u0103rul spre ureche; balans din corp" }),
+    E({ id: "fit-lat-neutral", equip: ["aparat"], name: "Helcometru, priz\u0103 neutr\u0103", group: "spate", region: "upper", role: "main", sets: 2, reps: "10\u201312", rest: 105, cue: "tragi f\u0103r\u0103 impuls \u0219i controlezi revenirea", alt: "alt\u0103 priz\u0103 confortabil\u0103", purpose: "spatele (dorsalii), cu umerii \xEEntr-o pozi\u021Bie comod\u0103", setup: "genunchii fixa\u021Bi sub pern\u0103; m\xE2nerul neutru (palmele fa\u021B\u0103 \xEEn fa\u021B\u0103)", mistakes: "te la\u0219i pe spate ca s\u0103 tragi; bara coboar\u0103 la ceaf\u0103" }),
+    E({ id: "fit-hammer", equip: ["gantere"], name: "Biceps hammer cu gantere", group: "biceps, antebra\u021B", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "\xEEncheietura neutr\u0103, cotul stabil", alt: "flexii cu banda", purpose: "biceps \u0219i antebra\u021B", setup: "\xEEn picioare sau a\u0219ezat\u0103, ganterele cu palmele spre corp", mistakes: "coatele pleac\u0103 \xEEn fa\u021B\u0103; balans din spate" }),
+    E({ id: "fit-carry", equip: ["gantere"], name: "Transport gantere (farmer carry)", group: "trunchi, prindere", region: "carry", role: "carry", sets: 2, reps: "20\u201330 m", rest: 75, cue: "mers stabil \u0219i respira\u021Bie confortabil\u0103", alt: "alt exerci\u021Biu de trunchi, dac\u0103 spa\u021Biul nu permite distan\u021Ba" }),
+    // ——— Fitness acasă: gantere, bandă, corp, scaun (auditul F55, F01). Nimic cu aparat, cablu, bară sau bancă. ———
+    E({ id: "fit-h-glute-bridge", equip: ["gantere", "corp"], name: "Pod de fesieri cu gantera pe bazin", group: "fesieri", region: "legs", role: "main", sets: 2, reps: "10\u201315", rest: 105, cue: "pe spate, t\u0103lpile pe podea; ridici bazinul str\xE2ng\xE2nd fesierii, \u021Bii o secund\u0103 sus", alt: "pod de fesieri pe un picior, f\u0103r\u0103 ganter\u0103", purpose: "fesierii mari", setup: "gantera pe bazin, \u021Binut\u0103 cu ambele m\xE2ini; un prosop sub ea", mistakes: "arcuie\u0219ti spatele \xEEn loc s\u0103 ridici din \u0219old" }),
+    E({ id: "fit-h-goblet", equip: ["gantere", "scaun"], name: "Genuflexiune cu gantera la piept, p\xE2n\u0103 la scaun", group: "cvadriceps, fesieri", region: "legs", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "cobori controlat p\xE2n\u0103 atingi scaunul, apoi urci \xEEmping\xE2nd \xEEn c\u0103lc\xE2ie", alt: "genuflexiune f\u0103r\u0103 greutate, p\xE2n\u0103 la scaun", purpose: "coapse \u0219i fesieri", setup: "scaun stabil \xEEn spate; gantera \u021Binut\u0103 vertical la piept", mistakes: "te la\u0219i greu pe scaun; genunchii cad spre interior" }),
+    E({ id: "fit-h-split-squat", equip: ["gantere", "corp"], name: "Fandare static\u0103 cu gantere", group: "cvadriceps, fesieri", region: "legs", role: "accessory", sets: 2, reps: "8\u201312/picior", unilateral: true, rest: 75, cue: "un picior \xEEn fa\u021B\u0103, unul \xEEn spate; cobori drept \xEEn jos \u0219i urci", alt: "fandare static\u0103 f\u0103r\u0103 greutate, cu m\xE2na pe perete", purpose: "coapse, pe un picior", setup: "o ganter\u0103 \xEEn fiecare m\xE2n\u0103; sprijin de perete dac\u0103 ai nevoie", mistakes: "genunchiul din fa\u021B\u0103 cade spre interior" }),
+    E({ id: "fit-h-band-curl", equip: ["banda"], name: "Flexii femurali cu banda, culcat pe burt\u0103", group: "femurali", region: "legs", role: "accessory", sets: 2, reps: "12\u201315", rest: 75, cue: "aduci c\u0103lc\xE2iele spre fesieri, revii \xEEncet", alt: "\xEEndrept\u0103ri rom\xE2ne\u0219ti pe un picior, f\u0103r\u0103 greutate", purpose: "spatele coapsei", setup: "banda prins\u0103 de un picior de mas\u0103 sau de u\u0219\u0103, la nivelul gleznelor", mistakes: "ridici bazinul de pe podea" }),
+    E({ id: "fit-h-band-kickback", equip: ["banda"], name: "Extensia \u0219oldului cu banda, \xEEn patru labe", group: "fesieri", region: "legs", role: "accessory", sets: 2, reps: "12\u201315/picior", unilateral: true, rest: 75, cue: "\xEEmpingi piciorul \xEEn spate din \u0219old, f\u0103r\u0103 s\u0103 arcuie\u0219ti spatele", alt: "aceea\u0219i mi\u0219care f\u0103r\u0103 band\u0103", setup: "banda \xEEn jurul t\u0103lpii, capetele sub m\xE2ini", mistakes: "arcuie\u0219ti spatele; balans" }),
+    E({ id: "fit-h-band-abduction", equip: ["banda"], name: "Abduc\u021Bie cu banda deasupra genunchilor", group: "fesieri (lateral)", region: "legs", role: "accessory", sets: 2, reps: "12\u201320", rest: 75, cue: "deschizi genunchii \xEEmpotriva benzii, \u021Bii o secund\u0103", alt: "abduc\u021Bie culcat pe o parte, f\u0103r\u0103 band\u0103", setup: "a\u0219ezat\u0103 pe scaun sau \xEEn pod de fesieri; banda deasupra genunchilor", mistakes: "deschizi cu smucituri" }),
+    E({ id: "fit-h-band-pulldown", equip: ["banda"], name: "Tragere la piept cu banda prins\u0103 sus", group: "spate", region: "upper", role: "main", sets: 2, reps: "10\u201315", rest: 105, cue: "tragi coatele \xEEn jos spre coaste, str\xE2ngi omopla\u021Bii", alt: "ramat cu gantera, un bra\u021B", purpose: "spatele (dorsalii)", setup: "banda prins\u0103 sus, de u\u0219\u0103 (cu o ancor\u0103 de u\u0219\u0103); stai \xEEn genunchi", mistakes: "te la\u0219i pe spate; ridici umerii" }),
+    E({ id: "fit-h-floor-press", equip: ["gantere", "corp"], name: "\xCEmpins cu gantere de pe podea", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 105, cue: "pe spate, cobori p\xE2n\u0103 atinge cotul podeaua u\u0219or, apoi \xEEmpingi", alt: "flot\u0103ri cu m\xE2inile pe scaun", purpose: "piept \u0219i triceps", setup: "genunchii \xEEndoi\u021Bi, ganterele urcate de pe genunchi", mistakes: "coatele la 90\xB0 de corp; love\u0219ti podeaua cu cotul" }),
+    E({ id: "fit-h-db-row", equip: ["gantere", "scaun"], name: "Ramat cu gantera, un bra\u021B, sprijin pe scaun", group: "spate", region: "upper", role: "main", sets: 2, reps: "8\u201312/bra\u021B", unilateral: true, rest: 90, cue: "tragi gantera spre \u0219old, f\u0103r\u0103 s\u0103 rote\u0219ti trunchiul", alt: "ramat cu banda", purpose: "mijlocul spatelui", setup: "o m\xE2n\u0103 \u0219i un genunchi pe scaun, spatele drept", mistakes: "tragi din biceps; rote\u0219ti trunchiul" }),
+    E({ id: "fit-h-band-row", equip: ["banda"], name: "Ramat cu banda, din \u0219ezut", group: "spate", region: "upper", role: "main", sets: 2, reps: "10\u201315", rest: 90, cue: "tragi m\xE2nerele spre burt\u0103, str\xE2ngi omopla\u021Bii", alt: "ramat cu gantera, un bra\u021B", purpose: "mijlocul spatelui", setup: "pe podea, banda \xEEn jurul t\u0103lpilor", mistakes: "te la\u0219i pe spate; ridici umerii" }),
+    E({ id: "fit-h-pushup-incline", equip: ["corp", "scaun"], name: "Flot\u0103ri cu m\xE2inile pe scaun sau mas\u0103", group: "piept, triceps", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 90, cue: "corpul drept; cobori pieptul spre margine \u0219i \xEEmpingi", alt: "flot\u0103ri cu m\xE2inile pe perete", purpose: "piept, triceps", setup: "scaun lipit de perete sau mas\u0103 stabil\u0103", mistakes: "\u0219oldurile cad; capul \xEEnainte" }),
+    E({ id: "fit-h-db-ohp", equip: ["gantere", "scaun"], name: "\xCEmpins cu gantere deasupra capului, pe scaun", group: "umeri", region: "upper", role: "main", sets: 2, reps: "8\u201312", rest: 90, cue: "spatele drept; \xEEmpingi \xEEn sus f\u0103r\u0103 s\u0103 te arcuie\u0219ti", alt: "acela\u0219i exerci\u021Biu cu banda sub t\u0103lpi", purpose: "umerii", setup: "pe scaun, ganterele la nivelul umerilor", mistakes: "arcuie\u0219ti spatele; cobori prea jos" }),
+    E({ id: "fit-h-db-triceps", equip: ["gantere"], name: "Extensii triceps cu o ganter\u0103 deasupra capului", group: "triceps", region: "upper", role: "accessory", sets: 2, reps: "10\u201315", rest: 75, cue: "coatele spre tavan; cobori gantera \xEEn spatele capului \u0219i o urci", alt: "extensii cu banda", setup: "a\u0219ezat\u0103, gantera \u021Binut\u0103 cu ambele m\xE2ini", mistakes: "coatele se deschid larg" }),
+    E({ id: "fit-h-band-pullapart", equip: ["banda"], name: "Desfacerea benzii \xEEn fa\u021Ba pieptului", group: "um\u0103r posterior", region: "upper", role: "accessory", sets: 2, reps: "12\u201320", rest: 60, cue: "bra\u021Bele \xEEntinse; deschizi banda p\xE2n\u0103 la piept, str\xE2ngi omopla\u021Bii", alt: "flutur\u0103ri inverse cu gantere u\u0219oare, aplecat\u0103", setup: "banda \u021Binut\u0103 la l\u0103\u021Bimea umerilor", mistakes: "ridici umerii; \xEEndoi coatele mult" }),
+    E({ id: "fit-h-band-pallof", equip: ["banda"], name: "Pallof press cu banda", group: "trunchi", region: "core", role: "core", sets: 2, reps: "8\u201312/parte", unilateral: true, rest: 50, cue: "\xEEmpingi banda drept \xEEn fa\u021B\u0103 \u0219i nu la\u0219i trunchiul s\u0103 se roteasc\u0103", alt: "dead bug", setup: "banda prins\u0103 lateral, la nivelul pieptului (u\u0219\u0103, picior de mas\u0103)", mistakes: "te rote\u0219ti dup\u0103 band\u0103" }),
+    E({ id: "fit-h-seated-calf", equip: ["gantere", "scaun"], name: "Ridic\u0103ri pe v\xE2rfuri din \u0219ezut, gantera pe genunchi", group: "gambe", region: "legs", role: "accessory", sets: 2, reps: "12\u201315", rest: 60, cue: "urci pe v\xE2rfuri, \u021Bii o secund\u0103, cobori \xEEncet", alt: "ridic\u0103ri pe v\xE2rfuri din picioare, pe treapt\u0103", setup: "pe scaun; v\xE2rfurile pe o carte groas\u0103", mistakes: "rico\u0219ezi jos" }),
+    E({ id: "fit-h-bulgarian", equip: ["gantere", "scaun"], name: "Fandare bulg\u0103reasc\u0103 cu piciorul din spate pe un scaun", group: "fesieri, coapse", region: "legs", role: "main", sets: 2, reps: "8\u201310/picior", unilateral: true, rest: 105, cue: "cobori drept \xEEn jos; sprijin de perete e permis", alt: "fandare \xEEnapoi cu sprijin", purpose: "fesieri \u0219i coapse, pe un picior", setup: "scaun stabil, lipit de perete", mistakes: "genunchiul din fa\u021B\u0103 cade spre interior" })
   ].map((x) => [x.id, x])
 );
 var FIT_SHEETS = {
@@ -2404,6 +2434,37 @@ var FITNESS_SWAPS = [
   ["fit-lateral", "fit-lateral-cable"],
   ["fit-leg-press", "fit-goblet"]
 ];
+var HOME_SWAP = {
+  "fit-hip-thrust": "fit-h-glute-bridge",
+  "fit-leg-press": "fit-h-goblet",
+  "fit-goblet": "fit-h-goblet",
+  "fit-leg-ext": "fit-h-split-squat",
+  "fit-leg-curl": "fit-h-band-curl",
+  "fit-kickback": "fit-h-band-kickback",
+  "fit-abduction": "fit-h-band-abduction",
+  "fit-abduction-cable": "fit-h-band-abduction",
+  "fit-lat": "fit-h-band-pulldown",
+  "fit-lat-neutral": "fit-h-band-pulldown",
+  "fit-chest-press": "fit-h-floor-press",
+  "fit-db-press": "fit-h-floor-press",
+  "fit-row": "fit-h-db-row",
+  "fit-cable-row": "fit-h-band-row",
+  "fit-incline": "fit-h-pushup-incline",
+  "fit-pushup-high": "fit-h-pushup-incline",
+  "fit-shoulder": "fit-h-db-ohp",
+  "fit-lateral-cable": "fit-lateral",
+  "fit-triceps": "fit-h-db-triceps",
+  "fit-rev-fly": "fit-h-band-pullapart",
+  "fit-pallof": "fit-h-band-pallof",
+  "fit-calf-seated": "fit-h-seated-calf",
+  "fit-bulgarian": "fit-h-bulgarian"
+};
+function forPlace(id, place2) {
+  if (place2 !== "acasa") return id;
+  const h2 = HOME_SWAP[id] ?? id;
+  const eq = CATALOG[h2]?.equip;
+  return eq && eq.every((e) => HOME_EQUIP.includes(e)) ? h2 : null;
+}
 function fit(id, name, focus, dose) {
   return { id, name, focus, exercises: Object.keys(dose), completions: [], dose: Object.fromEntries(Object.entries(dose).map(([k, n2]) => [k, { sets: n2 }])) };
 }
@@ -2611,19 +2672,27 @@ function prescribeFitness(spec) {
       swapped = sw;
     }
   }
-  const items = ids.map((id) => {
-    const ex = CATALOG[id];
+  const missingHome = [];
+  const items = ids.flatMap((id) => {
+    const placed = forPlace(id, spec.place);
+    if (!placed) {
+      missingHome.push(CATALOG[id].name.toLowerCase());
+      return [];
+    }
+    const ex = CATALOG[placed];
     const d = session.dose?.[swapped && id === swapped[1] ? swapped[0] : id];
-    return { ex, sets: d?.sets ?? ex.sets, reps: d?.reps ?? ex.reps, rir, rest: d?.rest ?? ex.rest ?? REST[ex.role] };
+    return [{ ex, sets: d?.sets ?? ex.sets, reps: d?.reps ?? ex.reps, rir, rest: d?.rest ?? ex.rest ?? REST[ex.role] }];
   });
+  if (spec.place === "acasa") notes.push("acas\u0103: doar gantere, band\u0103 \u0219i greutatea corpului (un scaun stabil ajut\u0103); exerci\u021Biile de sal\u0103 sunt \xEEnlocuite cu echivalentele lor");
+  if (missingHome.length) notes.push(`f\u0103r\u0103 variant\u0103 acas\u0103 pentru: ${missingHome.join(", ")} \u2014 nu e inclus`);
   if (swapped) notes.push(`varietate controlat\u0103: ${CATALOG[swapped[1]].name.toLowerCase()} \xEEn loc de ${CATALOG[swapped[0]].name.toLowerCase()}; cau\u021Bi din nou greutatea (kilogramele nu se transfer\u0103 de la un exerci\u021Biu la altul)`);
   if (spec.block === "acomodare") {
     if (wide) {
       for (const r2 of items) r2.sets = 2;
-      notes.push(spec.week <= 2 ? "\xEEnv\u0103\u021Bare: dou\u0103 serii pe exerci\u021Biu, oprindu-te c\xE2nd mai aveai 3\u20134 repet\u0103ri; noteaz\u0103 set\u0103rile aparatelor" : "consolidare: r\u0103m\xE2n dou\u0103 serii; progresezi \xEEn control \u0219i repet\u0103ri");
+      notes.push(spec.week <= 2 ? "\xEEnv\u0103\u021Bare: dou\u0103 serii pe exerci\u021Biu, oprindu-te c\xE2nd mai aveai 3\u20134 repet\u0103ri; noteaz\u0103 greut\u0103\u021Bile folosite" : "consolidare: r\u0103m\xE2n dou\u0103 serii; progresezi \xEEn control \u0219i repet\u0103ri");
     } else if (spec.week === 1) {
       for (const r2 of items) r2.sets = 1;
-      notes.push("prima s\u0103pt\u0103m\xE2n\u0103: dou\u0103 serii pe exerci\u021Biu, u\u0219or, cu 3\u20134 repet\u0103ri r\u0103mase; noteaz\u0103 set\u0103rile aparatelor");
+      notes.push("prima s\u0103pt\u0103m\xE2n\u0103: dou\u0103 serii pe exerci\u021Biu, u\u0219or, cu 3\u20134 repet\u0103ri r\u0103mase; noteaz\u0103 greut\u0103\u021Bile folosite");
     } else {
       for (const r2 of items) if (r2.ex.role !== "main") r2.sets = 1;
       if (spec.week === 2) notes.push("a treia serie la exerci\u021Biile principale vine doar dac\u0103 prima s\u0103pt\u0103m\xE2n\u0103 a mers bine");
@@ -2701,6 +2770,7 @@ function strengthStructure(spec) {
   if (spec.recovery) parts.push("desc\u0103rcare");
   if (spec.transition) parts.push("trecere");
   if (spec.legs && spec.legs !== "normal") parts.push(LEGS_TEXT[spec.legs]);
+  if (spec.place === "acasa") parts.push("acas\u0103");
   return parts.join(" \xB7 ");
 }
 function parseStrength(structure) {
@@ -2720,7 +2790,7 @@ function parseStrength(structure) {
   if (!block) return null;
   const rest = parts.slice(2);
   const legs = rest.includes(LEGS_TEXT.fara) ? "fara" : rest.includes(LEGS_TEXT.usor) ? "usor" : "normal";
-  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes("desc\u0103rcare"), legs, ...rest.includes("trecere") ? { transition: true } : {}, ...variant != null ? { variant } : {} };
+  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes("desc\u0103rcare"), legs, ...rest.includes("trecere") ? { transition: true } : {}, ...variant != null ? { variant } : {}, ...rest.includes("acas\u0103") ? { place: "acasa" } : {} };
 }
 
 // src/calendar/run-modules.ts
@@ -2971,6 +3041,13 @@ function swapTarget(all, victim) {
   const candidates = all.filter((w) => w.id !== victim.id && !isHard(w) && w.type !== "lung" && w.sport !== "forta" && w.status === "planificat" && monday(w.date) === monday(victim.date) && w.plannedMinutes >= Math.min(45, victim.plannedMinutes) && okDay(w.date)).sort((a, b) => Number(b.sport === victim.sport) - Number(a.sport === victim.sport) || b.plannedMinutes - a.plannedMinutes);
   return candidates[0] ?? null;
 }
+function resizeWorkout(w, minutes) {
+  if (w.type === "forta") {
+    const spec = parseStrength(w.structure);
+    return { ...w, plannedMinutes: spec ? Math.min(minutes, prescribe(spec, minutes).minutes) : minutes };
+  }
+  return normalizeWorkout(fitStructure({ ...w, plannedMinutes: minutes }));
+}
 function shortenWorkout(w, minutes) {
   const before = w.plannedMinutes;
   let out = { ...w, plannedMinutes: minutes };
@@ -2982,7 +3059,7 @@ function shortenWorkout(w, minutes) {
       out = normalizeWorkout(out);
     }
   } else {
-    out = normalizeWorkout(fitStructure(out));
+    out = resizeWorkout(out, minutes);
   }
   out.note = `scurtat la cererea ta: ${minutes} min \xEEn loc de ${before}; ce nu se face azi nu se recupereaz\u0103`;
   return out;
@@ -3273,7 +3350,7 @@ function unlockDecision(p, weeks, opts = {}) {
   return { days: Math.min(p.days, level), why };
 }
 var FITNESS_WEEK_ACTION = {
-  1: "Alegi dou\u0103 \u0219edin\u021Be F1/F2; dou\u0103 serii u\u0219oare pe exerci\u021Biu. Notezi set\u0103rile aparatelor.",
+  1: "Alegi dou\u0103 \u0219edin\u021Be F1/F2; dou\u0103 serii u\u0219oare pe exerci\u021Biu. Notezi greut\u0103\u021Bile (\u0219i set\u0103rile aparatelor, la sal\u0103).",
   2: "Repe\u021Bi F1/F2. Dou\u0103 serii la exerci\u021Biile principale doar dac\u0103 prima s\u0103pt\u0103m\xE2n\u0103 a mers bine.",
   3: "Cre\u0219ti repet\u0103rile \xEEn intervalul prescris la unul sau dou\u0103 exerci\u021Bii. Nu cre\u0219ti toate greut\u0103\u021Bile.",
   4: "Revizuie\u0219ti tehnica, timpul \u0219i simptomele. P\u0103strezi doza sau o reduci dac\u0103 recuperarea e slab\u0103.",
@@ -3316,7 +3393,7 @@ function plusDays(iso, n2) {
   return d.toISOString().slice(0, 10);
 }
 var WIDE_ACTION = [
-  [2, "\xCEnv\u0103\u021Bare: dou\u0103 serii de lucru pe exerci\u021Biu, oprindu-te c\xE2nd mai aveai 3\u20134 repet\u0103ri. Notezi set\u0103rile aparatelor."],
+  [2, "\xCEnv\u0103\u021Bare: dou\u0103 serii de lucru pe exerci\u021Biu, oprindu-te c\xE2nd mai aveai 3\u20134 repet\u0103ri. Notezi greut\u0103\u021Bile (\u0219i set\u0103rile aparatelor, la sal\u0103)."],
   [4, "Consolidare: r\u0103m\xE2n dou\u0103 serii; progresezi \xEEn control \u0219i repet\u0103ri."],
   [8, "Construire: doza A\u2013D (trei serii la exerci\u021Biile principale) doar dac\u0103 te sim\u021Bi bine \u0219i ai timp."],
   [12, "Progres: acelea\u0219i exerci\u021Bii principale, repet\u0103ri sau \xEEnc\u0103rc\u0103ri mai bune."],
@@ -3343,7 +3420,8 @@ function fitnessProfile(goal, f) {
     minutes: f?.minute ?? 45,
     beginner: f?.experienta !== "stabila",
     activity: f?.miscare ?? null,
-    postpartum: f?.sarcina === "da"
+    postpartum: f?.sarcina === "da",
+    place: f?.acces === "acasa" ? "acasa" : "sala"
   };
 }
 
@@ -3402,7 +3480,7 @@ function generateFitnessPlan(input) {
     const notes = [];
     if (days.length < fw.days) notes.push(`programul are ${fw.days} zile \xEEn s\u0103pt\u0103m\xE2na asta, dar ai ferestre libere doar \xEEn ${days.length}`);
     const workouts = days.map((d, i) => {
-      const spec = { session: fw.rotation[i % fw.rotation.length], block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...fw.transition ? { transition: true } : {} };
+      const spec = { session: fw.rotation[i % fw.rotation.length], block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...fw.transition ? { transition: true } : {}, ...input.fitness.place === "acasa" ? { place: "acasa" } : {} };
       const avail = Math.max(MIN_SESSION, Math.min(f.minutes, free.get(d) ?? f.minutes));
       const rx = prescribe(spec, avail);
       return {
@@ -4382,7 +4460,8 @@ function strengthBrief(input, acts) {
   const { today } = input;
   const next = input.plan.filter((w) => w.type === "forta" && isActiveWorkout(w) && w.date >= today).sort((a, b) => a.date < b.date ? -1 : 1)[0];
   const first2 = input.plan.reduce((m, w) => m == null || w.date < m ? w.date : m, null);
-  const spec = next ? strengthSpecFor(input.plan, next, first2 ? addDays(first2, -weekday(first2)) : null, input.athlete.raceDate ?? null) : null;
+  const spec0 = next ? strengthSpecFor(input.plan, next, first2 ? addDays(first2, -weekday(first2)) : null, input.athlete.raceDate ?? null) : null;
+  const spec = spec0 && !spec0.place && input.athlete.fitness?.acces === "acasa" ? { ...spec0, place: "acasa" } : spec0;
   const since = addDays(today, -21);
   const planned = input.plan.filter((w) => w.type === "forta" && w.date >= since && w.date < today && w.status !== "sters").length;
   const done = acts.filter((a) => a.sport === "forta" && a.date >= since && a.date < today).length;
@@ -5130,6 +5209,322 @@ async function ensureSplit(userId, today, loaded, sex) {
   return p.workouts.map((w) => byId.get(w.id) ?? w);
 }
 
+// src/calendar/regen-carry.ts
+var DAY2 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
+var SPORT2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
+var active3 = (w) => w.status === "planificat" || w.status === "mutat";
+var dm = (iso) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
+function userAdjustment(w) {
+  const n2 = w.note ?? "";
+  if (/^ușoară la cererea ta/.test(n2)) return "usor";
+  if (/^mutată de tine/.test(n2)) return "muta";
+  if (/^varianta aleasă de tine/.test(n2) || w.suggestion?.accepted === true) return "varianta";
+  return null;
+}
+function carryAdjustments(candidate, oldPlan, from, today, at) {
+  let plan = candidate.map((w) => ({ ...w }));
+  const kept = [];
+  const dropped = [];
+  const olds = oldPlan.filter((w) => active3(w) && userAdjustment(w) && (w.original?.date ?? w.date) >= from).sort((a, b) => a.date < b.date ? -1 : 1);
+  for (const w of olds) {
+    const kind = userAdjustment(w);
+    const sOrig = w.suggestion?.original;
+    const o = {
+      date: w.original?.date ?? w.date,
+      sport: w.original?.sport ?? sOrig?.sport ?? w.sport,
+      type: w.original?.type ?? sOrig?.type ?? w.type
+    };
+    const label = `${DAY2[weekday(o.date)]} ${dm(o.date)}, ${SPORT2[o.sport]}`;
+    const i = plan.findIndex((c3) => active3(c3) && c3.date === o.date && c3.sport === o.sport && c3.type === o.type);
+    if (i < 0) {
+      dropped.push(`${label} (${kind === "usor" ? "f\u0103cut\u0103 u\u0219oar\u0103" : kind === "muta" ? `mutat\u0103 pe ${DAY2[weekday(w.date)]}` : "varianta aleas\u0103 de tine"}): planul nou nu mai are \u0219edin\u021Ba asta \xEEn ziua aceea`);
+      continue;
+    }
+    const c2 = plan[i];
+    try {
+      if (kind === "usor") {
+        plan[i] = easyWorkout(c2, at);
+        kept.push(`${label}: r\u0103m\xE2ne u\u0219oar\u0103 (${plan[i].plannedMinutes} min)`);
+      } else if (kind === "muta") {
+        const ok2 = moveOptions(plan, c2.id, today).find((x) => x.date === w.date);
+        if (!ok2?.ok) {
+          dropped.push(`${label}: mutarea pe ${DAY2[weekday(w.date)]} nu mai e posibil\u0103 (${ok2?.reason ?? "alt\u0103 s\u0103pt\u0103m\xE2n\u0103"}); r\u0103m\xE2ne ${DAY2[weekday(o.date)]}`);
+          continue;
+        }
+        plan[i] = moveWorkout(plan, c2.id, w.date, today, at);
+        kept.push(`${label}: r\u0103m\xE2ne mutat\u0103 pe ${DAY2[weekday(w.date)]}`);
+      } else {
+        const next = { ...c2, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: void 0, note: w.note, ...w.suggestion ? { suggestion: w.suggestion } : {} };
+        plan[i] = withOriginal(c2, next, at);
+        kept.push(`${label}: r\u0103m\xE2ne varianta aleas\u0103 de tine (${w.plannedMinutes} min)`);
+      }
+    } catch (e) {
+      const msg2 = e instanceof Error ? e.message : String(e);
+      if (kind === "usor" && /deja ușoară/.test(msg2)) kept.push(`${label}: \xEEn planul nou e deja u\u0219oar\u0103`);
+      else dropped.push(`${label}: ${msg2}`);
+    }
+  }
+  plan = plan.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return { workouts: plan, kept, dropped };
+}
+function planSignature(ws) {
+  const rows = ws.filter((w) => w.status !== "sters").map((w) => [w.date, w.sport, w.type, w.plannedMinutes, w.targetZones.join(""), w.status, w.key ? 1 : 0, w.structure ?? ""].join("|")).sort();
+  let h2 = 5381;
+  const s = rows.join("\n");
+  for (let k = 0; k < s.length; k++) h2 = (h2 << 5) + h2 + s.charCodeAt(k) | 0;
+  return `${rows.length}-${(h2 >>> 0).toString(36)}`;
+}
+function weekTotals(ws, from, to) {
+  const wk = ws.filter((w) => active3(w) && w.date >= from && w.date < to && w.type !== "odihna");
+  return { sessions: wk.length, hours: Math.round(wk.reduce((n2, w) => n2 + w.plannedMinutes, 0) / 60 * 10) / 10 };
+}
+
+// src/calendar/swim-capacity.ts
+function swimCapacity(input) {
+  const from = addDays(input.today, -56);
+  const measured = (input.activities ?? []).filter((a) => a.sport === "inot" && a.date >= from && a.date <= input.today && (a.details?.continuousM ?? 0) > 0);
+  const best = measured.reduce((b, a) => !b || a.details.continuousM > b.m ? { m: a.details.continuousM, date: a.date } : b, null);
+  if (best && (input.css == null || best.m >= 400)) return { meters: best.m, source: "measured", detail: `ceasul, ${best.date}` };
+  if (input.css != null) return { meters: Math.max(400, best?.m ?? 0), source: "measured", detail: "testul CSS (400 m f\u0103r\u0103 oprire)" };
+  if (input.declaredM != null) return { meters: input.declaredM, source: "user_reported", detail: "declarat \xEEn chestionar" };
+  return { meters: null, source: null, detail: null };
+}
+
+// src/calendar/reevaluate.ts
+var h = (x) => `${(Math.round(x * 10) / 10).toString().replace(".", ",")} h`;
+function decideReplan(input) {
+  const hist = input.historyH.length ? `istoricul de ${input.historyH.length} ${input.historyH.length === 1 ? "s\u0103pt\u0103m\xE2n\u0103" : "s\u0103pt\u0103m\xE2ni"} (\xEEn medie ${h(input.historyH.reduce((a, b) => a + b, 0) / input.historyH.length)} pe s\u0103pt\u0103m\xE2n\u0103)` : "f\u0103r\u0103 istoric \xEEn ultimele 8 s\u0103pt\u0103m\xE2ni";
+  if (input.currentWeekH == null) return { apply: true, message: `Am f\u0103cut planul din ${hist}: s\u0103pt\u0103m\xE2na de la ${input.from} are ${h(input.proposedWeekH)}.` };
+  const diff = input.proposedWeekH - input.currentWeekH;
+  if (Math.abs(diff) >= 0.5 && Math.abs(diff) >= 0.15 * Math.max(input.currentWeekH, 0.1)) {
+    return { apply: true, message: `Am recalculat nivelul din ${hist}. S\u0103pt\u0103m\xE2na de la ${input.from}: ${h(input.proposedWeekH)} \xEEn loc de ${h(input.currentWeekH)}. S\u0103pt\u0103m\xE2na asta r\u0103m\xE2ne cum e.` };
+  }
+  return { apply: false, message: `Am citit ${hist}. Planul r\u0103m\xE2ne: s\u0103pt\u0103m\xE2na de la ${input.from} are deja ${h(input.currentWeekH)}, iar istoricul nou ar schimba-o cu mai pu\u021Bin de 15%.` };
+}
+
+// server/_lib/plan.ts
+var runBranch = (intake) => intake.alergare?.ramura ?? (intake.alergare?.tinta ? "timp" : "finalizare");
+async function historyHours(userId, today) {
+  const from = addDays(weekStart(today), -56);
+  const to = weekStart(today);
+  const acts = dedupeActivities((await loadActivities(userId, from)).filter((a) => a.date < to));
+  const weeks = /* @__PURE__ */ new Map();
+  for (const a of acts) weeks.set(weekStart(a.date), (weeks.get(weekStart(a.date)) ?? 0) + a.minutes);
+  if (!weeks.size) return [];
+  const first2 = [...weeks.keys()].sort()[0];
+  const out = [];
+  for (let w = first2; w < to; w = addDays(w, 7)) out.push(Math.round((weeks.get(w) ?? 0) / 60 * 10) / 10);
+  return out.reverse();
+}
+async function saveIntake(userId, today, intake) {
+  await upsert("questionnaires", { user_id: userId, kind: "intrare", for_date: today, activity_id: null, answers: intake }, "user_id,kind,for_date,activity_id");
+  await update("users", { id: `eq.${userId}` }, { ...intake.nume ? { name: intake.nume } : {}, goal: intake.obiectiv, race_date: intake.dataCursa, race_name: raceName(intake.obiectiv), ...intake.sex ? { sex: intake.sex } : {}, ...intake.anNastere ? { birth_year: intake.anNastere } : {}, ...intake.inaltime && intake.inaltime >= 120 && intake.inaltime <= 230 ? { height_cm: Math.round(intake.inaltime) } : {} });
+  await remove("schedules", { user_id: `eq.${userId}` });
+  if (intake.program.length) await insert("schedules", intake.program.map((b) => ({ user_id: userId, day: b.day, start_min: b.startMin, end_min: b.endMin, valid_from: today })));
+  await upsert("clearances", clearanceRow(userId, today, intake), "user_id");
+  if (intake.consimtamant) {
+    await upsert("consents", { user_id: userId, health_data: true, adult: true, not_medical_ack: true, accepted_at: (/* @__PURE__ */ new Date()).toISOString(), withdrawn_at: null }, "user_id");
+  }
+}
+function clearanceRow(userId, today, intake) {
+  const limited = medicalLimit(intake);
+  const declared = !limited && intake.sanatate?.avizCardiolog === "da";
+  return { user_id: userId, cardiology: declared, cleared_at: declared ? today : null, intensity_allowed: limited ? "Z2" : "toate" };
+}
+function medicalLimit(intake) {
+  return intake.sanatate?.limitareMedic === true;
+}
+function raceName(goal) {
+  if (goal === "full") return "Ironman";
+  const l = GOAL_LABEL[goal];
+  return l.charAt(0).toUpperCase() + l.slice(1);
+}
+async function labsGate(userId) {
+  const rows = await select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 20 });
+  return labsGateFrom(rows, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+}
+function labsGateFrom(rows, today) {
+  if (!rows.length) return { valid: false, limitIntensity: false, why: null };
+  const sorted = [...rows].sort((a, b) => a.drawn_at < b.drawn_at ? 1 : -1);
+  const valid = !labsExpired(sorted[0].drawn_at, today);
+  const fer = sorted.find((r2) => r2.feritina != null && r2.feritina !== "");
+  const ferVal = fer ? Number(fer.feritina) : null;
+  const hb = sorted.find((r2) => (r2.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume)));
+  const lowHb = !!hb && (hb.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume) && v.in_afara === "sub");
+  const old = (d) => labsExpired(d, today) ? `, din ${d}; limita r\u0103m\xE2ne p\xE2n\u0103 la o analiz\u0103 nou\u0103` : "";
+  const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} \xB5g/L (sub 30${old(fer.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb.drawn_at)}` : null;
+  return { valid, limitIntensity: !!why, why };
+}
+async function reevaluateAfterImport(userId, today) {
+  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+  if (!intake) return { changed: false, message: "Istoricul e salvat; planul se face dup\u0103 chestionarul de intrare." };
+  const preview = await generateAndStore(userId, today, intake.answers, { preview: true });
+  if (!preview.ok || !preview.preview) return { changed: false, message: `Istoricul e salvat. Planul r\u0103m\xE2ne: ${preview.ok ? "nu s-a putut calcula o variant\u0103 nou\u0103" : preview.reason}` };
+  const from = preview.from;
+  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
+  const cur = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lt.${addDays(from, 7)}`] }, { select: "planned_minutes", limit: 50 }) : [];
+  const d = decideReplan({ currentWeekH: plan && cur.length ? cur.reduce((n2, w) => n2 + w.planned_minutes, 0) / 60 : null, proposedWeekH: preview.firstWeekHours ?? 0, historyH: await historyHours(userId, today), from: `luni, ${Number(from.slice(8, 10))}.${from.slice(5, 7)}` });
+  if (!d.apply) return { changed: false, message: d.message };
+  const r2 = await generateAndStore(userId, today, intake.answers);
+  return r2.ok ? { changed: true, message: d.message } : { changed: false, message: `Istoricul e salvat, dar planul nu s-a putut reface: ${r2.reason}` };
+}
+async function generateAndStore(userId, today, intake, opts = {}) {
+  if (intake.obiectiv === "full") {
+    return { ok: false, reason: "Ironman complet nu e \xEEn versiunea asta a planului; alege 70.3 pentru acum.", budgetHours: 0 };
+  }
+  const nextMonday0 = addDays(weekStart(today), 7);
+  const current = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
+  const startThisWeek = !current && weekday(today) <= 3;
+  const firstDay = startThisWeek ? today : nextMonday0;
+  const nextMonday = firstDay;
+  const fitness = isFitnessGoal(intake.obiectiv);
+  if (fitness) {
+    const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday0;
+    intake = { ...intake, dataCursa: same ? current.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, FITNESS_WEEKS * 7) };
+  }
+  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday0;
+  const startDate = continuing ? current.start_date : startThisWeek ? weekStart(today) : nextMonday0;
+  const history = await historyHours(userId, today);
+  const labs = await labsGate(userId);
+  const prefs = await loadPrefs(userId);
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
+  const result = generatePlan({
+    fixed: prefs.fixe,
+    fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv, intake.fitness), continuing ? current.id : null) : void 0,
+    startDate,
+    raceDate: intake.dataCursa,
+    goal: intake.obiectiv,
+    freeBlocks: intake.program,
+    sportHours: intake.oreSport ?? null,
+    historyHoursPerWeek: history,
+    intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
+    swimContinuous400: (swimCap.meters ?? 0) >= 400,
+    athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
+    tests: await testsAvailable(userId, intake),
+    level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
+    swim: { continuousM: swimCap.meters },
+    run: isRunGoal(intake.obiectiv) ? {
+      // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
+      goalPaceSecKm: runBranch(intake) === "finalizare" ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
+      canDoDistance: intake.alergare?.poateDistanta ?? null,
+      longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
+      branch: runBranch(intake),
+      beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm)
+    } : void 0
+  });
+  if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  let awayApplied = 0;
+  for (const away of currentAway(prefs, today)) {
+    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
+    awayApplied += changed.size;
+    future = future.map((w) => changed.get(w.id) ?? w);
+  }
+  const old = current ? (await loadPlan(userId, nextMonday, addDays(intake.dataCursa, 1)).catch(() => ({ workouts: [] }))).workouts.filter((w) => w.date >= nextMonday) : [];
+  const carried = carryAdjustments(future, old, nextMonday, today, at);
+  future = carried.workouts;
+  const signature = planSignature(future);
+  const first2 = weekTotals(future, nextMonday, addDays(weekStart(nextMonday), 7));
+  const summary = {
+    budgetHours: result.budgetHours,
+    currentBudgetHours: current ? (await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" }))?.budget_hours ?? null : null,
+    weeks: result.weeks.length,
+    workouts: future.filter((x) => x.status === "planificat" || x.status === "mutat").length,
+    from: nextMonday,
+    firstWeekHours: first2.hours,
+    firstWeekSessions: first2.sessions,
+    signature,
+    kept: carried.kept,
+    dropped: carried.dropped,
+    awayApplied
+  };
+  if (opts.preview) return { ok: true, preview: true, ...summary };
+  if (opts.expect && opts.expect !== signature) return { ok: false, stale: true, reason: "\xCEntre timp s-au schimbat datele planului. Uite din nou ce se schimb\u0103, apoi confirmi.", preview: true, ...summary };
+  if (old.length && planSignature(old) === signature) return { ok: true, unchanged: true, ...summary };
+  const prev = await select("plans", { user_id: `eq.${userId}` }, { order: "version.desc", limit: 1 });
+  const [plan] = await insert("plans", {
+    user_id: userId,
+    goal: intake.obiectiv,
+    race_date: intake.dataCursa,
+    start_date: startDate,
+    budget_hours: result.budgetHours,
+    version: (prev[0]?.version ?? 0) + 1,
+    active: false
+  });
+  const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan.id}-${x.id}` }, userId, plan.id));
+  try {
+    for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
+    await rpc("activate_plan", { p_user: userId, p_plan: plan.id, p_keep_before: nextMonday });
+  } catch (e) {
+    await remove("plans", { id: `eq.${plan.id}`, active: "eq.false" }).catch(() => void 0);
+    throw e;
+  }
+  await upsert("clearances", clearanceRow(userId, today, intake), "user_id").catch(() => void 0);
+  if (fitness) await update("users", { id: `eq.${userId}` }, { race_date: intake.dataCursa }).catch(() => void 0);
+  return {
+    ok: true,
+    budgetHours: result.budgetHours,
+    weeks: result.weeks.length,
+    workouts: rows.length,
+    withoutLabs: !labs.valid,
+    note: [labs.limitIntensity ? `Intensitatea r\u0103m\xE2ne la Z1\u2013Z2: ${labs.why}. De discutat cu medicul; planul se reface c\xE2nd urci analize noi.` : null, startThisWeek ? "Planul \xEEncepe s\u0103pt\u0103m\xE2na asta, din zilele r\u0103mase." : null].filter(Boolean).join(" ") || void 0,
+    kept: carried.kept,
+    dropped: carried.dropped,
+    awayApplied,
+    signature
+  };
+}
+async function athleteInfo(userId, today) {
+  const u = await select("users", { id: `eq.${userId}` }, { select: "sex,birth_year", limit: 1 }).catch(() => []);
+  const r2 = u[0];
+  return { age: r2?.birth_year ? Number(today.slice(0, 4)) - r2.birth_year : null, sex: r2?.sex ?? null };
+}
+async function testsAvailable(userId, intake) {
+  const z = await loadZones(userId).catch(() => null);
+  return {
+    alergare: !!(z?.alergare.fc_z1_z5 || z?.alergare.pace_prag),
+    bicicleta: !!(z?.bicicleta.ftp || z?.bicicleta.fc_z1_z5 || intake.evaluare?.ftp),
+    inot: !!z?.inot.css
+  };
+}
+async function fitnessWithAttendance(userId, today, p, planId) {
+  if (!planId) return p;
+  const thisMonday = weekStart(today);
+  const from = addDays(thisMonday, -42);
+  const planned = await select("workouts_planned", { plan_id: `eq.${planId}`, sport: "eq.forta", date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date,status", limit: 200 });
+  const acts = await select("activities", { user_id: `eq.${userId}`, sport: "eq.forta", date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date", limit: 200 });
+  const logs = await select("strength_log", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date", limit: 400 }).catch(() => []);
+  const evenings = await select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "for_date,answers", limit: 200 }).catch(() => []);
+  const weeks = Array.from({ length: 6 }, (_, i) => addDays(from, i * 7)).map((ws) => {
+    const end = addDays(ws, 7);
+    const inW = (d2) => d2 >= ws && d2 < end;
+    const pl = planned.filter((w) => inW(w.date) && w.status !== "sters" && w.status !== "anulat_sistem").length;
+    const doneDays = /* @__PURE__ */ new Set([...acts.filter((a) => inW(a.date)).map((a) => a.date), ...logs.filter((l) => inW(l.date)).map((l) => l.date)]);
+    const fb = (/* @__PURE__ */ new Set([...logs.filter((l) => inW(l.date)).map((l) => l.date), ...evenings.filter((e) => inW(e.for_date)).map((e) => e.for_date)])).size;
+    const pain = evenings.some((e) => inW(e.for_date) && (e.answers?.durere?.scor ?? 0) >= 3);
+    return { planned: pl, done: Math.min(pl, doneDays.size), feedback: fb, pain };
+  });
+  const freeDays = new Set((await loadSchedules(userId).catch(() => [])).map((b) => b.day)).size;
+  const forms = await loadForms(userId, today).catch(() => null);
+  const restricted = forms ? activeRestriction({ today, morning: forms.morning, evenings: forms.evenings }) != null : false;
+  const d = unlockDecision(p, weeks, { freeDays, restricted });
+  return { ...p, unlocked: d.days, unlockWhy: d.why };
+}
+async function reevaluateFitnessDays(userId, today) {
+  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
+  if (!intake || !isFitnessGoal(intake.answers.obiectiv)) return { changed: false, days: null };
+  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
+  if (!plan) return { changed: false, days: null };
+  const p = await fitnessWithAttendance(userId, today, fitnessProfile(intake.answers.obiectiv, intake.answers.fitness), plan.id);
+  const next = addDays(weekStart(today), 7);
+  const nextWeek = await select("workouts_planned", { plan_id: `eq.${plan.id}`, sport: "eq.forta", date: [`gte.${next}`, `lt.${addDays(next, 7)}`] }, { select: "id", limit: 10 });
+  const want = Math.min(p.days, p.unlocked ?? p.days);
+  if (nextWeek.length === 0 || nextWeek.length === want) return { changed: false, days: nextWeek.length || null };
+  const r2 = await generateAndStore(userId, today, intake.answers);
+  return { changed: r2.ok, days: want };
+}
+
 // src/badges/badges.ts
 var LEVELS = [
   // Fără culorile semaforului (verde/galben/roșu sunt starea zilei): nume de drum și nuanțe neutre.
@@ -5141,7 +5536,7 @@ var LEVELS = [
   { name: "Finisher", color: "#d4fa3a", hours: 700 }
 ];
 var TRI2 = (goal) => goalKind(goal) === "tri";
-var active3 = (w) => (w.status === "planificat" || w.status === "mutat") && w.type !== "odihna";
+var active4 = (w) => (w.status === "planificat" || w.status === "mutat") && w.type !== "odihna";
 function tiered(base, category, title, how, unit, targets, have, reachedAt) {
   return targets.map((t, i) => ({
     id: `${base}-${i + 1}`,
@@ -5169,7 +5564,7 @@ function computeBadges(i) {
   if (i.planStart) {
     for (let ws = weekStart(i.planStart); addDays(ws, 6) < today; ws = addDays(ws, 7)) {
       const end = addDays(ws, 6);
-      const wk = i.plan.filter((w) => w.date >= ws && w.date <= end && active3(w));
+      const wk = i.plan.filter((w) => w.date >= ws && w.date <= end && active4(w));
       const done = wk.filter((w) => doneIds.has(w.id)).length;
       const trainedOnRed = acts.some((a) => a.date >= ws && a.date <= end && red.has(a.date) && a.minutes >= 20);
       const sports = ["inot", "bicicleta", "alergare"];
@@ -5257,7 +5652,7 @@ function computeBadges(i) {
       const ws = pw.filter((w) => w.phase === ph);
       if (!ws.length) continue;
       const end = addDays(ws[ws.length - 1].weekStart, 6);
-      const wk = i.plan.filter((w) => w.date >= ws[0].weekStart && w.date <= end && active3(w));
+      const wk = i.plan.filter((w) => w.date >= ws[0].weekStart && w.date <= end && active4(w));
       const pct3 = wk.length ? Math.round(wk.filter((w) => doneIds.has(w.id)).length / wk.length * 100) : 0;
       badges.push({ id: `faza-${ph}`, category: "drum", title: names[ph], how: `Faza ${names[ph]} \xEEncheiat\u0103 cu cel pu\u021Bin 75% din \u0219edin\u021Be f\u0103cute`, tier: null, earnedAt: end < today && pct3 >= 75 ? end : null, progress: { have: end < today ? pct3 : Math.min(pct3, 74), target: 75, unit: "%" } });
     }
@@ -5270,7 +5665,7 @@ function computeBadges(i) {
     badges.push({ id: "finisher", category: "drum", title: "Finisher", how: TRI2(i.goal) ? "Toate trei probele \xEEnregistrate \xEEn ziua cursei" : `${{ inot: "\xCEnotul", bicicleta: "Tura", alergare: "Alergarea" }[mainSport]} \xEEnregistrat${mainSport === "bicicleta" || mainSport === "alergare" ? "\u0103" : ""} \xEEn ziua obiectivului`, tier: null, earnedAt: finisher, progress: { have: finisher ? 1 : 0, target: 1, unit: "" } });
   }
   const month = today.slice(0, 7);
-  const monthPlan = i.plan.filter((w) => w.date.startsWith(month) && active3(w) && w.sport !== "forta");
+  const monthPlan = i.plan.filter((w) => w.date.startsWith(month) && active4(w) && w.sport !== "forta");
   let challenge = null;
   if (monthPlan.length) {
     const sports = [...new Set(monthPlan.map((w) => w.sport))];
@@ -5944,6 +6339,12 @@ async function buildMe(userId, today) {
     readiness: readinessOut,
     day: day2,
     cardiacPending: pendingCardiac(forms.mornings, today),
+    // Frecvența de fitness: câte zile vrea, câte are acum și de ce (auditul F55, F06).
+    fitnessFreq: isFitnessGoal(user.goal) && planLoad.planId ? await (async () => {
+      const f = forms.intake?.fitness ?? {};
+      const p = await fitnessWithAttendance(userId, today, fitnessProfile(user.goal, f), planLoad.planId).catch(() => null);
+      return p ? { wanted: p.days, now: Math.min(p.days, p.unlocked ?? p.days), why: p.unlockWhy ?? null } : null;
+    })() : null,
     outcomes: Object.fromEntries(outcomeRows.map((o) => [o.workout_id, { status: o.status, motiv: o.motiv, minutes: o.minutes, reportedAt: o.reported_at }])),
     efficiency: aerobicEfficiency(activities, today),
     strengthLog: strengthRows,
@@ -5960,7 +6361,7 @@ async function buildMe(userId, today) {
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== "memento").map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
-    forms: { intake, morning: forms.morning ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today) },
+    forms: { intake, morning: forms.morning ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today), weekly: await weeklySaved(userId, today) },
     devices,
     lastSync,
     sources: [
@@ -6010,6 +6411,10 @@ function withRestriction(r2, restriction) {
 async function weeklyDone(userId, today) {
   const row = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.saptamanal", for_date: `gte.${weekStart(today)}` });
   return !!row;
+}
+async function weeklySaved(userId, today) {
+  const row = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.saptamanal", for_date: `gte.${addDays(today, -7)}` }, { order: "for_date.desc" }).catch(() => null);
+  return row ? { ...row.answers, weekStart: row.for_date } : null;
 }
 function num(v) {
   if (v == null || v === "") return null;
@@ -6926,7 +7331,8 @@ function applyProgression(plan, executions, today) {
 
 // src/calendar/adapt.ts
 var CHANGE_MIN2 = 10;
-var FEVER_HALF_NOTE = "prima s\u0103pt\u0103m\xE2n\u0103 dup\u0103 febr\u0103: volum \u221250%, f\u0103r\u0103 cheie";
+var FEVER_HALF_NOTE = "dup\u0103 febr\u0103, doar dac\u0103 diminea\u021Ba nu mai ai febr\u0103: volum \u221250%, f\u0103r\u0103 cheie; altfel pauz\u0103 \u0219i reevaluare";
+var isFeverHalf = (n2) => n2 === FEVER_HALF_NOTE || n2 === "prima s\u0103pt\u0103m\xE2n\u0103 dup\u0103 febr\u0103: volum \u221250%, f\u0103r\u0103 cheie";
 function eventKey(ev) {
   switch (ev.kind) {
     case "scor":
@@ -7149,14 +7555,14 @@ function applyFever(plan, ev, changes) {
       x.note = "febr\u0103: odihn\u0103";
       changes.push(`${x.id}: anulat (febr\u0103)`);
     } else if (diffDays(x.date, halfUntil) >= 0) {
-      if (x.note === FEVER_HALF_NOTE) continue;
-      x.plannedMinutes = Math.round(x.plannedMinutes * 0.5 / 5) * 5;
+      if (isFeverHalf(x.note)) continue;
       x.key = false;
       if (x.type === "calitate") {
         x.type = "z2";
         x.intervals = void 0;
       }
       x.targetZones = x.sport === "forta" ? [] : [1, 2];
+      Object.assign(x, resizeWorkout(x, Math.max(15, Math.round(x.plannedMinutes * 0.5 / 5) * 5)));
       x.note = FEVER_HALF_NOTE;
       changes.push(`${x.id}: \u221250%, f\u0103r\u0103 intensitate (dup\u0103 febr\u0103)`);
     }
@@ -7568,7 +7974,9 @@ async function handler3(_req, res) {
       signupOpen: ready && users < ENV.maxUsers(),
       firstUser: ready && users === 0,
       agents: !!process.env.ANTHROPIC_API_KEY,
-      providers: Object.fromEntries(PROVIDERS.map((p) => [p, providerConfigured(p)]))
+      providers: Object.fromEntries(PROVIDERS.map((p) => [p, providerConfigured(p)])),
+      // Versiunea publicată (commit), vizibilă în Profil: auditurile pot spune pe ce build au testat.
+      build: (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || null
     });
   } catch (e) {
     fail(res, e);
@@ -7582,322 +7990,6 @@ async function schemaOk(r2) {
   } catch {
     return false;
   }
-}
-
-// src/calendar/regen-carry.ts
-var DAY2 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
-var SPORT2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" };
-var active4 = (w) => w.status === "planificat" || w.status === "mutat";
-var dm = (iso) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
-function userAdjustment(w) {
-  const n2 = w.note ?? "";
-  if (/^ușoară la cererea ta/.test(n2)) return "usor";
-  if (/^mutată de tine/.test(n2)) return "muta";
-  if (/^varianta aleasă de tine/.test(n2) || w.suggestion?.accepted === true) return "varianta";
-  return null;
-}
-function carryAdjustments(candidate, oldPlan, from, today, at) {
-  let plan = candidate.map((w) => ({ ...w }));
-  const kept = [];
-  const dropped = [];
-  const olds = oldPlan.filter((w) => active4(w) && userAdjustment(w) && (w.original?.date ?? w.date) >= from).sort((a, b) => a.date < b.date ? -1 : 1);
-  for (const w of olds) {
-    const kind = userAdjustment(w);
-    const sOrig = w.suggestion?.original;
-    const o = {
-      date: w.original?.date ?? w.date,
-      sport: w.original?.sport ?? sOrig?.sport ?? w.sport,
-      type: w.original?.type ?? sOrig?.type ?? w.type
-    };
-    const label = `${DAY2[weekday(o.date)]} ${dm(o.date)}, ${SPORT2[o.sport]}`;
-    const i = plan.findIndex((c3) => active4(c3) && c3.date === o.date && c3.sport === o.sport && c3.type === o.type);
-    if (i < 0) {
-      dropped.push(`${label} (${kind === "usor" ? "f\u0103cut\u0103 u\u0219oar\u0103" : kind === "muta" ? `mutat\u0103 pe ${DAY2[weekday(w.date)]}` : "varianta aleas\u0103 de tine"}): planul nou nu mai are \u0219edin\u021Ba asta \xEEn ziua aceea`);
-      continue;
-    }
-    const c2 = plan[i];
-    try {
-      if (kind === "usor") {
-        plan[i] = easyWorkout(c2, at);
-        kept.push(`${label}: r\u0103m\xE2ne u\u0219oar\u0103 (${plan[i].plannedMinutes} min)`);
-      } else if (kind === "muta") {
-        const ok2 = moveOptions(plan, c2.id, today).find((x) => x.date === w.date);
-        if (!ok2?.ok) {
-          dropped.push(`${label}: mutarea pe ${DAY2[weekday(w.date)]} nu mai e posibil\u0103 (${ok2?.reason ?? "alt\u0103 s\u0103pt\u0103m\xE2n\u0103"}); r\u0103m\xE2ne ${DAY2[weekday(o.date)]}`);
-          continue;
-        }
-        plan[i] = moveWorkout(plan, c2.id, w.date, today, at);
-        kept.push(`${label}: r\u0103m\xE2ne mutat\u0103 pe ${DAY2[weekday(w.date)]}`);
-      } else {
-        const next = { ...c2, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: void 0, note: w.note, ...w.suggestion ? { suggestion: w.suggestion } : {} };
-        plan[i] = withOriginal(c2, next, at);
-        kept.push(`${label}: r\u0103m\xE2ne varianta aleas\u0103 de tine (${w.plannedMinutes} min)`);
-      }
-    } catch (e) {
-      const msg2 = e instanceof Error ? e.message : String(e);
-      if (kind === "usor" && /deja ușoară/.test(msg2)) kept.push(`${label}: \xEEn planul nou e deja u\u0219oar\u0103`);
-      else dropped.push(`${label}: ${msg2}`);
-    }
-  }
-  plan = plan.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-  return { workouts: plan, kept, dropped };
-}
-function planSignature(ws) {
-  const rows = ws.filter((w) => w.status !== "sters").map((w) => [w.date, w.sport, w.type, w.plannedMinutes, w.targetZones.join(""), w.status, w.key ? 1 : 0, w.structure ?? ""].join("|")).sort();
-  let h2 = 5381;
-  const s = rows.join("\n");
-  for (let k = 0; k < s.length; k++) h2 = (h2 << 5) + h2 + s.charCodeAt(k) | 0;
-  return `${rows.length}-${(h2 >>> 0).toString(36)}`;
-}
-function weekTotals(ws, from, to) {
-  const wk = ws.filter((w) => active4(w) && w.date >= from && w.date < to && w.type !== "odihna");
-  return { sessions: wk.length, hours: Math.round(wk.reduce((n2, w) => n2 + w.plannedMinutes, 0) / 60 * 10) / 10 };
-}
-
-// src/calendar/swim-capacity.ts
-function swimCapacity(input) {
-  const from = addDays(input.today, -56);
-  const measured = (input.activities ?? []).filter((a) => a.sport === "inot" && a.date >= from && a.date <= input.today && (a.details?.continuousM ?? 0) > 0);
-  const best = measured.reduce((b, a) => !b || a.details.continuousM > b.m ? { m: a.details.continuousM, date: a.date } : b, null);
-  if (best && (input.css == null || best.m >= 400)) return { meters: best.m, source: "measured", detail: `ceasul, ${best.date}` };
-  if (input.css != null) return { meters: Math.max(400, best?.m ?? 0), source: "measured", detail: "testul CSS (400 m f\u0103r\u0103 oprire)" };
-  if (input.declaredM != null) return { meters: input.declaredM, source: "user_reported", detail: "declarat \xEEn chestionar" };
-  return { meters: null, source: null, detail: null };
-}
-
-// src/calendar/reevaluate.ts
-var h = (x) => `${(Math.round(x * 10) / 10).toString().replace(".", ",")} h`;
-function decideReplan(input) {
-  const hist = input.historyH.length ? `istoricul de ${input.historyH.length} ${input.historyH.length === 1 ? "s\u0103pt\u0103m\xE2n\u0103" : "s\u0103pt\u0103m\xE2ni"} (\xEEn medie ${h(input.historyH.reduce((a, b) => a + b, 0) / input.historyH.length)} pe s\u0103pt\u0103m\xE2n\u0103)` : "f\u0103r\u0103 istoric \xEEn ultimele 8 s\u0103pt\u0103m\xE2ni";
-  if (input.currentWeekH == null) return { apply: true, message: `Am f\u0103cut planul din ${hist}: s\u0103pt\u0103m\xE2na de la ${input.from} are ${h(input.proposedWeekH)}.` };
-  const diff = input.proposedWeekH - input.currentWeekH;
-  if (Math.abs(diff) >= 0.5 && Math.abs(diff) >= 0.15 * Math.max(input.currentWeekH, 0.1)) {
-    return { apply: true, message: `Am recalculat nivelul din ${hist}. S\u0103pt\u0103m\xE2na de la ${input.from}: ${h(input.proposedWeekH)} \xEEn loc de ${h(input.currentWeekH)}. S\u0103pt\u0103m\xE2na asta r\u0103m\xE2ne cum e.` };
-  }
-  return { apply: false, message: `Am citit ${hist}. Planul r\u0103m\xE2ne: s\u0103pt\u0103m\xE2na de la ${input.from} are deja ${h(input.currentWeekH)}, iar istoricul nou ar schimba-o cu mai pu\u021Bin de 15%.` };
-}
-
-// server/_lib/plan.ts
-var runBranch = (intake) => intake.alergare?.ramura ?? (intake.alergare?.tinta ? "timp" : "finalizare");
-async function historyHours(userId, today) {
-  const from = addDays(weekStart(today), -56);
-  const to = weekStart(today);
-  const acts = dedupeActivities((await loadActivities(userId, from)).filter((a) => a.date < to));
-  const weeks = /* @__PURE__ */ new Map();
-  for (const a of acts) weeks.set(weekStart(a.date), (weeks.get(weekStart(a.date)) ?? 0) + a.minutes);
-  if (!weeks.size) return [];
-  const first2 = [...weeks.keys()].sort()[0];
-  const out = [];
-  for (let w = first2; w < to; w = addDays(w, 7)) out.push(Math.round((weeks.get(w) ?? 0) / 60 * 10) / 10);
-  return out.reverse();
-}
-async function saveIntake(userId, today, intake) {
-  await upsert("questionnaires", { user_id: userId, kind: "intrare", for_date: today, activity_id: null, answers: intake }, "user_id,kind,for_date,activity_id");
-  await update("users", { id: `eq.${userId}` }, { ...intake.nume ? { name: intake.nume } : {}, goal: intake.obiectiv, race_date: intake.dataCursa, race_name: raceName(intake.obiectiv), ...intake.sex ? { sex: intake.sex } : {}, ...intake.anNastere ? { birth_year: intake.anNastere } : {}, ...intake.inaltime && intake.inaltime >= 120 && intake.inaltime <= 230 ? { height_cm: Math.round(intake.inaltime) } : {} });
-  await remove("schedules", { user_id: `eq.${userId}` });
-  if (intake.program.length) await insert("schedules", intake.program.map((b) => ({ user_id: userId, day: b.day, start_min: b.startMin, end_min: b.endMin, valid_from: today })));
-  await upsert("clearances", clearanceRow(userId, today, intake), "user_id");
-  if (intake.consimtamant) {
-    await upsert("consents", { user_id: userId, health_data: true, adult: true, not_medical_ack: true, accepted_at: (/* @__PURE__ */ new Date()).toISOString(), withdrawn_at: null }, "user_id");
-  }
-}
-function clearanceRow(userId, today, intake) {
-  const limited = medicalLimit(intake);
-  const declared = !limited && intake.sanatate?.avizCardiolog === "da";
-  return { user_id: userId, cardiology: declared, cleared_at: declared ? today : null, intensity_allowed: limited ? "Z2" : "toate" };
-}
-function medicalLimit(intake) {
-  return intake.sanatate?.limitareMedic === true;
-}
-function raceName(goal) {
-  if (goal === "full") return "Ironman";
-  const l = GOAL_LABEL[goal];
-  return l.charAt(0).toUpperCase() + l.slice(1);
-}
-async function labsGate(userId) {
-  const rows = await select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 20 });
-  return labsGateFrom(rows, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
-}
-function labsGateFrom(rows, today) {
-  if (!rows.length) return { valid: false, limitIntensity: false, why: null };
-  const sorted = [...rows].sort((a, b) => a.drawn_at < b.drawn_at ? 1 : -1);
-  const valid = !labsExpired(sorted[0].drawn_at, today);
-  const fer = sorted.find((r2) => r2.feritina != null && r2.feritina !== "");
-  const ferVal = fer ? Number(fer.feritina) : null;
-  const hb = sorted.find((r2) => (r2.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume)));
-  const lowHb = !!hb && (hb.other?.valori ?? []).some((v) => /hemoglobin/i.test(v.nume) && v.in_afara === "sub");
-  const old = (d) => labsExpired(d, today) ? `, din ${d}; limita r\u0103m\xE2ne p\xE2n\u0103 la o analiz\u0103 nou\u0103` : "";
-  const why = ferVal != null && ferVal < 30 ? `feritina ${ferVal} \xB5g/L (sub 30${old(fer.drawn_at)})` : lowHb ? `hemoglobina sub intervalul laboratorului${old(hb.drawn_at)}` : null;
-  return { valid, limitIntensity: !!why, why };
-}
-async function reevaluateAfterImport(userId, today) {
-  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
-  if (!intake) return { changed: false, message: "Istoricul e salvat; planul se face dup\u0103 chestionarul de intrare." };
-  const preview = await generateAndStore(userId, today, intake.answers, { preview: true });
-  if (!preview.ok || !preview.preview) return { changed: false, message: `Istoricul e salvat. Planul r\u0103m\xE2ne: ${preview.ok ? "nu s-a putut calcula o variant\u0103 nou\u0103" : preview.reason}` };
-  const from = preview.from;
-  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
-  const cur = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: [`gte.${from}`, `lt.${addDays(from, 7)}`] }, { select: "planned_minutes", limit: 50 }) : [];
-  const d = decideReplan({ currentWeekH: plan && cur.length ? cur.reduce((n2, w) => n2 + w.planned_minutes, 0) / 60 : null, proposedWeekH: preview.firstWeekHours ?? 0, historyH: await historyHours(userId, today), from: `luni, ${Number(from.slice(8, 10))}.${from.slice(5, 7)}` });
-  if (!d.apply) return { changed: false, message: d.message };
-  const r2 = await generateAndStore(userId, today, intake.answers);
-  return r2.ok ? { changed: true, message: d.message } : { changed: false, message: `Istoricul e salvat, dar planul nu s-a putut reface: ${r2.reason}` };
-}
-async function generateAndStore(userId, today, intake, opts = {}) {
-  if (intake.obiectiv === "full") {
-    return { ok: false, reason: "Ironman complet nu e \xEEn versiunea asta a planului; alege 70.3 pentru acum.", budgetHours: 0 };
-  }
-  const nextMonday0 = addDays(weekStart(today), 7);
-  const current = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
-  const startThisWeek = !current && weekday(today) <= 3;
-  const firstDay = startThisWeek ? today : nextMonday0;
-  const nextMonday = firstDay;
-  const fitness = isFitnessGoal(intake.obiectiv);
-  if (fitness) {
-    const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday0;
-    intake = { ...intake, dataCursa: same ? current.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, FITNESS_WEEKS * 7) };
-  }
-  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday0;
-  const startDate = continuing ? current.start_date : startThisWeek ? weekStart(today) : nextMonday0;
-  const history = await historyHours(userId, today);
-  const labs = await labsGate(userId);
-  const prefs = await loadPrefs(userId);
-  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
-  const result = generatePlan({
-    fixed: prefs.fixe,
-    fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv, intake.fitness), continuing ? current.id : null) : void 0,
-    startDate,
-    raceDate: intake.dataCursa,
-    goal: intake.obiectiv,
-    freeBlocks: intake.program,
-    sportHours: intake.oreSport ?? null,
-    historyHoursPerWeek: history,
-    intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
-    swimContinuous400: (swimCap.meters ?? 0) >= 400,
-    athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
-    tests: await testsAvailable(userId, intake),
-    level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
-    swim: { continuousM: swimCap.meters },
-    run: isRunGoal(intake.obiectiv) ? {
-      // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
-      goalPaceSecKm: runBranch(intake) === "finalizare" ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
-      canDoDistance: intake.alergare?.poateDistanta ?? null,
-      longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
-      branch: runBranch(intake),
-      beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm)
-    } : void 0
-  });
-  if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
-  const at = (/* @__PURE__ */ new Date()).toISOString();
-  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
-  let awayApplied = 0;
-  for (const away of currentAway(prefs, today)) {
-    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
-    awayApplied += changed.size;
-    future = future.map((w) => changed.get(w.id) ?? w);
-  }
-  const old = current ? (await loadPlan(userId, nextMonday, addDays(intake.dataCursa, 1)).catch(() => ({ workouts: [] }))).workouts.filter((w) => w.date >= nextMonday) : [];
-  const carried = carryAdjustments(future, old, nextMonday, today, at);
-  future = carried.workouts;
-  const signature = planSignature(future);
-  const first2 = weekTotals(future, nextMonday, addDays(weekStart(nextMonday), 7));
-  const summary = {
-    budgetHours: result.budgetHours,
-    currentBudgetHours: current ? (await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" }))?.budget_hours ?? null : null,
-    weeks: result.weeks.length,
-    workouts: future.filter((x) => x.status === "planificat" || x.status === "mutat").length,
-    from: nextMonday,
-    firstWeekHours: first2.hours,
-    firstWeekSessions: first2.sessions,
-    signature,
-    kept: carried.kept,
-    dropped: carried.dropped,
-    awayApplied
-  };
-  if (opts.preview) return { ok: true, preview: true, ...summary };
-  if (opts.expect && opts.expect !== signature) return { ok: false, stale: true, reason: "\xCEntre timp s-au schimbat datele planului. Uite din nou ce se schimb\u0103, apoi confirmi.", preview: true, ...summary };
-  if (old.length && planSignature(old) === signature) return { ok: true, unchanged: true, ...summary };
-  const prev = await select("plans", { user_id: `eq.${userId}` }, { order: "version.desc", limit: 1 });
-  const [plan] = await insert("plans", {
-    user_id: userId,
-    goal: intake.obiectiv,
-    race_date: intake.dataCursa,
-    start_date: startDate,
-    budget_hours: result.budgetHours,
-    version: (prev[0]?.version ?? 0) + 1,
-    active: false
-  });
-  const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan.id}-${x.id}` }, userId, plan.id));
-  try {
-    for (let i = 0; i < rows.length; i += 200) await insert("workouts_planned", rows.slice(i, i + 200));
-    await rpc("activate_plan", { p_user: userId, p_plan: plan.id, p_keep_before: nextMonday });
-  } catch (e) {
-    await remove("plans", { id: `eq.${plan.id}`, active: "eq.false" }).catch(() => void 0);
-    throw e;
-  }
-  await upsert("clearances", clearanceRow(userId, today, intake), "user_id").catch(() => void 0);
-  if (fitness) await update("users", { id: `eq.${userId}` }, { race_date: intake.dataCursa }).catch(() => void 0);
-  return {
-    ok: true,
-    budgetHours: result.budgetHours,
-    weeks: result.weeks.length,
-    workouts: rows.length,
-    withoutLabs: !labs.valid,
-    note: [labs.limitIntensity ? `Intensitatea r\u0103m\xE2ne la Z1\u2013Z2: ${labs.why}. De discutat cu medicul; planul se reface c\xE2nd urci analize noi.` : null, startThisWeek ? "Planul \xEEncepe s\u0103pt\u0103m\xE2na asta, din zilele r\u0103mase." : null].filter(Boolean).join(" ") || void 0,
-    kept: carried.kept,
-    dropped: carried.dropped,
-    awayApplied,
-    signature
-  };
-}
-async function athleteInfo(userId, today) {
-  const u = await select("users", { id: `eq.${userId}` }, { select: "sex,birth_year", limit: 1 }).catch(() => []);
-  const r2 = u[0];
-  return { age: r2?.birth_year ? Number(today.slice(0, 4)) - r2.birth_year : null, sex: r2?.sex ?? null };
-}
-async function testsAvailable(userId, intake) {
-  const z = await loadZones(userId).catch(() => null);
-  return {
-    alergare: !!(z?.alergare.fc_z1_z5 || z?.alergare.pace_prag),
-    bicicleta: !!(z?.bicicleta.ftp || z?.bicicleta.fc_z1_z5 || intake.evaluare?.ftp),
-    inot: !!z?.inot.css
-  };
-}
-async function fitnessWithAttendance(userId, today, p, planId) {
-  if (!planId) return p;
-  const thisMonday = weekStart(today);
-  const from = addDays(thisMonday, -42);
-  const planned = await select("workouts_planned", { plan_id: `eq.${planId}`, sport: "eq.forta", date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date,status", limit: 200 });
-  const acts = await select("activities", { user_id: `eq.${userId}`, sport: "eq.forta", date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date", limit: 200 });
-  const logs = await select("strength_log", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "date", limit: 400 }).catch(() => []);
-  const evenings = await select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: "for_date,answers", limit: 200 }).catch(() => []);
-  const weeks = Array.from({ length: 6 }, (_, i) => addDays(from, i * 7)).map((ws) => {
-    const end = addDays(ws, 7);
-    const inW = (d2) => d2 >= ws && d2 < end;
-    const pl = planned.filter((w) => inW(w.date) && w.status !== "sters" && w.status !== "anulat_sistem").length;
-    const doneDays = /* @__PURE__ */ new Set([...acts.filter((a) => inW(a.date)).map((a) => a.date), ...logs.filter((l) => inW(l.date)).map((l) => l.date)]);
-    const fb = (/* @__PURE__ */ new Set([...logs.filter((l) => inW(l.date)).map((l) => l.date), ...evenings.filter((e) => inW(e.for_date)).map((e) => e.for_date)])).size;
-    const pain = evenings.some((e) => inW(e.for_date) && (e.answers?.durere?.scor ?? 0) >= 3);
-    return { planned: pl, done: Math.min(pl, doneDays.size), feedback: fb, pain };
-  });
-  const freeDays = new Set((await loadSchedules(userId).catch(() => [])).map((b) => b.day)).size;
-  const forms = await loadForms(userId, today).catch(() => null);
-  const restricted = forms ? activeRestriction({ today, morning: forms.morning, evenings: forms.evenings }) != null : false;
-  const d = unlockDecision(p, weeks, { freeDays, restricted });
-  return { ...p, unlocked: d.days, unlockWhy: d.why };
-}
-async function reevaluateFitnessDays(userId, today) {
-  const intake = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.intrare" }, { order: "created_at.desc" });
-  if (!intake || !isFitnessGoal(intake.answers.obiectiv)) return { changed: false, days: null };
-  const plan = await one("plans", { user_id: `eq.${userId}`, active: "eq.true" }, { order: "created_at.desc" });
-  if (!plan) return { changed: false, days: null };
-  const p = await fitnessWithAttendance(userId, today, fitnessProfile(intake.answers.obiectiv, intake.answers.fitness), plan.id);
-  const next = addDays(weekStart(today), 7);
-  const nextWeek = await select("workouts_planned", { plan_id: `eq.${plan.id}`, sport: "eq.forta", date: [`gte.${next}`, `lt.${addDays(next, 7)}`] }, { select: "id", limit: 10 });
-  const want = Math.min(p.days, p.unlocked ?? p.days);
-  if (nextWeek.length === 0 || nextWeek.length === want) return { changed: false, days: nextWeek.length || null };
-  const r2 = await generateAndStore(userId, today, intake.answers);
-  return { changed: r2.ok, days: want };
 }
 
 // server/cron/evening.ts
@@ -9312,7 +9404,7 @@ async function handler9(req, res) {
     }
     if (kind === "saptamanal") {
       const weekStart2 = typeof body.weekStart === "string" && isDate(body.weekStart) ? body.weekStart : today;
-      await upsert("questionnaires", { user_id: u.id, kind, for_date: weekStart2, activity_id: null, answers: body }, "user_id,kind,for_date,activity_id");
+      const prev = await one("questionnaires", { user_id: `eq.${u.id}`, kind: "eq.saptamanal", for_date: `eq.${weekStart2}` }).catch(() => null);
       const forms = await loadForms(u.id, today);
       const hardRpe = forms.evenings.filter((e) => e.date >= weekStart2 && e.date <= today && (e.rpe ?? 0) >= 9);
       const energie = typeof body.energie === "number" ? body.energie : null;
@@ -9322,7 +9414,10 @@ async function handler9(req, res) {
         const { planId, workouts } = await loadPlan(u.id, addDays(today, -7), addDays(today, 14));
         if (planId) changes = await applyPlanEvents(u.id, today, planId, workouts, [{ kind: "bilant", date: today, obosit: true, motiv }]);
       }
-      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false } });
+      const decizie = motiv ? { obosit: true, motiv, schimbari: changes.length, text: changes.length ? `s\u0103pt\u0103m\xE2na viitoare f\u0103r\u0103 cre\u0219tere \u0219i o intensitate mai pu\u021Bin (${motiv})` : `oboseal\u0103 notat\u0103 (${motiv}), dar nu era nimic de redus \xEEn plan` } : { obosit: false, text: "planul merge \xEEnainte: niciun semn de oboseal\u0103 care s\u0103 cear\u0103 o reducere" };
+      const corectari = [...prev?.answers?.corectari ?? [], ...prev ? [{ ...prev.answers, corectari: void 0 }] : []].slice(-5);
+      await upsert("questionnaires", { user_id: u.id, kind, for_date: weekStart2, activity_id: null, answers: { ...body, decizie, salvatLa: (/* @__PURE__ */ new Date()).toISOString(), ...corectari.length ? { corectari } : {} } }, "user_id,kind,for_date,activity_id");
+      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false }, decizie });
       return;
     }
     if (kind === "forta-jurnal") {

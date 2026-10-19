@@ -82,7 +82,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     }
     if (kind === 'saptamanal') {
       const weekStart = typeof body.weekStart === 'string' && isDate(body.weekStart) ? body.weekStart : today;
-      await upsert('questionnaires', { user_id: u.id, kind, for_date: weekStart, activity_id: null, answers: body }, 'user_id,kind,for_date,activity_id');
+      const prev = await one<{ answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.saptamanal', for_date: `eq.${weekStart}` }).catch(() => null);
       // Bilanțul de duminică, pe reguli: obosit (energie 1–2 din 5, „oboseala” a oprit săptămâna sau efort 9–10 la o
       // ședință) = săptămâna viitoare fără creștere și o intensitate mai puțin. Altfel planul merge înainte.
       const forms = await loadForms(u.id, today);
@@ -94,7 +94,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         const { planId, workouts } = await loadPlan(u.id, addDays(today, -7), addDays(today, 14));
         if (planId) changes = await applyPlanEvents(u.id, today, planId, workouts, [{ kind: 'bilant', date: today, obosit: true, motiv }]);
       }
-      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false } });
+      // Decizia se salvează lângă răspuns (auditul F55, F05): la redeschidere se vede ce s-a salvat și de ce planul s-a
+      // schimbat sau nu. O corectare suprascrie răspunsul săptămânii; versiunea anterioară rămâne în „corectari”.
+      const decizie = motiv ? { obosit: true, motiv, schimbari: changes.length, text: changes.length ? `săptămâna viitoare fără creștere și o intensitate mai puțin (${motiv})` : `oboseală notată (${motiv}), dar nu era nimic de redus în plan` } : { obosit: false, text: 'planul merge înainte: niciun semn de oboseală care să ceară o reducere' };
+      const corectari = [...(((prev?.answers?.corectari as unknown[]) ?? []) as unknown[]), ...(prev ? [{ ...prev.answers, corectari: undefined }] : [])].slice(-5);
+      await upsert('questionnaires', { user_id: u.id, kind, for_date: weekStart, activity_id: null, answers: { ...body, decizie, salvatLa: new Date().toISOString(), ...(corectari.length ? { corectari } : {}) } }, 'user_id,kind,for_date,activity_id');
+      json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false }, decizie });
       return;
     }
     if (kind === 'forta-jurnal') {

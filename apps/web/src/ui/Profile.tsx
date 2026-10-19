@@ -8,6 +8,7 @@ import { fmtTime } from './sync';
 import { useData, useMe } from '../data/store';
 import { SERVER, hardReload, loadServerConfig, runSetup, server } from '../data/api';
 import { SCHEMA_VERSION } from '@core/schema-version.js';
+import { serverBuild } from '../data/api';
 import { GOAL_LABEL } from '@core/calendar/phases.js';
 import { lastDoneWorkout } from '../data/model';
 import { eveningComplete, morningComplete, type MorningForm } from '../forms/types';
@@ -462,6 +463,7 @@ function AccountSection({ onOpen }: { onOpen: (screen: string) => void }) {
           {local ? 'Șterge tot din acest telefon' : 'Ieși din cont'}
         </button>
       </div>
+      {serverBuild() && <div className="tiny muted" style={{ marginTop: 8 }}>Versiunea aplicației: {serverBuild()}</div>}
     </Card>
   );
 }
@@ -868,8 +870,12 @@ function ProgramCard() {
         ))}
       </div>
       {!av.valid && <div className="warn-line">Ai bifat {fmt(av.freeHours)} ore libere. Alege câte ore ai pentru sport; până atunci planul nu se reface.</div>}
-      {av.valid && av.planHours != null && Math.abs(av.planHours - av.sportHours) >= 1 && (
-        <div className="warn-line">Planul activ e făcut pe {fmt(av.planHours)} h/săpt. Disponibilitatea de acum e {fmt(av.sportHours)} h: refă planul ca să se potrivească.</div>
+      {/* Doza recomandată ≠ timpul disponibil (auditul F55, F04): avertizare doar când planul NU încape. */}
+      {av.valid && av.planHours != null && av.planHours > av.sportHours + 0.25 && (
+        <div className="warn-line">Planul activ cere {fmt(av.planHours)} h/săpt., mai mult decât ai acum ({fmt(av.sportHours)} h): refă planul ca să încapă.</div>
+      )}
+      {av.valid && av.planHours != null && av.planHours <= av.sportHours + 0.25 && av.sportHours - av.planHours >= 1 && (
+        <div className="tiny muted" style={{ marginTop: 6 }}>Planul folosește {fmt(av.planHours)} h din {fmt(av.sportHours)} h: doza e aleasă după nivel, etapă și frecvență, nu ca să umple tot timpul liber. Nu e nevoie să-l refaci.</div>
       )}
       <div className="tiny muted" style={{ marginTop: 6 }}>Ferestrele de minimum 45 de minute, cel mult 5 h pe zi, × 0,8, plafonat la orele pentru sport. Ferestrele se schimbă din chestionar.</div>
     </>

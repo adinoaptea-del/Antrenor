@@ -171,7 +171,11 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
 // Duminica: trei întrebări pentru review-ul săptămânal.
 export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBack: () => void; onDone: () => void }) {
   const { submitForm } = useData();
-  const [w, setW] = useState<WeeklyForm>({ weekStart, energie: null, aMers: '', aOprit: null });
+  const me = useMe();
+  // Răspunsul salvat se recitește la „Editează” (auditul F55, F05), cu decizia luată atunci.
+  const saved = (me.forms.weekly ?? null) as (Partial<WeeklyForm> & { weekStart?: string; decizie?: { text?: string }; salvatLa?: string }) | null;
+  const own = saved && saved.weekStart === weekStart ? saved : null;
+  const [w, setW] = useState<WeeklyForm>({ weekStart, energie: own?.energie ?? null, aMers: own?.aMers ?? '', aOprit: own?.aOprit ?? null });
   const [busy, setBusy] = useState(false);
   return (
     <>
@@ -187,6 +191,11 @@ export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBac
         </div>
       </header>
       <div className="wizard">
+        {own && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Salvat {own.salvatLa ? `pe ${fmtDayMonth(own.salvatLa.slice(0, 10))}, ${own.salvatLa.slice(11, 16)} UTC` : ''}. Decizia de atunci: {own.decizie?.text ?? 'fără decizie înregistrată'}. Dacă schimbi răspunsul, se salvează ca o corectare.
+          </p>
+        )}
         <Q title="Energia pe toată săptămâna">
           <Scale value={w.energie} min={1} max={5} onChange={(v) => setW({ ...w, energie: v as WeeklyForm['energie'] })} lowLabel="pe jantă" highLabel="plin" />
         </Q>

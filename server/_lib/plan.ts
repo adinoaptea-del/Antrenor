@@ -315,7 +315,7 @@ async function testsAvailable(userId: string, intake: IntakeLike): Promise<{ ale
  * Fitness: zilele de sală cresc doar după prezență reală. Din planul activ, ultimele 6 săptămâni încheiate: câte ședințe
  * de forță erau planificate și câte au o activitate de forță înregistrată (ceas sau marcată), pe săptămână.
  */
-async function fitnessWithAttendance(userId: string, today: string, p: FitnessProfile, planId: string | null): Promise<FitnessProfile> {
+export async function fitnessWithAttendance(userId: string, today: string, p: FitnessProfile, planId: string | null): Promise<FitnessProfile> {
   if (!planId) return p;
   const thisMonday = weekStart(today);
   const from = addDays(thisMonday, -42);

@@ -15,6 +15,9 @@ import { dedupeActivities } from '../src/collector/packet.js';
 import { runLongitudinal } from '../src/sim/longitudinal.js';
 import { decideFamily, FAMILIES } from '../src/calendar/progression.js';
 import { input, type Profile } from './audit-profiles.js';
+import { fitnessProfile } from '../src/strength/fitness.js';
+import { HOME_EQUIP, parseStrength, prescribe } from '../src/strength/ppl.js';
+import { adapt } from '../src/calendar/adapt.js';
 import type { PlannedWorkout } from '../src/types.js';
 
 type Row = { caz: string; asteptat: string; observat: string; rezultat: 'TRECUT' | 'EȘUAT' | 'NEIMPLEMENTAT' };
@@ -135,6 +138,24 @@ for (const { p, label } of matrix) {
   const cap = Math.round(r.budgetHours * 60);
   const over = r.weeks.filter((w) => w.workouts.reduce((n, x) => n + x.plannedMinutes, 0) > cap).length;
   add(`Profil: ${label}`, 'rezumat = pași; nicio săptămână peste buget', `${r.weeks.length} săpt., ${ws.length} ședințe; nepotriviri: ${issues.length}; săptămâni peste ${r.budgetHours} h: ${over}`, issues.length === 0 && over === 0);
+}
+
+// Auditul F55: femeie 55, fitness acasă (gantere + bandă), 3 zile dorite, 35 min, începătoare. Planul complet: nimic de
+// sală în nicio ședință din 26 de săptămâni, aceeași durată în calendar și în prescripție, apoi febră → aceeași regulă.
+{
+  const fin = { ...input({ goal: 'fit-masa', sex: 'f', age: 55, level: 'debutant', intens: 'toate' }), freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 19 * 60, endMin: 19 * 60 + 35 })), fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 35, acces: 'acasa', miscare: 'sedentara' }) };
+  const r = generatePlan(fin);
+  if (!r.ok) add('F55 fitness acasă', 'plan eligibil', r.reason, false);
+  else {
+    const ws = r.weeks.flatMap((w) => w.workouts);
+    const gym = ws.flatMap((w) => prescribe(parseStrength(w.structure)!, w.plannedMinutes).items.filter((it) => !(it.ex.equip ?? []).every((e) => HOME_EQUIP.includes(e))).map((it) => `${w.date} ${it.ex.name}`));
+    const mismatch = ws.filter((w) => prescribe(parseStrength(w.structure)!, w.plannedMinutes).minutes !== w.plannedMinutes);
+    add('F55 fitness acasă: echipament', 'zero exerciții cu aparat/cablu/bară/bancă în 26 de săptămâni', `${ws.length} ședințe; exerciții de sală: ${gym.length}${gym.length ? ` (${gym.slice(0, 2).join('; ')})` : ''}`, gym.length === 0);
+    add('F55 fitness acasă: o singură durată', 'durata din calendar = durata prescripției, la fiecare ședință', `nepotriviri: ${mismatch.length} din ${ws.length}`, mismatch.length === 0);
+    const after = adapt(ws.filter((w) => w.date < '2026-11-10'), { kind: 'febra', date: '2026-10-26' }, { today: '2026-10-26', freeBlocks: [], recentKeyScores: [] }).plan.filter((w) => w.status !== 'anulat_sistem' && w.note?.includes('febr'));
+    const bad = after.filter((w) => prescribe(parseStrength(w.structure)!, w.plannedMinutes).minutes !== w.plannedMinutes);
+    add('F55 febră: ședințele de după', 'durată redusă, aceeași în calendar și detaliu; mesaj condiționat', `${after.length} ședințe reduse; nepotriviri: ${bad.length}; nota: „${after[0]?.note ?? '—'}”`, after.length > 0 && bad.length === 0 && /doar dacă/.test(after[0]!.note ?? ''));
+  }
 }
 
 const out = process.argv[2];

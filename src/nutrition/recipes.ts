@@ -21,6 +21,8 @@ export interface Recipe {
   highFiber?: boolean;
   /** Potrivit înaintea efortului (familiar, puține fibre și grăsimi), după toleranță. */
   preOk?: boolean;
+  /** Rețetă adăugată de AIRON (nu din ghid), din aceleași alimente și aceleași surse de compoziție. */
+  airon?: boolean;
 }
 
 export const RECIPES: Recipe[] = [
@@ -52,6 +54,12 @@ export const RECIPES: Recipe[] = [
   { id: 'G05', name: 'Iaurt, căpșuni și ovăz', kind: 'G', family: 'g-iaurt', ingredients: [{ food: 'iaurt', qty: 200 }, { food: 'capsuni', qty: 150 }, { food: 'ovaz', qty: 20 }], steps: 'Amesteci la servire.', minutes: 3 },
   { id: 'G06', name: 'Banană cu unt de arahide', kind: 'G', family: 'g-arahide', ingredients: [{ food: 'banana', qty: 120 }, { food: 'arahide', qty: 20 }], steps: 'Tai banana și adaugi untul de arahide.', note: 'Puține proteine față de o masă.', minutes: 3, preOk: true },
   { id: 'G07', name: 'Măr, nuci și lapte', kind: 'G', family: 'g-nuci', ingredients: [{ food: 'mar', qty: 150 }, { food: 'nuca', qty: 20 }, { food: 'lapte', qty: 200 }], steps: 'Ca gustare; laptele păstrat după ambalaj.', minutes: 3 },
+  // ——— Adăugate de AIRON (auditul F55, F08): acoperire pentru vegan / fără lapte, din alimentele cu compoziție cunoscută ———
+  { id: 'B08', name: 'Terci cu apă, banană și unt de arahide', kind: 'B', family: 'terci-vegan', ingredients: [{ food: 'ovaz', qty: 70 }, { food: 'banana', qty: 120 }, { food: 'arahide', qty: 20 }, { food: 'nuca', qty: 10 }], steps: 'Fierbi ovăzul în apă; adaugi banana feliată, untul de arahide și nucile.', note: 'Fără lapte; proteine mai puține decât un mic dejun cu iaurt.', minutes: 10, airon: true },
+  { id: 'B09', name: 'Tofu la cuptor cu pâine, roșii și spanac', kind: 'B', family: 'tofu-dimineata', ingredients: [{ food: 'tofu', qty: 200 }, { food: 'paine', qty: 90 }, { food: 'rosii', qty: 200 }, { food: 'spanac', qty: 50 }, { food: 'ulei', qty: 5 }], steps: 'Fărâmițezi tofu, îl amesteci cu spanacul și îl coci 15 minute; servești cu pâinea și roșiile.', note: 'Tofu diferă între mărci: verifică eticheta.', minutes: 20, airon: true },
+  { id: 'M15', name: 'Năut cu cartofi la cuptor și spanac', kind: 'M', family: 'naut-cartof', ingredients: [{ food: 'naut', qty: 200 }, { food: 'cartof', qty: 300 }, { food: 'spanac', qty: 100 }, { food: 'ulei', qty: 10 }], steps: 'Coci cartofii tăiați cubulețe cu năutul scurs și uleiul; spanacul îl adaugi la final.', note: 'Fibre multe: departe de start.', minutes: 40, highFiber: true, airon: true },
+  { id: 'M16', name: 'Paste cu fasole și roșii', kind: 'M', family: 'paste-fasole', ingredients: [{ food: 'paste', qty: 90 }, { food: 'fasole', qty: 180 }, { food: 'rosii-conserva', qty: 250 }, { food: 'morcov', qty: 100 }, { food: 'ulei', qty: 10 }], steps: 'Fierbi pastele; încălzești roșiile cu morcovul ras și fasolea scursă și amesteci.', note: 'Fibre multe.', minutes: 25, highFiber: true, airon: true },
+  { id: 'G08', name: 'Măr cu nuci', kind: 'G', family: 'g-mar-nuci', ingredients: [{ food: 'mar', qty: 150 }, { food: 'nuca', qty: 25 }], steps: 'Tai mărul; nucile alături.', minutes: 2, airon: true },
 ];
 
 export const RECIPE: Record<string, Recipe> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));

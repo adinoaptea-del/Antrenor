@@ -1,3 +1,4 @@
+import { isFitnessGoal } from '@core/calendar/phases.js';
 import { addDays } from '@core/util/dates.js';
 import { AreaChart, Icons, Ring, Spark, fmtDayMonth } from './common';
 import { useData, useMe } from '../data/store';
@@ -153,6 +154,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
         )}
       </section>
 
+      {!isFitnessGoal(me.user.goal) && (
       <section className="card">
         <div className="chart-h">
           <h3 className="h-md">Eficiența la același puls</h3>
@@ -177,6 +179,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
           <p className="small muted">Date insuficiente: apare după cel puțin 3 ședințe ușoare în ultimele 3 săptămâni și 3 în cele 6 dinainte, cu puls (la bicicletă și cu putere).</p>
         )}
       </section>
+      )}
 
       {runKm.length > 2 && (
         <section className="card tight">

@@ -76,7 +76,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
               const ws2 = workoutsOn(me, d).filter((w) => w.type !== 'odihna');
               const un = activitiesOn(me, d).filter((a) => a.unplanned);
               const isAway = (me.prefs?.plecari ?? []).some((a) => d >= a.dela && d <= a.panala);
-              const isRace = d === me.user.raceDate;
+              const isRace = d === me.user.raceDate && !isFitnessGoal(me.user.goal);
               return (
                 <button key={d} className={`week-row ${d === me.today ? 'today' : ''} ${d === selected ? 'sel' : ''}`} onClick={() => setSelected(d)} aria-pressed={d === selected}>
                   <span className="wr-d">
@@ -199,7 +199,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
         )}
 
         <AwayCard />
-        <FixedCard />
+        {!isFitnessGoal(me.user.goal) && <FixedCard />}
         <PlanOverview onPick={(iso) => { pick(iso); setView('saptamana'); }} />
       </div>
     </>
@@ -410,7 +410,7 @@ const PHASE_WHAT_BY: Record<'run' | 'bike' | 'swim', Record<string, string>> = {
   swim: { evaluare: 'tehnică, capacitatea fără oprire', baza1: 'tehnică și volum ușor', baza2: 'distanță continuă mai lungă', build: 'seturi la prag (CSS)', peak: 'ritm de cursă', taper: 'volum jos, prospețime' },
 };
 const FITNESS_WHAT: Record<string, string> = {
-  evaluare: 'înveți aparatele și execuția, 2 serii',
+  evaluare: 'înveți exercițiile și execuția, 2 serii',
   baza1: 'frecvența se consolidează, repetări sau sarcină',
   baza2: 'accent pe fesieri și picioare; evaluare la final (nu descărcare)',
   build: 'păstrezi performanța, adaugi doar la nevoie',

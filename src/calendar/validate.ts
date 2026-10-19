@@ -1,5 +1,6 @@
 import { moduleStructure, parseModule } from './run-modules.js';
 import { normalizeWorkout } from './coherence.js';
+import { parseStrength, prescribe } from '../strength/ppl.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -181,6 +182,19 @@ function swapTarget(all: PlannedWorkout[], victim: PlannedWorkout): PlannedWorko
  * repetare rămâne), brick-ul își scurtează ambele părți proporțional, ieșirea lungă rămâne ușoară. Nu se mută nimic
  * în alte zile.
  */
+/**
+ * O singură durată pentru o ședință (auditul F55, F02): la forță, durata din calendar devine durata prescripției care
+ * încape în minutele cerute (exercițiile efective), ca Home, calendarul, detaliul și totalul săptămânii să spună același
+ * număr; la celelalte, structura se rescrie din aceleași minute.
+ */
+export function resizeWorkout(w: PlannedWorkout, minutes: number): PlannedWorkout {
+  if (w.type === 'forta') {
+    const spec = parseStrength(w.structure);
+    return { ...w, plannedMinutes: spec ? Math.min(minutes, prescribe(spec, minutes).minutes) : minutes };
+  }
+  return normalizeWorkout(fitStructure({ ...w, plannedMinutes: minutes }));
+}
+
 export function shortenWorkout(w: PlannedWorkout, minutes: number): PlannedWorkout {
   const before = w.plannedMinutes;
   let out: PlannedWorkout = { ...w, plannedMinutes: minutes };
@@ -193,7 +207,7 @@ export function shortenWorkout(w: PlannedWorkout, minutes: number): PlannedWorko
       out = normalizeWorkout(out);
     }
   } else {
-    out = normalizeWorkout(fitStructure(out));
+    out = resizeWorkout(out, minutes);
   }
   out.note = `scurtat la cererea ta: ${minutes} min în loc de ${before}; ce nu se face azi nu se recuperează`;
   return out;

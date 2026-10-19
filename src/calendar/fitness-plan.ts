@@ -76,7 +76,7 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
     const notes: string[] = [];
     if (days.length < fw.days) notes.push(`programul are ${fw.days} zile în săptămâna asta, dar ai ferestre libere doar în ${days.length}`);
     const workouts: PlannedWorkout[] = days.map((d, i) => {
-      const spec: StrengthSpec = { session: fw.rotation[i % fw.rotation.length]!, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(fw.transition ? { transition: true } : {}) };
+      const spec: StrengthSpec = { session: fw.rotation[i % fw.rotation.length]!, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}) };
       const avail = Math.max(MIN_SESSION, Math.min(f.minutes, free.get(d) ?? f.minutes));
       const rx = prescribe(spec, avail);
       return {

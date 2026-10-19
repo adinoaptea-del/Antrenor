@@ -21,7 +21,9 @@ const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.r
 export function strengthOf(me: Me, w: PlannedWorkout): Prescription | null {
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
   const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
-  return spec ? prescribe(spec, w.plannedMinutes) : null;
+  // Locul de antrenament din chestionar (planurile vechi nu îl au scris): acasă = doar exerciții cu gantere, bandă, corp.
+  const acces = (me.forms.intake as { fitness?: { acces?: string } } | null)?.fitness?.acces;
+  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes) : null;
 }
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);
@@ -105,7 +107,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               {SPORT_LABEL[w.sport]} · {w.type === 'forta' ? (rx?.session.name ?? sessionName(w.structure) ?? 'forță') : PLAIN[w.type]}
             </b>
             <span>
-              {when} · {w.status === 'anulat_sistem' ? `anulată · 0 min active (era ${fmtMinutes(w.plannedMinutes)})` : fmtMinutes(rx ? Math.min(w.plannedMinutes, rx.minutes) : w.plannedMinutes)}
+              {when} · {w.status === 'anulat_sistem' ? `anulată · 0 min active (era ${fmtMinutes(w.plannedMinutes)})` : fmtMinutes(w.plannedMinutes)}
               {zones ? ` · ${zones}` : ''}
               {w.key ? ' · cheie' : ''}
             </span>
@@ -167,7 +169,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                       {r.ex.setup && <span className="str-cue">Cum reglezi: {r.ex.setup}.</span>}
                       <span className="str-cue">Cum faci: {r.ex.cue}.</span>
                       {r.ex.mistakes && <span className="str-cue">Atenție: {r.ex.mistakes}.</span>}
-                      <span className="str-cue">Dacă e ocupat: {r.ex.alt}.</span>
+                      <span className="str-cue">Altă variantă: {r.ex.alt}.</span>
                       <StrengthHint r={r} maintain={rx.spec.block === 'mentinere'} />
                     </div>
                     <div className="str-sets">

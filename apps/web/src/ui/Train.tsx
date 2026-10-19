@@ -340,7 +340,9 @@ function swimStructure(type: string, planned: string | null, bestM: number | nul
 function strengthFor(me: Me, w: PlannedWorkout): Prescription | null {
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
   const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
-  return spec ? prescribe(spec, w.plannedMinutes) : null;
+  // Locul de antrenament din chestionar (planurile vechi nu îl au scris): acasă = doar exerciții cu gantere, bandă, corp.
+  const acces = (me.forms.intake as { fitness?: { acces?: string } } | null)?.fitness?.acces;
+  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes) : null;
 }
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);
@@ -379,7 +381,7 @@ function StrengthCard() {
       <div className="str-head">
         <span className="num md">{rx.session.name}{sp.variant != null ? <small className="muted"> · varianta {sp.variant + 1}</small> : null}</span>
         <span className="small muted">
-          {dayLabel} · ~{rx.minutes} min
+          {dayLabel} · {w.plannedMinutes} min
         </span>
       </div>
       <div className="str-block">
@@ -403,7 +405,7 @@ function StrengthCard() {
               </span>
               {openEx === r.ex.id && (
                 <span className="str-cue">
-                  Cum faci: {r.ex.cue}. Dacă e ocupat: {r.ex.alt}.{r.note && r.note !== 'opțional' ? ` ${r.note.replace(/^./, (c) => c.toUpperCase())}.` : ''}
+                  Cum faci: {r.ex.cue}. Altă variantă: {r.ex.alt}.{r.note && r.note !== 'opțional' ? ` ${r.note.replace(/^./, (c) => c.toUpperCase())}.` : ''}
                 </span>
               )}
             </div>
@@ -463,7 +465,17 @@ function FitnessWeekCard() {
         {fw ? ` · ${BLOCK_LABEL[fw.block]}` : ''}
       </Label>
       <div className="small">{FITNESS_WEEK_ACTION[wk]}</div>
-      <div className="pref-k" style={{ marginTop: 10 }}>Mișcare în afara sălii</div>
+      {me.fitnessFreq && me.fitnessFreq.now < me.fitnessFreq.wanted && (
+        <>
+          <div className="pref-k" style={{ marginTop: 10 }}>
+            Zile pe săptămână: {me.fitnessFreq.now} din {me.fitnessFreq.wanted}
+          </div>
+          <div className="small">
+            Acum: {me.fitnessFreq.why ?? 'frecvența de început'}. Ziua în plus se adaugă după 3 săptămâni la rând cu cel puțin 80% din ședințe făcute, feedback după fiecare și fără durere, dacă ai zi liberă în program. Se verifică duminica; până atunci programul rămâne cum e.
+          </div>
+        </>
+      )}
+      <div className="pref-k" style={{ marginTop: 10 }}>{f.acces === 'acasa' ? 'Mișcare în afara antrenamentului' : 'Mișcare în afara sălii'}</div>
       <div className="small">{fitnessCardio(wk, f.miscare ?? null)}</div>
       <div className="tiny muted" style={{ marginTop: 6 }}>Nu e ședință punctată în calendar: o adaugi în ritmul tău, crescând un singur lucru odată.</div>
     </Card>

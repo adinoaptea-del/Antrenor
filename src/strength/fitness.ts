@@ -33,6 +33,8 @@ export interface FitnessProfile {
   unlocked?: FitnessDays;
   /** Motivul deciziei de frecvență (pentru explicație). */
   unlockWhy?: string;
+  /** Unde se antrenează: acasă = doar gantere, bandă, corp, scaun (exercițiile se aleg după echipament). */
+  place?: 'sala' | 'acasa';
 }
 
 export interface FitnessWeek {
@@ -204,7 +206,7 @@ export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'acti
 
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */
 export const FITNESS_WEEK_ACTION: Record<number, string> = {
-  1: 'Alegi două ședințe F1/F2; două serii ușoare pe exercițiu. Notezi setările aparatelor.',
+  1: 'Alegi două ședințe F1/F2; două serii ușoare pe exercițiu. Notezi greutățile (și setările aparatelor, la sală).',
   2: 'Repeți F1/F2. Două serii la exercițiile principale doar dacă prima săptămână a mers bine.',
   3: 'Crești repetările în intervalul prescris la unul sau două exerciții. Nu crești toate greutățile.',
   4: 'Revizuiești tehnica, timpul și simptomele. Păstrezi doza sau o reduci dacă recuperarea e slabă.',
@@ -255,7 +257,7 @@ function plusDays(iso: string, n: number): string {
 
 /** Ce face săptămâna în varianta amplă A–D (programul din 19.10.2026). */
 const WIDE_ACTION: [number, string][] = [
-  [2, 'Învățare: două serii de lucru pe exercițiu, oprindu-te când mai aveai 3–4 repetări. Notezi setările aparatelor.'],
+  [2, 'Învățare: două serii de lucru pe exercițiu, oprindu-te când mai aveai 3–4 repetări. Notezi greutățile (și setările aparatelor, la sală).'],
   [4, 'Consolidare: rămân două serii; progresezi în control și repetări.'],
   [8, 'Construire: doza A–D (trei serii la exercițiile principale) doar dacă te simți bine și ai timp.'],
   [12, 'Progres: aceleași exerciții principale, repetări sau încărcări mai bune.'],
@@ -299,12 +301,13 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined): Fitn
     beginner: f?.experienta !== 'stabila',
     activity: f?.miscare ?? null,
     postpartum: f?.sarcina === 'da',
+    place: f?.acces === 'acasa' ? 'acasa' : 'sala',
   };
 }
 
 export const FITNESS_RULES: { t: string; d: string }[] = [
-  { t: 'Efort', d: 'Cu repetări în rezervă (RIR): 3–4 la început, apoi 2–3. La RIR 3 te oprești când crezi că mai poți face cam trei repetări corecte. Fără epuizare.' },
-  { t: 'Progresie dublă', d: 'La 2 × 8–12: alegi greutatea cu care faci cel puțin 8 repetări corecte. Adaugi repetări; când ambele serii ajung la 12, cu tehnica și rezerva păstrate, de două ori la rând, încerci greutatea imediat următoare și revii spre 8–10.' },
+  { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 3–4 repetări bune (la început), apoi 2–3. Nu mergi până nu mai poți.' },
+  { t: 'Cum crești', d: 'La 2 × 8–12: alegi greutatea cu care faci cel puțin 8 repetări corecte. Data viitoare adaugi repetări. Când ambele serii ajung la 12, corect, de două ori la rând, pui greutatea imediat următoare și revii la 8–10.' },
   { t: 'Încălzire', d: '5–8 min de mișcare ușoară și 1–3 serii progresive la primele exerciții. Nu sunt serii de lucru și nu e nevoie de 20 de minute de „activare”.' },
   { t: 'Pauze', d: '90–120 s la exercițiile mari, 60–90 s la cele mici, 45–60 s la abdomen.' },
   { t: 'Ședință ratată', d: 'Continui rotația de unde ai rămas. Nu dublezi și nu înghesui două zile de picioare.' },

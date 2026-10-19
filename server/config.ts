@@ -56,6 +56,8 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       firstUser: ready && users === 0,
       agents: !!process.env.ANTHROPIC_API_KEY,
       providers: Object.fromEntries(PROVIDERS.map((p) => [p, providerConfigured(p)])),
+      // Versiunea publicată (commit), vizibilă în Profil: auditurile pot spune pe ce build au testat.
+      build: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || null,
     });
   } catch (e) {
     fail(res, e);

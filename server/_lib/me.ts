@@ -8,6 +8,9 @@ import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update } from './db.js';
 import { ensureSplit } from './split.js';
+import { fitnessWithAttendance } from './plan.js';
+import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
+import { isFitnessGoal } from '../../src/calendar/phases.js';
 import { loadPrefs } from './prefs.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
 import { loadBadges } from './badges.js';
@@ -233,6 +236,14 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     readiness: readinessOut,
     day,
     cardiacPending: pendingCardiac(forms.mornings as never, today),
+    // Frecvența de fitness: câte zile vrea, câte are acum și de ce (auditul F55, F06).
+    fitnessFreq: isFitnessGoal(user.goal) && planLoad.planId
+      ? await (async () => {
+          const f = ((forms.intake as { fitness?: FitnessIntake } | null)?.fitness ?? {}) as FitnessIntake;
+          const p = await fitnessWithAttendance(userId, today, fitnessProfile(user.goal as Goal, f), planLoad.planId).catch(() => null);
+          return p ? { wanted: p.days, now: Math.min(p.days, p.unlocked ?? p.days), why: p.unlockWhy ?? null } : null;
+        })()
+      : null,
     outcomes: Object.fromEntries(outcomeRows.map((o) => [o.workout_id, { status: o.status, motiv: o.motiv, minutes: o.minutes, reportedAt: o.reported_at }])),
     efficiency: aerobicEfficiency(activities, today),
     strengthLog: strengthRows,
@@ -251,7 +262,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     bar: barRow ? { blocked: barRow.blocked, total: barRow.total, basis: barRow.basis, components: barRow.components } : null,
     messages: messagesRows.filter((m) => m.kind !== 'memento').map((m) => ({ id: m.id, kind: m.kind, body: m.body, decision: m.decision, createdAt: m.created_at })),
     memento,
-    forms: { intake, morning: (forms.morning as MorningForm | null) ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today) },
+    forms: { intake, morning: (forms.morning as MorningForm | null) ?? null, evening: eveningByActivity, weeklyDone: await weeklyDone(userId, today), weekly: await weeklySaved(userId, today) },
     devices,
     lastSync,
     sources: [
@@ -308,6 +319,12 @@ function withRestriction<T extends { verdict: 'verde' | 'galben' | 'rosu' | 'sto
 async function weeklyDone(userId: string, today: string): Promise<boolean> {
   const row = await one('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.saptamanal', for_date: `gte.${weekStart(today)}` });
   return !!row;
+}
+
+/** Răspunsul săptămânal salvat (ultimele 7 zile), cu decizia: formularul se redeschide completat. */
+async function weeklySaved(userId: string, today: string): Promise<Record<string, unknown> | null> {
+  const row = await one<{ answers: Record<string, unknown>; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.saptamanal', for_date: `gte.${addDays(today, -7)}` }, { order: 'for_date.desc' }).catch(() => null);
+  return row ? { ...row.answers, weekStart: row.for_date } : null;
 }
 
 /** PostgREST întoarce `numeric` ca string; îl citim ca număr, fără să inventăm nimic. */

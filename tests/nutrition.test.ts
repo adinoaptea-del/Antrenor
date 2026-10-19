@@ -19,8 +19,8 @@ test('§03 formulele: exemplele de repaus ies exact, înainte de rotunjire', () 
 
 test('§15 cele 28 de rețete: energia și proteinele calculate din ingrediente = valorile din ghid', () => {
   const doc: Record<string, [number, number]> = { B01: [491, 25.4], B02: [409, 23.3], B03: [515, 28.0], B04: [391, 30.9], B05: [531, 25.6], B06: [576, 24.0], B07: [484, 29.5], M01: [657, 47.7], M02: [631, 25.7], M03: [629, 38.9], M04: [580, 44.7], M05: [624, 30.0], M06: [741, 34.0], M07: [544, 36.2], M08: [684, 55.2], M09: [661, 30.1], M10: [521, 38.4], M11: [662, 28.7], M12: [559, 43.5], M13: [782, 42.3], M14: [680, 36.0], G01: [206, 16.9], G02: [207, 8.9], G03: [244, 25.7], G04: [236, 13.1], G05: [251, 19.1], G06: [219, 6.0], G07: [302, 9.8] };
-  assert.equal(RECIPES.length, 28);
-  for (const r of RECIPES) {
+  assert.equal(RECIPES.filter((r) => !r.airon).length, 28);
+  for (const r of RECIPES.filter((x) => !x.airon)) {
     const v = recipeValues(r.id);
     assert.ok(Math.abs(v.kcal - doc[r.id]![0]) < 1 && Math.abs(v.protein - doc[r.id]![1]) < 0.15, `${r.id}: ${v.kcal} / ${v.protein}`);
   }
@@ -102,7 +102,13 @@ test('Minor, sarcină, oboseală repetată, restricție: fără deficit, cu moti
 test('Vegan și alergie la lapte: nicio masă cu produse animale / lapte; lipsa unei variante e spusă, nu inventată', () => {
   const v = nutritionDay(man({ prefs: { ...DEFAULT_PREFS, diet: 'vegan' } }));
   assert.ok(v.meals.every((m) => m.items.every((it) => !FOODS[it.food]!.animal)));
-  assert.ok(v.warnings.some((w) => /mic dejun: nicio rețetă/.test(w)));
+  // Auditul F55, F08: vegan primește acum 4/4 mese (rețete AIRON din aceleași alimente), fără produse animale.
+  assert.equal(v.complete, true);
+  assert.equal(v.meals.filter((m) => ['Mic dejun', 'Prânz', 'Cină', 'Gustare'].includes(m.label)).length, 4);
+  // Unde biblioteca chiar nu are nimic, starea e „Meniu incomplet”, nu un meniu prezentat ca întreg.
+  const none = nutritionDay(man({ prefs: { ...DEFAULT_PREFS, diet: 'vegan', exclude: ['gluten', 'soia', 'nuci', 'arahide'] } }));
+  assert.equal(none.complete, false);
+  assert.match(none.message, /^Meniu incomplet: \d\/4 mese/);
   const noMilk = { ...DEFAULT_PREFS, exclude: ['lapte' as const] };
   const sel = selectDays(addDays(DATE, -13), DATE, noMilk);
   for (const [, day] of sel) for (const id of Object.values(day.picks)) assert.ok(!RECIPE[id!]!.ingredients.some((i) => FOODS[i.food]!.allergens.includes('lapte')), id);

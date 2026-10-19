@@ -64,7 +64,7 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
             )}
           </div>
         )}
-        <p className="small" style={{ marginTop: 8 }}>
+        <p className={day.complete ? 'small' : 'small warn-line'} style={{ marginTop: 8 }}>
           {day.message}
         </p>
         <div className="small muted">

@@ -144,7 +144,7 @@ export interface Me {
   bar: BarResult | null;
   messages: MeMessage[];
   memento: string | null;
-  forms: { intake: unknown | null; morning: MorningForm | null; evening: Record<string, EveningForm>; weeklyDone: boolean };
+  forms: { intake: unknown | null; morning: MorningForm | null; evening: Record<string, EveningForm>; weeklyDone: boolean; weekly?: Record<string, unknown> | null };
   devices: MeDevice[];
   lastSync: string | null;
   zones: { run: string | null; bike: string | null; swim: string | null; source: string | null } | null;
@@ -162,6 +162,8 @@ export interface Me {
   day?: import('./calendar/day.js').DayDecision | null;
   /** Data unui simptom cardiac încă neevaluat medical (formularul de dimineață arată bifa de evaluare). */
   cardiacPending?: string | null;
+  /** Fitness: zile dorite, zile active acum și motivul. */
+  fitnessFreq?: { wanted: number; now: number; why: string | null } | null;
   /** Ședințele declarate nefăcute sau parțiale (cu motiv), pe id. */
   outcomes?: Record<string, { status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reportedAt: string }>;
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */

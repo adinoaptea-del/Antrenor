@@ -24,6 +24,8 @@ export interface ServerConfig {
   firstUser?: boolean;
   agents?: boolean;
   providers?: Record<'whoop' | 'strava' | 'oura', boolean>;
+  /** Commitul publicat (primele 7 caractere). */
+  build?: string | null;
 }
 
 export let SERVER: ServerConfig | null = null;
@@ -48,6 +50,8 @@ export async function fetchWithTimeout(input: string, init: RequestInit = {}, ms
     clearTimeout(t);
   }
 }
+
+export const serverBuild = () => SERVER?.build ?? null;
 
 export async function loadServerConfig(): Promise<ServerConfig> {
   const res = await fetchWithTimeout('/api/config', { headers: { accept: 'application/json' } }, 20_000);

@@ -295,7 +295,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             <Q title="Câte zile pe săptămână poți merge la sală, pe termen lung?" hint="3 zile e varianta principală pentru multe femei; 4 e opțională, nu un nivel superior. Dacă începi, primele săptămâni sunt oricum 2 zile.">
               <Chips value={fx.zile ? String(fx.zile) : null} options={[{ id: '2', label: '2 zile' }, { id: '3', label: '3 zile' }, { id: '4', label: '4 zile' }]} onChange={(z) => setFx({ zile: Number(z) as 2 | 3 | 4 })} />
             </Q>
-            <Q title="Cât timp ai pentru o ședință?" hint="Cu încălzirea, pauzele și schimbatul aparatelor. Ședința se potrivește în timpul ăsta: când e scurt, cad întâi accesoriile.">
+            <Q title="Cât timp ai pentru o ședință?" hint="Cu încălzirea, pauzele și schimbatul între exerciții. Ședința se potrivește în timpul ăsta: când e scurt, cad întâi accesoriile.">
               <Chips value={fx.minute ? String(fx.minute) : null} options={[{ id: '35', label: '30–35 min' }, { id: '45', label: '45 min' }, { id: '60', label: '60 min' }]} onChange={(m) => setFx({ minute: Number(m) })} />
             </Q>
             <Q title="Unde te antrenezi?">

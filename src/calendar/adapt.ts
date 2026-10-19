@@ -1,7 +1,7 @@
 // Calendarul viu: regulile de adaptare din protocol, aplicate determinist pe antrenamentele viitoare.
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
-import { fitStructure, shortenWorkout } from './validate.js';
+import { fitStructure, resizeWorkout, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
 import { applyProgression, type Execution } from './progression.js';
 import { SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
@@ -68,7 +68,9 @@ export interface AdaptResult {
 }
 
 const CHANGE_MIN = 10;
-const FEVER_HALF_NOTE = 'prima săptămână după febră: volum −50%, fără cheie';
+// Formulat condiționat (auditul F55, F03): recuperarea nu e presupusă; ziua o decide chestionarul de dimineață.
+const FEVER_HALF_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: volum −50%, fără cheie; altfel pauză și reevaluare';
+const isFeverHalf = (n: string | null | undefined) => n === FEVER_HALF_NOTE || n === 'prima săptămână după febră: volum −50%, fără cheie';
 
 /**
  * Cheia stabilă a unui eveniment. Serverul o salvează înainte să aplice evenimentul (unică pe sportiv):
@@ -329,14 +331,15 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
       changes.push(`${x.id}: anulat (febră)`);
     } else if (diffDays(x.date, halfUntil) >= 0) {
       // Febră și a doua zi: ședința deja înjumătățită nu se mai înjumătățește o dată.
-      if (x.note === FEVER_HALF_NOTE) continue;
-      x.plannedMinutes = Math.round((x.plannedMinutes * 0.5) / 5) * 5;
+      if (isFeverHalf(x.note)) continue;
       x.key = false;
       if (x.type === 'calitate') {
         x.type = 'z2';
         x.intervals = undefined;
       }
       x.targetZones = x.sport === 'forta' ? [] : [1, 2];
+      // Durata și conținutul din aceleași cifre (forța: exercițiile care încap; restul: structura rescrisă).
+      Object.assign(x, resizeWorkout(x, Math.max(15, Math.round((x.plannedMinutes * 0.5) / 5) * 5)));
       x.note = FEVER_HALF_NOTE;
       changes.push(`${x.id}: −50%, fără intensitate (după febră)`);
     }

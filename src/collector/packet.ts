@@ -530,7 +530,9 @@ function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['f
   const next = input.plan.filter((w) => w.type === 'forta' && isActiveWorkout(w) && w.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
   // Planurile dinaintea programului AIRON („Push 1 · …”): prescripția se recalculează cu aceeași regulă ca generatorul.
   const first = input.plan.reduce<string | null>((m, w) => (m == null || w.date < m ? w.date : m), null);
-  const spec = next ? strengthSpecFor(input.plan, next, first ? addDays(first, -weekday(first)) : null, input.athlete.raceDate ?? null) : null;
+  const spec0 = next ? strengthSpecFor(input.plan, next, first ? addDays(first, -weekday(first)) : null, input.athlete.raceDate ?? null) : null;
+  // Acasă = exercițiile cu gantere, bandă, corp (aceeași regulă ca ecranul).
+  const spec = spec0 && !spec0.place && (input.athlete.fitness as { acces?: string } | null)?.acces === 'acasa' ? { ...spec0, place: 'acasa' as const } : spec0;
   const since = addDays(today, -21);
   const planned = input.plan.filter((w) => w.type === 'forta' && w.date >= since && w.date < today && w.status !== 'sters').length;
   const done = acts.filter((a) => a.sport === 'forta' && a.date >= since && a.date < today).length;
