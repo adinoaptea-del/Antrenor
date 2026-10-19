@@ -325,7 +325,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     trainingHistory: await loadHistorySummary(userId, today).catch(() => null),
     recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
     // Doar faptul că o sursă blocată e conectată (din tokenuri, nu din datele ei): AI-ul știe că nu vede tot.
-    hiddenSources: (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(',')})` }, { select: 'provider', limit: 5 }).catch(() => [])).map((r) => r.provider),
+    hiddenSources: AI_BLOCKED_SOURCES.size ? (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(',')})` }, { select: 'provider', limit: 5 }).catch(() => [])).map((r) => r.provider) : [],
     plan: planRes.workouts,
     zones,
     morning: forms.morning,

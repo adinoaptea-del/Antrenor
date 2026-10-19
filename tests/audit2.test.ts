@@ -150,10 +150,14 @@ describe('47 / T46 · testul fără ergometru nu pune pragurile la alergare', ()
   });
 });
 
-describe('12 / T11 · registrul surselor pentru AI (v3: Strava blocată)', () => {
-  it('filtrul scoate sursa Strava, păstrează restul', () => {
-    const rows = allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: 'apple' }, { source: null }]);
-    assert.deepEqual(rows.map((r) => r.source), ['whoop', 'apple', null]);
+describe('12 / T11 · registrul surselor pentru AI (v4: Strava temporar, până la Health)', () => {
+  it('fără date din Health, Strava ajunge la antrenorul sportivului', () => {
+    const rows = allowedForAI([{ source: 'strava' }, { source: 'whoop' }, { source: null }]);
+    assert.deepEqual(rows.map((r) => r.source), ['strava', 'whoop', null]);
+  });
+  it('când apar activitățile din Apple Health / Health Connect, Strava iese automat', () => {
+    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'apple' }]).map((r) => r.source), ['apple']);
+    assert.deepEqual(allowedForAI([{ source: 'strava' }, { source: 'android' }, { source: 'whoop' }]).map((r) => r.source), ['android', 'whoop']);
   });
 });
 

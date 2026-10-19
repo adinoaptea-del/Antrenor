@@ -929,9 +929,11 @@ function isBeginnerRunner(longestRunKm) {
 }
 
 // src/collector/permissions.ts
-var AI_BLOCKED_SOURCES = /* @__PURE__ */ new Set(["strava"]);
+var AI_BLOCKED_SOURCES = /* @__PURE__ */ new Set();
+var HEALTH_SOURCES = /* @__PURE__ */ new Set(["apple", "android"]);
 function allowedForAI(rows) {
-  return rows.filter((r2) => !r2.source || !AI_BLOCKED_SOURCES.has(r2.source));
+  const hasHealth = rows.some((r2) => !!r2.source && HEALTH_SOURCES.has(r2.source));
+  return rows.filter((r2) => !r2.source || !AI_BLOCKED_SOURCES.has(r2.source) && !(hasHealth && r2.source === "strava"));
 }
 
 // src/recovery/recovery.ts
@@ -4183,7 +4185,7 @@ async function collect(userId, today, event) {
     trainingHistory: await loadHistorySummary(userId, today).catch(() => null),
     recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
     // Doar faptul că o sursă blocată e conectată (din tokenuri, nu din datele ei): AI-ul știe că nu vede tot.
-    hiddenSources: (await select("oauth_tokens", { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(",")})` }, { select: "provider", limit: 5 }).catch(() => [])).map((r2) => r2.provider),
+    hiddenSources: AI_BLOCKED_SOURCES.size ? (await select("oauth_tokens", { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(",")})` }, { select: "provider", limit: 5 }).catch(() => [])).map((r2) => r2.provider) : [],
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
