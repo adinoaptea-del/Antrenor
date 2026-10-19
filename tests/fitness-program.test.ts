@@ -127,7 +127,7 @@ test('varietatea controlată (săpt. 13–16): un singur element schimbat pe șe
     const v = prescribeFull({ session: id, block: 'consolidare', week: 1, len: 4 });
     const diff = v.items.map((x) => x.ex.id).filter((x) => !base.includes(x));
     assert.ok(diff.length <= 1, `${id}: ${diff.join(', ')}`);
-    if (diff.length) assert.ok(v.notes.some((n) => /recalibrezi/.test(n)));
+    if (diff.length) assert.ok(v.notes.some((n) => /cauți din nou greutatea/.test(n)));
   }
   assert.equal(SESSIONS.fa.exercises.length, 7);
 });

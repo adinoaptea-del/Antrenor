@@ -135,17 +135,17 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
           )}
           {yellow && <YellowDay w={w} />}
 
-          <div className="sheet-why">{fitness && w.type === 'forta' ? 'Forță pentru obiectivul tău: mușchi construit sau păstrat, mai multă forță în viața de zi cu zi. Greutățile le alegi tu, după rezerva cerută.' : purposeOf(w)}</div>
+          <div className="sheet-why">{fitness && w.type === 'forta' ? 'Forță pentru obiectivul tău: mușchi construit sau păstrat, mai multă forță în viața de zi cu zi. Greutățile le alegi tu: una cu care mai aveai câteva repetări la final.' : purposeOf(w)}</div>
 
           {rx ? (
             <>
               <div className="sheet-k">Ce faci</div>
               <ol className="sheet-steps">
                 <li>
-                  <b>Încălzire</b> 5–8 min mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu sunt serii de lucru).
+                  <b>Încălzire</b> 5–8 min de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără).
                 </li>
                 <li>
-                  <b>Exercițiile</b> în ordinea de mai jos, cu {rx.items[0]?.rir ?? '2–3'} repetări în rezervă: te oprești când mai poți face încă atâtea, corect.
+                  <b>Exercițiile</b> în ordinea de mai jos. La fiecare serie te oprești când mai aveai încă {rx.items[0]?.rir ?? '2–3'} repetări bune în tine; nu mergi până nu mai poți.
                 </li>
                 <li>
                   <b>La final</b> 3–5 min de revenire ușoară, opțional.
@@ -157,14 +157,15 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                     <div className="str-ex">
                       <b>{r.ex.name}</b>
                       <span>
-                        {r.ex.purpose ?? r.ex.group} · pauză {fmtRest(r.rest)} · rezervă {r.rir}
-                        {r.ex.unilateral ? ' · repetările sunt pe fiecare parte' : ''}
-                        {r.completion ? ' · completare' : ''}
+                        {r.ex.purpose ?? r.ex.group} · pauză {fmtRest(r.rest)}
+                        {r.ex.unilateral ? ' · pe fiecare parte' : ''}
+                        {r.optional ? ' · opțional' : ''}
+                        {r.completion ? ' · în plus' : ''}
                       </span>
-                      {r.ex.setup && <span className="str-cue">Reglare: {r.ex.setup}.</span>}
-                      <span className="str-cue">Execuție: {r.ex.cue}.</span>
-                      {r.ex.mistakes && <span className="str-cue">Greșeli frecvente: {r.ex.mistakes}.</span>}
-                      <span className="str-cue">Alternativă: {r.ex.alt} (se recalibrează separat).</span>
+                      {r.ex.setup && <span className="str-cue">Cum reglezi: {r.ex.setup}.</span>}
+                      <span className="str-cue">Cum faci: {r.ex.cue}.</span>
+                      {r.ex.mistakes && <span className="str-cue">Atenție: {r.ex.mistakes}.</span>}
+                      <span className="str-cue">Dacă e ocupat: {r.ex.alt}.</span>
                       <StrengthHint r={r} maintain={rx.spec.block === 'mentinere'} />
                     </div>
                     <div className="str-sets">
@@ -182,7 +183,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                   ))}
                 </ul>
               )}
-              <p className="muted tiny">Demonstrații video verificate pentru exerciții: încă nu avem; până atunci, execuția e descrisă în text.</p>
+              <p className="muted tiny">Încă nu avem filmări cu execuția; o găsești descrisă la fiecare exercițiu.</p>
               {w.date <= me.today && w.status !== 'anulat_sistem' && !paused && <StrengthLogForm key={w.id} w={w} rx={rx} />}
             </>
           ) : (

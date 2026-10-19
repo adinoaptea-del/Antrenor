@@ -205,18 +205,18 @@ export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'acti
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */
 export const FITNESS_WEEK_ACTION: Record<number, string> = {
   1: 'Alegi două ședințe F1/F2; câte o serie pe exercițiu poate fi suficientă. Notezi setările aparatelor.',
-  2: 'Repeți F1/F2. Două serii la exercițiile principale doar dacă prima săptămână a fost tolerată.',
+  2: 'Repeți F1/F2. Două serii la exercițiile principale doar dacă prima săptămână a mers bine.',
   3: 'Crești repetările în intervalul prescris la unul sau două exerciții. Nu crești toate greutățile.',
   4: 'Revizuiești tehnica, timpul și simptomele. Păstrezi doza sau o reduci dacă recuperarea e slabă.',
   5: 'Continui două zile sau treci la trei, cu seriile reduse la început, nu cu tot volumul dintr-odată.',
-  6: 'Progresia dublă: întâi repetări, apoi cel mai mic pas de greutate disponibil.',
-  7: 'Menții. Mersul/cardio-ul crește numai dacă nu scade toleranța la sală.',
+  6: 'Cum crești: întâi repetări, apoi greutatea imediat următoare.',
+  7: 'Menții. Mersul/cardio-ul crește numai dacă nu te simți mai obosită la sală.',
   8: 'Verifici performanța, energia și tendințele, fără test maximal. Cel mult 1–2 înlocuiri, dacă există motiv.',
   9: 'Consolidezi schema aleasă. Patru zile doar prin distribuirea volumului existent.',
-  10: 'Crești sarcina la un exercițiu dacă toate seriile au atins capătul de sus cu rezerva cerută.',
-  11: 'Păstrezi exercițiile de referință; opțional o serie în plus la un exercițiu prioritar bine tolerat.',
-  12: 'Revizuire. Dacă se adună oboseala: mai puține serii și mai multă rezervă.',
-  13: 'Începe consolidarea, din doza tolerată, fără salt automat față de săptămâna 11.',
+  10: 'Crești sarcina la un exercițiu dacă toate seriile au atins capătul de sus fără să mergi până la limită.',
+  11: 'Păstrezi exercițiile de referință; opțional o serie în plus la un exercițiu prioritar care merge bine.',
+  12: 'Revizuire. Dacă se adună oboseala: mai puține serii și oprit mai departe de limită.',
+  13: 'Începe consolidarea, de la cât duci acum, fără salt automat față de săptămâna 11.',
   14: 'Verifici seriile la fesieri/picioare și efectul mersului. Adaugi doar dacă progresul stagnează și recuperarea permite.',
   15: 'Progresezi repetări sau greutate; nu și cardio, și toate seriile deodată.',
   16: 'Revizuiești obiectivul cu nutriționistul. Nu reduci mâncarea pentru o săptămână cu cântarul stabil.',
@@ -224,10 +224,10 @@ export const FITNESS_WEEK_ACTION: Record<number, string> = {
   18: 'Urmărești energia, foamea și recuperarea; apa și glicogenul în plus nu sunt grăsime recâștigată.',
   19: 'Exersezi o săptămână aglomerată cu varianta de două zile, dacă e util.',
   20: 'Stabilești volumul de menținere și preferințele pe termen lung. Fără test de epuizare.',
-  21: 'Alegi 2, 3 sau 4 zile sustenabile; păstrezi mișcările principale, cu 2–3 repetări în rezervă.',
+  21: 'Alegi 2, 3 sau 4 zile sustenabile; păstrezi mișcările principale, oprindu-te când mai aveai 2–3 repetări.',
   22: 'Dacă reduci volumul, elimini întâi accesoriile, nu ședințele principale.',
   23: 'Verifici dacă performanța se menține la doza redusă.',
-  24: 'Revizuiești toleranța, măsurătorile opționale și cât de mulțumită ești de plan.',
+  24: 'Te uiți cum te simți, măsurătorile opționale și cât de mulțumită ești de plan.',
   25: 'Pregătești următorul bloc: continui menținerea sau alegi un obiectiv nou de forță/masă musculară.',
   26: 'Bilanț față de început: ședințe făcute, tehnică, greutăți, funcție, bunăstare. Nu doar kilogramele.',
 };
@@ -255,13 +255,13 @@ function plusDays(iso: string, n: number): string {
 
 /** Ce face săptămâna în varianta amplă A–D (programul din 19.10.2026). */
 const WIDE_ACTION: [number, string][] = [
-  [2, 'Învățare: două serii de lucru pe exercițiu, cu 3–4 repetări în rezervă. Notezi setările aparatelor.'],
+  [2, 'Învățare: două serii de lucru pe exercițiu, oprindu-te când mai aveai 3–4 repetări. Notezi setările aparatelor.'],
   [4, 'Consolidare: rămân două serii; progresezi în control și repetări.'],
-  [8, 'Construire: doza A–D (trei serii la exercițiile principale) doar dacă toleranța și timpul permit.'],
+  [8, 'Construire: doza A–D (trei serii la exercițiile principale) doar dacă te simți bine și ai timp.'],
   [12, 'Progres: aceleași exerciții principale, repetări sau încărcări mai bune.'],
-  [16, 'Varietate controlată: un element echivalent pe ședință, recalibrat; principalele rămân.'],
+  [16, 'Varietate controlată: câte un exercițiu schimbat cu unul asemănător, cu greutatea căutată din nou; principalele rămân.'],
   [20, 'Consolidare: progres numai susținut de execuții și recuperare.'],
-  [24, 'Stabilizare: păstrezi performanța, fără escaladare obligatorie.'],
+  [24, 'Stabilizare: păstrezi performanța, nu trebuie să crești.'],
   [26, 'Tranziție: testezi o doză mai mică (o serie mai puțin la exercițiile cu trei serii) pentru menținere.'],
 ];
 
@@ -304,9 +304,9 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined): Fitn
 
 export const FITNESS_RULES: { t: string; d: string }[] = [
   { t: 'Efort', d: 'Cu repetări în rezervă (RIR): 3–4 la început, apoi 2–3. La RIR 3 te oprești când crezi că mai poți face cam trei repetări corecte. Fără epuizare.' },
-  { t: 'Progresie dublă', d: 'La 2 × 8–12: alegi greutatea cu care faci cel puțin 8 repetări corecte. Adaugi repetări; când ambele serii ajung la 12, cu tehnica și rezerva păstrate, de două ori la rând, încerci cel mai mic pas de greutate și revii spre 8–10.' },
+  { t: 'Progresie dublă', d: 'La 2 × 8–12: alegi greutatea cu care faci cel puțin 8 repetări corecte. Adaugi repetări; când ambele serii ajung la 12, cu tehnica și rezerva păstrate, de două ori la rând, încerci greutatea imediat următoare și revii spre 8–10.' },
   { t: 'Încălzire', d: '5–8 min de mișcare ușoară și 1–3 serii progresive la primele exerciții. Nu sunt serii de lucru și nu e nevoie de 20 de minute de „activare”.' },
-  { t: 'Pauze', d: '90–120 s la exercițiile principale, 60–90 s la accesorii, 45–60 s la trunchi.' },
+  { t: 'Pauze', d: '90–120 s la exercițiile mari, 60–90 s la cele mici, 45–60 s la abdomen.' },
   { t: 'Ședință ratată', d: 'Continui rotația de unde ai rămas. Nu dublezi și nu înghesui două zile de picioare.' },
   { t: 'Tonifiere', d: 'Înseamnă mușchi construit sau păstrat, plus compoziția corporală când o dorești. Nu există slăbire localizată pe abdomen, coapse sau brațe.' },
   { t: 'Durere', d: 'Durere nouă în articulație sau care crește: oprești exercițiul și spui în formularul de seară. Durere în piept, leșin sau lipsă de aer: oprești efortul și ceri ajutor medical.' },

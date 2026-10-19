@@ -102,7 +102,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
                   rep. <input inputMode="text" value={v.reps} placeholder="12/11/10" onChange={(e) => set('reps', e.target.value)} aria-label={`${r.ex.name}: repetări pe fiecare serie, despărțite prin /`} />
                 </label>
                 <label>
-                  rezervă <input inputMode="numeric" value={v.rir} onChange={(e) => set('rir', e.target.value)} aria-label={`${r.ex.name}: repetări în rezervă`} />
+                  mai puteai <input inputMode="numeric" value={v.rir} onChange={(e) => set('rir', e.target.value)} aria-label={`${r.ex.name}: câte repetări mai puteai face`} />
                 </label>
               </div>
             );

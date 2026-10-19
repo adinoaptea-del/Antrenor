@@ -1,5 +1,5 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
-import { FULL_ROTATION, PPL_ROTATION, isLegsSession, prescribe, strengthBlocks, strengthStructure, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
+import { FULL_ROTATION, PPL_ROTATION, isLegsSession, newSplitState, nextSplit, prescribe, strengthBlocks, strengthStructure, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 import { BIKE_TEST, BRICK_TRANSITION_MIN, RUN_TEST, brickText, normalizeWorkout } from './coherence.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
@@ -224,7 +224,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     });
   }
 
-  assignStrengthDays(out, input.raceDate);
+  assignStrengthDays(out, input.raceDate, input.athlete?.sex === 'm' ? 'ppl' : undefined);
   // Validatorul final: nicio fază sau șablon nu trece de limita de intensitate și de capacitatea de înot declarată.
   const limits = { intensityAllowed: input.intensityAllowed, swimContinuous400: input.swimContinuous400 };
   // Zi tare, zi ușoară și cel mult 3 ședințe grele pe săptămână, pe toate sporturile la un loc.
@@ -298,15 +298,18 @@ function strengthSessions(p: Phase, slots: number): Session[] {
  * (strânse sub 26, extinse peste), fiecare ședință primește varianta din rotație și doza blocului, apoi conținutul
  * se potrivește în minutele pe care le are ședința în calendar (accesoriile cad primele, pauzele rămân întregi).
  * Rotația: 3+ ședințe pe săptămână → Push A, Pull A, Legs A, Push B, Pull B, Legs B; 1–2 → tot corpul A/B.
+ * Bărbații (`split = 'ppl'`, cerința proprietarului): mereu Push → Pull → Picioare, oricâte ședințe sunt pe săptămână,
+ * cu exerciții care se schimbă de la o ședință la alta (varianta).
  * Picioarele: în PPL, Legs nu cade în ajunul unei ședințe-cheie (trece la următoarea); cu tot corpul, picioarele sunt
  * ușoare în ajunul ei. În ultimele 10 zile dinaintea cursei, fără picioare.
  */
-export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string): void {
+export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?: 'ppl'): void {
   const blocks = strengthBlocks(weeks.length);
   const keyDates = new Set(weeks.flatMap((w) => w.workouts.filter((x) => x.key).map((x) => x.date)));
   let pplI = 0;
   let fullI = 0;
   let deferred: SessionId | null = null;
+  const st = newSplitState();
   weeks.forEach((w, wi) => {
     const bw = blocks[wi] ?? { block: 'mentinere' as const, week: 1, len: 1 };
     const fs = w.workouts.filter((x) => x.type === 'forta').sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -315,7 +318,12 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string): void {
       const beforeKey = keyDates.has(addDays(x.date, 1));
       const nearRace = raceDate ? diffDays(x.date, raceDate) <= 10 : w.phase === 'taper';
       let session: SessionId;
-      if (ppl) {
+      let variant: number | undefined;
+      if (split === 'ppl') {
+        const n = nextSplit(st, beforeKey, nearRace);
+        session = n.session;
+        variant = n.variant;
+      } else if (ppl) {
         if (deferred && !beforeKey && !nearRace) {
           session = deferred;
           deferred = null;
@@ -331,7 +339,7 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string): void {
         session = FULL_ROTATION[fullI++ % FULL_ROTATION.length]!;
       }
       const legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
-      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs };
+      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs: split === 'ppl' && legs === 'usor' ? 'normal' : legs, ...(variant != null ? { variant } : {}) };
       const rx = prescribe(spec, x.plannedMinutes);
       x.structure = strengthStructure(spec);
       // Ședința durează cât conținutul ei, cel mult cât are în calendar.

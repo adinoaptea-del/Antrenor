@@ -367,7 +367,7 @@ function StrengthCard() {
   const fit = isFitnessSession(sp.session);
   return (
     <Card tight>
-      <Label>{fit ? `Programul de fitness · ${rx.session.id.startsWith('f') ? '2 zile, F1/F2' : rx.session.id.endsWith('3') ? '3 zile, A3/B3/C3' : '4 zile, L1/U1/L2/U2'}` : `Programul de forță · ${sp.session.startsWith('full') ? 'tot corpul A/B' : 'Push / Pull / Legs A/B'}`}</Label>
+      <Label>{fit ? `Programul de fitness · ${rx.session.id.startsWith('f') ? '2 zile, F1/F2' : rx.session.id.endsWith('3') ? '3 zile, A3/B3/C3' : '4 zile, L1/U1/L2/U2'}` : `Programul de forță · ${sp.session.startsWith('full') ? 'tot corpul A/B' : sp.variant != null ? 'Push / Pull / Picioare' : 'Push / Pull / Legs A/B'}`}</Label>
       <div className="det-pills" role="tablist" aria-label="Ședința de forță">
         {upcoming.slice(0, 6).map((x, i) => (
           <button key={x.id} role="tab" aria-selected={i === idx} className={`det-pill ${i === idx ? 'on' : ''}`} onClick={() => setIdx(i)}>
@@ -377,7 +377,7 @@ function StrengthCard() {
         ))}
       </div>
       <div className="str-head">
-        <span className="num md">{rx.session.name}</span>
+        <span className="num md">{rx.session.name}{sp.variant != null ? <small className="muted"> · varianta {sp.variant + 1}</small> : null}</span>
         <span className="small muted">
           {dayLabel} · ~{rx.minutes} min
         </span>
@@ -388,7 +388,7 @@ function StrengthCard() {
         </b>
         <span>{(fit ? FITNESS_BLOCK_GOAL[sp.block] : null) ?? BLOCK_GOAL[sp.block]}</span>
         <span>
-          Efort: {rx.items[0]?.rir ?? '2–3'} repetări în rezervă · {rx.session.focus}
+          {rx.session.focus}. Te oprești din serie când mai aveai {rx.items[0]?.rir ?? '2–3'} repetări bune.
         </span>
       </div>
       <div className="str-list">
@@ -399,10 +399,11 @@ function StrengthCard() {
               <span>
                 {r.completion ? 'completare · ' : ''}
                 {r.ex.group} · pauză {fmtRest(r.rest)}
+                {r.optional ? ' · opțional' : ''}
               </span>
               {openEx === r.ex.id && (
                 <span className="str-cue">
-                  {r.ex.cue}. Alternativă: {r.ex.alt}.{r.note ? ` ${r.note.replace(/^./, (c) => c.toUpperCase())}.` : ''}
+                  Cum faci: {r.ex.cue}. Dacă e ocupat: {r.ex.alt}.{r.note && r.note !== 'opțional' ? ` ${r.note.replace(/^./, (c) => c.toUpperCase())}.` : ''}
                 </span>
               )}
             </div>
@@ -422,7 +423,7 @@ function StrengthCard() {
         </ul>
       )}
       <button className="pill" style={{ marginTop: 12 }} onClick={() => setShowRules(!showRules)} aria-expanded={showRules}>
-        {showRules ? 'Ascunde indicațiile' : 'Indicații: efort, pauze, progresie'}
+        {showRules ? 'Ascunde regulile' : 'Reguli: cât de greu, pauze, cum crești'}
       </button>
       {showRules && (
         <div className="str-rules">
@@ -431,7 +432,7 @@ function StrengthCard() {
               <b>{r.t}.</b> {r.d}
             </div>
           ))}
-          <div className="tiny muted">Ședința e potrivită în timpul pe care îl ai în calendar: când e scurt, cad accesoriile, nu pauzele de la mișcările principale. Fără istoric de greutăți, prima dată calibrezi.</div>
+          <div className="tiny muted">Ședința încape în timpul din calendar: când e puțin timp, sari întâi peste abdomen și exercițiile mici, nu peste pauze.</div>
         </div>
       )}
     </Card>
