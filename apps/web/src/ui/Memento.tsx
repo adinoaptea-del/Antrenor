@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
+import { Orb } from './Orb';
+import { GlassFX } from './Glass';
+import { Warp } from './Warp';
 
 // Mesajul de la deschidere: un mesaj motivațional la întâmplare, pe tot ecranul. Atingi → dispare în fade și intri în aplicație.
 export function Memento({ onClose }: { onClose: () => void }) {
@@ -9,10 +12,12 @@ export function Memento({ onClose }: { onClose: () => void }) {
   const [out, setOut] = useState(false);
   const [msg] = useState(randomMotivation);
   const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // La intrare: asteroidul vine și se așază (ca la felicitări). La ieșire: tranziția spațială (Warp) duce particulele
+  // spre margini, iar Acasă apare din spatele lor.
   const close = () => {
     if (out) return;
     setOut(true);
-    setTimeout(onClose, reduced ? 0 : 450);
+    if (reduced) onClose();
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -24,17 +29,26 @@ export function Memento({ onClose }: { onClose: () => void }) {
   const d = dayIndex(me);
   const pct = me.bar?.total == null ? null : Math.round(me.bar.total);
   return (
-    <button className={`memento ${out ? 'out' : ''}`} onClick={close} aria-label="Intră în aplicație">
-      <div className="inner">
-        <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'AIRON'}</div>
-        <div className="txt">{msg}</div>
-        {pct != null && (
-          <div className="bar" aria-hidden="true">
-            <i style={{ width: `${pct}%` }} />
-          </div>
-        )}
-        <div className="tap">atinge ca să intri</div>
-      </div>
-    </button>
+    <>
+      <button className={`memento ${out ? 'out' : ''}`} onClick={close} aria-label="Intră în aplicație">
+        <div className="memento-orb">
+          <Orb decor onPress={close} label="">
+            <span />
+          </Orb>
+        </div>
+        <div className="inner glass memento-card">
+          <GlassFX level={0.26} seed={7} />
+          <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'AIRON'}</div>
+          <div className="txt">{msg}</div>
+          {pct != null && (
+            <div className="bar" aria-hidden="true">
+              <i style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          <div className="tap">atinge ca să intri</div>
+        </div>
+      </button>
+      {out && !reduced && <Warp onDone={onClose} />}
+    </>
   );
 }

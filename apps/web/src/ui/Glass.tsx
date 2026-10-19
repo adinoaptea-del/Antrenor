@@ -42,6 +42,7 @@ export function GlassFX({ level = 0.22, seed = 5 }: { level?: number; seed?: num
       const H = h * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
+      if (W < 4 || H < 4) return;
       // Lichidul de pe fund: o bandă luminoasă, cu menisc ondulat lent (sus) și lumină care se stinge în sus.
       const base = H * (1 - level);
       ctx.beginPath();

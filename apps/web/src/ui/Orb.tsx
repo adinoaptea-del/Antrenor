@@ -6,7 +6,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
  * Animația se oprește când pagina e ascunsă, când bula nu e pe ecran, când e deschisă fereastra ședinței sau la
  * „mișcare redusă” (atunci rămâne un cadru static).
  */
-export function Orb({ children, onPress, label, paused = false, dim = false, progress = null, celebrate = false }: { children: ReactNode; onPress: () => void; label: string; paused?: boolean; dim?: boolean; progress?: number | null; celebrate?: boolean }) {
+export function Orb({ children, onPress, label, paused = false, dim = false, progress = null, celebrate = false, decor = false }: { children: ReactNode; onPress: () => void; label: string; paused?: boolean; dim?: boolean; progress?: number | null; celebrate?: boolean; /** Doar decor (în interiorul altui buton): fără buton propriu. */ decor?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -104,6 +104,8 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
       const H = h * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
+      // Încă fără mărime (montare, ecran ascuns): nimic de desenat, fără valori NaN în gradienți.
+      if (W < 4 || H < 4) return;
       const cx = W / 2;
       const cy = H / 2;
       const R = Math.min(W, H) * 0.37 * (1 + 0.06 * burst);
@@ -261,6 +263,13 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
     };
   }, []);
 
+  if (decor)
+    return (
+      <div className={`orb ${dim ? 'dim' : ''}`} aria-hidden="true">
+        <canvas ref={canvas} className="orb-cv" />
+        <span className="orb-in">{children}</span>
+      </div>
+    );
   return (
     <button className={`orb ${dim ? 'dim' : ''}`} onClick={onPress} aria-label={label}>
       <canvas ref={canvas} className="orb-cv" aria-hidden="true" />

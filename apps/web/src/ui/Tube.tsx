@@ -46,6 +46,7 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
       const r = H / 2;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
+      if (W < 4 || H < 4) return;
       const target = pctRef.current == null ? 0 : Math.max(0, Math.min(100, pctRef.current)) / 100;
       shown += (target - shown) * Math.min(1, dt * 2.5);
       const capsule = () => {

@@ -1431,3 +1431,21 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 @media (prefers-reduced-motion: reduce) {
   .cheer-wrap, .cheer-wrap.out, .cheer-orb, .cheer { animation: none; }
 }
+
+/* ——— Mesajul de bun venit: același asteroid ca felicitările, apoi tranziția spațială spre Acasă ——— */
+.memento { align-content: center; gap: 0; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(70% 50% at 50% 38%, rgba(110, 236, 140, 0.1), transparent 70%), var(--bg); }
+.memento-orb { width: min(64vw, 250px); margin-bottom: -50px; z-index: 2; position: relative; animation: asteroid 1.15s cubic-bezier(0.18, 0.9, 0.24, 1.08) both; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
+.memento-orb .orb { width: 100%; }
+.memento .memento-card { width: min(100%, 400px); max-width: none; border-radius: 30px; padding: 60px 22px 22px; gap: 14px; overflow: hidden; animation: cheer-card 0.6s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.memento-card > :not(.glass-fx) { position: relative; z-index: 1; }
+.memento .txt { font-size: clamp(26px, 7vw, 34px); }
+/* La ieșire: bula și fereastra se dizolvă în particulele care zboară spre margini (Warp), ecranul se luminează spre Acasă. */
+.memento.out { transition: opacity 0.7s ease 0.12s; }
+.memento.out .memento-orb { animation: orb-warp 0.7s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+.memento.out .memento-card { animation: card-warp 0.5s ease-in forwards; }
+@keyframes orb-warp { to { transform: scale(2.6); opacity: 0; filter: blur(8px) drop-shadow(0 0 60px rgba(222, 252, 70, 0.6)); } }
+@keyframes card-warp { to { transform: scale(1.08); opacity: 0; filter: blur(6px); } }
+.warp { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 101; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .memento-orb, .memento .memento-card, .memento.out .memento-orb, .memento.out .memento-card { animation: none; }
+}
