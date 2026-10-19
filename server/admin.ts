@@ -21,8 +21,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
     if (req.method === 'GET') {
       const monthStart = `${todayIn('Europe/Bucharest').slice(0, 7)}-01`;
-      const [users, tokens, logs, intakes, plans, msgs, usage, acts] = await Promise.all([
-        select<{ id: string; email: string; name: string; created_at: string; tz: string }>('users', {}, { select: 'id,email,name,created_at,tz', order: 'created_at.asc' }),
+      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights] = await Promise.all([
+        select<{ id: string; email: string; name: string; created_at: string; tz: string; sex: string | null; birth_year: number | null; height_cm: number | null }>('users', {}, { select: '*', order: 'created_at.asc' }),
         select<{ user_id: string; provider: string }>('oauth_tokens', {}, { select: 'user_id,provider' }),
         select<{ user_id: string; provider: string; ok: boolean; detail: string | null; ran_at: string }>('sync_log', {}, { order: 'ran_at.desc', limit: 300 }),
         select<{ user_id: string }>('questionnaires', { kind: 'eq.intrare' }, { select: 'user_id' }),
@@ -30,6 +30,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<{ user_id: string; created_at: string; kind: string }>('messages', {}, { select: 'user_id,created_at,kind', order: 'created_at.desc', limit: 300 }),
         select<{ user_id: string | null; input_tokens: number; output_tokens: number; cache_write_tokens?: number; cache_read_tokens?: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: '*', limit: 20000 }).catch(() => []),
         select<{ user_id: string; date: string; sport: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', {}, { select: 'user_id,date,sport,source,name,minutes,distance_km', order: 'date.desc', limit: 400 }),
+        select<{ user_id: string }>('wellness_daily', { source: 'eq.manual', weight_kg: 'not.is.null' }, { select: 'user_id' }).catch(() => []),
       ]);
       const today = todayIn('Europe/Bucharest');
       const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0), 0) * 100) / 100;
@@ -56,6 +57,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== 'memento')?.created_at ?? null,
             costMonth: cost(usage.filter((r) => r.user_id === x.id)),
+            // Mesele sunt personalizate doar cu toate cele patru date (aceleași ca în motorul de nutriție).
+            nutritionMissing: [x.sex ? null : 'sexul', x.birth_year ? null : 'anul nașterii', x.height_cm ? null : 'înălțimea', weights.some((w) => w.user_id === x.id) ? null : 'greutatea'].filter((v): v is string => !!v),
             recent: acts.filter((r) => r.user_id === x.id && r.source !== 'strava').slice(0, 8).map((r) => ({ date: r.date, sport: r.sport, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km })),
           };
         }),

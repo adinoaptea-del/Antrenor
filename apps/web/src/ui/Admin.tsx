@@ -125,6 +125,12 @@ export function Admin({ onBack }: { onBack: () => void }) {
               {u.intake ? <span className="ok">{Icons.check}</span> : <div className="no">necompletat</div>}
               <div className="k">Plan</div>
               {u.planStart ? <div className="tiny">din {u.planStart.split('-').reverse().join('.')}</div> : <div className="no">fără plan</div>}
+              {u.nutritionMissing && (
+                <>
+                  <div className="k">Mese</div>
+                  {u.nutritionMissing.length ? <div className="no">nepersonalizate: lipsește {u.nutritionMissing.join(', ')}</div> : <div className="tiny">personalizate</div>}
+                </>
+              )}
               {u.devices.length === 0 && (
                 <>
                   <div className="k">Brățări</div>

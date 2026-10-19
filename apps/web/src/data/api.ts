@@ -290,6 +290,7 @@ export interface AdminUser {
   devices: { provider: string; lastSync: string | null; ok: boolean | null; detail: string | null }[];
   lastMessage: string | null;
   costMonth?: number;
+  nutritionMissing?: string[];
   recent?: { date: string; sport: string; source: string; name: string | null; minutes: number; km: number | null }[];
 }
 

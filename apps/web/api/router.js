@@ -10394,15 +10394,16 @@ async function handler16(req, res) {
     if (me?.role !== "admin") throw new HttpError(403, "doar adminul");
     if (req.method === "GET") {
       const monthStart = `${todayIn("Europe/Bucharest").slice(0, 7)}-01`;
-      const [users, tokens, logs, intakes, plans, msgs, usage, acts] = await Promise.all([
-        select("users", {}, { select: "id,email,name,created_at,tz", order: "created_at.asc" }),
+      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights] = await Promise.all([
+        select("users", {}, { select: "*", order: "created_at.asc" }),
         select("oauth_tokens", {}, { select: "user_id,provider" }),
         select("sync_log", {}, { order: "ran_at.desc", limit: 300 }),
         select("questionnaires", { kind: "eq.intrare" }, { select: "user_id" }),
         select("plans", { active: "eq.true" }, { select: "user_id,start_date" }),
         select("messages", {}, { select: "user_id,created_at,kind", order: "created_at.desc", limit: 300 }),
         select("ai_usage", { created_at: `gte.${monthStart}T00:00:00Z` }, { select: "*", limit: 2e4 }).catch(() => []),
-        select("activities", {}, { select: "user_id,date,sport,source,name,minutes,distance_km", order: "date.desc", limit: 400 })
+        select("activities", {}, { select: "user_id,date,sport,source,name,minutes,distance_km", order: "date.desc", limit: 400 }),
+        select("wellness_daily", { source: "eq.manual", weight_kg: "not.is.null" }, { select: "user_id" }).catch(() => [])
       ]);
       const today = todayIn("Europe/Bucharest");
       const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0), 0) * 100) / 100;
@@ -10428,6 +10429,8 @@ async function handler16(req, res) {
             devices: byProvider,
             lastMessage: msgs.find((m) => m.user_id === x.id && m.kind !== "memento")?.created_at ?? null,
             costMonth: cost(usage.filter((r2) => r2.user_id === x.id)),
+            // Mesele sunt personalizate doar cu toate cele patru date (aceleași ca în motorul de nutriție).
+            nutritionMissing: [x.sex ? null : "sexul", x.birth_year ? null : "anul na\u0219terii", x.height_cm ? null : "\xEEn\u0103l\u021Bimea", weights.some((w) => w.user_id === x.id) ? null : "greutatea"].filter((v) => !!v),
             recent: acts.filter((r2) => r2.user_id === x.id && r2.source !== "strava").slice(0, 8).map((r2) => ({ date: r2.date, sport: r2.sport, source: r2.source, name: r2.name, minutes: r2.minutes, km: r2.distance_km }))
           };
         })

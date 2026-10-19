@@ -175,3 +175,13 @@ test('personalizare: bărbat 70.3 și femeie tonifiere au mese și gramaje difer
     assert.equal(new Set(mains).size, mains.length, `ziua ${addDays(D, k)}: ${mains.join(',')}`);
   }
 });
+
+test('în fiecare zi: aceeași persoană, zi de pauză vs zi lungă → altă țintă și alte gramaje; mesele se schimbă de la o zi la alta', () => {
+  const p = { athleteId: 'u-a', goal: '70.3', athlete: { sex: 'm' as const, age: 35, heightCm: 180, weightKg: 78 }, prefs: DEFAULT_PREFS };
+  const rest = nutritionDay({ ...p, date: '2026-10-19', sessions: [] });
+  const long = nutritionDay({ ...p, date: '2026-10-19', sessions: [{ sport: 'bicicleta', type: 'lung', minutes: 150, startMin: 540 }] });
+  assert.ok(long.energy!.target > rest.energy!.target + 500);
+  assert.ok(long.totals.kcal > rest.totals.kcal + 300);
+  const next = nutritionDay({ ...p, date: '2026-10-20', sessions: [] });
+  assert.notEqual(next.meals.map((m) => m.recipe.id).join(), rest.meals.map((m) => m.recipe.id).join());
+});
