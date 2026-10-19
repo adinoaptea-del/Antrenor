@@ -1,10 +1,11 @@
 // Regulile proprietarului pentru forță și fitness (19.10.2026): ≥ 45 min cu încălzirea, 3–4 serii pe exercițiu,
 // niciodată picioare + partea de sus în aceeași ședință; femei după structura unei antrenoare reale; bărbați PPL.
-import { test } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generatePlan } from '../src/calendar/generate.js';
 import { fitnessProfile } from '../src/strength/fitness.js';
-import { parseStrength, prescribe, prescribeFull, strengthStructure } from '../src/strength/ppl.js';
+import { MIN_STRENGTH_MINUTES, parseStrength, prescribe, prescribeFull, strengthStructure } from '../src/strength/ppl.js';
+import { generateFitnessPlan } from '../src/calendar/fitness-plan.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
 import type { PlannedWorkout } from '../src/types.js';
 
@@ -97,4 +98,45 @@ test('femeie: fiecare zi are 3 variante din săptămânile antrenoarei; planul t
   const a = prescribe({ session: 'l1', block: 'progres', week: 2, len: 4, variant: 0 }, 90).items.map((i) => i.ex.id).join();
   const b = prescribe({ session: 'l1', block: 'progres', week: 2, len: 4, variant: 2 }, 90).items.map((i) => i.ex.id).join();
   assert.notEqual(a, b);
+});
+
+describe('începutul ședinței de sală: bandă sau bicicletă după obiectiv (regula 25)', () => {
+  it('slăbire: 20 min mers înclinat în zilele de sus, 10 în cele de picioare + cardio la final; intră în durată', () => {
+    const up = prescribe({ session: 'u1', block: 'progres', week: 2, len: 4, opener: 'slabire' }, 75);
+    assert.equal(up.warmup.min, 25);
+    assert.match(up.warmup.text, /^20 min mers pe bandă înclinată: pornești de la 5% înclinație și 5 km\/h/);
+    assert.match(up.warmup.text, /rotiri de umeri/);
+    assert.equal(up.finisher, null);
+    assert.ok(up.minutes <= 75 && up.minutes >= MIN_STRENGTH_MINUTES);
+    const legs = prescribe({ session: 'l1', block: 'progres', week: 2, len: 4, opener: 'slabire' }, 60);
+    assert.equal(legs.warmup.min, 15);
+    assert.match(legs.warmup.text, /^10 min mers pe bandă înclinată/);
+    assert.ok((legs.finisher?.min ?? 0) >= 5);
+    assert.equal(legs.minutes, 60);
+    assert.ok(legs.items.every((r) => r.sets >= 3 && r.sets <= 4));
+  });
+
+  it('slăbire: marcajul rămâne în textul din plan și se citește înapoi', () => {
+    const spec = { session: 'u2' as const, block: 'progres' as const, week: 1, len: 4, opener: 'slabire' as const };
+    assert.equal(parseStrength(strengthStructure(spec))?.opener, 'slabire');
+  });
+
+  it('anduranță: 5 min de pornire, pe alt aparat decât sportul zilei; niciodată 30 de minute', () => {
+    const run = prescribe({ session: 'fullA', block: 'forta', week: 2, len: 4 }, 60, { goal: '70.3', sameDay: ['alergare'] });
+    assert.equal(run.warmup.min, 10);
+    assert.match(run.warmup.text, /^5 min bicicletă staționară/);
+    const bike = prescribe({ session: 'fullB', block: 'forta', week: 2, len: 4 }, 60, { goal: '70.3', sameDay: ['bicicleta'] });
+    assert.match(bike.warmup.text, /^5 min bandă, mers vioi \(fără alergare\)/);
+    const both = prescribe({ session: 'fullB', block: 'forta', week: 2, len: 4 }, 60, { goal: '70.3', sameDay: ['bicicleta', 'alergare'] });
+    assert.match(both.warmup.text, /^5 min eliptică sau aparat de vâslit/);
+    assert.match(prescribe({ session: 'push', block: 'forta', week: 2, len: 4 }, 60, { goal: '10k' }).warmup.text, /^5 min bicicletă staționară/);
+  });
+
+  it('planul de fitness pentru slăbire scrie pornirea pe bandă înclinată în fiecare ședință', () => {
+    const r = generateFitnessPlan({ startDate: '2026-10-19', raceDate: '2027-04-19', freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 1080, endMin: 1170 })), fitness: { goal: 'fit-slabire', days: 3, minutes: 75, beginner: false } as never });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const ws = r.weeks[4]!.workouts;
+    assert.ok(ws.length > 0 && ws.every((w) => /cardio înclinat la început/.test(w.structure ?? '')));
+  });
 });

@@ -65,7 +65,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 
   // Bărbații: forța viitoare trece la Push / Pull / Picioare (și pe planurile vechi); se salvează, ca agenții,
   // calendarul și ecranele să vadă aceeași ședință.
-  const workouts = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null)).catch(() => planLoad.workouts);
+  const workouts = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null), (user.goal as string | null) ?? null).catch(() => planLoad.workouts);
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);

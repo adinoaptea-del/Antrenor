@@ -768,6 +768,14 @@ export interface StrengthSpec {
   variant?: number;
   /** Fitness: unde se antrenează (acasă = doar gantere, bandă, corp, scaun). */
   place?: 'sala' | 'acasa';
+  /** Slăbire: ședința începe cu mers pe bandă înclinată (20 min în zilele de sus, 10 în cele de picioare + restul la final). */
+  opener?: 'slabire';
+}
+
+/** Ce știe ecranul (sau pachetul) despre ziua ședinței: obiectivul și sporturile de anduranță din aceeași zi. */
+export interface StrengthDayContext {
+  goal?: string | null;
+  sameDay?: string[];
 }
 
 export interface Rx {
@@ -862,10 +870,66 @@ function itemSec(r: Rx, lastInGroup: boolean): number {
 }
 
 /** Minutele de exerciții + încălzire (fără cardio-ul de final). */
-export function estimateMinutes(items: Rx[]): number {
+export function estimateMinutes(items: Rx[], warmMin = WARMUP_MIN): number {
   const setup = items.filter((r) => r.ex.id.startsWith('fit-')).length * FIT_SETUP_SEC;
   const sec = items.reduce((n, r, i) => n + itemSec(r, !r.ss || items[i + 1]?.ss !== r.ss), 0);
-  return WARMUP_MIN + (sec + setup) / 60;
+  return warmMin + (sec + setup) / 60;
+}
+
+// ——— Începutul ședinței: bandă sau bicicletă, după obiectiv (cererea proprietarului, 19.10.2026) ———
+//
+// Ce spun studiile (raportat în CLAUDE.md, regula 25):
+//  - ACSM: 5–10 minute de încălzire ușoară-moderată înainte de efort.
+//  - Efortul aerob făcut imediat înaintea forței scade forța picioarelor (meta-analiza Sports Med 2022, 15 studii:
+//    efect moderat; și sub 30 de minute; mai mare după bicicletă decât după alergare).
+//  - Ordinea forță → aerob dă forță dinamică mai bună la picioare (+6,9%) și NU schimbă grăsimea corporală
+//    (meta-analiza Eddens 2018). Deci cardio-ul lung la început nu aduce slăbire în plus, doar costă forță la picioare.
+// De aici: la slăbire, 20 min de mers înclinat la început doar în zilele de sus (picioarele nu se antrenează atunci);
+// în zilele de picioare 10 min la început și restul la final. La sportivii de anduranță, 5 min ușor, ca pornire, pe un
+// aparat diferit de sportul zilei (fără alergare/bicicletă în plus), niciodată 30 de minute.
+
+const ENDURANCE_GOALS = new Set(['70.3', 'olimpic', 'sprint', 'full', 'semimaraton', 'maraton', '5k', '10k', 'inot-1500', 'inot-1900', 'inot-3800', 'bike-50', 'bike-100', 'bike-160', 'mers']);
+const isEnduranceGoal = (g: string | null | undefined) => !!g && ENDURANCE_GOALS.has(g);
+const RUN_GOALS_SET = new Set(['semimaraton', 'maraton', '5k', '10k']);
+const BIKE_GOALS_SET = new Set(['bike-50', 'bike-100', 'bike-160']);
+/** Ziua de picioare (pentru cât cardio încape la început). */
+const legsDay = (id: SessionId) => isLegsSession(id) || ['l1', 'l2', 'l3', 'fullA', 'f1', 'a3', 'b3'].includes(id);
+export const OPENER_INCLINE = 'mers pe bandă înclinată: pornești de la 5% înclinație și 5 km/h; respiri mai des, dar poți vorbi (ajustezi viteza, nu forțezi)';
+const MOBILITY = 'rotiri de umeri și șolduri, fandări și genuflexiuni fără greutate, apoi 1–2 serii ușoare la primul exercițiu (nu se numără)';
+
+/** Aparatul pentru pornire, fără să dubleze sportul de anduranță al zilei. */
+export function warmupMachine(goal: string | null | undefined, sameDay: string[] = [], place?: 'sala' | 'acasa'): string {
+  if (place === 'acasa') return 'mers vioi pe loc sau urcat ușor pe scări';
+  const run = sameDay.includes('alergare');
+  const bike = sameDay.includes('bicicleta');
+  if (run && bike) return 'eliptică sau aparat de vâslit';
+  if (run) return 'bicicletă staționară';
+  if (bike) return 'bandă, mers vioi (fără alergare)';
+  if (goal && RUN_GOALS_SET.has(goal)) return 'bicicletă staționară';
+  if (goal && BIKE_GOALS_SET.has(goal)) return 'bandă, mers vioi';
+  if (goal === 'mers') return 'bandă, mers vioi';
+  return 'bicicletă staționară sau bandă (mers vioi)';
+}
+
+/** Minutele de cardio la început (inclusă în încălzire). */
+function openerMin(spec: StrengthSpec, ctx?: StrengthDayContext): number {
+  if (spec.opener === 'slabire') return legsDay(spec.session) ? 10 : 20;
+  return isEnduranceGoal(ctx?.goal) ? 5 : 0;
+}
+
+/** Încălzirea completă: cardio la început (după obiectiv) + mobilitate; minutele intră în durata ședinței. */
+function warmupOf(spec: StrengthSpec, session: StrengthSession, ctx?: StrengthDayContext): { min: number; text: string } {
+  // Partea de după cardio din încălzirea ședinței (activare, serii ușoare); cardio-ul îl dă obiectivul.
+  const tail = session.warmup && /^\d+ min [^,]*,/.test(session.warmup) ? session.warmup.replace(/^\d+ min [^,]*,\s*(apoi\s*)?/, '') : MOBILITY;
+  if (spec.opener === 'slabire') {
+    const n = openerMin(spec, ctx);
+    const where = spec.place === 'acasa' ? 'mers vioi în pantă sau pe scări (acasă nu ai bandă), ritm la care poți vorbi' : OPENER_INCLINE;
+    return { min: n + 5, text: `${n} min ${where}${legsDay(spec.session) ? '; restul de cardio la final, ca picioarele să fie proaspete la greutăți' : ''}; apoi 5 min: ${tail}` };
+  }
+  if (isEnduranceGoal(ctx?.goal)) {
+    return { min: WARMUP_MIN, text: `5 min ${warmupMachine(ctx?.goal, ctx?.sameDay, spec.place)}, ușor, doar ca să pornească corpul (nu e antrenament de anduranță); apoi 5 min: ${tail}` };
+  }
+  return { min: WARMUP_MIN, text: session.warmup ?? DEFAULT_WARMUP };
 }
 
 /** Seriile de bază pe rol și bloc, înainte de plafon: principalele 4 în blocurile de construire, restul 3. */
@@ -875,8 +939,8 @@ function baseSets(r: Rx, spec: StrengthSpec): number {
 }
 
 /** Prescripția întreagă pentru blocul și săptămâna date, fără limită de timp. */
-export function prescribeFull(spec: StrengthSpec): Prescription {
-  if (isFitnessSession(spec.session)) return prescribeFitness(spec);
+export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+  if (isFitnessSession(spec.session)) return prescribeFitness(spec, ctx);
   const session = SESSIONS[spec.session];
   const rir = rirFor(spec);
   const notes: string[] = [];
@@ -918,7 +982,7 @@ export function prescribeFull(spec: StrengthSpec): Prescription {
   clampSets(items);
   const dropped: string[] = [];
   items = capPerMuscle(items, dropped);
-  return finish(spec, session, items, [], notes);
+  return finish(spec, session, items, [], notes, Infinity, ctx);
 }
 
 const roundUp5 = (m: number) => Math.ceil(m / 5) * 5;
@@ -933,10 +997,12 @@ function fitScheme(r: Rx): void {
   if (steps.length > r.sets) r.reps = steps.slice(0, r.sets).join(' / ') + m[2];
 }
 
-function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimmed: string[], notes: string[], limit = Infinity): Prescription {
+function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimmed: string[], notes: string[], limit = Infinity, ctx?: StrengthDayContext): Prescription {
   for (const r of items) fitScheme(r);
-  const work = Math.ceil(estimateMinutes(items));
-  const fin = session.finisher;
+  const warm = warmupOf(spec, session, ctx);
+  const work = Math.ceil(estimateMinutes(items, warm.min));
+  // Slăbire, zi de sus: cardio-ul s-a făcut la început; la final rămâne doar ce trebuie până la 45 de minute.
+  const fin = spec.opener === 'slabire' && !legsDay(spec.session) ? null : session.finisher;
   let finMin = 0;
   if (fin) {
     // Cu timp scurt, finalul de cardio scade până la 5 minute: întâi exercițiile.
@@ -954,7 +1020,7 @@ function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimm
     minutes,
     trimmed,
     notes,
-    warmup: { min: WARMUP_MIN, text: session.warmup ?? DEFAULT_WARMUP },
+    warmup: warm,
     finisher: finMin ? { min: finMin, text: fin?.text ?? DEFAULT_FINISHER } : null,
   };
 }
@@ -966,7 +1032,7 @@ function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimm
  *  - consolidare (săpt. 13–16): varietate controlată, un exercițiu schimbat cu unul asemănător;
  *  - menținere: 3 serii, fără escaladare.
  */
-function prescribeFitness(spec0: StrengthSpec): Prescription {
+function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescription {
   const spec = { ...spec0, session: LEGACY_FIT[spec0.session as FitnessSessionId] ?? spec0.session };
   const session = SESSIONS[spec.session];
   const rir = rirFor(spec);
@@ -1016,7 +1082,7 @@ function prescribeFitness(spec0: StrengthSpec): Prescription {
   clampSets(items);
   const dropped: string[] = [];
   items = capPerMuscle(items, dropped);
-  return finish(spec, session, items, [], notes);
+  return finish(spec, session, items, [], notes, Infinity, ctx);
 }
 
 /**
@@ -1025,13 +1091,13 @@ function prescribeFitness(spec0: StrengthSpec): Prescription {
  * apoi a doua mișcare de același tip. Niciodată sub 3 serii pe exercițiu; pauzele nu se scurtează. Când timpul e mai
  * mult decât conținutul, nu se adaugă volum: finalul de cardio aduce ședința la cel puțin 45 de minute.
  */
-export function prescribe(spec: StrengthSpec, minutes: number): Prescription {
-  const p = prescribeFull(spec);
+export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDayContext): Prescription {
+  const p = prescribeFull(spec, ctx);
   const limit = Math.max(MIN_STRENGTH_MINUTES, minutes);
   const items = p.items.map((r) => ({ ...r }));
   const trimmed: string[] = [];
-  const minFinisher = p.session.finisher ? FINISHER_SHORT : 0;
-  const fits = () => Math.ceil(estimateMinutes(items)) + minFinisher <= limit;
+  const minFinisher = p.session.finisher && !(spec.opener === 'slabire' && !legsDay(spec.session)) ? FINISHER_SHORT : 0;
+  const fits = () => Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher <= limit;
   const removeWhere = (pred: (r: Rx) => boolean, why: (r: Rx) => string) => {
     for (let i = items.length - 1; i >= 0 && !fits(); i--) {
       if (items.length > 1 && pred(items[i]!)) {
@@ -1078,12 +1144,13 @@ export function prescribe(spec: StrengthSpec, minutes: number): Prescription {
   for (const r of items) if (r.ss && items.filter((x) => x.ss === r.ss).length < 2) delete r.ss;
   const notes = [...p.notes];
   if (trimmed.length) notes.push(`ca să încapă în ${limit} min, azi sari peste: ${trimmed.join(', ')} (pauzele rămân întregi, seriile rămân minimum 3)`);
-  return finish(spec, p.session, items, trimmed, notes, limit);
+  return finish(spec, p.session, items, trimmed, notes, limit, ctx);
 }
 
 
 // ——— Textul din plan (citit de oameni și de cod) ———
 
+const OPENER_TAG = 'cardio înclinat la început';
 const LEGS_TEXT: Record<Exclude<LegsMode, 'normal'>, string> = { usor: 'picioare ușoare', fara: 'fără picioare' };
 
 /** „Push A · Bază, săpt. 2/4 · 2–3 repetări în rezervă · descărcare”. */
@@ -1093,6 +1160,7 @@ export function strengthStructure(spec: StrengthSpec): string {
   if (spec.transition) parts.push('trecere');
   if (spec.legs && spec.legs !== 'normal') parts.push(LEGS_TEXT[spec.legs]);
   if (spec.place === 'acasa') parts.push('acasă');
+  if (spec.opener === 'slabire') parts.push(OPENER_TAG);
   return parts.join(' · ');
 }
 
@@ -1113,7 +1181,7 @@ export function parseStrength(structure: string | null | undefined): StrengthSpe
   if (!block) return null;
   const rest = parts.slice(2);
   const legs: LegsMode = rest.includes(LEGS_TEXT.fara) ? 'fara' : rest.includes(LEGS_TEXT.usor) ? 'usor' : 'normal';
-  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}) };
+  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}) };
 }
 
 /** Numele ședinței din textul din plan (și pentru planurile vechi „Push 1 · …”). */

@@ -539,7 +539,7 @@ function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['f
   const planned = input.plan.filter((w) => w.type === 'forta' && w.date >= since && w.date < today && w.status !== 'sters').length;
   const done = acts.filter((a) => a.sport === 'forta' && a.date >= since && a.date < today).length;
   if (!next || !spec) return planned ? { urmatoarea: null, expuneri_21_zile: { planificate: planned, facute: done } } : null;
-  const rx = prescribe(spec, next.plannedMinutes);
+  const rx = prescribe(spec, next.plannedMinutes, { goal: input.athlete.goal ?? null, sameDay: input.plan.filter((w) => w.date === next.date && w.id !== next.id && isActiveWorkout(w)).map((w) => w.sport) });
   return {
     urmatoarea: {
       data: next.date,

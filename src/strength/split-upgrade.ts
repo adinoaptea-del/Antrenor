@@ -38,7 +38,7 @@ export function upgradeToSplit(plan: PlannedWorkout[], today: string, resolve?: 
  *  - numele vechi („Tot corpul A/B”) se rescriu cu ședința de acum (picioare și trunchi / partea de sus și trunchi).
  * Întoarce doar ședințele schimbate (copii).
  */
-export function upgradeStrengthRules(plan: PlannedWorkout[], today: string): PlannedWorkout[] {
+export function upgradeStrengthRules(plan: PlannedWorkout[], today: string, goal?: string | null): PlannedWorkout[] {
   const future = plan
     .filter((w) => w.type === 'forta' && active(w) && w.date >= today)
     .map((w) => ({ w, spec: parseStrength(w.structure) }))
@@ -62,6 +62,8 @@ export function upgradeStrengthRules(plan: PlannedWorkout[], today: string): Pla
       const n = queue.shift();
       s2 = n ? { ...spec, session: n.session, ...(n.variant != null ? { variant: n.variant } : {}) } : spec;
     }
+    // Slăbire: ședința începe cu mers pe bandă înclinată (regula 25); restul obiectivelor, fără schimbare.
+    if (goal === 'fit-slabire' && isFitnessSession(s2.session) && !s2.opener) s2 = { ...s2, opener: 'slabire' };
     const structure = strengthStructure(s2);
     const minutes = prescribe(s2, Math.max(MIN_STRENGTH_MINUTES, w.plannedMinutes)).minutes;
     if (structure !== w.structure || minutes !== w.plannedMinutes) out.push({ ...w, structure, plannedMinutes: minutes });

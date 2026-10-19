@@ -342,7 +342,9 @@ function strengthFor(me: Me, w: PlannedWorkout): Prescription | null {
   const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
   // Locul de antrenament din chestionar (planurile vechi nu îl au scris): acasă = doar exerciții cu gantere, bandă, corp.
   const acces = (me.forms.intake as { fitness?: { acces?: string } } | null)?.fitness?.acces;
-  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes) : null;
+  // Pornirea pe bandă/bicicletă: după obiectiv și fără să dubleze alergarea sau bicicleta din aceeași zi (regula 25).
+  const sameDay = me.plan.filter((x) => x.date === w.date && x.id !== w.id && (x.status === 'planificat' || x.status === 'mutat')).map((x) => x.sport);
+  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes, { goal: me.user.goal, sameDay }) : null;
 }
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);

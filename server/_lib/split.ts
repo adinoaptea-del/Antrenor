@@ -16,7 +16,7 @@ export async function isMale(userId: string, sex?: string | null): Promise<boole
 }
 
 /** Schimbă și salvează ședințele; întoarce planul cu ele aplicate (sau neschimbat). */
-export async function ensureSplit(userId: string, today: string, loaded?: { planId: string | null; workouts: PlannedWorkout[] }, sex?: string | null): Promise<PlannedWorkout[]> {
+export async function ensureSplit(userId: string, today: string, loaded?: { planId: string | null; workouts: PlannedWorkout[] }, sex?: string | null, goal?: string | null): Promise<PlannedWorkout[]> {
   const p = loaded ?? (await loadPlan(userId, addDays(today, -28), addDays(today, 400)));
   if (!p.planId) return p.workouts;
   let workouts = p.workouts;
@@ -27,7 +27,8 @@ export async function ensureSplit(userId: string, today: string, loaded?: { plan
     workouts = workouts.map((w) => changed.get(w.id) ?? w);
   }
   // Regulile de forță (19.10.2026): minimum 45 de minute, 3–4 serii, fără picioare + partea de sus în aceeași ședință.
-  for (const w of upgradeStrengthRules(workouts, today)) changed.set(w.id, w);
+  const g = goal !== undefined ? goal : ((await one<{ goal: string | null }>('users', { id: `eq.${userId}` }, { select: 'goal' }).catch(() => null))?.goal ?? null);
+  for (const w of upgradeStrengthRules(workouts, today, g)) changed.set(w.id, w);
   if (!changed.size) return p.workouts;
   await upsert('workouts_planned', [...changed.values()].map((w) => toWorkoutRow(w, userId, p.planId!)), 'id');
   return p.workouts.map((w) => changed.get(w.id) ?? w);

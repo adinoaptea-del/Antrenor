@@ -88,7 +88,7 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
         ? days.map((_, i) => ({ session: fw.rotation[i % fw.rotation.length]! }))
         : rot.week(days.length);
     const workouts: PlannedWorkout[] = days.map((d, i) => {
-      const spec: StrengthSpec = { session: order[i]!.session, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(order[i]!.variant != null ? { variant: order[i]!.variant } : {}), ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}) };
+      const spec: StrengthSpec = { session: order[i]!.session, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(order[i]!.variant != null ? { variant: order[i]!.variant } : {}), ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}), ...(f.goal === 'fit-slabire' ? { opener: 'slabire' as const } : {}) };
       const avail = Math.max(MIN_SESSION, Math.min(Math.max(f.minutes, MIN_SESSION), free.get(d) ?? f.minutes));
       const rx = prescribe(spec, avail);
       return {
