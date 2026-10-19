@@ -10,6 +10,7 @@ import { Dot, Icons, fmtDayMonth } from './common';
 import { Actions, YellowDay } from './WorkoutActions';
 import { StrengthHint, StrengthLogForm } from './StrengthLog';
 import { useLocalBack } from './Shell';
+import { GlassFX } from './Glass';
 import { useData, useMe } from '../data/store';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMinutes, isUpcoming, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
@@ -91,6 +92,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
   return createPortal(
     <div className="sheet-wrap" role="dialog" aria-modal="true" aria-label="Ședința" onClick={onClose}>
       <div className="sheet" ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+        <GlassFX level={0.16} />
         <div className="sheet-grab" aria-hidden="true" />
         {tabs.length > 1 && (
           <div className="sheet-tabs" role="tablist" aria-label="Ședințele zilei">

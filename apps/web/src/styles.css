@@ -123,7 +123,6 @@ body::before {
 /* ---------- Carduri ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 16px; min-width: 0; position: relative; }
 .card.tight { padding: 12px 14px; }
-.card.glass { background: var(--surface); }
 .lab { display: inline-flex; align-items: center; gap: 6px; font: 700 10px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .lab.lime { color: var(--accent); }
 .lab .i { width: 13px; height: 13px; }
@@ -1272,3 +1271,136 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .walk-hbar span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: #46cdd2; }
 .walk-hbar span.met { background: var(--accent); }
 .walk-hbar i { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--fg); opacity: 0.6; }
+
+/* ——— Sticlă fumurie cu lichid luminos (direcția vizuală AIRON, 19.10.2026) ———
+   Ferestrele care se deschid (ședința, exercițiile, mesele și rețetele, propunerile antrenorului, adaptarea, feedbackul,
+   confirmările) sunt recipiente: fundal întunecat cu transparență discretă, contur fin cu reflexii neuniforme, lumină
+   difuză turcoaz–verde–lime în interior. Forma rămâne a conținutului; materialul face recipientul. */
+:root {
+  --glass-fill: linear-gradient(168deg, rgba(38, 50, 52, 0.74) 0%, rgba(20, 26, 27, 0.82) 46%, rgba(12, 16, 17, 0.9) 100%);
+  --glass-glow: radial-gradient(120% 60% at 88% 112%, rgba(110, 236, 140, 0.1), transparent 62%), radial-gradient(90% 55% at -6% -8%, rgba(70, 205, 210, 0.09), transparent 58%);
+  --glass-rim: conic-gradient(from 200deg at 50% 50%, rgba(222, 252, 70, 0.05), rgba(222, 252, 70, 0.55) 7%, rgba(110, 236, 140, 0.12) 18%, rgba(255, 255, 255, 0.04) 32%, rgba(70, 205, 210, 0.42) 52%, rgba(255, 255, 255, 0.03) 66%, rgba(255, 255, 255, 0.32) 84%, rgba(222, 252, 70, 0.05));
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -26px 40px -26px rgba(110, 236, 140, 0.2), inset 0 0 0 1px rgba(150, 230, 190, 0.05), 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.glass,
+.sheet,
+.tour .tip,
+.regen-preview,
+.card:has(> .exp-row[aria-expanded='true']),
+.coach-plan,
+.suggest,
+.labs-alert,
+.walk-msg,
+.walk-rec,
+.wk-yellow,
+.note-card,
+.keys-box {
+  position: relative;
+  isolation: isolate;
+  background: var(--glass-glow), var(--glass-fill);
+  border: 1px solid rgba(150, 230, 190, 0.1);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+}
+.sheet,
+.card:has(> .exp-row[aria-expanded='true']) { border-radius: 28px; }
+.coach-plan, .suggest, .labs-alert, .walk-msg, .walk-rec, .wk-yellow, .note-card, .keys-box, .regen-preview { border-radius: 20px; }
+.card.glass { border-radius: 28px; }
+
+/* Conturul cu reflexii neuniforme: un inel subțire de lumină care nu are aceeași intensitate peste tot. */
+.glass::before,
+.regen-preview::before,
+.sheet::before,
+.tour .tip::before,
+.card:has(> .exp-row[aria-expanded='true'])::before,
+.coach-plan::before,
+.suggest::before,
+.labs-alert::before,
+.walk-msg::before,
+.walk-rec::before,
+.wk-yellow::before,
+.note-card::before,
+.keys-box::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Particule în suspensie, pe două adâncimi (dimensiuni, transparențe și viteze diferite), și lichidul discret de pe
+   margine; pe ferestrele mari le desenează GlassFX (canvas), aici sunt în CSS, ca să nu coste baterie. */
+.card:has(> .exp-row[aria-expanded='true'])::after,
+.card.glass::after,
+.regen-preview::after,
+.coach-plan::after,
+.suggest::after,
+.walk-rec::after,
+.note-card::after,
+.tour .tip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.9;
+  background:
+    radial-gradient(1.2px 1.2px at 12% 78%, rgba(222, 252, 70, 0.55), transparent 60%),
+    radial-gradient(1px 1px at 27% 91%, rgba(110, 236, 140, 0.5), transparent 60%),
+    radial-gradient(1.6px 1.6px at 44% 84%, rgba(70, 205, 210, 0.45), transparent 60%),
+    radial-gradient(0.8px 0.8px at 58% 95%, rgba(222, 252, 70, 0.6), transparent 60%),
+    radial-gradient(1.3px 1.3px at 71% 80%, rgba(110, 236, 140, 0.5), transparent 60%),
+    radial-gradient(2.4px 2.4px at 86% 88%, rgba(70, 205, 210, 0.25), transparent 70%),
+    radial-gradient(0.9px 0.9px at 93% 70%, rgba(222, 252, 70, 0.45), transparent 60%),
+    radial-gradient(1px 1px at 8% 58%, rgba(110, 236, 140, 0.3), transparent 60%),
+    radial-gradient(140% 26% at 50% 104%, rgba(110, 236, 140, 0.16), rgba(70, 205, 210, 0.05) 55%, transparent 75%);
+  background-size: 220px 140px, 180px 120px, 260px 160px, 200px 130px, 240px 150px, 300px 200px, 210px 140px, 230px 160px, 100% 100%;
+  animation: glass-drift 38s linear infinite;
+}
+@keyframes glass-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 30px -140px, -20px -120px, 40px -160px, -30px -130px, 20px -150px, -10px -200px, 25px -140px, -15px -160px, 0 0; }
+}
+
+/* Conținutul stă peste lichid. */
+.sheet > *:not(.glass-fx) { position: relative; z-index: 1; }
+.sheet { overflow: hidden; }
+.glass-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; border-radius: inherit; }
+.sheet-head { border-bottom-color: rgba(150, 230, 190, 0.1); }
+.sheet-wrap { background: radial-gradient(80% 60% at 50% 100%, rgba(110, 236, 140, 0.06), transparent 70%), rgba(4, 7, 7, 0.52); }
+
+/* Barele simple de progres (fără canvas): același lichid, cu menisc luminos la capăt. */
+.walk-bar, .walk-hbar { background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)); box-shadow: inset 0 0 0 1px rgba(160, 240, 190, 0.16); }
+.walk-bar span, .walk-hbar span { background: linear-gradient(90deg, rgba(46, 170, 180, 0.7), rgba(90, 220, 150, 0.8) 60%, rgba(212, 250, 70, 0.95)); border-radius: 0 999px 999px 0 / 0 50% 50% 0; box-shadow: 2px 0 10px rgba(222, 252, 70, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.walk-bar { height: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card:has(> .exp-row[aria-expanded='true'])::after,
+  .coach-plan::after,
+  .suggest::after,
+  .walk-rec::after,
+  .note-card::after,
+  .tour .tip::after,
+  .card.glass::after,
+  .regen-preview::after { animation: none; }
+}
+/* Fără backdrop-filter (browsere vechi): fundalul rămâne opac, textul lizibil. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .sheet, .tour .tip { background: var(--glass-glow), linear-gradient(168deg, #1c2426, #0e1213); }
+}
+/* Culoarea de stare rămâne citibilă pe sticlă: galben = atenție/propunere, verde = confirmat. */
+.wk-yellow, .suggest, .labs-alert:not(.ok-alert) {
+  background: radial-gradient(110% 70% at 90% 115%, rgba(255, 214, 10, 0.12), transparent 60%), var(--glass-fill);
+  border-color: rgba(255, 214, 10, 0.32);
+}
+.ok-alert { background: radial-gradient(110% 70% at 90% 115%, rgba(87, 217, 154, 0.16), transparent 60%), var(--glass-fill); border-color: rgba(87, 217, 154, 0.4); }
+.sheet > :not(.sheet-body):not(.glass-fx) { flex-shrink: 0; }

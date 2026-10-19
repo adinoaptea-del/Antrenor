@@ -86,7 +86,7 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
       <PageTitle title="Head coach" sub="O singură voce. O decizie explicabilă." />
 
       <div className="stack">
-        <section className="card coach-dec">
+        <section className="card glass coach-dec">
           <div className="eyebrow">Decizia din plan · {fmtDayMonth(today)}</div>
           <h2 className="h-xl">{day ? `${day.rest ? 'Astăzi, odihnă' : day.title}.` : me.plan.length ? 'Astăzi' : 'Fără plan încă'}</h2>
           {day && <p className="tc-action">{day.action}</p>}
@@ -114,7 +114,7 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
           {day?.reason && <blockquote className="coach-why">{cleanRefs(day.reason)}</blockquote>}
         </section>
 
-        <section className="card">
+        <section className="card glass coach-card">
           <div className="eyebrow">{latest ? `${kindLabel(latest.kind, latest.createdAt)} · ${localTime(latest.createdAt)}` : 'Mesajul antrenorului'}</div>
           {parts ? (
             <div className="coach-msg">
