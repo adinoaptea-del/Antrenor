@@ -26,7 +26,9 @@ test('începătoare cu 4 zile și prezență demonstrată: 2 zile în S1–4, 3 
   assert.equal(ws[8]!.transition, true);
   assert.equal(ws[5]!.transition, false);
   assert.deepEqual(ws.map((w) => w.block).filter((b, i, a) => a.indexOf(b) === i), ['acomodare', 'construire', 'progres', 'consolidare', 'tranzitie', 'mentinere']);
-  assert.equal(ws[11]!.recovery, true); // S12 revizuire
+  // S12 e punct de evaluare, nu descărcare obligatorie (programul din 19.10.2026).
+  assert.equal(ws[11]!.recovery, false);
+  assert.equal(ws[11]!.evaluation, true);
 });
 
 test('cu două zile alese rămâne la F1/F2 tot programul', () => {

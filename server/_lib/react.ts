@@ -15,6 +15,7 @@ import { extraOn } from '../../src/calendar/load.js';
 import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
 import { todayIn } from './auth.js';
 import { applyPlanEvents } from './agents.js';
+import { select } from './db.js';
 
 export interface Reaction {
   changes: string[];
@@ -68,4 +69,20 @@ export async function reactNow(userId: string): Promise<void> {
   } catch (e) {
     console.error('react', e instanceof Error ? e.message : e);
   }
+}
+
+/**
+ * Dimineața: ședințele de sală de ieri (fitness) fără activitate și fără marcaj „făcut” în jurnalul de forță sunt
+ * ratate: rotația continuă de unde a rămas (src/calendar/adapt.ts, „forta-ratat”), o singură dată pe ședință.
+ */
+export async function missedStrength(userId: string, today: string): Promise<string[]> {
+  const y = addDays(today, -1);
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -7), addDays(today, 7));
+  if (!planId) return [];
+  const yesterday = workouts.filter((w) => w.date === y && w.type === 'forta' && (w.status === 'planificat' || w.status === 'mutat'));
+  if (!yesterday.length) return [];
+  const acts = dedupeActivities(await loadActivities(userId, addDays(today, -3)));
+  const logged = await select<{ date: string }>('strength_log', { user_id: `eq.${userId}`, date: `eq.${y}` }, { select: 'date', limit: 1 }).catch(() => []);
+  if (logged.length || acts.some((a) => a.date === y && a.sport === 'forta')) return [];
+  return applyPlanEvents(userId, today, planId, workouts, yesterday.map((w) => ({ kind: 'forta-ratat' as const, workoutId: w.id })));
 }

@@ -10,7 +10,7 @@
 
 import type { FitnessGoal } from '../calendar/phases.js';
 import type { Phase } from '../types.js';
-import { FITNESS_ROTATION, type Block, type FitnessSessionId } from './ppl.js';
+import { FITNESS_ROTATION, FITNESS_ROTATION_WIDE, type Block, type FitnessSessionId } from './ppl.js';
 
 export type FitnessDays = 2 | 3 | 4;
 
@@ -45,8 +45,12 @@ export interface FitnessWeek {
   days: FitnessDays;
   /** Prima săptămână cu mai multe zile decât înainte. */
   transition: boolean;
-  /** Săptămâna de revizuire (S12): mai puține serii, rezervă mai mare. */
+  /** Revizuire: mai puține serii, rezervă mai mare — doar când datele arată oboseală (nu automat). */
   recovery: boolean;
+  /** Punct de evaluare (săpt. 4, 8, 12, 16, 20, 24): compari cu aceleași ședințe; nu e descărcare obligatorie. */
+  evaluation: boolean;
+  /** Varianta de patru zile: „ampla” (A–D) pentru sportiva eligibilă, altfel „standard” (L1/U1/L2/U2). */
+  variant: 'standard' | 'ampla';
   rotation: FitnessSessionId[];
 }
 
@@ -82,8 +86,10 @@ export function fitnessWeeks(p: FitnessProfile, total = 26): FitnessWeek[] {
         phase: s.phase,
         days,
         transition: prevDays != null && days > prevDays,
-        recovery: s.block === 'progres' && w === s.len,
-        rotation: FITNESS_ROTATION[days],
+        recovery: false,
+        evaluation: week % 4 === 0 && week <= 24,
+        variant: days === 4 && wideEligible(p) ? 'ampla' : 'standard',
+        rotation: days === 4 && wideEligible(p) ? FITNESS_ROTATION_WIDE : FITNESS_ROTATION[days],
       });
       prevDays = days;
     }
@@ -95,15 +101,28 @@ export function fitnessWeeks(p: FitnessProfile, total = 26): FitnessWeek[] {
  * Zilele de sală în săptămâna dată. Începătoarea: două zile în S1–4, trei din S5 (dacă a ales 3 sau 4), patru din S9.
  * Cu bază stabilă: până la trei zile de la început, patru din S5. Niciodată mai multe decât a ales.
  */
-export function daysAt(p: Pick<FitnessProfile, 'days' | 'beginner' | 'postpartum' | 'unlocked'>, week: number): FitnessDays {
+export function daysAt(p: Pick<FitnessProfile, 'days' | 'beginner' | 'postpartum' | 'unlocked' | 'activity'>, week: number): FitnessDays {
   if (p.postpartum) return 2;
-  const cap = p.beginner ? (week <= 4 ? 2 : week <= 8 ? 3 : 4) : week <= 4 ? 3 : 4;
+  const cap = p.beginner ? (week <= 4 ? 2 : week <= 8 ? 3 : 4) : week <= 4 ? (p.activity === 'activa' ? 4 : 3) : 4;
   return Math.min(p.days, cap, p.unlocked ?? startDays(p)) as FitnessDays;
 }
 
-/** Frecvența de început: două zile la începătoare, cel mult trei altfel. */
-export function startDays(p: Pick<FitnessProfile, 'days' | 'beginner'>): FitnessDays {
-  return Math.min(p.days, p.beginner ? 2 : 3) as FitnessDays;
+/**
+ * Frecvența de început: două zile la începătoare, cel mult trei altfel; patru de la început doar cu antrenament
+ * regulat deja (mișcarea de acum „activă”) și bază stabilă — istoricul executat, nu vârsta sau sexul.
+ */
+export function startDays(p: Pick<FitnessProfile, 'days' | 'beginner'> & { activity?: FitnessProfile['activity'] }): FitnessDays {
+  if (p.beginner) return Math.min(p.days, 2) as FitnessDays;
+  return Math.min(p.days, p.activity === 'activa' ? 4 : 3) as FitnessDays;
+}
+
+/**
+ * Varianta amplă A–D (săptămâni de 55–70 min): doar pentru sportiva cu bază (nu începătoare), fără sarcină/postpartum,
+ * cu cel puțin 55 de minute pe ședință. Altfel cele patru zile rămân L1/U1/L2/U2 (mai scurte). Nu e o variantă
+ * „superioară universal”, ci o doză mai mare pentru cine o poate susține.
+ */
+export function wideEligible(p: Pick<FitnessProfile, 'beginner' | 'postpartum' | 'minutes'>): boolean {
+  return !p.beginner && !p.postpartum && p.minutes >= 55;
 }
 
 /**
@@ -112,7 +131,7 @@ export function startDays(p: Pick<FitnessProfile, 'days' | 'beginner'>): Fitness
  * 80% din ședințe făcute, fără durere raportată. Calendarul singur nu dovedește adaptarea.
  * `weeks`: săptămânile încheiate, cele mai vechi primele: câte ședințe de forță erau planificate și câte s-au făcut.
  */
-export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner'>, weeks: { planned: number; done: number; pain?: boolean }[]): FitnessDays {
+export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: { planned: number; done: number; pain?: boolean }[]): FitnessDays {
   let level: number = startDays(p);
   let streak = 0;
   for (const w of weeks) {
@@ -156,6 +175,24 @@ export const FITNESS_WEEK_ACTION: Record<number, string> = {
   25: 'Pregătești următorul bloc: continui menținerea sau alegi un obiectiv nou de forță/masă musculară.',
   26: 'Bilanț față de început: ședințe făcute, tehnică, greutăți, funcție, bunăstare. Nu doar kilogramele.',
 };
+
+/** Ce face săptămâna în varianta amplă A–D (programul din 19.10.2026). */
+const WIDE_ACTION: [number, string][] = [
+  [2, 'Învățare: două serii de lucru pe exercițiu, cu 3–4 repetări în rezervă. Notezi setările aparatelor.'],
+  [4, 'Consolidare: rămân două serii; progresezi în control și repetări.'],
+  [8, 'Construire: doza A–D (trei serii la exercițiile principale) doar dacă toleranța și timpul permit.'],
+  [12, 'Progres: aceleași exerciții principale, repetări sau încărcări mai bune.'],
+  [16, 'Varietate controlată: un element echivalent pe ședință, recalibrat; principalele rămân.'],
+  [20, 'Consolidare: progres numai susținut de execuții și recuperare.'],
+  [24, 'Stabilizare: păstrezi performanța, fără escaladare obligatorie.'],
+  [26, 'Tranziție: testezi o doză mai mică (o serie mai puțin la exercițiile cu trei serii) pentru menținere.'],
+];
+
+/** Acțiunea săptămânii, după varianta programului (A–D are tabelul lui; altfel calendarul de referință S1–S26). */
+export function fitnessWeekAction(week: number, variant: 'standard' | 'ampla' = 'standard'): string {
+  if (variant === 'ampla') return WIDE_ACTION.find(([upTo]) => week <= upTo)?.[1] ?? '';
+  return FITNESS_WEEK_ACTION[week] ?? '';
+}
 
 /** Mersul și cardio-ul săptămânii (OMS: 150–300 min moderat, construit treptat, nu din prima săptămână). */
 export function fitnessCardio(week: number, activity: FitnessProfile['activity']): string {

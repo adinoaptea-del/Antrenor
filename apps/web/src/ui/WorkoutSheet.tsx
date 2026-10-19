@@ -157,13 +157,15 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                     <div className="str-ex">
                       <b>{r.ex.name}</b>
                       <span>
-                        {r.ex.group} · pauză {fmtRest(r.rest)}
+                        {r.ex.purpose ?? r.ex.group} · pauză {fmtRest(r.rest)} · rezervă {r.rir}
+                        {r.ex.unilateral ? ' · repetările sunt pe fiecare parte' : ''}
                         {r.completion ? ' · completare' : ''}
                       </span>
-                      <span className="str-cue">
-                        {r.ex.cue}. Alternativă: {r.ex.alt}.
-                      </span>
-                      <StrengthHint r={r} />
+                      {r.ex.setup && <span className="str-cue">Reglare: {r.ex.setup}.</span>}
+                      <span className="str-cue">Execuție: {r.ex.cue}.</span>
+                      {r.ex.mistakes && <span className="str-cue">Greșeli frecvente: {r.ex.mistakes}.</span>}
+                      <span className="str-cue">Alternativă: {r.ex.alt} (se recalibrează separat).</span>
+                      <StrengthHint r={r} maintain={rx.spec.block === 'mentinere'} />
                     </div>
                     <div className="str-sets">
                       <span className="str-set">
@@ -180,6 +182,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                   ))}
                 </ul>
               )}
+              <p className="muted tiny">Demonstrații video verificate pentru exerciții: încă nu avem; până atunci, execuția e descrisă în text.</p>
               {w.date <= me.today && w.status !== 'anulat_sistem' && !paused && <StrengthLogForm key={w.id} w={w} rx={rx} />}
             </>
           ) : (

@@ -23,14 +23,16 @@ import { fmtTime } from '@core/goals/run-target.js';
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 
 /** Numele ședinței în bulă: la forță numele sesiunii din program, altfel sportul. */
-const titleOf = (w: PlannedWorkout) => (w.type === 'forta' ? sessionName(w.structure) ?? 'Forță' : w.type === 'brick' ? 'Bicicletă + alergare' : SPORT_LABEL[w.sport]);
+const titleOf = (w: PlannedWorkout) => (w.type === 'forta' ? (sessionName(w.structure)?.replace(/^[A-Z][1-3]? /, '') ?? 'Forță') : w.type === 'brick' ? 'Bicicletă + alergare' : SPORT_LABEL[w.sport]);
 const subOf = (w: PlannedWorkout, css: number | null = null, continuousM: number | null = null) =>
   w.sport === 'inot' && w.type !== 'odihna'
     ? (() => {
         const s = swimSet({ type: w.type, minutes: w.plannedMinutes, css, date: w.date, structure: w.structure, continuousM });
         return `${s.meters} m · ≈ ${s.estMin} min · ${PLAIN[w.type]}`;
       })()
-    : [fmtMinutes(w.plannedMinutes), w.type === 'forta' || w.type === 'brick' ? null : PLAIN[w.type], w.targetZones.length ? `Z${w.targetZones.join('–')}` : null].filter(Boolean).join(' · ');
+    : w.type === 'forta'
+      ? `aproximativ ${w.plannedMinutes} min`
+      : [fmtMinutes(w.plannedMinutes), w.type === 'brick' ? null : PLAIN[w.type], w.targetZones.length ? `Z${w.targetZones.join('–')}` : null].filter(Boolean).join(' · ');
 
 /**
  * Azi: bula cu ședințele reale ale zilei (din planul activ). Apăsarea deschide direct fereastra cu detaliile, pe prima

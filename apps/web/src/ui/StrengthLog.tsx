@@ -1,20 +1,28 @@
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Prescription, Rx } from '@core/strength/ppl.js';
-import { minRir, nextSuggestion, repRange, type StrengthLogEntry } from '@core/strength/log.js';
+import { minRir, nextSuggestion, parseRepsInput, repRange, type StrengthLogEntry } from '@core/strength/log.js';
+import { addDays } from '@core/util/dates.js';
+import type { Me } from '@core/api-types.js';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 
 /** Sub fiecare exercițiu: ce ai făcut data trecută și ce încerci azi (din jurnal, fără kilograme inventate). */
-export function StrengthHint({ r }: { r: Rx }) {
+export function StrengthHint({ r, maintain }: { r: Rx; maintain?: boolean }) {
   const me = useMe();
-  const s = nextSuggestion(r.ex.id, r.reps, r.rir, me.strengthLog ?? []);
+  const s = nextSuggestion(r.ex.id, r.reps, r.rir, me.strengthLog ?? [], { pain: recentPain(me), maintain });
   return (
     <span className="str-hint">
       {s.last && <>Data trecută: {s.last}. </>}
       {s.today}
     </span>
   );
+}
+
+/** Durere ≥ 3/10 raportată în ultimele 7 zile (formularul de seară): progresia se oprește. */
+export function recentPain(me: Me): boolean {
+  const from = addDays(me.today, -7);
+  return Object.values(me.forms.evening ?? {}).some((e) => !!e && e.date >= from && (e.durere?.scor ?? 0) >= 3);
 }
 
 const lastKg = (log: StrengthLogEntry[], ex: string) => {
@@ -41,7 +49,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
       items.map((r) => {
         const prev = saved.find((x) => x.exercise === r.ex.id);
         const kg = prev ? Math.max(...prev.sets.map((s) => s.kg ?? -1)) : lastKg(log, r.ex.id) ?? -1;
-        return [r.ex.id, { kg: kg >= 0 ? String(kg) : '', reps: String(prev?.sets[0]?.reps ?? repRange(r.reps)![0]), rir: String(prev?.rir ?? minRir(r.rir)) }];
+        return [r.ex.id, { kg: kg >= 0 ? String(kg) : '', reps: prev ? prev.sets.map((x) => x.reps ?? '').join('/') : String(repRange(r.reps)![0]), rir: String(prev?.rir ?? minRir(r.rir)) }];
       }),
     ),
   );
@@ -54,8 +62,8 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
       const body = items.map((r) => {
         const v = vals[r.ex.id]!;
         const kg = source === 'confirmat' ? lastKg(log, r.ex.id) : v.kg.trim() === '' ? null : Number(v.kg.replace(',', '.'));
-        const reps = source === 'confirmat' ? repRange(r.reps)![0] : Number(v.reps);
-        return { exercise: r.ex.id, sets: Array.from({ length: r.sets }, () => ({ kg: kg != null && Number.isFinite(kg) ? kg : null, reps: Number.isFinite(reps) ? reps : null })), rir: source === 'confirmat' ? minRir(r.rir) : Number(v.rir), source };
+        const reps = source === 'confirmat' ? Array(r.sets).fill(repRange(r.reps)![0]) : parseRepsInput(v.reps, r.sets);
+        return { exercise: r.ex.id, sets: reps.map((n) => ({ kg: kg != null && Number.isFinite(kg) ? kg : null, reps: n })), rir: source === 'confirmat' ? minRir(r.rir) : Number(v.rir), source };
       });
       await submitForm('forta-jurnal', { date: w.date, items: body });
       setMode('idle');
@@ -91,7 +99,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
                   kg <input inputMode="decimal" value={v.kg} placeholder="—" onChange={(e) => set('kg', e.target.value)} aria-label={`${r.ex.name}: kilograme`} />
                 </label>
                 <label>
-                  rep. <input inputMode="numeric" value={v.reps} onChange={(e) => set('reps', e.target.value)} aria-label={`${r.ex.name}: repetări pe serie`} />
+                  rep. <input inputMode="text" value={v.reps} placeholder="12/11/10" onChange={(e) => set('reps', e.target.value)} aria-label={`${r.ex.name}: repetări pe fiecare serie, despărțite prin /`} />
                 </label>
                 <label>
                   rezervă <input inputMode="numeric" value={v.rir} onChange={(e) => set('rir', e.target.value)} aria-label={`${r.ex.name}: repetări în rezervă`} />
@@ -99,7 +107,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
               </div>
             );
           })}
-          <p className="muted tiny">Kilogramele le lași goale dacă nu știi (aparat fără cifre, greutatea corpului). Nu ghicim noi în locul tău.</p>
+          <p className="muted tiny">Repetările pe fiecare serie, despărțite prin „/” (ex. 12/11/10); la exercițiile pe o parte, pe fiecare parte. Kilogramele le lași goale dacă nu știi (aparat fără cifre, greutatea corpului): nu ghicim noi în locul tău. Rezerva e pentru ultima serie, nu efortul întregii ședințe.</p>
           <div className="row" style={{ gap: 8 }}>
             <button className="pill on" disabled={busy} onClick={() => void send('ajustat')}>
               Salvează

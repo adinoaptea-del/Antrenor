@@ -35,22 +35,63 @@ export const minRir = (rir: string) => Number(/(\d+)/.exec(rir)?.[1] ?? 2);
 const topKg = (e: StrengthLogEntry) => Math.max(...e.sets.map((s) => s.kg ?? -1));
 const fmtKg = (kg: number) => `${kg.toLocaleString('ro-RO')} kg`;
 
-/** Sugestia pentru azi, din ultimele înregistrări ale aceluiași exercițiu (cele mai noi la final). */
-export function nextSuggestion(exercise: string, reps: string, rir: string, history: StrengthLogEntry[]): { last: string | null; today: string } {
+export interface SuggestOpts {
+  /** Durere / simptom raportat recent (≥ 3/10 sau „durere” la bilanț): progresia se oprește. */
+  pain?: boolean;
+  /** Menținere / stabilizare: fără escaladare obligatorie. */
+  maintain?: boolean;
+}
+
+export type SuggestKind = 'prima' | 'fara-kg' | 'creste' | 'repetari' | 'ramai' | 'stop-durere' | 'mentine' | 'scade' | 'stagnare';
+
+const totalReps = (e: StrengthLogEntry) => e.sets.reduce((n, x) => n + (x.reps ?? 0), 0);
+
+/**
+ * Sugestia pentru azi, din ultimele înregistrări ale aceluiași exercițiu (cele mai noi la final):
+ *  - prima dată sau fără kg: calibrare, în cuvinte;
+ *  - simptome raportate: fără creștere;
+ *  - menținere: aceeași greutate și aceleași repetări, fără escaladare;
+ *  - capătul de sus în toate seriile la două expuneri la rând, la aceeași greutate, cu rezerva cerută: cel mai mic pas;
+ *  - performanță în scădere la două expuneri la rând (mai puține repetări la aceeași greutate): o serie mai puțin și
+ *    rezervă mai mare, temporar (revizuire), nu „mai tare”;
+ *  - altfel: aceeași greutate, o repetare în plus la o serie.
+ */
+export function suggest(exercise: string, reps: string, rir: string, history: StrengthLogEntry[], opts: SuggestOpts = {}): { kind: SuggestKind; last: string | null; today: string } {
   const own = history.filter((h) => h.exercise === exercise).sort((a, b) => (a.date < b.date ? -1 : 1));
   const range = repRange(reps);
   const last = own.at(-1);
-  if (!last) return { last: null, today: 'Prima dată: alegi greutatea cu care faci repetările cerute păstrând rezerva; după ședință o notezi.' };
+  if (!last) return { kind: 'prima', last: null, today: 'Prima dată: alegi greutatea cu care faci repetările cerute păstrând rezerva; după ședință o notezi.' };
   const kg = topKg(last);
   const lastText = `${last.sets.length} × ${last.sets.map((s) => s.reps ?? '?').join('/')}${kg >= 0 ? ` la ${fmtKg(kg)}` : ''}${last.rir != null ? `, rezervă ${last.rir}` : ''}`;
-  if (!range) return { last: lastText, today: 'Aceeași durată; crești doar dacă ai ținut-o ușor și corect.' };
+  if (opts.pain) return { kind: 'stop-durere', last: lastText, today: 'Ai raportat durere recent: fără creștere azi. Aceeași greutate sau mai puțin, în amplitudinea fără durere; dacă exercițiul doare, îl oprești.' };
+  if (!range) return { kind: 'ramai', last: lastText, today: 'Aceeași durată; crești doar dacă ai ținut-o ușor și corect.' };
   const [lo, hi] = range;
-  const atTop = (e: StrengthLogEntry) => e.sets.length > 0 && e.sets.every((s) => (s.reps ?? 0) >= hi) && (e.rir == null || e.rir >= minRir(rir));
+  if (kg < 0) return { kind: 'fara-kg', last: lastText, today: `Greutatea nu e notată: alegi una cu care faci ${lo}–${hi} repetări cu rezervă ${rir}; scrie-o după ședință, ca data viitoare să ai reper.` };
+  if (opts.maintain) return { kind: 'mentine', last: lastText, today: `Menținere: aceeași greutate (${fmtKg(kg)}) și aceleași repetări; nu e nevoie să crești.` };
   const prev = own.at(-2);
-  if (kg < 0) return { last: lastText, today: `Greutatea nu e notată: alegi una cu care faci ${lo}–${hi} repetări cu rezervă ${rir}; scrie-o după ședință, ca data viitoare să ai reper.` };
-  if (atTop(last) && prev && atTop(prev) && topKg(prev) === kg) return { last: lastText, today: `Ai atins ${hi} repetări de două ori la ${fmtKg(kg)}: încearcă cel mai mic pas de greutate disponibil și revii spre ${lo}–${Math.min(hi, lo + 2)} repetări.` };
-  if (last.rir != null && last.rir < minRir(rir)) return { last: lastText, today: `Data trecută rezerva a fost sub ${minRir(rir)}: rămâi la ${fmtKg(kg)} și ții rezerva, fără repetări în plus.` };
-  return { last: lastText, today: `Rămâi la ${fmtKg(kg)} și încearcă o repetare în plus la o serie (spre ${hi}), cu aceeași rezervă.` };
+  const prev2 = own.at(-3);
+  const atTop = (e: StrengthLogEntry) => e.sets.length > 0 && e.sets.every((s) => (s.reps ?? 0) >= hi) && (e.rir == null || e.rir >= minRir(rir));
+  if (prev && prev2 && topKg(prev) === kg && topKg(prev2) === kg && totalReps(last) < totalReps(prev) && totalReps(prev) < totalReps(prev2))
+    return { kind: 'scade', last: lastText, today: `Repetările scad de două ori la rând la ${fmtKg(kg)}: azi o serie mai puțin și rezervă 3–4. Uită-te la somn, mâncare și stres; nu compensezi cu mai mult.` };
+  if (prev && prev2 && !atTop(last) && topKg(prev) === kg && topKg(prev2) === kg && totalReps(last) === totalReps(prev) && totalReps(prev) === totalReps(prev2))
+    return { kind: 'stagnare', last: lastText, today: `Trei ședințe la fel la ${fmtKg(kg)}: e stagnare, nu eșec. Păstrezi greutatea; verifici somnul, mâncarea și execuția. Dacă nu se mișcă nici data viitoare, scazi ~5–10% și reconstruiești repetările.` };
+  if (atTop(last) && prev && atTop(prev) && topKg(prev) === kg) return { kind: 'creste', last: lastText, today: `Ai atins ${hi} repetări în toate seriile de două ori la ${fmtKg(kg)}: încearcă cel mai mic pas de greutate disponibil și revii spre ${lo}–${Math.min(hi, lo + 2)} repetări.` };
+  if (last.rir != null && last.rir < minRir(rir)) return { kind: 'ramai', last: lastText, today: `Data trecută rezerva a fost sub ${minRir(rir)}: rămâi la ${fmtKg(kg)} și ții rezerva, fără repetări în plus.` };
+  if (last.sets.some((x) => (x.reps ?? 0) < lo)) return { kind: 'ramai', last: lastText, today: `Data trecută o serie a fost sub ${lo} repetări: rămâi la ${fmtKg(kg)} până le atingi pe toate; dacă nu, scazi puțin greutatea.` };
+  return { kind: 'repetari', last: lastText, today: `Rămâi la ${fmtKg(kg)} și încearcă o repetare în plus la o serie (spre ${hi}), cu aceeași rezervă.` };
+}
+
+/** Compatibilitate: sugestia fără opțiuni. */
+export function nextSuggestion(exercise: string, reps: string, rir: string, history: StrengthLogEntry[], opts: SuggestOpts = {}): { last: string | null; today: string } {
+  const r = suggest(exercise, reps, rir, history, opts);
+  return { last: r.last, today: r.today };
+}
+
+/** „12/12/11” sau „12” → repetările pe serie (pentru `n` serii). */
+export function parseRepsInput(text: string, n: number): (number | null)[] {
+  const parts = text.split(/[\/,; ]+/).map((x) => x.trim()).filter(Boolean).map(Number).filter((x) => Number.isFinite(x));
+  if (!parts.length) return Array(n).fill(null);
+  return Array.from({ length: n }, (_, i) => parts[Math.min(i, parts.length - 1)]!);
 }
 
 /** Validarea unei înregistrări primite de server: valori plauzibile, fără kilograme inventate. */

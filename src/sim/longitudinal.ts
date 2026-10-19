@@ -45,6 +45,9 @@ export function runLongitudinal(input: GenerateInput, weeks = 8, seed = 7): Long
   const swimCap = input.swim?.continuousM ?? null;
   const start = input.startDate;
   let missedThisWeek = 0;
+  // Fitness: sala ratată ieri → a doua zi dimineață, rotația continuă (ca pe server, src/../react.ts missedStrength).
+  const fitness = String(input.goal).startsWith('fit-');
+  let missedYesterday: string[] = [];
   let lastActive = start;
 
   const deliver = (today: string, ev: AdaptEvent, what: string) => {
@@ -87,6 +90,8 @@ export function runLongitudinal(input: GenerateInput, weeks = 8, seed = 7): Long
   for (let i = 0; i < weeks * 7; i++) {
     const today = addDays(start, i);
     const pause = i >= 36 && i < 46; // 10 zile fără antrenament (concediu, boală)
+    for (const id of missedYesterday) deliver(today, { kind: 'forta-ratat', workoutId: id }, 'sală ratată ieri: rotația continuă');
+    missedYesterday = [];
     // Evenimentele programate ale scenariului.
     if (i === 9) deliver(today, { kind: 'readiness', date: today, verdict: 'galben', reason: 'somn scurt, HRV sub medie' }, 'oboseală: zi galbenă');
     if (i === 11) deliver(today, { kind: 'readiness', date: today, verdict: 'rosu', reason: 'HRV mult sub medie' }, 'oboseală: zi roșie');
@@ -108,6 +113,7 @@ export function runLongitudinal(input: GenerateInput, weeks = 8, seed = 7): Long
       if (pause || x < 0.15) {
         counts.missed += 1;
         missedThisWeek += 1;
+        if (fitness && w.type === 'forta') missedYesterday.push(w.id);
         continue;
       }
       done.push(w.id);

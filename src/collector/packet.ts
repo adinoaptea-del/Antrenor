@@ -17,7 +17,7 @@ import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict }
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import { BLOCK_LABEL, prescribe } from '../strength/ppl.js';
 import { strengthSpecFor } from '../strength/plan-specs.js';
-import { FITNESS_WEEK_ACTION, fitnessCardio, fitnessProfile, fitnessWeeks } from '../strength/fitness.js';
+import { fitnessCardio, fitnessProfile, fitnessWeekAction, fitnessWeeks } from '../strength/fitness.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
 const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta'];
@@ -131,6 +131,8 @@ export interface Packet {
     saptamana_program: number;
     etapa: string;
     actiunea_saptamanii: string;
+    /** Varianta de patru zile: „ampla” (A–D) sau „standard”. */
+    varianta: "standard" | "ampla" | null;
     miscare_recomandata: string;
     zile_alese: number | null;
     minute_sedinta: number | null;
@@ -543,7 +545,8 @@ function fitnessBrief(input: CollectorInput): Packet['fitness'] {
   return {
     saptamana_program: week,
     etapa: fw ? `${BLOCK_LABEL[fw.block]}, săpt. ${fw.blockWeek} din ${fw.blockLen}` : '',
-    actiunea_saptamanii: FITNESS_WEEK_ACTION[week] ?? '',
+    actiunea_saptamanii: fitnessWeekAction(week, fw?.variant),
+    varianta: fw?.variant ?? null,
     miscare_recomandata: fitnessCardio(week, f.miscare ?? null),
     zile_alese: f.zile ?? null,
     minute_sedinta: f.minute ?? null,
