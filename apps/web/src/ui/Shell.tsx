@@ -41,7 +41,7 @@ export function BackHeader({ title, onBack, right }: { title: string; onBack: ()
 export function PageTitle({ title, sub }: { title: string; sub?: ReactNode }) {
   return (
     <div className="page-title">
-      <h1>{title}</h1>
+      {title && <h1>{title}</h1>}
       {sub && <p>{sub}</p>}
     </div>
   );

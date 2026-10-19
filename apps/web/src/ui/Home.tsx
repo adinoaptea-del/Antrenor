@@ -63,15 +63,15 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const openToday = () => (today.length ? openSheet(remaining[0] ?? today[0]!, today) : next ? openSheet(next) : onOpen('calendar'));
 
   // Un singur buton principal, în ordinea în care contează azi.
-  const cta: { label: string; go: () => void } | null =
+  const cta: { label: string; go: () => void; kind: 'form' | 'other' } | null =
     !me.intakeComplete
-      ? { label: 'Completează chestionarul', go: () => onOpen('intake') }
+      ? { label: 'Completează chestionarul', go: () => onOpen('intake'), kind: 'form' }
       : !morningComplete(morning ?? undefined) && hour >= 4 && hour < 14 && !day?.ask
-        ? { label: 'Cum te simți?', go: () => onOpen('dimineata') }
+        ? { label: 'Cum te simți azi? (30 s)', go: () => onOpen('dimineata'), kind: 'form' }
         : lastDone && lastDoneId && !eveningComplete(evening)
-          ? { label: `Cum a fost ${SPORT_LABEL[lastDone.sport].toLowerCase()} ${dayLabel(lastDone.date)}?`, go: () => onOpen('seara', { activityId: lastDoneId }) }
+          ? { label: `Cum a fost ${SPORT_LABEL[lastDone.sport].toLowerCase()} ${dayLabel(lastDone.date)}?`, go: () => onOpen('seara', { activityId: lastDoneId }), kind: 'form' }
           : remaining.length && !paused
-            ? { label: remaining.length > 1 ? 'Vezi antrenamentele' : 'Vezi antrenamentul', go: openToday }
+            ? { label: '', go: openToday, kind: 'other' }
             : null;
 
   const shown = today.slice(0, 3);
@@ -150,32 +150,26 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
           </p>
         )}
         {day?.ask && <AptQuestion />}
-        {cta && (
-          <button className="btn cta azi-cta" onClick={cta.go}>
-            {cta.label} {Icons.arrowRight}
+        {/* Chestionarul de dimineață / seară: o linie discretă, doar când lipsește (nu un al treilea buton mare). */}
+        {cta && cta.kind === 'form' && (
+          <button className="linkish azi-form" onClick={cta.go}>
+            {cta.label} {Icons.chevronRight}
           </button>
         )}
-        {remaining.length > 0 && !paused && (
-          <button className="linkish azi-adapt" onClick={openToday}>
-            Adaptează ziua
+        <div className="azi-btns">
+          <button className="btn azi-btn" onClick={() => onOpen('calendar')}>
+            {Icons.calendar} Planul complet
           </button>
-        )}
+          <button className="btn azi-btn" onClick={() => onOpen('progres')}>
+            {Icons.trend} Progresul tău
+          </button>
+        </div>
+        <button className="linkish azi-coach" onClick={() => onOpen('antrenor')}>
+          Întreabă antrenorul
+        </button>
       </div>
 
       <div className="stack">
-        <div className="azi-rows">
-          <button className="azi-row" onClick={() => onOpen('recuperare')}>
-            <StateLine />
-            {Icons.chevronRight}
-          </button>
-          <button className="azi-row" onClick={() => onOpen('obiectiv')}>
-            <span>
-              {fit ? `Progresul pe ${FITNESS_WEEKS} de săptămâni` : `Progresul către ${me.user.raceName ?? goalName}`}
-              <small>{fit ? (fitWeek ? `săptămâna ${fitWeek}` : `începe luni, ${fmtDayMonth(me.planStart ?? me.today)}`) : days != null ? `${days} zile · ${fmtDayMonth(me.user.raceDate!)} ${me.user.raceDate!.slice(0, 4)}${me.raceReady?.target ? ` · țintă ${fmtTime(me.raceReady.target.targetSec)}` : ''}` : 'reperele și dovezile tale'}</small>
-            </span>
-            {Icons.chevronRight}
-          </button>
-        </div>
 
         {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
           <button className="row-card" onClick={() => onOpen('saptamanal')}>

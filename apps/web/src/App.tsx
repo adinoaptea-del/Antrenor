@@ -15,9 +15,10 @@ import { LabsGate } from './ui/LabsGate';
 import { Tour, tourSeen } from './ui/Tour';
 import { ErrorScreen, Loading, Login, Setup, Unconfigured } from './ui/Login';
 import { Icons } from './ui/common';
-import { takeLocalBack, Ambient, AppHeader, PageTitle, SubTabs, ambientOn } from './ui/Shell';
+import { takeLocalBack, Ambient, AppHeader, BackHeader, PageTitle, SubTabs, ambientOn } from './ui/Shell';
 import { Goal } from './ui/Goal';
 import { Intake } from './forms/Intake';
+import { Progress } from './ui/Progress';
 import { Evening, Morning, Weekly } from './forms/Daily';
 import { Body, Labs, Tests } from './forms/Baseline';
 import { DataProvider, useData } from './data/store';
@@ -26,7 +27,7 @@ import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
 // Trei taburi jos: Azi (bula cu ședințele zilei; Starea de azi și Obiectivul se deschid din ea), Plan, Coach.
 // Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
-type Screen = 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
+type Screen = 'progres' | 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
 type Tab = 'acasa' | 'plan' | 'coach';
 const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; screens: Screen[] }[] = [
   { id: 'acasa', label: 'Azi', icon: 'home', go: 'acasa', screens: ['acasa', 'recuperare', 'obiectiv', 'insigne'] },
@@ -34,8 +35,9 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; scre
   { id: 'coach', label: 'Coach', icon: 'chat', go: 'antrenor', screens: ['antrenor'] },
 ];
 const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))?.id ?? null;
-const MAIN = TABS.flatMap((t) => t.screens.filter((x) => x !== 'insigne').map((id) => ({ id })));
-const ALL: Screen[] = ['antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
+// O singură pagină principală (Azi); restul se deschid din butoanele de sub bulă și au „înapoi”.
+const MAIN: { id: Screen }[] = [{ id: 'acasa' }];
+const ALL: Screen[] = ['progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -324,18 +326,19 @@ function Shell() {
       ) : (
         <div key={screen} className={`screen nav-${navDir}`}>
           {screen === 'acasa' && <Home onOpen={go} />}
+          {screen === 'progres' && <Progress onBack={() => go('acasa')} onOpen={go} />}
           {(screen === 'calendar' || screen === 'antrenament') && (
             <>
-              <AppHeader name={me.user.name} onProfile={() => go('profil')} />
-              <PageTitle title="Planul tău" sub={planSub(me.today)} />
+              <BackHeader title="Planul tău" onBack={() => go('acasa')} />
+              <PageTitle title="" sub={planSub(me.today)} />
               <SubTabs label="Planul" value={screen === 'calendar' ? 'calendar' : 'sporturi'} onChange={(v) => go(v === 'calendar' ? 'calendar' : 'antrenament')} items={[{ id: 'calendar', label: 'Calendar' }, { id: 'sporturi', label: sportsTabLabel(me.user.goal) }]} />
               {screen === 'calendar' ? <Calendar onBack={back} onOpen={go} /> : <Train onOpen={go} sport={trainSport} onSport={setTrainSport} />}
             </>
           )}
           {(screen === 'recuperare' || screen === 'obiectiv') && (
             <>
-              <AppHeader name={me.user.name} onProfile={() => go('profil')} />
-              <PageTitle title="Evoluția ta" sub={screen === 'recuperare' ? 'Datele corpului de azi, cu sursa și ora.' : 'Repere măsurate, cu limite explicite.'} />
+              <BackHeader title="Evoluția ta" onBack={() => go('progres')} />
+              <PageTitle title="" sub={screen === 'recuperare' ? 'Datele corpului de azi, cu sursa și ora.' : 'Repere măsurate, cu limite explicite.'} />
               <SubTabs label="Evoluția" value={screen === 'recuperare' ? 'azi' : 'obiectiv'} onChange={(v) => go(v === 'azi' ? 'recuperare' : 'obiectiv')} items={[{ id: 'azi', label: 'Starea de azi' }, { id: 'obiectiv', label: 'Obiectiv' }]} />
               {screen === 'recuperare' ? <Stats onOpen={go} /> : <Goal onOpen={go} />}
             </>
@@ -366,19 +369,6 @@ function Shell() {
       )}
 
 
-      {!isForm && !gateIntake && !labsGate && (
-        <nav className="tabbar" aria-label="Navigare">
-          {TABS.map((t) => {
-            const on = tabOf(screen) === t.id;
-            return (
-              <button key={t.id} className={on ? 'on' : ''} onClick={() => go(t.go)} aria-current={on ? 'page' : undefined}>
-                <span className="tb-ic">{Icons[t.icon]}</span>
-                <span>{t.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      )}
     </div>
   );
 }

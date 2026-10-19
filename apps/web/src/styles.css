@@ -27,7 +27,7 @@
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'SamsungOne', sans-serif;
   --radius: 22px;
   --radius-sm: 14px;
-  --nav-h: 64px;
+  --nav-h: 0px;
   --nav-gap: 0px;
   color-scheme: dark;
 }
@@ -1149,3 +1149,36 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .sheet:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) { .orb { transition: none; } }
 .azi .azi-adapt { justify-self: center; color: var(--fg); font-weight: 500; font-size: 15px; }
+
+/* O singură pagină: sub bulă, două butoane egale (Planul complet, Progresul tău) și o legătură către antrenor. */
+.azi-btns { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.azi-btn { justify-content: center; gap: 8px; background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); min-height: 52px; font-weight: 600; }
+.azi-btn svg { width: 18px; height: 18px; color: var(--accent); stroke: var(--accent); opacity: 1; }
+.azi .azi-form { justify-self: center; color: var(--accent); font-size: 15px; font-weight: 600; }
+.azi .azi-coach { justify-self: center; color: var(--muted); font-weight: 500; font-size: 14px; }
+@media (max-width: 340px) { .azi-btns { grid-template-columns: 1fr; } }
+
+/* Fereastra ședinței: mică, în centru; pagina din spate se estompează ca atenția să fie pe antrenament. */
+.sheet-wrap { align-items: center; background: rgba(6, 9, 9, 0.45); backdrop-filter: blur(14px) saturate(0.8); -webkit-backdrop-filter: blur(14px) saturate(0.8); padding: 16px max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { max-width: 440px; width: 100%; max-height: min(78dvh, 720px); border-radius: 24px; border-bottom: 1px solid var(--line-2); padding: 12px 16px 14px; animation: sheet-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet-grab { display: none; }
+@keyframes sheet-pop { from { transform: scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }
+
+/* Progresul: tuburi cu particule (aceeași materie ca bula). */
+.prog { display: grid; gap: 22px; padding-top: 6px; }
+.prog-main { display: grid; gap: 10px; }
+.prog-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.prog-row b { font-size: 18px; font-weight: 700; text-wrap: balance; }
+.prog-main .prog-row > span:last-child { font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prog-row.small { font-size: 14px; color: var(--muted); }
+.prog-row.small > span:last-child { font-size: 14px; color: var(--fg); font-weight: 600; }
+.prog-legs { display: grid; gap: 14px; }
+.prog-leg { display: grid; gap: 6px; }
+.prog-note { margin: 0; font-size: 13px; color: var(--muted); }
+.tube { display: block; width: 100%; }
+.tube-big { height: 56px; }
+.tube-small { height: 22px; }
+.prog-tips { display: grid; gap: 10px; }
+.prog-tips p { margin: 0; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
+.prog .prog-more { justify-self: start; }
