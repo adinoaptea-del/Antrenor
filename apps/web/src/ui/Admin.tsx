@@ -108,6 +108,19 @@ export function Admin({ onBack }: { onBack: () => void }) {
           <Card key={u.id}>
             <div style={{ fontWeight: 700 }}>{u.name || u.email}</div>
             <div className="tiny muted">{u.email} · din {u.since.split('-').reverse().join('.')}{u.costMonth != null ? ` · ${usd(u.costMonth)} luna asta` : ''}</div>
+            {(u.rides42?.length || u.rides42Strava) && (
+              <details style={{ marginTop: 8 }}>
+                <summary className="tiny muted">Bicicletă în ultimele 6 săptămâni (ce intră la pregătire)</summary>
+                <div className="tiny" style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+                  {(u.rides42 ?? []).map((r, i) => (
+                    <div key={i}>
+                      {r.date.slice(5).split('-').reverse().join('.')} · {r.minutes} min{r.km != null ? ` · ${r.km} km` : ''} · <b>{NAME[r.source] ?? r.source}</b> · „{(r.name ?? '').split(';')[0]}”
+                    </div>
+                  ))}
+                  {u.rides42Strava && <div className="muted">+ ture din Strava (nu le vezi tu; sportivul le vede la el, în Plan → Sporturi → Bicicletă)</div>}
+                </div>
+              </details>
+            )}
             {u.recent && u.recent.length > 0 && (
               <details style={{ marginTop: 8 }}>
                 <summary className="tiny muted">Ultimele ședințe ({u.recent.length})</summary>

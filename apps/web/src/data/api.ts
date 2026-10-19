@@ -292,6 +292,8 @@ export interface AdminUser {
   costMonth?: number;
   nutritionMissing?: string[];
   recent?: { date: string; sport: string; source: string; name: string | null; minutes: number; km: number | null }[];
+  rides42?: { date: string; source: string; name: string | null; minutes: number; km: number | null }[];
+  rides42Strava?: boolean;
 }
 
 /** Repornire curată: șterge cache-ul aplicației (nu datele) și reîncarcă. Prima reparație pentru orice blocaj. */

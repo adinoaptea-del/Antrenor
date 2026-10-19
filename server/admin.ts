@@ -21,7 +21,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 
     if (req.method === 'GET') {
       const monthStart = `${todayIn('Europe/Bucharest').slice(0, 7)}-01`;
-      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights] = await Promise.all([
+      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights, rides] = await Promise.all([
         select<{ id: string; email: string; name: string; created_at: string; tz: string; sex: string | null; birth_year: number | null; height_cm: number | null }>('users', {}, { select: '*', order: 'created_at.asc' }),
         select<{ user_id: string; provider: string }>('oauth_tokens', {}, { select: 'user_id,provider' }),
         select<{ user_id: string; provider: string; ok: boolean; detail: string | null; ran_at: string }>('sync_log', {}, { order: 'ran_at.desc', limit: 300 }),
@@ -31,6 +31,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<{ user_id: string | null; input_tokens: number; output_tokens: number; cache_write_tokens?: number; cache_read_tokens?: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: '*', limit: 20000 }).catch(() => []),
         select<{ user_id: string; date: string; sport: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', {}, { select: 'user_id,date,sport,source,name,minutes,distance_km', order: 'date.desc', limit: 400 }),
         select<{ user_id: string }>('wellness_daily', { source: 'eq.manual', weight_kg: 'not.is.null' }, { select: 'user_id' }).catch(() => []),
+        // Bicicleta pe 6 săptămâni (ce intră în „pregătirea pe probe”), ca să vezi de unde vine o tură nefăcută.
+        select<{ id: string; user_id: string; date: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', { sport: 'eq.bicicleta', date: `gte.${new Date(Date.now() - 42 * 86_400_000).toISOString().slice(0, 10)}` }, { select: 'id,user_id,date,source,name,minutes,distance_km', order: 'date.desc', limit: 500 }).catch(() => []),
       ]);
       const today = todayIn('Europe/Bucharest');
       const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0), 0) * 100) / 100;
@@ -59,6 +61,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
             costMonth: cost(usage.filter((r) => r.user_id === x.id)),
             // Mesele sunt personalizate doar cu toate cele patru date (aceleași ca în motorul de nutriție).
             nutritionMissing: [x.sex ? null : 'sexul', x.birth_year ? null : 'anul nașterii', x.height_cm ? null : 'înălțimea', weights.some((w) => w.user_id === x.id) ? null : 'greutatea'].filter((v): v is string => !!v),
+            // Datele Strava nu se arată altor utilizatori (nici adminului): doar câte ture sunt de acolo.
+            rides42: rides.filter((r) => r.user_id === x.id && r.source !== 'strava').map((r) => ({ date: r.date, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km == null ? null : Number(r.distance_km) })),
+            rides42Strava: rides.some((r) => r.user_id === x.id && r.source === 'strava'),
             recent: acts.filter((r) => r.user_id === x.id && r.source !== 'strava').slice(0, 8).map((r) => ({ date: r.date, sport: r.sport, source: r.source, name: r.name, minutes: r.minutes, km: r.distance_km })),
           };
         }),
