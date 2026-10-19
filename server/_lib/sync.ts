@@ -7,7 +7,7 @@ import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
 import { normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
 import { getActivity, listActivities, normalizeStravaActivity, normalizeStravaOther } from '../../src/collector/providers/strava.js';
 import type { OtherActivity } from '../../src/collector/other.js';
-import { normalizeOuraNight, ouraApi } from '../../src/collector/providers/oura.js';
+import { mainNights, normalizeOuraNight, normalizeOuraOther, normalizeOuraSession, normalizeOuraWorkout, ouraApi } from '../../src/collector/providers/oura.js';
 
 export interface SyncReport {
   provider: Provider;
@@ -42,19 +42,32 @@ export async function pullStrava(token: string, days: number): Promise<{ activit
   return { activities: rows.map(normalizeStravaActivity).filter((a): a is SourceActivity => a != null), others: rows.map(normalizeStravaOther).filter((a): a is OtherActivity => a != null) };
 }
 
-async function pullOura(token: string, days: number): Promise<SourceDaily[]> {
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 86_400_000);
-  const [sleep, daily, readiness] = await Promise.all([ouraApi.sleep(token, isoDay(start), isoDay(end)), ouraApi.dailySleep(token, isoDay(start), isoDay(end)), ouraApi.dailyReadiness(token, isoDay(start), isoDay(end))]);
-  const out: SourceDaily[] = [];
-  for (const s of sleep.data) {
-    const n = normalizeOuraNight(s, daily.data.find((d) => d.day === s.day) ?? null, readiness.data.find((r) => r.day === s.day) ?? null);
-    if (n) out.push(n);
+export async function pullOura(token: string, days: number): Promise<{ wellness: SourceDaily[]; activities: SourceActivity[]; others: OtherActivity[] }> {
+  // end_date e exclusiv la Oura și ziua e locală: cerem până poimâine (UTC), ca noaptea de azi să nu lipsească.
+  const end = new Date(Date.now() + 2 * 86_400_000);
+  const start = new Date(Date.now() - days * 86_400_000);
+  const [a, b] = [isoDay(start), isoDay(end)];
+  const [sleep, daily, readiness] = await Promise.all([ouraApi.sleep(token, a, b), ouraApi.dailySleep(token, a, b), ouraApi.dailyReadiness(token, a, b)]);
+  // Antrenamentele și sesiunile: o conexiune veche fără scope-ul nou (session) nu oprește somnul și readiness-ul.
+  const [workouts, sessions] = await Promise.all([ouraApi.workouts(token, a, b).catch(() => []), ouraApi.sessions(token, a, b).catch(() => [])]);
+  const wellness: SourceDaily[] = [];
+  for (const s of mainNights(sleep)) {
+    const n = normalizeOuraNight(s, daily.find((d) => d.day === s.day) ?? null, readiness.find((r) => r.day === s.day) ?? null);
+    if (n) wellness.push(n);
   }
-  return out;
+  // Readiness fără noapte (inel pus după culcare): abaterea de temperatură și scorul rămân, fără somn inventat.
+  for (const r of readiness) if (!wellness.some((w) => w.date === r.day) && (r.score != null || r.temperature_deviation != null)) wellness.push({ date: r.day, source: 'oura', recoveryScore: r.score ?? null, tempDevC: r.temperature_deviation ?? null });
+  const activities = workouts.map(normalizeOuraWorkout).filter((x): x is SourceActivity => x != null);
+  const others = [...workouts.map(normalizeOuraOther), ...sessions.map(normalizeOuraSession)].filter((x): x is OtherActivity => x != null);
+  return { wellness, activities, others };
 }
 
-export function wellnessRow(userId: string, w: SourceDaily) {
+/** Nopțile: cu abaterea de temperatură (schema 10); pe o schemă veche, fără ea (restul nu se pierde). */
+export async function saveWellness(userId: string, wellness: SourceDaily[]): Promise<void> {
+  await upsert('wellness_daily', wellness.map((w) => wellnessRow(userId, w, true)), 'user_id,date,source').catch(() => upsert('wellness_daily', wellness.map((w) => wellnessRow(userId, w)), 'user_id,date,source'));
+}
+
+export function wellnessRow(userId: string, w: SourceDaily, withTemp = false) {
   return {
     user_id: userId,
     date: w.date,
@@ -69,6 +82,7 @@ export function wellnessRow(userId: string, w: SourceDaily) {
     respiratory_rate: w.respiratoryRate ?? null,
     weight_kg: w.weightKg ?? null,
     body_fat_pct: w.bodyFatPct ?? null,
+    ...(withTemp ? { temp_dev_c: w.tempDevC ?? null } : {}),
     synced_at: new Date().toISOString(),
   };
 }
@@ -150,9 +164,11 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');
         rows = activities.length;
       } else if (provider === 'oura') {
-        const wellness = await pullOura(token, days);
-        if (wellness.length) await upsert('wellness_daily', wellness.map((w) => wellnessRow(userId, w)), 'user_id,date,source');
-        rows = wellness.length;
+        const { wellness, activities, others } = await pullOura(token, days);
+        await saveOthers(userId, others);
+        if (wellness.length) await saveWellness(userId, wellness);
+        if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');
+        rows = wellness.length + activities.length;
       }
       reports.push({ provider, ok: true, rows, detail: null });
       await insert('sync_log', { user_id: userId, provider, ok: true, rows, detail: null });

@@ -35,6 +35,8 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
     { k: 'hrv', label: `HRV ${w?.hrv != null ? String(w.hrv).replace('.', ',') : ''} ms`, score: parts?.hrv ?? null, show: w?.hrv != null },
     { k: 'rhr', label: `Puls de repaus ${w?.rhr ?? ''}`, score: parts?.puls ?? null, show: w?.rhr != null },
     { k: 'resp', label: 'Respirație', score: parts?.respiratie ?? null, show: parts?.respiratie != null },
+    // Temperatura pielii (Oura): afișată ca valoare, fără scor inventat; nu e temperatura corpului.
+    { k: 'temp', label: `Temperatura pielii ${w?.tempDevC != null ? `${w.tempDevC > 0 ? '+' : ''}${w.tempDevC.toLocaleString('ro-RO', { maximumFractionDigits: 2 })} °C față de media ta` : ''}`, score: null, show: w?.tempDevC != null },
   ].filter((c) => c.show);
   const n = parts ? Object.values(parts).filter((x) => x != null).length : 0;
   const ringValue = me.state?.score ?? recovery;

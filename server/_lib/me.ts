@@ -110,6 +110,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
           sleepScore: r.sleep_score,
           recoveryScore: r.recovery_score,
           respiratoryRate: r.respiratory_rate,
+          tempDevC: r.temp_dev_c == null ? null : Number(r.temp_dev_c),
         }) as SourceDaily,
     ),
   );
@@ -169,6 +170,10 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   (activities.length ? have : missing).push('istoric de activități');
 
   const warnings: Me['warnings'] = [];
+  // Oura conectat înainte de 19.10.2026: fără permisiunea pentru sesiuni (meditație, respirație). Somnul, readiness-ul și
+  // antrenamentele vin oricum; sesiunile doar după reconectare.
+  const ouraTok = tokens.find((t) => t.provider === 'oura') as { scope?: string | null } | undefined;
+  if (ouraTok?.scope && !/\bsession\b/.test(ouraTok.scope)) warnings.push({ title: 'Oura: reconectează o dată', text: 'Somnul, readiness-ul, temperatura și antrenamentele vin deja. Sesiunile de respirație și meditație din aplicația Oura cer o permisiune nouă.', fix: 'Profil → Brățări → Oura → Deconectează, apoi Conectează.' });
   const weekAgo = addDays(today, -14);
   const plannedSwim = planned.filter((w) => w.sport === 'inot' && w.date >= weekAgo && w.date < today).reduce((n, w) => n + w.plannedMinutes, 0);
   const doneSwim = activities.filter((a) => a.sport === 'inot' && a.date >= weekAgo && a.date < today).reduce((n, a) => n + a.minutes, 0);
@@ -247,7 +252,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     scores: Object.fromEntries(scoresRows.map((s) => [s.workout_id, { color: s.color, reasons: s.reasons, final: s.is_final }])),
     activities: meActivities,
     state,
-    wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
+    wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, tempDevC: todayW.tempDevC, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessOut,
     day,
     cardiacPending: pendingCardiac(forms.mornings as never, today),

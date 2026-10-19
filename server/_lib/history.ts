@@ -3,16 +3,16 @@
 // citite, corecturile sportivului): rândurile vechi se adaugă doar dacă lipsesc.
 import { insertIgnore, remove } from './db.js';
 import { accessToken, connectedProviders } from './tokens.js';
-import { activityRow, otherRows, pullStrava, pullWhoop, wellnessRow } from './sync.js';
+import { activityRow, otherRows, pullOura, pullStrava, pullWhoop, wellnessRow } from './sync.js';
 import { claimEvent } from './agents.js';
 
-const DAYS = { strava: 730, whoop: 730 } as const;
+const DAYS = { strava: 730, whoop: 730, oura: 365 } as const;
 
 export async function importHistory(userId: string): Promise<Record<string, number | string>> {
   const out: Record<string, number | string> = {};
   for (const row of await connectedProviders(userId)) {
     const p = row.provider;
-    if (p !== 'strava' && p !== 'whoop') continue;
+    if (p !== 'strava' && p !== 'whoop' && p !== 'oura') continue;
     if (!(await claimEvent(userId, `istoric:v1:${p}`))) continue;
     try {
       const token = await accessToken(userId, p);
@@ -22,6 +22,13 @@ export async function importHistory(userId: string): Promise<Record<string, numb
         const a = await insertIgnore('activities', activities.map((x) => activityRow(userId, x)), 'id');
         await insertIgnore('other_activities', otherRows(userId, others, true), 'id').catch(() => insertIgnore('other_activities', otherRows(userId, others, false), 'id')).catch(() => []);
         out.strava = a.length;
+      } else if (p === 'oura') {
+        // Oura: un an de nopți, readiness, temperatură, antrenamente și sesiuni (toate paginile).
+        const { wellness, activities, others } = await pullOura(token, DAYS.oura);
+        const w = await insertIgnore('wellness_daily', wellness.map((x) => wellnessRow(userId, x, true)), 'user_id,date,source').catch(() => insertIgnore('wellness_daily', wellness.map((x) => wellnessRow(userId, x)), 'user_id,date,source'));
+        const a = await insertIgnore('activities', activities.map((x) => activityRow(userId, x)), 'id');
+        await insertIgnore('other_activities', otherRows(userId, others, true), 'id').catch(() => insertIgnore('other_activities', otherRows(userId, others, false), 'id')).catch(() => []);
+        out.oura = w.length + a.length;
       } else {
         const { wellness, activities, others } = await pullWhoop(userId, token, DAYS.whoop);
         const w = await insertIgnore('wellness_daily', wellness.map((x) => wellnessRow(userId, x)), 'user_id,date,source');

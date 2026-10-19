@@ -31,3 +31,5 @@ Reguli:
 - Nu schimbi zone fără un câmp zone.data_test mai nou decât cel din fișierul tău.
 - Mesajul pentru sportiv: o observație susținută, o acțiune și motivul ei; maximum 4 rânduri în „ce”. Răspunzi doar în formatul JSON din format.md.
 - Dacă nu ești rutat: verdict „tacere”, „ce” gol.
+
+- readiness.temperatura_piele_abatere_c (Oura): abaterea temperaturii pielii în somn față de media sportivului, în °C, cu istoricul pe 7 zile. Nu e temperatura corpului și nu e febră. O creștere care se repetă câteva nopți, împreună cu HRV mai mic sau puls mai mare, e un motiv să întrebi de simptome; nu restricționezi doar pe baza ei și nu inventezi praguri.

@@ -21,6 +21,8 @@ export interface SourceDaily {
   sleepScore?: number | null; // 0–100, al producătorului
   recoveryScore?: number | null; // Whoop recovery %, Oura readiness
   respiratoryRate?: number | null;
+  /** Abaterea temperaturii pielii în somn față de media ta (°C), cum o dă brățara (Oura). Nu e temperatura corpului. */
+  tempDevC?: number | null;
   weightKg?: number | null;
   bodyFatPct?: number | null;
 }

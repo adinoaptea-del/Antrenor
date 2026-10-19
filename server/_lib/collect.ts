@@ -160,10 +160,11 @@ interface WellnessRow {
   respiratory_rate: number | null;
   weight_kg: number | null;
   body_fat_pct: number | null;
+  temp_dev_c?: number | string | null;
 }
 
 export function toSourceDaily(r: WellnessRow): SourceDaily {
-  return { date: r.date, source: r.source, hrv: r.hrv, rhr: r.rhr, sleepMin: r.sleep_min, bedtime: r.bedtime, wakeTime: r.wake_time, sleepScore: r.sleep_score, recoveryScore: r.recovery_score, respiratoryRate: r.respiratory_rate, weightKg: r.weight_kg, bodyFatPct: r.body_fat_pct };
+  return { date: r.date, source: r.source, hrv: r.hrv, rhr: r.rhr, sleepMin: r.sleep_min, bedtime: r.bedtime, wakeTime: r.wake_time, sleepScore: r.sleep_score, recoveryScore: r.recovery_score, respiratoryRate: r.respiratory_rate, weightKg: r.weight_kg, bodyFatPct: r.body_fat_pct, tempDevC: r.temp_dev_c == null ? null : Number(r.temp_dev_c) };
 }
 
 export async function loadUser(userId: string): Promise<UserRow> {

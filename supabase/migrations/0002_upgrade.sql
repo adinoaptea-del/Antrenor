@@ -317,6 +317,9 @@ alter table public.other_activities add column if not exists brisk boolean not n
 alter table public.other_activities add column if not exists excluded boolean not null default false;
 alter table public.other_activities add column if not exists reconciled_with text;
 
+-- Oura (schema 10): abaterea temperaturii pielii în somn față de media sportivului (°C), cum o calculează Oura.
+alter table public.wellness_daily add column if not exists temp_dev_c numeric(4, 2);
+
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
   key text primary key,
@@ -325,5 +328,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 9)
+insert into public.schema_meta (key, value) values ('version', 10)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

@@ -80,6 +80,9 @@ export interface Packet {
     /** Verdictul calculat de cod: datele obiective, apoi cum s-a simțit (Hooper doar coboară). */
     verdict_cod: { verdict: Verdict; motiv: string; /** fără date de la brățări și fără răspuns de la sportiv */ intrebare?: boolean };
     scor_producator: number | null;
+    /** Abaterea temperaturii pielii în somn față de media sportivului (°C), Oura; null fără date. */
+    temperatura_piele_abatere_c: number | null;
+    temperatura_piele_7z: { data: string; abatere_c: number | null }[];
     /** Cum s-a simțit (1–7, mai mare = mai rău). suma: și din răspunsuri parțiale (media × 4); raspunse: câte din 4. */
     hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null; raspunse: number; istoric_14z: { data: string; suma: number | null; raspunse: number; boala: boolean | null }[]; media_14z: number | null };
   };
@@ -229,6 +232,8 @@ export interface MergedDaily {
   recoveryScore: number | null;
   /** Respirații pe minut în somn, media brățărilor. */
   respiratoryRate: number | null;
+  /** Abaterea temperaturii pielii în somn față de media ta (°C), doar de la brățara care o calculează (Oura). */
+  tempDevC: number | null;
   weightKg: number | null;
   bodyFatPct: number | null;
   sources: Record<string, string | null>;
@@ -376,6 +381,7 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
     // sursa cu prioritate, etichetată.
     const recovery = pick('recoveryScore');
     const resp = fromPrimary('respiratoryRate');
+    const temp = pick('tempDevC');
     const weight = pick('weightKg');
     const fat = pick('bodyFatPct');
     const perDevice: MergedDaily['perDevice'] = {};
@@ -390,6 +396,7 @@ export function mergeWellness(rows: SourceDaily[]): MergedDaily[] {
       sleepScore: sleepScore.v,
       recoveryScore: recovery.v,
       respiratoryRate: round(resp.v, 1),
+      tempDevC: round(temp.v, 2),
       weightKg: weight.v,
       bodyFatPct: fat.v,
       sources: { hrv: hrv.src, puls_repaus: rhr.src, somn: sleep.src, recuperare: recovery.src, respiratie: resp.src },
@@ -739,6 +746,9 @@ export function buildPacket(input: CollectorInput): Packet {
       obiectiv: objective,
       verdict_cod: dayVerdict(objective, hooper.suma, { apt: input.morning?.apt ?? null, efortIeri: ieri.over, dureri: input.morning?.hooper.dureri ?? null }),
       scor_producator: todayRow?.recoveryScore ?? null,
+      // Abaterea temperaturii pielii (Oura), ca dată; codul nu o transformă singur în restricție (fără prag din sursă).
+      temperatura_piele_abatere_c: todayRow?.tempDevC ?? null,
+      temperatura_piele_7z: merged.filter((r) => r.date < today && diffDays(r.date, today) <= 7 && r.tempDevC != null).map((r) => ({ data: r.date, abatere_c: r.tempDevC })),
       hooper: {
         somn: input.morning?.hooper.somn ?? null,
         oboseala: input.morning?.hooper.oboseala ?? null,

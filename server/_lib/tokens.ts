@@ -62,7 +62,16 @@ export async function accessToken(userId: string, provider: Provider): Promise<s
   const expiresAt = new Date(row.expires_at).getTime();
   if (expiresAt - Date.now() > 5 * 60_000) return row.access_token;
   if (!row.refresh_token) return row.access_token;
-  const t = await refresh(providerConfig(provider), row.refresh_token);
+  let t;
+  try {
+    t = await refresh(providerConfig(provider), row.refresh_token);
+  } catch (e) {
+    // Oura și WHOOP: tokenul de reîmprospătare e de unică folosință. Dacă o altă sincronizare (cron, buton) l-a folosit
+    // între timp, perechea nouă e deja salvată: o folosim, în loc să declarăm conexiunea pierdută.
+    const again = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+    if (again && again.refresh_token !== row.refresh_token && new Date(again.expires_at).getTime() - Date.now() > 60_000) return again.access_token;
+    throw e;
+  }
   await saveTokens(userId, provider, { ...t, refreshToken: t.refreshToken ?? row.refresh_token, externalUserId: t.externalUserId ?? row.external_user_id ?? undefined });
   return t.accessToken;
 }
