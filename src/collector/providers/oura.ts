@@ -15,7 +15,11 @@ import { getJson, type OAuthConfig } from './oauth.js';
 export function ouraConfig(env: { OURA_CLIENT_ID: string; OURA_CLIENT_SECRET: string; OURA_REDIRECT_URI: string }): OAuthConfig {
   return {
     authorizeUrl: 'https://cloud.ouraring.com/oauth/authorize',
-    tokenUrl: 'https://api.ouraring.com/oauth/token',
+    // Aplicațiile din portalul nou (developer.ouraring.com) primesc codurile de la serverul de autorizare
+    // moi.ouraring.com: schimbul codului și reîmprospătarea merg acolo (endpointul vechi le respinge cu invalid_request).
+    // Codul se schimbă o singură dată, deci nu încercăm întâi endpointul vechi; doar reîmprospătarea are rezervă.
+    tokenUrl: 'https://moi.ouraring.com/oauth/v2/ext/oauth-token',
+    refreshFallbackUrl: 'https://api.ouraring.com/oauth/token',
     clientId: env.OURA_CLIENT_ID,
     clientSecret: env.OURA_CLIENT_SECRET,
     redirectUri: env.OURA_REDIRECT_URI,

@@ -12,7 +12,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const provider = q(req, 'provider') as Provider;
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, 'producător necunoscut');
     if (q(req, 'error')) {
-      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(q(req, 'error'))}`);
+      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent([q(req, 'error'), q(req, 'error_description')].filter(Boolean).join(': '))}`);
       return;
     }
     const userId = verifyState(q(req, 'state'));

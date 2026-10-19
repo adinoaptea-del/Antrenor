@@ -6976,8 +6976,8 @@ function authorizeUrl(cfg, state) {
   for (const [k, v] of Object.entries(cfg.extraAuthorizeParams ?? {})) u.searchParams.set(k, v);
   return u.toString();
 }
-async function tokenRequest(cfg, body) {
-  const res = await fetch(cfg.tokenUrl, {
+async function tokenRequest(cfg, body, url = cfg.tokenUrl) {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, ...body }).toString()
@@ -6995,8 +6995,14 @@ async function tokenRequest(cfg, body) {
 function exchangeCode(cfg, code) {
   return tokenRequest(cfg, { grant_type: "authorization_code", code, redirect_uri: cfg.redirectUri });
 }
-function refresh(cfg, refreshToken, extra = {}) {
-  return tokenRequest(cfg, { grant_type: "refresh_token", refresh_token: refreshToken, ...extra });
+async function refresh(cfg, refreshToken, extra = {}) {
+  const body = { grant_type: "refresh_token", refresh_token: refreshToken, ...extra };
+  try {
+    return await tokenRequest(cfg, body);
+  } catch (e) {
+    if (!cfg.refreshFallbackUrl) throw e;
+    return tokenRequest(cfg, body, cfg.refreshFallbackUrl);
+  }
 }
 async function getJson(url, accessToken2) {
   const res = await fetch(url, { headers: { authorization: `Bearer ${accessToken2}` } });
@@ -7232,7 +7238,11 @@ function normalizeStravaActivity(a) {
 function ouraConfig(env2) {
   return {
     authorizeUrl: "https://cloud.ouraring.com/oauth/authorize",
-    tokenUrl: "https://api.ouraring.com/oauth/token",
+    // Aplicațiile din portalul nou (developer.ouraring.com) primesc codurile de la serverul de autorizare
+    // moi.ouraring.com: schimbul codului și reîmprospătarea merg acolo (endpointul vechi le respinge cu invalid_request).
+    // Codul se schimbă o singură dată, deci nu încercăm întâi endpointul vechi; doar reîmprospătarea are rezervă.
+    tokenUrl: "https://moi.ouraring.com/oauth/v2/ext/oauth-token",
+    refreshFallbackUrl: "https://api.ouraring.com/oauth/token",
     clientId: env2.OURA_CLIENT_ID,
     clientSecret: env2.OURA_CLIENT_SECRET,
     redirectUri: env2.OURA_REDIRECT_URI,
@@ -11332,7 +11342,7 @@ async function handler12(req, res) {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
     if (q(req, "error")) {
-      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(q(req, "error"))}`);
+      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent([q(req, "error"), q(req, "error_description")].filter(Boolean).join(": "))}`);
       return;
     }
     const userId = verifyState(q(req, "state"));

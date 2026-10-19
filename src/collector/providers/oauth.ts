@@ -4,6 +4,8 @@
 export interface OAuthConfig {
   authorizeUrl: string;
   tokenUrl: string;
+  /** Doar la reîmprospătare: al doilea endpoint, dacă primul refuză (Oura: aplicațiile din portalul vechi). */
+  refreshFallbackUrl?: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
@@ -34,8 +36,8 @@ export function authorizeUrl(cfg: OAuthConfig, state: string): string {
   return u.toString();
 }
 
-async function tokenRequest(cfg: OAuthConfig, body: Record<string, string>): Promise<TokenSet> {
-  const res = await fetch(cfg.tokenUrl, {
+async function tokenRequest(cfg: OAuthConfig, body: Record<string, string>, url = cfg.tokenUrl): Promise<TokenSet> {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, ...body }).toString(),
@@ -56,8 +58,15 @@ export function exchangeCode(cfg: OAuthConfig, code: string): Promise<TokenSet> 
 }
 
 /** Reîmprospătarea înlocuiește ambele token-uri (Whoop): salvează perechea nouă și nu rula două refresh-uri în paralel. */
-export function refresh(cfg: OAuthConfig, refreshToken: string, extra: Record<string, string> = {}): Promise<TokenSet> {
-  return tokenRequest(cfg, { grant_type: 'refresh_token', refresh_token: refreshToken, ...extra });
+export async function refresh(cfg: OAuthConfig, refreshToken: string, extra: Record<string, string> = {}): Promise<TokenSet> {
+  const body = { grant_type: 'refresh_token', refresh_token: refreshToken, ...extra };
+  try {
+    return await tokenRequest(cfg, body);
+  } catch (e) {
+    // Un refuz (4xx) nu consumă tokenul de reîmprospătare: încercăm o dată și endpointul vechi, dacă există.
+    if (!cfg.refreshFallbackUrl) throw e;
+    return tokenRequest(cfg, body, cfg.refreshFallbackUrl);
+  }
 }
 
 export async function getJson<T>(url: string, accessToken: string): Promise<T> {
