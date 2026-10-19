@@ -88,6 +88,9 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
                   <button className="pill" onClick={() => previewCheer('alergare', 'bine')}>
                     Alergare la 75%
                   </button>
+                  <button className="pill" onClick={() => window.dispatchEvent(new Event('airon-welcome-preview'))}>
+                    Întâmpinarea
+                  </button>
                 </div>
               </Card>
               <Card tight>

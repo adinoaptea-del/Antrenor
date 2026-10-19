@@ -437,15 +437,6 @@ ul.plain b { color: var(--fg); }
 .topline .demo-banner { margin: 0; }
 
 /* ---------- Mementoul de la deschidere ---------- */
-.memento { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-left, 0px)); background: radial-gradient(70% 45% at 50% 30%, rgba(212, 250, 58, 0.12), transparent 70%), var(--bg); color: var(--fg); cursor: pointer; border: 0; text-align: center; opacity: 1; transition: opacity 0.45s ease; }
-.memento.out { opacity: 0; pointer-events: none; }
-.memento .inner { display: grid; gap: 18px; max-width: 30ch; justify-items: center; }
-.memento .day { font: 700 11px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-2); }
-.memento .txt { font: 700 clamp(30px, 8vw, 40px)/1.12 var(--font-display); text-wrap: balance; letter-spacing: -0.02em; }
-.memento .tap { font-size: 12px; color: var(--muted); margin-top: 8px; }
-.memento .bar { width: 120px; height: 4px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
-.memento .bar i { display: block; height: 100%; background: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .memento { transition: none; } }
 
 /* ---------- Intrare / ecrane de stare ---------- */
 .login { max-width: 430px; margin: 0 auto; padding: 8px 0 40px; }
@@ -549,7 +540,6 @@ ul.plain b { color: var(--fg); }
 .po-n { min-width: 0; font-size: 13px; }
 .po-n small { display: block; color: var(--muted); font-size: 11px; }
 .po-h { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.memento .fact { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 32ch; margin-inline: auto; text-wrap: balance; }
 /* Tranziții între ecrane, ca în aplicațiile iOS: înainte intră din dreapta, înapoi din stânga, între taburi fade. */
 /* Ecranul e transparent și stă mereu deasupra luminii ambientale: lumina nu se mai stinge la schimbarea ecranului
    (înainte, ecranul animat își făcea propriul strat opac și o acoperea o clipă). Fundalul vine din body. */
@@ -1408,44 +1398,32 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .ok-alert { background: radial-gradient(110% 70% at 90% 115%, rgba(87, 217, 154, 0.16), transparent 60%), var(--glass-fill); border-color: rgba(87, 217, 154, 0.4); }
 .sheet > :not(.sheet-body):not(.glass-fx) { flex-shrink: 0; }
 
-/* ——— Felicitarea: vine ca un asteroid din materia bulei, se așază, apoi mesajul ——— */
-.cheer-wrap { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; align-content: center; gap: 0; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(70% 50% at 50% 40%, rgba(110, 236, 140, 0.1), transparent 70%), rgba(4, 7, 7, 0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: cheer-in 0.35s ease-out both; }
-.cheer-wrap.out { animation: cheer-out 0.38s ease-in both; }
-.cheer-orb { width: min(62vw, 240px); margin-bottom: -46px; z-index: 2; animation: asteroid 1.15s cubic-bezier(0.18, 0.9, 0.24, 1.08) both; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
-.cheer-orb .orb { width: 100%; }
-.cheer { width: min(100%, 400px); border-radius: 30px; padding: 58px 22px 20px; display: grid; gap: 12px; text-align: center; overflow: hidden; animation: cheer-card 0.6s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.cheer > :not(.glass-fx) { position: relative; z-index: 1; }
-.cheer-k { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
-.cheer-t { margin: 0; font: 700 22px/1.25 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; }
-.cheer .btn { justify-self: center; min-width: 160px; }
-@keyframes asteroid {
-  0% { transform: translate(-48vw, -60vh) scale(0.18) rotate(-40deg); opacity: 0; border-radius: 40% 60% 55% 45%; filter: blur(6px) drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
-  45% { opacity: 1; filter: blur(2px) drop-shadow(0 0 40px rgba(222, 252, 70, 0.45)); }
-  70% { transform: translate(2vw, 2vh) scale(1.08, 0.94) rotate(4deg); }
-  85% { transform: translate(-1vw, -1vh) scale(0.97, 1.04) rotate(-1deg); }
-  100% { transform: none; opacity: 1; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
-}
-@keyframes cheer-card { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
-@keyframes cheer-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cheer-out { to { opacity: 0; transform: scale(0.98); } }
+/* Mesajul cosmic (ui/Cosmic.tsx): întâmpinarea și felicitarea, același corp de sticlă. Acasă rămâne vizibil în spate. */
+.cosmic { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; align-content: center; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: rgba(3, 7, 7, 0.24); cursor: pointer; animation: cosmic-bg 0.6s ease both; }
+.cosmic-reusita { background: rgba(3, 7, 7, 0.46); }
+.cosmic.out { pointer-events: none; animation: cosmic-bg-out 0.5s ease both; }
+.cosmic-cv { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+.cosmic-box { position: relative; width: min(calc(100vw - 150px), 250px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; opacity: 0; animation: cosmic-text 0.35s 0.3s ease both; }
+.cosmic-k { font: 600 12px var(--font-ui); letter-spacing: 0.08em; color: var(--accent); }
+.cosmic-reusita .cosmic-k { font: 700 19px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--fg); }
+.cosmic-t { margin: 0; font: 600 clamp(19px, 5.4vw, 23px)/1.3 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; color: var(--fg); }
+.cosmic-reusita .cosmic-t { font: 500 16px/1.42 var(--font-ui); letter-spacing: 0; }
+.cosmic-ok { width: 30px; height: 30px; fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(212, 250, 58, 0.45)); }
+.cosmic-x { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 4px 10px; cursor: pointer; }
+.cosmic-go { position: relative; margin-top: 66px; min-width: 160px; padding: 12px 34px; border-radius: 999px; border: 1px solid rgba(110, 236, 140, 0.45); background: rgba(10, 22, 20, 0.72); color: var(--fg); font: 600 15px var(--font-ui); cursor: pointer; box-shadow: inset 0 0 16px rgba(110, 236, 140, 0.16), 0 0 22px rgba(110, 236, 140, 0.14); opacity: 0; animation: cosmic-text 0.35s 0.6s ease both; }
+.cosmic.out .cosmic-box, .cosmic.out .cosmic-go { animation: cosmic-text-out 0.22s ease both; }
+.cosmic.still .cosmic-box.glass { width: min(100%, 340px); padding: 26px 22px; border-radius: 30px; }
+.cosmic.still .cosmic-go { margin-top: 16px; }
+@keyframes cosmic-bg { from { background-color: transparent; } }
+@keyframes cosmic-bg-out { to { background-color: transparent; } }
+@keyframes cosmic-text { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cosmic-text-out { from { opacity: 1; } to { opacity: 0; } }
+.orb-absorb { animation: orb-absorb 0.9s ease; }
+@keyframes orb-absorb { 40% { filter: brightness(1.16) drop-shadow(0 0 16px rgba(110, 236, 140, 0.35)); } }
 @media (prefers-reduced-motion: reduce) {
-  .cheer-wrap, .cheer-wrap.out, .cheer-orb, .cheer { animation: none; }
+  .cosmic, .cosmic.out { animation-duration: 0.25s; }
+  .cosmic-box, .cosmic-go { animation: cosmic-text 0.25s ease both; }
+  .orb-absorb { animation: none; }
 }
-
-/* ——— Mesajul de bun venit: același asteroid ca felicitările, apoi tranziția spațială spre Acasă ——— */
-.memento { align-content: center; gap: 0; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(70% 50% at 50% 38%, rgba(110, 236, 140, 0.1), transparent 70%), var(--bg); }
-.memento-orb { width: min(64vw, 250px); margin-bottom: -50px; z-index: 2; position: relative; animation: asteroid 1.15s cubic-bezier(0.18, 0.9, 0.24, 1.08) both; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
-.memento-orb .orb { width: 100%; }
-.memento .memento-card { width: min(100%, 400px); max-width: none; border-radius: 30px; padding: 60px 22px 22px; gap: 14px; overflow: hidden; animation: cheer-card 0.6s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.memento-card > :not(.glass-fx) { position: relative; z-index: 1; }
-.memento .txt { font-size: clamp(26px, 7vw, 34px); }
-/* La ieșire: bula și fereastra se dizolvă în particulele care zboară spre margini (Warp), ecranul se luminează spre Acasă. */
-.memento.out { transition: opacity 0.7s ease 0.12s; }
-.memento.out .memento-orb { animation: orb-warp 0.7s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
-.memento.out .memento-card { animation: card-warp 0.5s ease-in forwards; }
-@keyframes orb-warp { to { transform: scale(2.6); opacity: 0; filter: blur(8px) drop-shadow(0 0 60px rgba(222, 252, 70, 0.6)); } }
-@keyframes card-warp { to { transform: scale(1.08); opacity: 0; filter: blur(6px); } }
-.warp { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 101; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) {
-  .memento-orb, .memento .memento-card, .memento.out .memento-orb, .memento.out .memento-card { animation: none; }
-}
+.cosmic-go:focus { outline: none; }
+.cosmic-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

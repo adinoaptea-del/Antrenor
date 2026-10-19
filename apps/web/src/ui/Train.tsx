@@ -104,7 +104,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
         )}
 
         {next ? (
-          <button className="row-card" onClick={() => openSheet(next)}>
+          <button className="row-card" data-wid={next.id} onClick={() => openSheet(next)}>
             <span>
               <small className="eyebrow">Urmează · {dayName(next.date)}</small>
               <b>
@@ -190,7 +190,7 @@ export function Train({ onOpen, sport: sportProp, onSport }: { onOpen: (screen: 
                   {weekWorkouts.map((w) => {
                     const struct = sport === 'inot' ? swimStructure(w.type, w.structure ?? null, swimBest, swimMode) : sport === 'forta' ? (() => { const p = strengthFor(me, w); return p ? `${p.session.name} · ${BLOCK_LABEL[p.spec.block].toLowerCase()}` : ''; })() : (w.structure ?? (w.targetZones.length ? `Z${w.targetZones.join('–')}` : ''));
                     return (
-                      <div key={w.id} className="item" role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openSheet(w)} onKeyDown={(e) => e.key === 'Enter' && openSheet(w)}>
+                      <div key={w.id} data-wid={w.id} className="item" role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openSheet(w)} onKeyDown={(e) => e.key === 'Enter' && openSheet(w)}>
                         <Dot color={colorOf(me, w)} />
                         <div style={{ minWidth: 0 }}>
                           <div className="t">

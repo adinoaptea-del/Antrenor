@@ -36,7 +36,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
   const off = cancelled || paused;
 
   return (
-    <div className={`wk ${hero ? 'hero' : ''} ${off ? 'off' : ''}`}>
+    <div className={`wk ${hero ? 'hero' : ''} ${off ? 'off' : ''}`} data-wid={w.id}>
       <button className="wk-head wk-tap" onClick={() => openSheet(w)} aria-label="Ce faci la ședința asta">
         <span className="wk-ic">{SPORT_ICON[w.sport]}</span>
         <div className="wk-t">

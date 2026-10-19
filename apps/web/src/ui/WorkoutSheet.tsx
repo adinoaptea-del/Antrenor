@@ -91,7 +91,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
 
   return createPortal(
     <div className="sheet-wrap" role="dialog" aria-modal="true" aria-label="Ședința" onClick={onClose}>
-      <div className="sheet" ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" data-wid={w.id} ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <GlassFX level={0.16} />
         <div className="sheet-grab" aria-hidden="true" />
         {tabs.length > 1 && (

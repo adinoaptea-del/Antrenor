@@ -1,4 +1,4 @@
-import { Cheer } from './ui/Cheer';
+import { Cheer, pendingCheer } from './ui/Cheer';
 import { WalkPage } from './ui/Walking';
 import { BadgesScreen } from './ui/Badges';
 import { useEffect, useRef, useState } from 'react';
@@ -11,7 +11,7 @@ import { Calendar } from './ui/Calendar';
 import { Meals } from './ui/Meals';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
-import { Memento } from './ui/Memento';
+import { Memento, welcomeDue } from './ui/Memento';
 import { Countdown } from './ui/Countdown';
 import { Admin } from './ui/Admin';
 import { LabsGate } from './ui/LabsGate';
@@ -26,7 +26,7 @@ import { Evening, Morning, Weekly } from './forms/Daily';
 import { Body, Labs, Tests } from './forms/Baseline';
 import { DataProvider, useData } from './data/store';
 import { startAutoSync } from './ui/sync';
-import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
+import { SPORT_LABEL, dayLevel, dayOf, thisWeekDates } from './data/model';
 
 // Trei taburi jos: Azi (bula cu ședințele zilei; Starea de azi și Obiectivul se deschid din ea), Plan, Coach.
 // Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
@@ -69,7 +69,8 @@ function Shell() {
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>(() => (goalSports(me?.user.goal ?? null)[0] ?? 'inot'));
   const [eveningFor, setEveningFor] = useState<string | null>(null);
-  const [memento, setMemento] = useState(true);
+  // Întâmpinarea: la intrare, dar nu la o reîncărcare sau revenire în mai puțin de 30 de minute.
+  const [memento, setMemento] = useState(welcomeDue);
   const [countdown, setCountdown] = useState(false);
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
@@ -209,12 +210,19 @@ function Shell() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  // Previzualizarea întâmpinării (Administrare): o arată acum, fără pragul de 30 de minute.
+  useEffect(() => {
+    const on = () => setMemento(true);
+    window.addEventListener('airon-welcome-preview', on);
+    return () => window.removeEventListener('airon-welcome-preview', on);
+  }, []);
+
   useEffect(() => {
     if (status !== 'ready') return;
     const stop = startAutoSync(sync);
     const onVis = () => {
       if (document.visibilityState === 'hidden') hiddenAt.current = Date.now();
-      else if (hiddenAt.current && Date.now() - hiddenAt.current > RETURN_AFTER_MS) setMemento(true);
+      else if (hiddenAt.current && Date.now() - hiddenAt.current > RETURN_AFTER_MS && welcomeDue()) setMemento(true);
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
@@ -288,6 +296,8 @@ function Shell() {
   const gateIntake = !me.intakeComplete && screen !== 'intake' && screen !== 'profil';
 
   const level = dayLevel(me);
+  const quiet = labsGate || dayOf(me)?.level === 'stop';
+  const cheerNow = me.intakeComplete && !local && !countdown && !tour && !isForm && !quiet && pendingCheer(me);
   const act = eveningFor ? me.activities.find((a) => a.id === eveningFor) : null;
   const eveningWorkout = eveningFor?.startsWith('plan-') ? (me.plan.find((w) => `plan-${w.id}` === eveningFor) ?? null) : act ? (me.plan.find((w) => w.sport === act.sport && (w.date === act.date || w.date === act.date) && !act.unplanned) ?? null) : null;
   const eveningUnplanned = act?.unplanned ? { date: act.date, sport: SPORT_LABEL[act.sport], minutes: act.minutes, distanceKm: act.distanceKm } : null;
@@ -308,9 +318,10 @@ function Shell() {
         />
       )}
       {tour && screen === 'acasa' && <Tour onClose={() => setTour(false)} />}
-      {memento && !countdown && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
-      {/* Felicitarea după o ședință făcută (cel puțin 60%): după mesajul de deschidere, nu peste formulare. */}
-      {me.intakeComplete && !local && <Cheer me={me} blocked={memento || !!countdown || tour || isForm} />}
+      {/* Mesajele cosmice: felicitarea are prioritate (fără două ferestre la rând); niciuna peste formulare, ghid,
+          numărătoare, analize sau un semnal de oprire (avertismentul are prioritate). */}
+      {memento && !countdown && !quiet && me.intakeComplete && !cheerNow && <Memento onClose={() => setMemento(false)} />}
+      {me.intakeComplete && !local && <Cheer me={me} blocked={!!countdown || tour || isForm || quiet} onShow={() => setMemento(false)} />}
       {ambient && <Ambient level={level} />}
       {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">

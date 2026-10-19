@@ -1,54 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
-import { Orb } from './Orb';
-import { GlassFX } from './Glass';
-import { Warp } from './Warp';
+import { CosmicMessage, homeOrbRect } from './Cosmic';
 
-// Mesajul de la deschidere: un mesaj motivațional la întâmplare, pe tot ecranul. Atingi → dispare în fade și intri în aplicație.
+/**
+ * Întâmpinarea de la intrarea în aplicație: mesajul cosmic, varianta „întâmpinare”, discret peste Acasă (care rămâne
+ * vizibil). Se închide singur după timpul de citire sau imediat la atingere; lumina se întoarce în bula de Acasă.
+ */
+const SHOWN_KEY = 'airon-welcome-at';
+/** Întâmpinarea nu se repetă la o reîncărcare sau o revenire scurtă: cel mult o dată la 30 de minute. */
+export const WELCOME_GAP_MS = 30 * 60 * 1000;
+export function welcomeDue(now = Date.now()): boolean {
+  try {
+    const at = Number(localStorage.getItem(SHOWN_KEY) ?? 0);
+    return !at || now - at > WELCOME_GAP_MS;
+  } catch {
+    return true;
+  }
+}
+export function markWelcome(now = Date.now()) {
+  try {
+    localStorage.setItem(SHOWN_KEY, String(now));
+  } catch {
+    /* fără stocare: poate reapărea la reîncărcare */
+  }
+}
+
 export function Memento({ onClose }: { onClose: () => void }) {
   const me = useMe();
-  const [out, setOut] = useState(false);
   const [msg] = useState(randomMotivation);
-  const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // La intrare: asteroidul vine și se așază (ca la felicitări). La ieșire: tranziția spațială (Warp) duce particulele
-  // spre margini, iar Acasă apare din spatele lor.
-  const close = () => {
-    if (out) return;
-    setOut(true);
-    if (reduced) onClose();
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+  const [, mark] = useState(() => {
+    markWelcome();
+    return 0;
   });
+  void mark;
   const d = dayIndex(me);
-  const pct = me.bar?.total == null ? null : Math.round(me.bar.total);
-  return (
-    <>
-      <button className={`memento ${out ? 'out' : ''}`} onClick={close} aria-label="Intră în aplicație">
-        <div className="memento-orb">
-          <Orb decor onPress={close} label="">
-            <span />
-          </Orb>
-        </div>
-        <div className="inner glass memento-card">
-          <GlassFX level={0.26} seed={7} />
-          <div className="day">{d ? `Ziua ${d.day} din ${d.total}` : me.user.raceName ?? 'AIRON'}</div>
-          <div className="txt">{msg}</div>
-          {pct != null && (
-            <div className="bar" aria-hidden="true">
-              <i style={{ width: `${pct}%` }} />
-            </div>
-          )}
-          <div className="tap">atinge ca să intri</div>
-        </div>
-      </button>
-      {out && !reduced && <Warp onDone={onClose} />}
-    </>
-  );
+  return <CosmicMessage variant="intampinare" kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} seed={7} returnTo={homeOrbRect} onClose={onClose} />;
 }

@@ -3,15 +3,15 @@ import type { Me } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { addDays, diffDays } from '@core/util/dates.js';
 import { cheerFor, type CheerSport } from '@core/cheers.js';
-import { Orb } from './Orb';
-import { GlassFX } from './Glass';
+import { CosmicMessage, homeOrbRect, workoutRect } from './Cosmic';
 import { activityFor, colorOf } from '../data/model';
 import { strengthOf } from './WorkoutSheet';
 
 /**
- * Felicitarea de după o ședință: o fereastră care vine ca un asteroid din aceeași materie ca bula, cu un mesaj potrivit
- * sportului făcut. Doar pentru ședințele de azi și ieri executate cel puțin 60% (src/cheers.ts), o singură dată pe
- * ședință, pe acest telefon. Cu „mișcare redusă”: apare simplu, fără zbor.
+ * Felicitarea de după o ședință: mesajul cosmic, varianta „reușită” (ui/Cosmic.tsx), pornit din cardul ședinței.
+ * Doar pentru ședințele de azi și ieri CONFIRMATE (activitate importată și legată de ședință, sau jurnalul de forță
+ * trimis) și executate cel puțin 60% (src/cheers.ts). O singură dată pe ședință: cheia e id-ul ședinței din plan, așa
+ * că sincronizarea, reîncărcarea sau un import duplicat nu o mai declanșează. Deschiderea detaliilor nu felicită nimic.
  */
 
 const SEEN_KEY = (uid: string) => `airon-cheer-${uid}`;
@@ -84,10 +84,14 @@ export function previewCheer(sport: CheerSport, tier: 'fix' | 'bine' = 'fix') {
   window.dispatchEvent(new CustomEvent('airon-cheer-preview', { detail: { sport, tier } }));
 }
 
-export function Cheer({ me, blocked }: { me: Me; blocked: boolean }) {
+/** Există o felicitare de arătat acum? (App o folosește ca să nu mai arate și întâmpinarea: una singură.) */
+export function pendingCheer(me: Me): boolean {
+  return !!nextCheer(me, readSeen(me.user.id ?? 'eu'));
+}
+
+export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onShow?: () => void }) {
   const uid = me.user.id ?? 'eu';
   const [seen, setSeen] = useState<string[]>(() => readSeen(uid));
-  const [closing, setClosing] = useState(false);
   const [demo, setDemo] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>> } | null>(null);
   useEffect(() => {
     const on = (e: Event) => {
@@ -101,44 +105,20 @@ export function Cheer({ me, blocked }: { me: Me; blocked: boolean }) {
   }, [me.user.name, me.today]);
   const real = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
   const pick = demo ?? real;
-  const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   useEffect(() => {
-    setClosing(false);
+    if (pick) onShow?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pick?.w.id]);
   if (!pick) return null;
-  const close = () => {
-    if (closing) return;
-    setClosing(true);
-    window.setTimeout(
-      () => {
-        if (demo) {
-          setDemo(null);
-          return;
-        }
-        const next = [...seen, pick.w.id];
-        writeSeen(uid, next);
-        setSeen(next);
-      },
-      reduce ? 0 : 380,
-    );
+  const done = () => {
+    if (demo) {
+      setDemo(null);
+      return;
+    }
+    const next = [...seen, pick.w.id];
+    writeSeen(uid, next);
+    setSeen(next);
   };
-  return (
-    <div className={`cheer-wrap ${closing ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={pick.c.title} onClick={close}>
-      <div className="cheer-orb">
-        <Orb onPress={close} label={`${pick.c.title}. ${pick.c.text} Închide.`}>
-          <span />
-        </Orb>
-      </div>
-      <div className="cheer glass" onClick={(e) => e.stopPropagation()}>
-        <GlassFX level={0.3} seed={pick.w.id.length} />
-        <div className="cheer-k">{pick.c.title}</div>
-        <p className="cheer-t" aria-live="polite">
-          {pick.c.text}
-        </p>
-        <button className="btn" onClick={close} autoFocus>
-          Mulțumesc!
-        </button>
-      </div>
-    </div>
-  );
+  const id = pick.w.id;
+  return <CosmicMessage key={id} variant="reusita" kicker="Antrenament finalizat" text={pick.c.text} seed={id.length + 3} origin={() => workoutRect(id) ?? homeOrbRect()} returnTo={homeOrbRect} onClose={done} />;
 }
