@@ -183,8 +183,11 @@ function Shell() {
     try {
       const start = readScreen();
       if (start !== 'acasa' && history.state?.airon !== 'deep') {
+        // Păstrăm și parametrii (#profil?conectat=oura / ?eroare=…): revenirea de la producător îi citește după
+        // încărcare; fără ei, o conectare eșuată nu arăta nimic.
+        const qs = location.hash.split('?')[1];
         history.replaceState(null, '', '#acasa');
-        history.pushState({ airon: 'deep' }, '', `#${start}`);
+        history.pushState({ airon: 'deep' }, '', `#${start}${qs ? `?${qs}` : ''}`);
       }
     } catch {
       /* fără istoric: rămâne navigarea din aplicație */

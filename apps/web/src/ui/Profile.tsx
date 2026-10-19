@@ -61,7 +61,7 @@ export function Profile({ onBack, onOpen, ambient, onAmbient }: { onBack: () => 
             </button>
           )}
           {section === 'obiectiv' && <GoalSection onOpen={onOpen} />}
-          {section === 'dispozitive' && <DevicesSection />}
+          {section === 'dispozitive' && <DevicesSection onAdmin={me.admin && !local ? () => setSection('admin') : undefined} />}
           {section === 'chestionare' && <FormsSection onOpen={onOpen} />}
           {section === 'sanatate' && <HealthSection onOpen={onOpen} />}
           {section === 'preferinte' && <PrefsSection ambient={ambient} onAmbient={onAmbient} />}
@@ -164,11 +164,31 @@ function daysTo(a: string, b: string): number {
 }
 
 /** Dispozitive: conexiune, ultima încercare, ultima citire reușită, ultima zi cu date și ce lipsește azi — separat. */
-function DevicesSection() {
+function DevicesSection({ onAdmin }: { onAdmin?: () => void }) {
   const me = useMe();
   const { connect, local, submitForm } = useData();
   const [confirmOff, setConfirmOff] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Butonul arată ce se întâmplă: „Se deschide…” până pleacă spre producător; o eroare apare sub brățara respectivă.
+  const [opening, setOpening] = useState<string | null>(null);
+  const [rowErr, setRowErr] = useState<{ p: string; text: string } | null>(null);
+  const start = (p: 'whoop' | 'strava' | 'oura', name: string) => {
+    setErr(null);
+    setRowErr(null);
+    setOpening(p);
+    connect(p)
+      .then(() => {
+        // Dacă după câteva secunde suntem tot aici, navigarea n-a pornit (blocată de browser/aplicație): spunem asta.
+        window.setTimeout(() => {
+          setOpening((cur) => (cur === p ? null : cur));
+          if (document.visibilityState === 'visible') setRowErr({ p, text: `Pagina ${name} nu s-a deschis. Încearcă din nou; dacă aplicația e instalată pe ecran, deschide-o o dată în browser (Safari / Chrome) și conectează de acolo.` });
+        }, 6000);
+      })
+      .catch((e: Error) => {
+        setOpening(null);
+        setRowErr({ p, text: /nu e configurat/.test(e.message) ? `${name} nu e activat încă pe server.` : e.message });
+      });
+  };
   const srcOf = (p: string) => me.sources?.find((s) => s.id === p);
   const connected = (p: string) => me.devices.find((d) => d.provider === p);
   return (
@@ -201,16 +221,16 @@ function DevicesSection() {
                       {confirmOff === d.provider ? 'Sigur? Apasă din nou' : 'Deconectează'}
                     </button>
                   ) : SERVER?.providers && !SERVER.providers[d.provider] ? (
-                    <span className="tiny muted">încă neactivat</span>
+                    onAdmin ? (
+                      <button className="pill" onClick={onAdmin}>
+                        Activează (chei)
+                      </button>
+                    ) : (
+                      <span className="tiny muted">în curând</span>
+                    )
                   ) : (
-                    <button
-                      className="pill on"
-                      onClick={() => {
-                        setErr(null);
-                        connect(d.provider).catch((e: Error) => setErr(e.message));
-                      }}
-                    >
-                      Conectează
+                    <button className="pill on" disabled={opening === d.provider} onClick={() => start(d.provider, d.name)}>
+                      {opening === d.provider ? `Se deschide ${d.name}…` : 'Conectează'}
                     </button>
                   )}
                 </div>
@@ -236,6 +256,14 @@ function DevicesSection() {
                 )}
                 {c && s && !s.error && s.lastSync && s.missingToday?.length === 4 && <div className="tiny muted">Conectat; datele de azi nu au sosit încă. O citire fără date noi nu schimbă data observațiilor.</div>}
                 {s?.error && <div className="tiny" style={{ color: 'var(--c-rosu)' }}>Eroare la ultima citire: {s.error}</div>}
+                {!c && SERVER?.providers && !SERVER.providers[d.provider] && (
+                  <div className="tiny muted">{onAdmin ? `Lipsesc cheile aplicației ${d.name} pe server: le pui o dată în Administrare (pașii sunt acolo), apoi butonul „Conectează” apare pentru toți.` : `Conectarea ${d.name} nu e activată încă de administrator.`}</div>
+                )}
+                {rowErr?.p === d.provider && (
+                  <div className="tiny" role="alert" style={{ color: 'var(--c-rosu)' }}>
+                    {rowErr.text}
+                  </div>
+                )}
               </div>
             );
           })}
