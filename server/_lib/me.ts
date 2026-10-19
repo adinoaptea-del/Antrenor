@@ -27,6 +27,7 @@ import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { activeRestriction, stricter, type Restriction } from '../../src/calendar/safety.js';
 import { aerobicEfficiency } from '../../src/collector/efficiency.js';
+import type { StrengthLogEntry } from '../../src/strength/log.js';
 
 export async function buildMe(userId: string, today: string): Promise<Me> {
   const user = await loadUser(userId);
@@ -47,6 +48,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
+  // Jurnalul de forță (schema 7); pe o schemă veche lipsește tabela: lista rămâne goală, nu cade pagina.
+  const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
 
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== 'sters');
@@ -225,6 +228,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     readiness: readinessOut,
     day,
     efficiency: aerobicEfficiency(activities, today),
+    strengthLog: strengthRows,
     raceReady: user.goal && user.goal in GOAL_NAME
       ? raceReady({
           goal: user.goal as Goal,

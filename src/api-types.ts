@@ -152,6 +152,8 @@ export interface Me {
   warnings: { title: string; text: string; fix: string }[];
   /** Pe drum (execuția fazei) și Gata de cursă (cea mai slabă verigă, ședințe-reper, timp estimat cu marjă). */
   raceReady?: import('./bar/race-ready.js').RaceReady | null;
+  /** Jurnalul de forță, ultimele ~4 luni (kilograme și repetări efective). Gol până la prima notare. */
+  strengthLog?: import('./strength/log.js').StrengthLogEntry[];
   /** Recuperarea: somnul ultimelor nopți, sesiunile de recuperare (brățări sau adăugate), cum răspunde corpul. */
   recovery?: import('./recovery/recovery.js').RecoverySummary & { sleep: { date: string; minutes: number | null; score: number | null }[] };
   /** Insignele: nivelul, insignele (câștigate și de câștigat), provocarea lunii, cursele; fresh = neanunțate încă. */

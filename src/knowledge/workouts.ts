@@ -14,6 +14,7 @@
 
 import type { Phase, Sport } from '../types.js';
 import type { GoalKind } from '../calendar/phases.js';
+import { CONTRACTS } from './contracts.js';
 
 export interface LibraryWorkout {
   id: string;
@@ -60,7 +61,7 @@ export const WORKOUT_LIBRARY: LibraryWorkout[] = [
   { id: 'swim-css-test', sport: 'inot', nume: 'Testul CSS', sursa: 'Swim Smooth (Critical Swim Speed)', scop: 'ritmul de prag la înot, pentru seturi', obiective: ['inot', 'tri'], faze: ['evaluare', 'baza2', 'build'], cum: 'Încălzire; 400 m cât de tare poți constant; 5 min pauză; 200 m cât de tare poți. CSS (s/100 m) = (T400 − T200) / 2.', doza: 'la 6–8 săptămâni, doar dacă înoți 400 m fără oprire.' },
   { id: 'swim-css-set', sport: 'inot', nume: 'Set CSS', sursa: 'Swim Smooth', scop: 'prag și ritm constant', obiective: ['inot', 'tri'], faze: ['baza2', 'build', 'peak'], cum: '10 × 100 m la ritmul CSS cu 15 s pauză (sau 6 × 200 m cu 20 s); ritmul egal de la prima la ultima repetare, nu „tare apoi moale”.', doza: 'o dată pe săptămână; 1.000 → 1.600 m la CSS.', nu_cand: 'fără 400 m continuu; fără aviz cardiologic.' },
   { id: 'swim-css-prog', sport: 'inot', nume: 'Set CSS în progresie', sursa: 'Swim Smooth; USMS (CSS)', scop: 'pragul la înot: aceeași viteză, repetări mai lungi', obiective: ['inot', 'tri'], faze: ['baza2', 'build', 'peak'], cum: '8 × 100 → 10 × 100 (15 s) → 5 × 200 (20 s) → 4 × 300 m (30 s) la ritmul CSS; spre cursă 6 × 200 sau 3 × 400 la ritm de obiectiv.', doza: 'o dată pe săptămână; reiei testul CSS după ce setul de 10 × 100 iese constant.', nu_cand: 'fără 400 m continuu sau fără test CSS (atunci: efort 6–7/10, același ritm la toate).' },
-  { id: 'swim-pyramid', sport: 'inot', nume: 'Piramidă aerobă', sursa: 'practică generală', scop: 'rezistență cu variație', obiective: ['inot', 'tri'], faze: ['baza1', 'baza2', 'build'], cum: '100-200-300-200-100 m la ritm ușor-moderat (CSS + 10 s/100 m), pauză 20–30 s. Respirație la 3 brațe.', doza: 'o dată pe săptămână în locul înotului continuu, când ședința e monotonă.' },
+  { id: 'swim-pyramid', sport: 'inot', nume: 'Piramidă aerobă', sursa: 'practică generală', scop: 'rezistență cu variație', obiective: ['inot', 'tri'], faze: ['baza1', 'baza2', 'build'], cum: '100-200-300-200-100 m la ritm ușor-moderat (CSS + 10 s/100 m), pauză 20–30 s. Respirație cum îți e comod (bilateral e o opțiune, nu o regulă). Vârful piramidei nu trece de ce înoți fără oprire.', doza: 'o dată pe săptămână în locul înotului continuu, când ședința e monotonă.' },
   { id: 'swim-long', sport: 'inot', nume: 'Înotul lung continuu', sursa: 'practică generală', scop: 'distanța obiectivului fără oprire, ritm constant', obiective: ['inot', 'tri'], faze: ['baza2', 'build', 'peak'], cum: 'Cea mai lungă bucată de până acum + 100 m, ritm ușor (CSS + 10–15 s/100 m), apoi 200 m ușor. Spre peak: distanța obiectivului (sau de cursă) dintr-o bucată.', doza: 'o dată pe săptămână; +100 m sau +5 min pe săptămână.' },
   { id: 'swim-ow', sport: 'inot', nume: 'Ape libere: orientare și start', sursa: 'practica triatlonului', scop: 'confort în apă deschisă', obiective: ['inot', 'tri'], faze: ['build', 'peak'], cum: 'Doar însoțit: 3 × 300 m cu privire la 6 brațe spre un reper; 4 × 50 m start cu accelerare 15 brațe apoi ritm. Costumul neopren de probă.', doza: 'de 2–4 ori înainte de cursă, când apa permite.', nu_cand: 'singur, fără geamandură sau însoțitor.' },
   // ——— BICICLETĂ ———
@@ -84,5 +85,11 @@ export function libraryFor(sport: Sport, kind: GoalKind | null, goal: string | n
 
 export function libraryText(items: LibraryWorkout[]): string {
   if (!items.length) return '';
-  return items.map((w) => `- ${w.nume} (${w.sursa}) — ${w.scop}. Cum: ${w.cum} Doza: ${w.doza}${w.nu_cand ? ` NU când: ${w.nu_cand}` : ''}`).join('\n');
+  return items
+    .map((w) => {
+      const k = CONTRACTS[w.id];
+      const fisa = k ? ` Eligibil: ${k.eligibil}. Altfel: ${k.alternativa}. Dovada: ${k.dovada}, populația: ${k.populatie}.` : '';
+      return `- ${w.nume} (${w.sursa}) — ${w.scop}. Cum: ${w.cum} Doza: ${w.doza}${w.nu_cand ? ` NU când: ${w.nu_cand}` : ''}${fisa}`;
+    })
+    .join('\n');
 }

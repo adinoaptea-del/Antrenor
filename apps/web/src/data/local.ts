@@ -2,6 +2,7 @@
 // Nimic nu e inventat: planul iese din chestionarul tău prin generatorul real; bara, scorurile și recuperarea rămân
 // „fără date” până când un server citește brățările. Build cu VITE_LOCAL=1.
 
+import { cleanEntry, type StrengthLogEntry } from '@core/strength/log.js';
 import type { BodyForm, LabsForm, Me, TestsForm } from '@core/api-types.js';
 import { computeBar } from '@core/bar/bar.js';
 import { generatePlan } from '@core/calendar/generate.js';
@@ -27,6 +28,8 @@ interface LocalState {
   tests: TestsForm | null;
   body: BodyForm | null;
   lastSync: string | null;
+  strengthLog?: StrengthLogEntry[];
+  mediuInot?: 'bazin' | 'ape';
 }
 
 const KEY = 'antrenor.local.v1';
@@ -82,6 +85,8 @@ function buildMe(): Me {
 
   const z = state.tests;
   return {
+    strengthLog: state.strengthLog ?? [],
+    prefs: { plecari: [], fixe: [], mediuInot: state.mediuInot ?? 'bazin' },
     profile: { sex: null, birthYear: null, heightCm: null, city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
@@ -171,6 +176,14 @@ export const localServer = {
       state = { ...state, tests: body as TestsForm };
     } else if (kind === 'corp') {
       state = { ...state, body: body as BodyForm };
+    } else if (kind === 'inot-mediu') {
+      state = { ...state, mediuInot: (body as { mediu?: string }).mediu === 'ape' ? 'ape' : 'bazin' };
+    } else if (kind === 'forta-jurnal') {
+      const b = body as { date?: string; items?: unknown[] };
+      const date = b.date ?? new Date().toISOString().slice(0, 10);
+      const items = (b.items ?? []).map((e) => cleanEntry(e, date)).filter((e): e is StrengthLogEntry => !!e);
+      const keep = (state.strengthLog ?? []).filter((x) => !(x.date === date && items.some((n) => n.exercise === x.exercise)));
+      state = { ...state, strengthLog: [...keep, ...items] };
     } else if (kind === 'aviz') {
       const aviz = (body as { aviz: 'da' | 'nu' }).aviz;
       if (state.intake) {

@@ -2,8 +2,9 @@
 //
 // 26 de săptămâni de referință: acomodare (S1–4) · construire (S5–8) · progres (S9–12) · consolidare (S13–16) ·
 // tranziție (S17–20) · menținere (S21–26). La „întreținere” se poate începe direct cu menținerea, după acomodare.
-// Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (F1/F2); trecerea la trei se face din S5, la patru
-// din S9, de fiecare dată cu o primă săptămână în care volumul se distribuie (accesoriile la o serie).
+// Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (F1/F2); trecerea la trei e posibilă din S5, la patru
+// din S9 — DAR doar după prezență reală (3 săptămâni la rând cu ≥ 80% din ședințe, `unlockedDays`), nu pentru că a
+// trecut timpul. Prima săptămână cu o zi în plus distribuie volumul (accesoriile la o serie), nu îl adaugă.
 // Ședințele (exercițiile, seriile, pauzele) sunt în src/strength/ppl.ts; aici sunt etapele, calendarul săptămânilor,
 // mișcarea zilnică și regulile pentru agent.
 
@@ -25,6 +26,11 @@ export interface FitnessProfile {
   activity?: 'sedentara' | 'plimbari' | 'activa' | null;
   /** Sarcină sau primul an după naștere: fără ramura standard de slăbire. */
   postpartum?: boolean;
+  /**
+   * Câte zile pe săptămână a demonstrat că poate ține (prezență reală), calculat de `unlockedDays`. Frecvența nu crește
+   * doar pentru că trec săptămânile: planul nu trece peste acest număr până la următoarea reevaluare săptămânală.
+   */
+  unlocked?: FitnessDays;
 }
 
 export interface FitnessWeek {
@@ -89,10 +95,36 @@ export function fitnessWeeks(p: FitnessProfile, total = 26): FitnessWeek[] {
  * Zilele de sală în săptămâna dată. Începătoarea: două zile în S1–4, trei din S5 (dacă a ales 3 sau 4), patru din S9.
  * Cu bază stabilă: până la trei zile de la început, patru din S5. Niciodată mai multe decât a ales.
  */
-export function daysAt(p: Pick<FitnessProfile, 'days' | 'beginner' | 'postpartum'>, week: number): FitnessDays {
+export function daysAt(p: Pick<FitnessProfile, 'days' | 'beginner' | 'postpartum' | 'unlocked'>, week: number): FitnessDays {
   if (p.postpartum) return 2;
   const cap = p.beginner ? (week <= 4 ? 2 : week <= 8 ? 3 : 4) : week <= 4 ? 3 : 4;
-  return Math.min(p.days, cap) as FitnessDays;
+  return Math.min(p.days, cap, p.unlocked ?? startDays(p)) as FitnessDays;
+}
+
+/** Frecvența de început: două zile la începătoare, cel mult trei altfel. */
+export function startDays(p: Pick<FitnessProfile, 'days' | 'beginner'>): FitnessDays {
+  return Math.min(p.days, p.beginner ? 2 : 3) as FitnessDays;
+}
+
+/**
+ * Câte zile a „deblocat” sportiva, din prezența reală (decizie de produs AIRON, nu prag fiziologic validat):
+ * pornești de la frecvența de început; urci cu o zi doar după 3 săptămâni la rând la frecvența de acum cu cel puțin
+ * 80% din ședințe făcute, fără durere raportată. Calendarul singur nu dovedește adaptarea.
+ * `weeks`: săptămânile încheiate, cele mai vechi primele: câte ședințe de forță erau planificate și câte s-au făcut.
+ */
+export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner'>, weeks: { planned: number; done: number; pain?: boolean }[]): FitnessDays {
+  let level: number = startDays(p);
+  let streak = 0;
+  for (const w of weeks) {
+    if (w.planned === 0) continue;
+    const ok = w.done / w.planned >= 0.8 && !w.pain;
+    streak = ok && w.planned >= level ? streak + 1 : ok ? streak : 0;
+    if (streak >= 3 && level < p.days) {
+      level += 1;
+      streak = 0;
+    }
+  }
+  return Math.min(p.days, level) as FitnessDays;
 }
 
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */

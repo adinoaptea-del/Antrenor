@@ -2,6 +2,7 @@
 // Agentul poate doar să scadă, să mute sau să înlocuiască; nu crește peste plan și nu anulează un roșu.
 
 import { fitStructure, shortenWorkout } from './validate.js';
+import { brickSplit, normalizeWorkout } from './coherence.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -135,7 +136,7 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
   const out = next.map((w) => {
     const orig = byId.get(w.id);
     if (orig && (w.date < ctx.today || done.has(w.id))) return orig;
-    return orig && orig.plannedMinutes !== w.plannedMinutes ? fitStructure(w) : w;
+    return orig && orig.plannedMinutes !== w.plannedMinutes ? normalizeWorkout(fitStructure(w)) : w;
   });
   const kept = changes.filter((c) => !plan.some((w) => (w.date < ctx.today || done.has(w.id)) && c.startsWith(`${w.id}:`)));
   return { plan: out, changes: kept };
@@ -242,6 +243,8 @@ function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'dure
       x.note = `fără impact: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until} (se reevaluează cu chestionarul)`;
       changes.push(`${x.id}: alergarea devine bicicletă Z2 (${x.plannedMinutes} min)`);
     } else if (x.type === 'brick') {
+      // Rămâne doar bicicleta: durata scade cu alergarea (nu se umple timpul cu altceva).
+      x.plannedMinutes = brickSplit(x.structure, x.plannedMinutes).bike;
       x.type = 'lung';
       x.structure = 'tura lungă fără alergarea de după';
       x.note = `brick fără alergare: durere ${ev.score}/10 la ${ev.loc}; temporar, până pe ${until}`;

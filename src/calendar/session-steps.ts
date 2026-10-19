@@ -1,6 +1,8 @@
 // Pașii concreți ai unei ședințe, calculați din aceeași structură ca durata din plan.
-// Înotul: metri exacți, repetări și pauze; durata e estimată din ritm (și etichetată așa), nu invers. Fără prag
-// de înot (CSS) nu se prescrie înot continuu: repetări scurte, cu pauză.
+// Înotul: metri exacți, repetări și pauze; durata e estimată din ritm (și etichetată așa), nu invers.
+// Capacitatea (cât înoată fără oprire, declarat sau măsurat) limitează FIECARE segment: încălzirea, setul și revenirea.
+// Pragul de înot (CSS) e altceva: fără el nu se dă ritm, dar se poate înota continuu cât a demonstrat sportivul.
+// Pauza e „pauză după repetare” (nu „plecare la fiecare N s”): durata se calculează cu ritmul + pauza.
 // Alergarea ușoară cu accelerări: accelerările sunt un pas separat, iar minutele lor se scad din partea ușoară, ca
 // suma pașilor să rămână durata din plan.
 
@@ -26,7 +28,8 @@ export function stridesStep(s: { n: number; sec: number }): Step {
 
 /** Reperul tehnic al zilei: unul singur, familiar, rotit după dată (variație fără noutate permanentă). */
 export function swimCue(date: string): string {
-  const cues = ['respirație pe ambele părți, la 3 brațe', 'catch-up: un braț așteaptă celălalt în față', 'alunecare lungă după fiecare braț, corpul drept', 'expiri complet în apă, inspiri scurt lateral'];
+  // Exerciții de explorare, rotite: fără evaluare tehnică nu pretindem că repară un defect anume.
+  const cues = ['expiri complet în apă, inspiri scurt lateral, pe partea comodă', 'catch-up: un braț așteaptă celălalt în față', 'alunecare lungă după fiecare braț, corpul drept', 'picioare din șold, glezne relaxate (cu placa dacă ai)'];
   const d = Number(date.slice(8, 10)) || 0;
   return cues[d % cues.length]!;
 }
@@ -35,15 +38,30 @@ export function swimCue(date: string): string {
  * Setul de înot pentru minutele din plan. Ritmul ușor: CSS + 15 s/100 m dacă e testat, altfel 2:45/100 m (presupunere
  * prudentă de început, declarată). Întoarce pașii, metrii totali și minutele estimate.
  */
-export function swimSet(input: { type: string; minutes: number; css: number | null; date: string; structure?: string | null }): { steps: Step[]; meters: number; estMin: number } {
+/** Cel mai lung segment fără oprire permis: ce a demonstrat sportivul; necunoscut = 50 m (prudent, declarat). */
+export function swimMaxSegment(continuousM: number | null | undefined): number {
+  if (continuousM == null) return 50;
+  return Math.max(25, continuousM);
+}
+
+/** Repetarea cea mai potrivită sub capacitate (25 / 50 / 100 / 200 / 400 m). */
+const fitRep = (want: number, cap: number) => [400, 200, 100, 50, 25].find((d) => d <= want && d <= cap) ?? 25;
+
+export function swimSet(input: { type: string; minutes: number; css: number | null; date: string; structure?: string | null; continuousM?: number | null }): { steps: Step[]; meters: number; estMin: number } {
   const easy = input.css ? input.css + 15 : 165; // s/100 m
+  // Cu CSS testat, 400 m au fost înotați deja fără oprire (testul).
+  const cap = swimMaxSegment(input.continuousM ?? (input.css ? 400 : null));
   const budget = Math.max(10, input.minutes) * 60;
   const repSec = (dist: number, rest: number, pace = easy) => (dist / 100) * pace + rest;
   const short = input.minutes < 25;
-  // Încălzire și revenire, fixe.
-  const warm = short ? { n: 2, d: 50, r: 20 } : { n: 4, d: 50, r: 15 };
-  const coolM = short ? 50 : 100;
-  let used = warm.n * repSec(warm.d, warm.r) + repSec(coolM, 0, easy + 15);
+  // Încălzire și revenire: în bucăți care nu depășesc capacitatea.
+  const wd = fitRep(50, cap);
+  const warm = { n: short ? 2 : (wd === 25 ? 6 : 4), d: wd, r: wd === 25 ? 20 : 15 };
+  const coolTotal = short ? 50 : 100;
+  const cd = fitRep(coolTotal, cap);
+  const coolN = Math.max(1, Math.round(coolTotal / cd));
+  const coolM = coolN * cd;
+  let used = warm.n * repSec(warm.d, warm.r) + coolN * repSec(cd, coolN > 1 ? 15 : 0, easy + 15);
   const steps: Step[] = [{ label: 'Încălzire', text: `${warm.n} × ${warm.d} m ușor, ${warm.r} s pauză la perete` }];
   let meters = warm.n * warm.d + coolM;
   const left = Math.max(0, budget - used);
@@ -51,41 +69,100 @@ export function swimSet(input: { type: string; minutes: number; css: number | nu
   const reps = /(\d+) × (\d+) m[^,]*, (\d+) s pauză/.exec(input.structure ?? '');
   const css = input.css;
   if (input.type === 'calitate' && reps) {
-    // Setul din plan (progresia săptămânii), exact: repetări, metri, pauză.
-    const [n, d, r] = [Number(reps[1]), Number(reps[2]), Number(reps[3])];
+    // Setul din plan (progresia săptămânii): repetări, metri, pauză — repetarea nu depășește capacitatea.
+    let [n, d, r] = [Number(reps[1]), Number(reps[2]), Number(reps[3])];
+    if (d > cap) {
+      const d2 = fitRep(d, cap);
+      n = Math.max(2, Math.round((n * d) / d2));
+      d = d2;
+    }
     const pace = css ?? easy - 10;
     used += n * repSec(d, r, pace);
     meters += n * d;
     const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-    steps.push({ label: 'Principal', text: `${n} × ${d} m ${css ? `la ${fmt((css * d) / 100)} pe repetare (CSS ${fmt(css)}/100 m)` : 'susținut, controlat (efort 6–7 din 10), același ritm la toate'}, ${r} s pauză${/obiectiv/.test(input.structure ?? '') ? '; ritmul de cursă' : ''}` });
-  } else if (/^piramidă/.test(input.structure ?? '')) {
-    used += [100, 200, 300, 200, 100].reduce((n, d) => n + repSec(d, 25), 0);
-    meters += 900;
-    steps.push({ label: 'Principal', text: `piramidă 100-200-300-200-100 m, ușor spre moderat${css ? ` (în jur de ${Math.floor((css + 10) / 60)}:${String((css + 10) % 60).padStart(2, '0')}/100 m)` : ''}, 20–30 s pauză; respirație la 3 brațe` });
+    steps.push({ label: 'Principal', text: `${n} × ${d} m ${css ? `la ${fmt((css * d) / 100)} pe repetare (CSS ${fmt(css)}/100 m, reper ajustabil, nu ritm de cursă automat)` : 'susținut, controlat (efort 6–7 din 10), același ritm la toate'}, ${r} s pauză după fiecare${/obiectiv/.test(input.structure ?? '') ? '; ritmul de cursă' : ''}` });
+  } else if (/continuu/.test(input.structure ?? '') && cap >= 400) {
+    // Continuitate: un singur bloc fără oprire, cu ~10% peste ce a demonstrat (cel mult cât încape în timp).
+    const room = Math.floor(((left / easy) * 100) / 100) * 100;
+    const block = Math.max(400, Math.min(room, Math.round((cap * 1.1) / 100) * 100));
+    used += repSec(block, 0);
+    meters += block;
+    steps.push({ label: 'Principal', text: `${block} m continuu (cu ~10% peste cei ${cap} m demonstrați), ușor-moderat, ritm pe care îl poți ține; dacă trebuie să te oprești, 20–30 s la perete și continui (contează distanța fără oprire, nu viteza)` });
+    // Timpul rămas: bucăți ușoare de 100–200 m, ca durata să fie cea din plan (volumul total ≠ porțiunea continuă).
+    const rest = budget - used;
+    const d = fitRep(200, cap);
+    const k = Math.floor(rest / repSec(d, 20));
+    if (k >= 2) {
+      used += k * repSec(d, 20);
+      meters += k * d;
+      steps.push({ label: 'Apoi', text: `${k} × ${d} m ușor, 20 s pauză după fiecare` });
+    }
+  } else if (/^piramidă/.test(input.structure ?? '') && cap >= 100) {
+    const top = cap >= 300 ? 300 : cap >= 200 ? 200 : 100;
+    const half = top >= 300 ? [100, 200] : top >= 200 ? [100] : [50];
+    const ladder = [...half, top, ...[...half].reverse()];
+    used += ladder.reduce((n, d) => n + repSec(d, 25), 0);
+    meters += ladder.reduce((a, b) => a + b, 0);
+    steps.push({ label: 'Principal', text: `piramidă ${ladder.join('-')} m, ușor spre moderat${css ? ` (în jur de ${Math.floor((css + 10) / 60)}:${String((css + 10) % 60).padStart(2, '0')}/100 m)` : ''}, 20–30 s pauză după fiecare; respiri cum îți e comod` });
   } else if (input.type === 'tehnica') {
     // Blocuri de 4 × 25 m exercițiu + 4 × 25 m înot cu reperul, 20 s pauză.
     const block = 4 * repSec(25, 20, easy + 20) + 4 * repSec(25, 20);
     const k = Math.max(1, Math.floor(left / block));
     used += k * block;
     meters += k * 200;
-    steps.push({ label: 'Tehnică', text: `${k > 1 ? `${k} runde: ` : ''}4 × 25 m exercițiu cu reperul zilei (${swimCue(input.date)}), 20 s pauză, apoi 4 × 25 m înot normal păstrând reperul, 20 s pauză` });
+    steps.push({ label: 'Tehnică', text: `${k > 1 ? `${k} runde: ` : ''}4 × 25 m exercițiu de explorare (${swimCue(input.date)}), 20 s pauză, apoi 4 × 25 m înot normal păstrând senzația, 20 s pauză. Exercițiile se rotesc; nu corectează un defect anume până nu te vede cineva înotând.` });
   } else if (input.type === 'calitate' && input.css) {
-    const rep = repSec(100, 20, input.css);
-    const k = Math.max(2, Math.min(10, Math.floor(left / rep)));
+    const d = fitRep(100, cap);
+    const rep = repSec(d, 20, input.css);
+    const k = Math.max(2, Math.min(20, Math.floor(left / rep)));
     used += k * rep;
-    meters += k * 100;
-    steps.push({ label: 'Principal', text: `${k} × 100 m la ritmul pragului (${Math.floor(input.css / 60)}:${String(input.css % 60).padStart(2, '0')}/100 m), 20 s pauză` });
+    meters += k * d;
+    steps.push({ label: 'Principal', text: `${k} × ${d} m la ritmul pragului (${Math.floor(input.css / 60)}:${String(input.css % 60).padStart(2, '0')}/100 m), 20 s pauză după fiecare` });
   } else {
-    // Ușor / lung: cu CSS, 100 m cu 15 s pauză; fără CSS, 50 m cu 30 s (fără înot continuu prescris).
-    const d = input.css ? 100 : 50;
-    const r = input.css ? 15 : 30;
+    // Ușor / lung: repetări cât permite capacitatea (cu sau fără CSS); pauza scade când repetarea e mai lungă.
+    const d = fitRep(input.css ? 200 : 400, cap);
+    const r = d >= 200 ? 20 : d >= 100 ? 15 : 30;
     const k = Math.max(2, Math.floor(left / repSec(d, r)));
     used += k * repSec(d, r);
     meters += k * d;
-    steps.push({ label: 'Principal', text: `${k} × ${d} m ușor, ${r} s pauză${input.type === 'calitate' ? ' (fără prag de înot testat, nu facem bucăți rapide)' : ''}; poți vorbi după fiecare repetare` });
+    steps.push({ label: 'Principal', text: `${k} × ${d} m ușor, ${r} s pauză după fiecare${input.type === 'calitate' ? ' (fără prag de înot testat, nu facem bucăți rapide)' : ''}; poți vorbi după fiecare repetare` });
   }
-  steps.push({ label: 'Revenire', text: `${coolM} m foarte ușor, orice stil` });
+  steps.push({ label: 'Revenire', text: coolN > 1 ? `${coolN} × ${cd} m foarte ușor, orice stil, 15 s pauză` : `${coolM} m foarte ușor, orice stil` });
   const estMin = Math.round(used / 60);
-  steps.push({ label: 'Total', text: `${fmtM(meters)} m în bazin de 25 m · durata ≈ ${estMin} min, estimată din ritm${input.css ? ' (CSS testat)' : ' (fără test de înot: ritm presupus 2:45/100 m)'}` });
+  const capNote = input.continuousM == null && !input.css ? ' · fără oprire cel mult 50 m (capacitatea nu e declarată încă)' : ` · cel mai lung segment fără oprire: ${longestSegment(steps)} m`;
+  steps.push({ label: 'Total', text: `${fmtM(meters)} m în bazin de 25 m · durata ≈ ${estMin} min, estimată din ritm${input.css ? ' (CSS testat)' : ' (fără test de înot: ritm presupus 2:45/100 m)'}${capNote}` });
   return { steps, meters, estMin };
+}
+
+/** Cel mai lung segment fără oprire dintr-un set (pentru verificare și pentru afișare). */
+export function longestSegment(steps: Step[]): number {
+  let max = 0;
+  for (const s of steps) {
+    if (s.label === 'Total') continue;
+    for (const m of s.text.matchAll(/(\d+)\s*×\s*(\d+)\s*m/g)) max = Math.max(max, Number(m[2]));
+    for (const m of s.text.matchAll(/(?:^|[^×\d-])\s*(\d{2,4})\s*m (?:continuu|foarte ușor)/g)) max = Math.max(max, Number(m[1]));
+    const pyr = /piramidă ([\d-]+) m/.exec(s.text);
+    if (pyr) max = Math.max(max, ...pyr[1]!.split('-').map(Number));
+  }
+  return max;
+}
+
+/**
+ * Înotul în ape libere: alt mediu, alte condiții de eligibilitate. Fără test maximal (nu se mută automat din bazin), fără
+ * seturi cu perete; porțiunea continuă nu depășește ce ai demonstrat, iar condițiile se verifică înainte de intrare.
+ */
+export function openWaterSet(input: { type: string; minutes: number; structure?: string | null; continuousM?: number | null }): Step[] {
+  const cap = swimMaxSegment(input.continuousM);
+  const checks = 'înainte să intri: temperatura APEI (nu a aerului), valurile și curentul, vizibilitatea, cine te supraveghează (însoțitor sau salvamar), costumul; dacă una nu e în regulă, faci ședința în bazin.';
+  if (/TEST/i.test(input.structure ?? '')) return [{ label: 'Ape libere', text: 'testul de înot se face în bazin, nu în ape libere: acolo distanța și condițiile nu sunt măsurabile.' }, { label: 'Siguranță', text: checks }];
+  if (cap < 200) return [{ label: 'Ape libere', text: `încă înoți ${cap} m fără oprire: în ape libere doar lângă mal, unde atingi fundul, cu însoțitor; altfel ședința rămâne în bazin.` }, { label: 'Siguranță', text: checks }];
+  // Cât încape în timp la un ritm prudent (2:45/100 m), dar nu peste ce a demonstrat fără oprire.
+  const block = Math.min(cap, Math.max(200, Math.round((input.minutes - 15) / 2.75) * 100));
+  return [
+    { label: 'Încălzire', text: '5 min înot ușor lângă mal, obișnuiești respirația cu apa rece; câteva expirații lungi sub apă' },
+    { label: 'Principal', text: `până la ${block} m continuu, ușor-moderat, cu privirea înainte la fiecare 6–9 brațe spre un reper; dacă obosești, te oprești pe spate și respiri (nu e eșec)` },
+    { label: 'Exerciții', text: '4 × 15 brațe mai repede, ca la start, apoi revii la ritm (doar dacă te simți sigur)' },
+    { label: 'Revenire', text: '3–5 min foarte ușor spre mal' },
+    { label: 'Siguranță', text: checks },
+  ];
 }

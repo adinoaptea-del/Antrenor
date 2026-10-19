@@ -1,5 +1,6 @@
 import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
 import { detailSteps } from '@core/calendar/session-detail.js';
+import { swimDeclared } from '@core/bar/sport-readiness.js';
 // Funcțiile aplicației peste obiectul `Me` venit de la server (sau din demo). Nimic nu se estimează aici:
 // tot ce lipsește rămâne null și ecranele arată „fără date”.
 
@@ -222,7 +223,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
   // plafon; pulsul din test sau estimat din vârstă, etichetat.
   const t = me.baseline.tests;
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age });
+  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimDeclared(me.forms.intake as Record<string, unknown> | null), openWater: me.prefs?.mediuInot === 'ape' });
 }
 
 /** De ce există ședința, într-o propoziție (din tipul ei). */

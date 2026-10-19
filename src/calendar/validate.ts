@@ -1,4 +1,5 @@
 import { moduleStructure, parseModule } from './run-modules.js';
+import { normalizeWorkout } from './coherence.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -188,11 +189,11 @@ export function shortenWorkout(w: PlannedWorkout, minutes: number): PlannedWorko
     if (minutes < 30) {
       out = { ...out, type: 'z2', key: false, structure: `${minutes} min bicicletă ușor (prea puțin timp pentru brick)` };
     } else if (m) {
-      const bike = Math.min(minutes - 10, Math.max(15, Math.round((Number(m[1]) * minutes) / before / 5) * 5));
-      out.structure = (w.structure ?? '').replace(m[0], `tură ${bike} min${m[2]}alergare ${minutes - bike} min`);
+      // Aceeași împărțire ca peste tot: alergarea nu crește, bicicleta ia restul.
+      out = normalizeWorkout(out);
     }
   } else {
-    out = fitStructure(out);
+    out = normalizeWorkout(fitStructure(out));
   }
   out.note = `scurtat la cererea ta: ${minutes} min în loc de ${before}; ce nu se face azi nu se recuperează`;
   return out;

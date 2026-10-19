@@ -271,6 +271,20 @@ begin
   end if;
 end $$;
 
+-- Jurnalul de forță (schema 7): ce s-a făcut efectiv la fiecare exercițiu. Doar serverul scrie (cheia de serviciu).
+create table if not exists public.strength_log (
+  user_id uuid not null references public.users(id) on delete cascade,
+  date date not null,
+  exercise text not null,
+  sets jsonb not null,
+  rir smallint,
+  source text not null check (source in ('confirmat', 'ajustat')),
+  created_at timestamptz not null default now(),
+  primary key (user_id, date, exercise)
+);
+alter table public.strength_log enable row level security;
+revoke all on public.strength_log from anon, authenticated;
+
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
   key text primary key,
@@ -279,5 +293,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 6)
+insert into public.schema_meta (key, value) values ('version', 7)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

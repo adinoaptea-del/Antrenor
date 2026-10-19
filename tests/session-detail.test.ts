@@ -27,7 +27,7 @@ test('calitate (T1): școala alergării în încălzire, pauză după puls, plaf
   const b = moduleStructure('T1');
   const s = detailSteps(w({ type: 'calitate', plannedMinutes: b.minutes, targetZones: [3], structure: b.text }), { age: 40 });
   assert.ok(s.some((x) => x.label === 'Școala alergării' && /genunchi la piept/.test(x.text) && /călcâie la șezut/.test(x.text)));
-  assert.match(s.find((x) => x.label === 'Principal')!.text, /până pulsul coboară sub ~\d+ bpm/);
+  assert.match(s.find((x) => x.label === 'Principal')!.text, /pornește când pulsul e sub ~\d+ bpm/);
   assert.ok(s.some((x) => x.label === 'Plafon'));
 });
 

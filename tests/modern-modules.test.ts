@@ -11,10 +11,12 @@ test('bicicleta: calitatea progresează săptămânal în baza2 (nu aceeași șe
   assert.match(s[2]!, /^2 × 20 min/);
 });
 
-test('bicicleta: build alternează pragul cu over-under; peak are 30/15 cu pașii lor', () => {
+test('bicicleta: build alternează pragul cu over-under; peak are 30/15 doar pentru cei cu experiență', () => {
   assert.match(bikeQuality('build', 0)!.structure, /la prag/);
   assert.match(bikeQuality('build', 1)!.structure, /over-under/);
-  const p = bikeQuality('peak', 0)!;
+  // T07: 30/15 nu apare doar pentru că sportivul a intrat în peak.
+  assert.doesNotMatch(bikeQuality('peak', 0)!.structure, /30 s tare/);
+  const p = bikeQuality('peak', 0, { experienced: true })!;
   assert.match(p.structure, /30 s tare \/ 15 s ușor/);
   const steps = shortIntervalSteps(p.structure, p.minutes)!;
   assert.equal(steps.length, 3);

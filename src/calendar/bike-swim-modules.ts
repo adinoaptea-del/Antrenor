@@ -22,7 +22,7 @@ const round5 = (m: number) => Math.round(m / 5) * 5;
 const total = (work: number, rest: number) => round5(15 + work + rest + 10);
 
 /** Bicicleta: baza2 sweet spot în progresie; build alternează pragul cu over-under; peak alternează 30/15 cu ritmul de obiectiv. */
-export function bikeQuality(phase: Phase, weekInPhase: number, opts: { raceKm?: number | null; capZ4?: boolean } = {}): QualityModule | null {
+export function bikeQuality(phase: Phase, weekInPhase: number, opts: { raceKm?: number | null; capZ4?: boolean; experienced?: boolean } = {}): QualityModule | null {
   const w = Math.max(0, weekInPhase);
   if (phase === 'baza2') {
     const steps = [
@@ -45,8 +45,10 @@ export function bikeQuality(phase: Phase, weekInPhase: number, opts: { raceKm?: 
     return { structure: `${n} × ${m} min la prag (Z4, 95–100% FTP), 5 min ușor între`, zones: [4], minutes: total(n * m, (n - 1) * 5), intervals: { count: n, minutes: m, zone: 4 } };
   }
   if (phase === 'peak') {
-    // De la 55 de ani (sau intensitate plafonată la Z4): fără intervale VO2max, doar ritmul de obiectiv.
-    if (w % 2 === 0 && !opts.capZ4) {
+    // 30/15 e o opțiune, nu regula fazei: studiul (Rønnestad 2020) e pe 18 cicliști de elită. Doar pentru cine are
+    // istoric de antrenament consistent (≥ 6 h/săpt. sau test de bicicletă făcut) și fără plafon Z4 (vârstă, restricție).
+    // Altfel, ritmul de obiectiv, care e specific distanței.
+    if (w % 2 === 0 && !opts.capZ4 && opts.experienced) {
       const reps = w === 0 ? 10 : 12;
       return { structure: `3 serii × ${reps} × (30 s tare / 15 s ușor), 3 min ușor între serii — intervale scurte 30/15`, zones: [4, 5], minutes: total(3 * reps * 0.75, 6) };
     }

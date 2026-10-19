@@ -8,11 +8,12 @@ import { weekday } from '@core/util/dates.js';
 import { goalKind } from '@core/calendar/phases.js';
 import { Dot, Icons, fmtDayMonth } from './common';
 import { Actions, YellowDay } from './WorkoutActions';
+import { StrengthHint, StrengthLogForm } from './StrengthLog';
 import { useLocalBack } from './Shell';
-import { useMe } from '../data/store';
+import { useData, useMe } from '../data/store';
 import { COLOR_LABEL, DAY_NAMES, SPORT_LABEL, activityFor, colorOf, dayOf, fmtMinutes, isUpcoming, purposeOf, reasonsOf, sessionSteps } from '../data/model';
 
-const NOTE_STEPS = new Set(['Plafon', 'Puls', 'Important']);
+const NOTE_STEPS = new Set(['Plafon', 'Puls', 'Important', 'Durata']);
 const PLAIN: Record<PlannedWorkout['type'], string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'intensitate', lung: 'ieșire lungă', brick: 'bicicletă + alergare', forta: 'forță', odihna: 'odihnă' };
 const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.run, forta: Icons.dumbbell } as const;
 
@@ -162,6 +163,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                       <span className="str-cue">
                         {r.ex.cue}. Alternativă: {r.ex.alt}.
                       </span>
+                      <StrengthHint r={r} />
                     </div>
                     <div className="str-sets">
                       <span className="str-set">
@@ -173,11 +175,12 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               </div>
               {rx.notes.length > 0 && (
                 <ul className="str-notes">
-                  {rx.notes.map((n) => (
+                  {rx.notes.filter((n) => !(/^fără istoric de greutăți/i.test(n) && (me.strengthLog ?? []).some((x) => rx.items.some((r) => r.ex.id === x.exercise)))).map((n) => (
                     <li key={n}>{n.charAt(0).toUpperCase() + n.slice(1)}.</li>
                   ))}
                 </ul>
               )}
+              {w.date <= me.today && w.status !== 'anulat_sistem' && !paused && <StrengthLogForm key={w.id} w={w} rx={rx} />}
             </>
           ) : (
             <>
@@ -202,6 +205,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
             </>
           )}
 
+          {w.sport === 'inot' && upcoming && <SwimPlace />}
           {w.note && w.status !== 'anulat_sistem' && <div className="wk-note">{w.note}</div>}
           {upcoming && !paused && (
             <>
@@ -218,5 +222,32 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Bazin sau ape libere: schimbă pașii ședințelor viitoare de înot (ape libere = alte condiții, fără test maximal). */
+function SwimPlace() {
+  const me = useMe();
+  const { submitForm } = useData();
+  const cur = me.prefs?.mediuInot ?? 'bazin';
+  const [busy, setBusy] = useState(false);
+  const set = async (m: 'bazin' | 'ape') => {
+    if (m === cur || busy) return;
+    setBusy(true);
+    try {
+      await submitForm('inot-mediu', { mediu: m });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="row" style={{ gap: 8, marginTop: 10 }} role="group" aria-label="Unde înoți">
+      <button className={`pill ${cur === 'bazin' ? 'on' : ''}`} aria-pressed={cur === 'bazin'} disabled={busy} onClick={() => void set('bazin')}>
+        Bazin
+      </button>
+      <button className={`pill ${cur === 'ape' ? 'on' : ''}`} aria-pressed={cur === 'ape'} disabled={busy} onClick={() => void set('ape')}>
+        Ape libere
+      </button>
+    </div>
   );
 }

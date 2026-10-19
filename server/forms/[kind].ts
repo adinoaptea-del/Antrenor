@@ -1,3 +1,4 @@
+import { cleanEntry } from '../../src/strength/log.js';
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
 import { insert, one, remove, update, upsert } from '../_lib/db.js';
@@ -92,6 +93,17 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         if (planId) changes = await applyPlanEvents(u.id, today, planId, workouts, [{ kind: 'bilant', date: today, obosit: true, motiv }]);
       }
       json(res, 200, { ok: true, bilant: motiv ? { obosit: true, motiv, changes } : { obosit: false } });
+      return;
+    }
+    if (kind === 'forta-jurnal') {
+      // Jurnalul de forță: ce s-a făcut efectiv. „confirmat” preia valorile propuse (fără kg inventate), „ajustat” are
+      // valorile reale. O notare nouă pentru aceeași zi și același exercițiu o înlocuiește pe cea veche.
+      const date = isDate(body.date) ? (body.date as string) : today;
+      if (date > today) throw new HttpError(400, 'nu se notează o ședință din viitor');
+      const items = (Array.isArray(body.items) ? body.items : []).map((e) => cleanEntry(e, date)).filter((e): e is NonNullable<typeof e> => !!e);
+      if (!items.length) throw new HttpError(400, 'niciun exercițiu valid');
+      await upsert('strength_log', items.map((e) => ({ user_id: u.id, date, exercise: e.exercise, sets: e.sets, rir: e.rir, source: e.source })), 'user_id,date,exercise');
+      json(res, 200, { ok: true, saved: items.length });
       return;
     }
     if (kind === 'analize') {

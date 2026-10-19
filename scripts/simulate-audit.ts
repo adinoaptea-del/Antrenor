@@ -15,6 +15,10 @@ import { detailSteps, hrFor } from '../src/calendar/session-detail.js';
 import { RUN_MODULES, MODULE_PURPOSE, moduleStructure, walkRunStructure, WALK_RUN_STEPS, parseModule, type RunModuleId } from '../src/calendar/run-modules.js';
 import { bikeQuality, swimQuality, SWIM_PYRAMID } from '../src/calendar/bike-swim-modules.js';
 import { WORKOUT_LIBRARY } from '../src/knowledge/workouts.js';
+import { CONTRACTS } from '../src/knowledge/contracts.js';
+import { coherenceIssues } from '../src/calendar/coherence.js';
+import { runLongitudinal } from '../src/sim/longitudinal.js';
+import { unlockedDays, daysAt } from '../src/strength/fitness.js';
 import { PROMPTS } from '../src/prompts/bundle.js';
 import { addDays, weekday } from '../src/util/dates.js';
 import type { PlannedWorkout, Phase } from '../src/types.js';
@@ -22,46 +26,13 @@ import type { PlannedWorkout, Phase } from '../src/types.js';
 const OUT = process.argv[2] ?? '.';
 mkdirSync(OUT, { recursive: true });
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const START = '2026-10-26';
 const DAYS = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
 const SPORT: Record<string, string> = { inot: 'Înot', bicicleta: 'Bicicletă', alergare: 'Alergare', forta: 'Forță' };
 const TYPE: Record<string, string> = { z2: 'ușor', tehnica: 'tehnică', calitate: 'calitate', lung: 'lungă', brick: 'brick', forta: 'forță', odihna: 'odihnă' };
 const PHASE: Record<string, string> = { evaluare: 'Evaluare', baza1: 'Bază 1', baza2: 'Bază 2', build: 'Build', peak: 'Peak', taper: 'Taper' };
 
-// ——— Profilurile ———
-const RACE: Record<string, string> = { '70.3': '2027-09-12', olimpic: '2027-06-13', sprint: '2027-06-13', '5k': '2027-03-28', '10k': '2027-04-18', semimaraton: '2027-05-09', maraton: '2027-10-10', 'inot-1500': '2027-06-27', 'inot-1900': '2027-06-27', 'inot-3800': '2027-08-29', 'bike-50': '2027-05-30', 'bike-100': '2027-06-20', 'bike-160': '2027-08-22' };
-const PACE: Record<string, [number, number]> = { '5k': [330, 285], '10k': [345, 300], semimaraton: [360, 315], maraton: [380, 335] };
-type Level = 'debutant' | 'intermediar' | 'avansat';
-const LEVELS: Level[] = ['debutant', 'intermediar', 'avansat'];
-const AGES = [25, 35, 45, 55, 65];
-const SEXES: ('m' | 'f')[] = ['m', 'f'];
-const INTENS: ('toate' | 'Z2')[] = ['toate', 'Z2'];
-// Program liber: luni–vineri 18:00–19:30, sâmbătă 08:00–12:00, duminică 08:00–11:00 (14,5 h libere).
-const FREE = [0, 1, 2, 3, 4].map((d) => ({ day: d as 0, startMin: 18 * 60, endMin: 19 * 60 + 30 })).concat([{ day: 5 as 0, startMin: 8 * 60, endMin: 12 * 60 }, { day: 6 as 0, startMin: 8 * 60, endMin: 11 * 60 }]);
-
-interface Profile { goal: Goal; sex: 'm' | 'f'; age: number; level: Level; intens: 'toate' | 'Z2'; hours?: number }
-function input(p: Profile): GenerateInput {
-  const L = p.level;
-  const hist = L === 'debutant' ? [] : L === 'intermediar' ? [5, 5.5, 4.5, 6, 5, 5, 5.5, 6] : [9, 9.5, 8, 10, 9, 9.5, 10, 9];
-  const hours = p.hours ?? (L === 'debutant' ? 5 : L === 'intermediar' ? 8 : 12);
-  const fit = isFitnessGoal(p.goal);
-  return {
-    startDate: START,
-    raceDate: fit ? addDays(START, 26 * 7) : RACE[p.goal]!,
-    goal: p.goal,
-    freeBlocks: FREE,
-    sportHours: hours,
-    historyHoursPerWeek: hist,
-    intensityAllowed: p.intens,
-    swimContinuous400: L !== 'debutant',
-    level: { longestRideH: L === 'debutant' ? 1 : L === 'intermediar' ? 2.5 : 4, longestRunKm: L === 'debutant' ? 3 : L === 'intermediar' ? 12 : 21, easyPaceSecKm: L === 'debutant' ? null : L === 'intermediar' ? 375 : 320 },
-    tests: L === 'avansat' ? { alergare: true, bicicleta: true, inot: true } : { alergare: false, bicicleta: false, inot: false },
-    athlete: { age: p.age, sex: p.sex },
-    swim: { continuousM: L === 'debutant' ? 50 : L === 'intermediar' ? 600 : 1500 },
-    run: isRunGoal(p.goal) ? { goalPaceSecKm: L === 'debutant' ? null : PACE[p.goal]![L === 'intermediar' ? 0 : 1], canDoDistance: L !== 'debutant' && (p.goal === '5k' || p.goal === '10k' || L === 'avansat'), longestRunKm: L === 'debutant' ? 3 : L === 'intermediar' ? 12 : 21, branch: L === 'debutant' ? 'finalizare' : 'timp', beginner: L === 'debutant' } : undefined,
-    fitness: fit ? fitnessProfile(p.goal, { experienta: L === 'debutant' ? 'incepatoare' : 'stabila', zile: L === 'debutant' ? 2 : L === 'intermediar' ? 3 : 4, minute: L === 'debutant' ? 45 : 60, acces: 'sala', miscare: L === 'debutant' ? 'sedentara' : L === 'intermediar' ? 'plimbari' : 'activa' }) : undefined,
-  };
-}
+// ——— Profilurile (comune cu testele de coerență) ———
+import { AGES, FREE, INTENS, LEVELS, PACE, RACE, SEXES, START, input, type Level, type Profile } from './audit-profiles.js';
 
 interface Metrics { ok: boolean; reason?: string; weeks: number; budget: number; h: Record<string, number | null>; sessBuild: number | null; qualBuild: number | null; strength: number | null; z5: boolean; recEvery: number; walkRun: boolean; firstWeekH: number; longFirst: string }
 function metrics(p: Profile, r: GenerateResult): Metrics {
@@ -168,21 +139,26 @@ h3('Tura ușoară (75 min) și tura lungă (180 min)');
 parts.push(stepsHtml(W({ sport: 'bicicleta', plannedMinutes: 75, structure: 'ușor, cadență 90–100' })));
 parts.push(stepsHtml(W({ sport: 'bicicleta', type: 'lung', plannedMinutes: 180 })));
 h3('Brick (bicicletă + alergare, 120 min)');
-parts.push(stepsHtml(W({ sport: 'bicicleta', type: 'brick', plannedMinutes: 120, targetZones: [2], structure: 'tură 100 min + alergare 20 min' })));
+parts.push(stepsHtml(W({ sport: 'bicicleta', type: 'brick', plannedMinutes: 120, targetZones: [2], structure: 'tură 100 min Z2 + alergare 20 min imediat după' })));
 h2('Înot — seturi (metri exacți, durată estimată)');
-for (const [css, lbl] of [[null, 'fără test CSS'], [110, 'cu CSS 1:50/100 m']] as const) {
+p('Fiecare segment (încălzire, set, revenire) respectă cât înoată sportivul fără oprire. Fără test CSS nu se dă ritm, dar se poate înota continuu cât a demonstrat. Pauza e „pauză după repetare”; durata e estimată și etichetată.');
+for (const [css, cont, lbl] of [[null, 25, 'începător: 25 m fără oprire, fără CSS'], [null, 600, '600 m fără oprire, fără CSS'], [110, 1500, '1.500 m fără oprire, CSS 1:50/100 m']] as const) {
   h3(`Tehnică 40 min — ${lbl}`);
-  parts.push(stepsHtml(W({ sport: 'inot', type: 'tehnica', plannedMinutes: 40, structure: 'un element de tehnică' }), { age: 40, css } as never));
+  parts.push(stepsHtml(W({ sport: 'inot', type: 'tehnica', plannedMinutes: 40, structure: 'un element de tehnică' }), { age: 40, css, swimContinuousM: cont } as never));
   h3(`Ușor 45 min — ${lbl}`);
-  parts.push(stepsHtml(W({ sport: 'inot', type: 'z2', plannedMinutes: 45 }), { age: 40, css } as never));
+  parts.push(stepsHtml(W({ sport: 'inot', type: 'z2', plannedMinutes: 45 }), { age: 40, css, swimContinuousM: cont } as never));
 }
+h3('Lung 60 min, „distanța fără oprire” — 800 m demonstrați, fără CSS');
+parts.push(stepsHtml(W({ sport: 'inot', type: 'lung', plannedMinutes: 60, structure: 'distanța de cursă continuu' }), { age: 40, swimContinuousM: 800 } as never));
+h3('Ape libere, 45 min — 800 m demonstrați');
+parts.push(stepsHtml(W({ sport: 'inot', type: 'lung', plannedMinutes: 45, structure: 'distanța de cursă continuu' }), { age: 40, swimContinuousM: 800, openWater: true } as never));
 for (const ph of ['build', 'peak'] as Phase[]) for (let wk = 0; wk < (ph === 'build' ? 4 : 2); wk++) {
   const sq = swimQuality(ph, wk)!;
   h3(`Set CSS — ${PHASE[ph]}, săptămâna ${wk + 1}`);
-  parts.push(stepsHtml(W({ sport: 'inot', type: 'calitate', plannedMinutes: 45, structure: sq }), { age: 40, css: 110 } as never));
+  parts.push(stepsHtml(W({ sport: 'inot', type: 'calitate', plannedMinutes: 45, structure: sq }), { age: 40, css: 110, swimContinuousM: 1500 } as never));
 }
 h3('Piramida aerobă');
-parts.push(stepsHtml(W({ sport: 'inot', type: 'z2', plannedMinutes: 40, structure: SWIM_PYRAMID }), { age: 40, css: 110 } as never));
+parts.push(stepsHtml(W({ sport: 'inot', type: 'z2', plannedMinutes: 40, structure: SWIM_PYRAMID }), { age: 40, css: 110, swimContinuousM: 1500 } as never));
 h2('Forță — fiecare ședință, cu exercițiile (bloc Bază, 45 min)');
 for (const id of Object.keys(SESSIONS) as SessionId[]) {
   const rx = prescribe({ session: id, block: id.length <= 2 ? 'construire' : 'baza', week: 2, len: 4 } as never, 60);
@@ -192,6 +168,9 @@ for (const id of Object.keys(SESSIONS) as SessionId[]) {
 }
 h2('Biblioteca de cunoștințe a antrenorului AI (pe sport, fază, obiectiv)');
 table(['Sport', 'Nume', 'Sursă', 'Scop', 'Faze', 'Cum', 'Doză', 'Nu când'], WORKOUT_LIBRARY.map((x) => [SPORT[x.sport], x.nume, x.sursa, x.scop, x.faze.map((f) => PHASE[f]).join(', '), x.cum, x.doza, x.nu_cand ?? '']), 'small lib');
+h2('Fișa fiecărui modul (src/knowledge/contracts.ts)');
+p('Cerințe de produs AIRON care fac decizia verificabilă, nu praguri medicale validate. Dovada: „cercetare” = studiu / review (populația lui poate diferi de sportiv), „ghid” = recomandare de antrenorat, „regula” = decizie internă AIRON. Fișa ajunge și în textul pe care îl primește antrenorul AI.');
+table(['Modul', 'Dovadă', 'Populația', 'Eligibil când', 'Altfel', 'Cum se judecă execuția', 'Versiune'], WORKOUT_LIBRARY.map((x) => { const k = CONTRACTS[x.id]!; return [x.nume, k.dovada, k.populatie, k.eligibil, k.alternativa, k.evaluare, `${k.versiune} · ${k.revizuit}`]; }), 'small lib');
 
 // ——— Partea III: tabelul complet ———
 h1('Partea III — Toate profilurile (tabelul complet)');
@@ -204,10 +183,10 @@ for (const goal of ALL_GOALS) {
     const pr: Profile = { goal, sex, age, level, intens };
     const m = metrics(pr, run(pr));
     all.push({ p: pr, m });
-    rws.push(m.ok ? [sex.toUpperCase(), age, level, intens, m.weeks, m.budget, m.h.evaluare, m.h.baza1, m.h.build, m.h.peak, m.sessBuild, m.qualBuild, m.strength, m.z5 ? 'da' : 'nu', m.recEvery, m.walkRun ? 'da' : 'nu', m.firstWeekH, m.longFirst] : [sex.toUpperCase(), age, level, intens, '—', m.budget, 'NU: ore insuficiente (vezi nota)', null, null, null, null, null, null, null, null, null, null, null]);
+    rws.push(m.ok ? [sex.toUpperCase(), age, level, intens, m.weeks, m.budget, m.h.evaluare, m.h.baza1, m.h.build, m.h.peak, m.sessBuild, m.qualBuild, m.strength, m.z5 ? 'da' : 'nu', m.recEvery, m.walkRun ? 'da' : 'nu', m.firstWeekH, m.longFirst] : [sex.toUpperCase(), age, level, intens, '—', m.budget, 'NU: refuzat (vezi nota)', null, null, null, null, null, null, null, null, null, null, null]);
   }
   const refused = all.filter((x) => x.p.goal === goal && !x.m.ok);
-  if (refused.length) p(`<i>Notă: ${refused.length} profiluri refuzate cu mesajul: „${esc(refused[0]!.m.reason)}” Aplicația oferă atunci variante: mai multe ore, alt obiectiv sau altă dată.</i>`);
+  if (refused.length) for (const reason of [...new Set(refused.map((x) => x.m.reason))]) p(`<i>Notă: ${refused.filter((x) => x.m.reason === reason).length} profiluri refuzate cu mesajul: „${esc(reason)}” Aplicația oferă atunci variante: mai multe ore, alt obiectiv sau altă dată.</i>`);
   table(['Sex', 'Vârstă', 'Nivel', 'Intens.', 'Săpt.', 'Buget', 'Eval.', 'Bază1', 'Build', 'Peak', 'Ședințe', 'Calit.', 'Forță', 'Z5', 'Desc.', 'Mers-al.', 'Săpt.1 h', 'Lungi în săpt. 1'], rws, 'tiny');
 }
 p('<b>Ironman complet:</b> refuzat înainte de planificator (server/_lib/plan.ts): „Ironman complet nu e în versiunea asta a planului; alege 70.3 pentru acum.”');
@@ -225,10 +204,28 @@ p('<b>Ironman complet:</b> refuzat înainte de planificator (server/_lib/plan.ts
   const z2z5 = ok.filter((x) => x.p.intens === 'Z2' && x.m.z5).length;
   const walkNonDeb = ok.filter((x) => x.p.level !== 'debutant' && x.m.walkRun).length;
   const recWrong = ok.filter((x) => (x.p.age >= 40 ? 3 : 4) !== x.m.recEvery).length;
+  // Coerența fiecărei ședințe din fiecare plan reușit (durate, brick, plafon, capacitatea la înot).
+  let sessions = 0;
+  const incoherent: string[] = [];
+  let tests55 = 0;
+  let short3015 = 0;
+  for (const x of ok) {
+    const inp = input(x.p);
+    const r = generatePlan(inp);
+    if (!r.ok) continue;
+    for (const w of r.weeks.flatMap((wk) => wk.workouts)) {
+      sessions += 1;
+      incoherent.push(...coherenceIssues(w, detailSteps(w, { age: x.p.age, swimContinuousM: inp.swim?.continuousM ?? null }), inp.swim?.continuousM ?? null));
+      if (x.p.age >= 55 && /^TEST/.test(w.structure ?? '')) tests55 += 1;
+      if (x.p.level === 'debutant' && /30 s tare/.test(w.structure ?? '')) short3015 += 1;
+    }
+  }
   const lines = [
-    `Planuri generate: ${all.length}; reușite: ${ok.length}; refuzate: ${all.length - ok.length} (toate pentru ore insuficiente la debutant cu 5 h: 70.3, olimpic, tura de 160 km).`,
+    `Planuri generate: ${all.length}; reușite: ${ok.length}; refuzate: ${all.length - ok.length} (motivele, pe obiectiv, în notele tabelelor de mai sus).`,
     `Sexul: ${sexDiff} diferențe între planurile M și F la același profil (0 = sexul nu schimbă planul; e o alegere de design, vezi Partea V).`,
-    `Vârsta ≥ 55: ${z5old} planuri cu intervale Z5 (trebuie 0: plafon Z4). Testele de teren (efort maxim) rămân în plan și la 55+; e de decis dacă la 65 de ani testul maximal rămâne.`,
+    `Vârsta ≥ 55: ${z5old} planuri cu intervale Z5 și ${tests55} teste maximale de teren (trebuie 0: plafon Z4; testele maximale respectă aceleași restricții ca intervalele).`,
+    `Coerență: ${sessions} ședințe verificate (durata din structură, brick identic în titlu/rezumat/pași, ținta de puls sub plafon, segmentele de înot sub capacitate); probleme: ${incoherent.length}${incoherent.length ? ` — ex.: ${incoherent.slice(0, 3).join('; ')}` : ''}.`,
+    `Intervale 30/15 la debutanți: ${short3015} (trebuie 0: doar cu istoric ≥ 6 h/săpt. sau test de bicicletă).`,
     `Restricție Z2: ${z2qual} planuri cu ședințe de calitate în build și ${z2z5} cu Z5 (trebuie 0).`,
     `Mers-alergare la nedebutanți: ${walkNonDeb} (trebuie 0).`,
     `Descărcarea: ${recWrong} planuri nu respectă regula „la 3 săptămâni de la 40 de ani, la 4 sub 40” (trebuie 0).`,
@@ -283,8 +280,8 @@ for (const goal of ALL_GOALS) {
         const spec = strengthSpecFor(planAll, w, START, inp.raceDate, 3, goal);
         const rx = spec ? prescribe(spec, w.plannedMinutes) : null;
         body = rx ? `<table class="small"><tbody>${rx.items.map((x) => `<tr><td>${esc(x.ex.name)}</td><td>${x.sets} × ${esc(x.reps)}</td><td>rezervă ${esc(x.rir)}</td><td>pauză ${x.rest} s</td></tr>`).join('')}</tbody></table>${rx.notes.length ? `<p class="note">${esc(rx.notes.join('; '))}</p>` : ''}` : '';
-        body = `<p class="note">${esc(w.structure ?? '')}${rx ? ` · bloc ${esc(BLOCK_LABEL[rx.spec.block])}` : ''}</p>${stepsHtml(w)}${body}`;
-      } else body = `${w.structure ? `<p class="note">${esc(w.structure)}</p>` : ''}${stepsHtml(w)}`;
+        body = `<p class="note">${esc(w.structure ?? '')}${rx ? ` · bloc ${esc(BLOCK_LABEL[rx.spec.block])}` : ''}</p>${stepsHtml(w, { age: 40, swimContinuousM: inp.swim?.continuousM ?? null } as never)}${body}`;
+      } else body = `${w.structure ? `<p class="note">${esc(w.structure)}</p>` : ''}${stepsHtml(w, { age: 40, swimContinuousM: inp.swim?.continuousM ?? null } as never)}`;
       parts.push(`<div class="wo"><div class="wo-h">${esc(head)}</div>${body}</div>`);
     }
   }
@@ -325,9 +322,87 @@ parts.push(`<ul>
 h2('Ce nu e personalizat (onest)');
 parts.push(`<ul>
 <li>Sexul nu schimbă volumul sau ședințele (în tabel, rândurile M și F sunt identice). Fitness-ul e oferit în aplicație doar femeilor (alegere de produs).</li>
-<li>Vârsta schimbă doar descărcarea (la 3 săptămâni de la 40 de ani) și plafonul de intensitate (Z4 de la 55 de ani); nu și volumul.</li>
-<li>Greutățile la forță nu se prescriu în kilograme: se aleg după rezerva cerută (fără jurnal de greutăți încă).</li>
+<li>Vârsta schimbă doar descărcarea (la 3 săptămâni de la 40 de ani) și plafonul de intensitate (Z4 de la 55 de ani, fără teste maximale); nu și volumul. Auditul cere ca vârsta singură să nu înlocuiască nivelul și recuperarea: în plan, nivelul vine din istoric și chestionar, iar recuperarea zilnică schimbă ziua; plafonul de la 55 de ani rămâne o regulă de prudență, de discutat.</li>
+<li>Greutățile la forță nu se prescriu în kilograme inventate: prima dată se aleg după rezerva cerută; apoi jurnalul de forță (kg, repetări, rezervă notate după ședință) dă sugestia următoare după progresia dublă. Fără kilograme notate, sugestia rămâne în cuvinte.</li>
+<li>Frecvența la sală (fitness) nu crește după calendar: urcă cu o zi doar după 3 săptămâni la rând cu ≥ 80% din ședințe făcute (reevaluare duminica).</li>
 <li>Pulsul fără test e estimat; ritmul pe km apare doar când există un ritm-țintă sau un test.</li>
+</ul>`);
+
+// ——— Partea VI: corecturile după auditul „Corecturi pentru antrenamente” (v1.0, 19.10.2026) ———
+h1('Partea VI — Corecturi după auditul din 19.10.2026');
+p('Răspuns la documentul „AIRON — Corecturi pentru antrenamente” (v1.0). Fiecare constatare a fost verificată în cod înainte de modificare; corectura e în generator, în modelul de date sau în validator, nu doar în textul afișat. Testele automate rulează la fiecare lansare.');
+table(['Constatare', 'Confirmată', 'Cauza (fișier · funcție)', 'Corectura', 'Test'], [
+  ['P0-01 ținta Z5 168–180 bpm cu plafon 167', 'da', 'session-detail.ts · capFor folosea limita Z4 și la Z5', 'plafonul = limita zonei-țintă (la Z5, pulsul maxim); la repetări conduce efortul, pulsul e plafon și semnal de oprire; validator: ținta unui segment nu trece de plafon', 'T02 (coherence.test.ts)'],
+  ['P0-02 test „45 min” cu 15 + 30 + 5', 'da', 'generate.ts · fitToHours scurta minutele, structura testului rămânea fixă; bicicleta 55 vs 20 + 20 + 10', 'coherence.ts · normalizeWorkout rescrie structura pentru minutele finale (încălzirea se scurtează, partea testată rămâne); pașii testului din aceleași cifre', 'T01'],
+  ['P0-03 brick în trei variante (200 / 180 + 30 / 140 + 60)', 'da', 'session-detail.ts lungea alergarea ca să umple timpul; structura nu urma minutele', 'brickSplit unic pentru titlu, rezumat, pași, scurtare și adaptare; alergarea nu crește niciodată', 'T01 brick'],
+  ['P0-04 pauză fixă vs „până coboară pulsul”', 'da', 'session-detail.ts', 'pauza are durată planificată; „următoarea pornește când pulsul e sub …”; pasul „Durata: ≈ N min, poate crește cu până la ~X min”', 'T02 pauze'],
+  ['P0-05 încălzire 50 m / revenire 100 m la cine face 25 m', 'da', 'session-steps.ts · swimSet avea încălzire și revenire fixe', 'capacitatea limitează fiecare segment; piramida doar de la 100 m; necunoscut = 50 m, declarat', 'T03'],
+  ['P1-01 160 km: tura lungă dispare, săptămâni de 2,6 h în build', 'da (15 din 29 săptămâni fără tură lungă)', 'generate.ts · place: ședința-cheie mai lungă decât cel mai mare bloc liber era ștearsă în tăcere', 'ieșirile lungi plafonate la cel mai mare bloc liber, cu avertisment explicit; ședințele-cheie se scurtează, nu se șterg', 'coerență + exemplu înainte/după'],
+  ['P1-02 estimări prezentate ca măsurători', 'parțial', 'textele testelor, CSS, FTP', 'FCmax, FTP, CSS și ritmul presupus etichetate ESTIMARE; Main Coach instruit la fel', '—'],
+  ['Forță: 2 → 3 → 4 zile după calendar', 'da', 'fitness.ts · daysAt', 'unlockedDays: o zi în plus doar după 3 săptămâni la rând cu ≥ 80% din ședințe; reevaluare duminica', 'T05'],
+  ['Forță: fără încărcări înregistrate', 'da', '—', 'jurnalul de forță (schema 7): „Am făcut cum scrie” / „Ajustez” cu kg, repetări, rezervă; sugestia următoare după progresia dublă; fără kg inventate', 'log (manual)'],
+  ['30/15 automat în peak', 'da', 'bike-swim-modules.ts · bikeQuality', 'opțiune doar cu istoric ≥ 6 h/săpt. sau test de bicicletă, fără plafon Z4; altfel ritmul de obiectiv', 'T07'],
+  ['Test maximal păstrat la 55+ cu interdicția intervalelor intense', 'da', 'generate.ts · fieldTests', 'fără test maximal cu intensitate plafonată (Z2, Z4) sau de la 55 de ani; zonele rămân estimate, efortul conduce', 'T09'],
+  ['Înot: „fără CSS, fără înot continuu”', 'da', 'session-steps.ts', 'continuu până la capacitatea demonstrată (+~10% la ședința de continuitate), restul timpului în bucăți; CSS = reper ajustabil', 'T04'],
+  ['Respirația la 3 brațe impusă', 'da', 'session-steps.ts, generate.ts, biblioteca', 'respirație comodă; bilateral e opțiune; exercițiile tehnice etichetate „explorare” (fără evaluare)', '—'],
+  ['Ape libere', 'parțial', 'comutatorul bazin/ape nu ajungea în pașii ședinței', 'pași separați pentru ape libere: fără test maximal, porțiune ≤ capacitate, verificarea apei/valurilor/curentului/vizibilității/supravegherii', '—'],
+  ['Obiectiv prea aproape comprimat mecanic', 'da (maraton debutant în 7 săptămâni)', 'generate.ts', 'săptămâni minime pe obiectiv și nivel (regulă AIRON); sub ele, refuz cu variante', 'T12'],
+  ['Simulare fără execuții', 'da', '—', 'src/sim/longitudinal.ts: 8 săptămâni cu ratări, oboseală, febră, picioare grele, alergare în plus, durere, pauză, evenimente dublate; invariante verificate după fiecare eveniment', 'T08, T10, T11'],
+  ['Fișa fiecărui modul', 'da', 'biblioteca avea scop/doză/„nu când”, fără eligibilitate și alternativă', 'contracts.ts: dovadă, populație, eligibilitate, alternativă, evaluare, versiune; trimisă și AI-ului', 'contracts.test.ts'],
+], 'small');
+
+const BA_OLD = process.env.BA_OLD;
+const BA_NEW = process.env.BA_NEW;
+if (BA_OLD && BA_NEW) {
+  h2('Înainte / după (aceleași intrări, commit ada1f61 față de acum)');
+  const o = JSON.parse(readFileSync(BA_OLD, 'utf8')) as Record<string, unknown>;
+  const n = JSON.parse(readFileSync(BA_NEW, 'utf8')) as Record<string, unknown>;
+  const li = (v: unknown) => (Array.isArray(v) ? `<ol class="steps">${v.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : `<p>${esc(typeof v === 'string' ? v : JSON.stringify(v))}</p>`);
+  const pair = (title: string, a: unknown, b: unknown) => {
+    h3(title);
+    parts.push(`<table class="small ba"><thead><tr><th>Înainte (ada1f61)</th><th>După</th></tr></thead><tbody><tr><td>${li(a)}</td><td>${li(b)}</td></tr></tbody></table>`);
+  };
+  const st = (x: unknown) => (x as { steps: string[] }).steps;
+  pair('Alergare — 4×4 în Z5, 40 de ani (puls estimat)', o.vo2, n.vo2);
+  pair('Alergare — testul de teren scurtat la 45 min', st(o.test), st(n.test));
+  const br = (x: unknown) => { const b = x as { title: string; summary: string; steps: string[] }; return [`Titlu: ${b.title}`, `Rezumat: ${b.summary}`, ...b.steps]; };
+  pair('Triatlon — brick de 200 min', br(o.brick), br(n.brick));
+  pair('Înot — începător cu 25 m fără oprire, 45 min', o.swim, n.swim);
+  pair('Înot — 800 m fără oprire, fără CSS, ședința de continuitate', o.swimLong, n.swimLong);
+  const b160 = (x: unknown) => { const b = x as { weeks: number; withoutLong: number; maxLong: number; minBuildH: number; note: string | null }; return [`Săptămâni fără descărcare/taper: ${b.weeks}`, `Fără tură lungă: ${b.withoutLong}`, `Cea mai lungă tură: ${b.maxLong} min`, `Cea mai slabă săptămână de build: ${b.minBuildH} h (ținta 8 h)`, `Avertisment: ${b.note ?? '—'}`]; };
+  pair('Bicicletă 160 km — intermediar, cel mai mare bloc liber 4 h', b160(o.b160), b160(n.b160));
+  pair('Bicicletă 160 km — intervale 30/15 la un intermediar cu ~5 h/săpt.', [`${o.b3015} ședințe 30/15`], [`${n.b3015} ședințe 30/15`]);
+  pair('Fitness — începătoare care a ales 4 zile, fără prezență înregistrată (săpt. 1, 5, 9, 20)', [`zile: ${(o.fitDays as number[]).join(', ')}`], [`zile: ${(n.fitDays as number[]).join(', ')} (urcă doar după prezență reală)`]);
+  pair('Maraton — debutant, cursa peste 7 săptămâni', o.near, n.near);
+  pair('70.3 — 65 de ani: teste de teren maximale în plan', [`${o.test65}`], [`${n.test65}`]);
+}
+
+h2('Simularea longitudinală (8 săptămâni de execuție)');
+p('Scenariul, același pentru toți: ședințe ratate și parțiale (aleator, determinist), zi galbenă (ziua 10), zi roșie (12), febră (16), ședință grea de picioare neplanificată 90 min RPE 8 (24), alergare neplanificată 70 min (26), durere 5/10 la genunchi (31), pauză de 10 zile (37–46) și revenire (47), bilanț duminica. Fiecare eveniment e livrat de două ori. Invariante: trecutul nu se rescrie; nimic ratat nu se recuperează (nicio ședință viitoare peste plan, nicio ședință nouă); cel mult 2 ședințe și o cheie pe zi; ședințele rămân coerente.');
+{
+  const rows: (string | number)[][] = [];
+  for (const goal of ALL_GOALS) for (const level of LEVELS) for (const age of [30, 60]) {
+    const r = runLongitudinal(input({ goal, sex: isFitnessGoal(goal) ? 'f' : 'm', age, level, intens: 'toate' }));
+    if (!r.log.length && r.violations.length) {
+      rows.push([GOAL_LABEL[goal], level, age, 'plan refuzat', '', '', '', '']);
+      continue;
+    }
+    rows.push([GOAL_LABEL[goal], level, age, r.violations.length ? `${r.violations.length}: ${r.violations[0]}` : '0', `${r.counts.done} / ${r.counts.partial} / ${r.counts.missed}`, r.counts.duplicatesIgnored, `${Math.round(r.plan0Minutes / 6) / 10} → ${Math.round(r.planMinutes / 6) / 10}`, r.log.length]);
+  }
+  table(['Obiectiv', 'Nivel', 'Vârstă', 'Încălcări', 'Făcute / parțiale / ratate', 'Dubluri ignorate', 'Ore în 8 săpt.: plan → după adaptare', 'Evenimente aplicate'], rows, 'tiny');
+  const ex = runLongitudinal(input({ goal: '70.3', sex: 'm', age: 40, level: 'intermediar', intens: 'toate' }));
+  h3('Jurnalul unui profil: 70.3, 40 de ani, intermediar');
+  table(['Data', 'Eveniment', 'Ce a schimbat codul'], ex.log.map((l) => [l.date, l.what, l.changes.slice(0, 6).join('; ') + (l.changes.length > 6 ? ` … (+${l.changes.length - 6})` : '') || '— (nimic de schimbat)']), 'small');
+}
+
+h2('Limite rămase (onest)');
+parts.push(`<ul>
+<li>Pragurile noi (săptămâni minime până la cursă, 80% prezență, 6 h/săpt. pentru 30/15, 55 de ani pentru plafonul Z4) sunt decizii de produs AIRON, prudente, nu standarde validate.</li>
+<li>Capacitatea la înot vine din chestionar (declarat); încă nu se actualizează automat din cea mai lungă porțiune înregistrată de ceas.</li>
+<li>Progresia modulelor de calitate (T1 → T2, V10a → V10, treptele de sweet spot) urmează încă faza și săptămâna; „după tolerare” e verificat doar prin regula de repetare a treptei la o ședință-cheie slabă, nu prin istoricul fiecărui modul.</li>
+<li>Două activități neplanificate din același sport în aceeași zi sunt tratate ca una (cheia evenimentului e zi + sport, ca să nu se dubleze o ședință venită din două surse).</li>
+<li>Fără trasee distincte pentru sarcină / postpartum în afara regulii existente (2 zile, fără ramura de slăbire) și fără ajustare după ciclul menstrual (conform studiului citat de audit, nu e nevoie implicit; simptomele se raportează în chestionar).</li>
+<li>Simularea longitudinală folosește un scenariu fix; nu acoperă toate combinațiile de evenimente.</li>
 </ul>`);
 
 // ——— Anexe ———
@@ -337,7 +412,7 @@ for (const k of ['main_coach', 'ghid', 'fiziolog', 'antrenor_comun', 'antrenor_a
   if (t) parts.push(`<h3>src/prompts/${k}.md</h3><pre>${esc(t)}</pre>`);
 }
 h1('Anexa B — Regulile din cod (comentariile fișierelor sursă)');
-for (const f of ['src/calendar/phases.ts', 'src/calendar/budget.ts', 'src/calendar/generate.ts', 'src/calendar/validate.ts', 'src/calendar/day.ts', 'src/calendar/safety.ts', 'src/calendar/adapt.ts', 'src/calendar/actions.ts', 'src/calendar/run-modules.ts', 'src/calendar/bike-swim-modules.ts', 'src/calendar/session-detail.ts', 'src/calendar/session-steps.ts', 'src/strength/ppl.ts', 'src/strength/fitness.ts', 'src/collector/readiness.ts', 'src/collector/permissions.ts']) {
+for (const f of ['src/calendar/phases.ts', 'src/calendar/budget.ts', 'src/calendar/generate.ts', 'src/calendar/validate.ts', 'src/calendar/day.ts', 'src/calendar/safety.ts', 'src/calendar/adapt.ts', 'src/calendar/actions.ts', 'src/calendar/run-modules.ts', 'src/calendar/bike-swim-modules.ts', 'src/calendar/session-detail.ts', 'src/calendar/session-steps.ts', 'src/calendar/coherence.ts', 'src/sim/longitudinal.ts', 'src/strength/log.ts', 'src/knowledge/contracts.ts', 'src/strength/ppl.ts', 'src/strength/fitness.ts', 'src/collector/readiness.ts', 'src/collector/permissions.ts']) {
   let src = '';
   try {
     src = readFileSync(f, 'utf8');
@@ -349,7 +424,7 @@ for (const f of ['src/calendar/phases.ts', 'src/calendar/budget.ts', 'src/calend
 }
 
 const css = `@page{size:A4;margin:14mm 12mm}body{font:10.5pt/1.45 -apple-system,'Segoe UI',Roboto,sans-serif;color:#111}h1{font-size:19pt}h1.part{page-break-before:always;border-bottom:2px solid #111;padding-bottom:4px}h2{font-size:13.5pt;margin:18px 0 6px;page-break-after:avoid}h3{font-size:11pt;margin:12px 0 4px;page-break-after:avoid}
-.cover h1{font-size:24pt;margin-top:60px}.sub{color:#555}table{border-collapse:collapse;width:100%;margin:6px 0 10px}th,td{border:1px solid #ccc;padding:3px 5px;text-align:left;vertical-align:top}th{background:#f2f2f2}table.small{font-size:8.5pt}table.tiny{font-size:7pt}table.tiny td,table.tiny th{padding:1px 3px}table.lib{font-size:7.5pt}tr{page-break-inside:avoid}
+.cover h1{font-size:24pt;margin-top:60px}.sub{color:#555}table{border-collapse:collapse;width:100%;margin:6px 0 10px}th,td{border:1px solid #ccc;padding:3px 5px;text-align:left;vertical-align:top}th{background:#f2f2f2}table.small{font-size:8.5pt}table.tiny{font-size:7pt}table.tiny td,table.tiny th{padding:1px 3px}table.lib{font-size:7.5pt}table.ba td{width:50%}table.ba ol{margin-left:14px}tr{page-break-inside:avoid}
 ol.steps{margin:4px 0 8px 18px;padding:0}ol.steps li{margin:2px 0}.wo{border:1px solid #ddd;border-radius:6px;padding:6px 8px;margin:6px 0;page-break-inside:avoid}.wo-h{font-weight:700}.note{color:#444;font-size:9pt;margin:2px 0}.why{background:#f6f8f2;border:1px solid #cdd8b8;border-radius:6px;padding:6px 10px;margin:6px 0}pre{white-space:pre-wrap;font:8.5pt/1.35 ui-monospace,Menlo,monospace;background:#fafafa;border:1px solid #eee;padding:6px}`;
 writeFileSync(join(OUT, 'airon-audit-antrenor.html'), `<!doctype html><html lang="ro"><head><meta charset="utf-8"><title>AIRON — cum gândește antrenorul</title><style>${css}</style></head><body>${parts.join('\n')}</body></html>`);
 writeFileSync(join(OUT, 'airon-audit-matrice.json'), JSON.stringify(all, null, 1));

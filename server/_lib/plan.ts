@@ -9,7 +9,7 @@ import { generatePlan, type GenerateResult } from '../../src/calendar/generate.j
 import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
 import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
 import { FITNESS_WEEKS, GOAL_LABEL, isFitnessGoal, isRunGoal, type Goal } from '../../src/calendar/phases.js';
-import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
+import { fitnessProfile, unlockedDays, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
 import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
 
 /** Ramura de alergare: aleasă în chestionar; la cele vechi, „timp” dacă există o țintă. */
@@ -178,7 +178,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const prefs = await loadPrefs(userId);
   const result: GenerateResult = generatePlan({
     fixed: prefs.fixe,
-    fitness: fitness ? fitnessProfile(intake.obiectiv as Goal, intake.fitness) : undefined,
+    fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv as Goal, intake.fitness), continuing ? current!.id : null) : undefined,
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv as Goal,
@@ -275,4 +275,41 @@ async function testsAvailable(userId: string, intake: IntakeLike): Promise<{ ale
     bicicleta: !!(z?.bicicleta.ftp || z?.bicicleta.fc_z1_z5 || intake.evaluare?.ftp),
     inot: !!z?.inot.css,
   };
+}
+
+/**
+ * Fitness: zilele de sală cresc doar după prezență reală. Din planul activ, ultimele 6 săptămâni încheiate: câte ședințe
+ * de forță erau planificate și câte au o activitate de forță înregistrată (ceas sau marcată), pe săptămână.
+ */
+async function fitnessWithAttendance(userId: string, today: string, p: FitnessProfile, planId: string | null): Promise<FitnessProfile> {
+  if (!planId) return p;
+  const thisMonday = weekStart(today);
+  const from = addDays(thisMonday, -42);
+  const planned = await select<{ date: string; status: string }>('workouts_planned', { plan_id: `eq.${planId}`, sport: 'eq.forta', date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'date,status', limit: 200 });
+  const acts = await select<{ date: string }>('activities', { user_id: `eq.${userId}`, sport: 'eq.forta', date: [`gte.${from}`, `lt.${thisMonday}`] }, { select: 'date', limit: 200 });
+  const weeks = Array.from({ length: 6 }, (_, i) => addDays(from, i * 7)).map((ws) => {
+    const end = addDays(ws, 7);
+    const pl = planned.filter((w) => w.date >= ws && w.date < end && w.status !== 'sters' && w.status !== 'anulat_sistem').length;
+    const dn = new Set(acts.filter((a) => a.date >= ws && a.date < end).map((a) => a.date)).size;
+    return { planned: pl, done: Math.min(pl, dn) };
+  });
+  return { ...p, unlocked: unlockedDays(p, weeks) };
+}
+
+/**
+ * Reevaluarea de duminică la fitness: dacă prezența reală a deblocat o zi în plus (sau planul are mai multe zile decât
+ * s-au demonstrat), se reface planul de la lunea viitoare. Altfel nu se schimbă nimic.
+ */
+export async function reevaluateFitnessDays(userId: string, today: string): Promise<{ changed: boolean; days: number | null }> {
+  const intake = await one<{ answers: IntakeLike }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
+  if (!intake || !isFitnessGoal(intake.answers.obiectiv)) return { changed: false, days: null };
+  const plan = await one<{ id: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' });
+  if (!plan) return { changed: false, days: null };
+  const p = await fitnessWithAttendance(userId, today, fitnessProfile(intake.answers.obiectiv as Goal, intake.answers.fitness), plan.id);
+  const next = addDays(weekStart(today), 7);
+  const nextWeek = await select<{ id: string }>('workouts_planned', { plan_id: `eq.${plan.id}`, sport: 'eq.forta', date: [`gte.${next}`, `lt.${addDays(next, 7)}`] }, { select: 'id', limit: 10 });
+  const want = Math.min(p.days, p.unlocked ?? p.days);
+  if (nextWeek.length === 0 || nextWeek.length === want) return { changed: false, days: nextWeek.length || null };
+  const r = await generateAndStore(userId, today, intake.answers);
+  return { changed: r.ok, days: want };
 }

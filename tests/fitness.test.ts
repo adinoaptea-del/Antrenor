@@ -17,8 +17,9 @@ test('fitness: obiectivul e un singur „sport”, forța', () => {
   assert.deepEqual(goalSports('fit-masa'), ['forta']);
 });
 
-test('începătoare cu 4 zile: 2 zile în S1–4, 3 în S5–8, 4 din S9; trecerile marcate', () => {
-  const ws = fitnessWeeks({ goal: 'fit-tonifiere', days: 4, minutes: 60, beginner: true });
+test('începătoare cu 4 zile și prezență demonstrată: 2 zile în S1–4, 3 în S5–8, 4 din S9; trecerile marcate', () => {
+  // Fără prezență demonstrată rămâne la 2 (vezi T05 în coherence.test.ts); aici zilele sunt deblocate.
+  const ws = fitnessWeeks({ goal: 'fit-tonifiere', days: 4, minutes: 60, beginner: true, unlocked: 4 });
   assert.equal(ws.length, 26);
   assert.deepEqual([ws[0]!.days, ws[4]!.days, ws[8]!.days], [2, 3, 4]);
   assert.equal(ws[4]!.transition, true);

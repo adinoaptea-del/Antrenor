@@ -1184,3 +1184,11 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .prog .prog-more { justify-self: start; }
 
 .azi-ready { margin: -4px 0 0; border: 0; background: transparent; color: var(--fg); font: 600 15px/1.3 var(--font-ui); text-align: center; text-wrap: balance; cursor: pointer; padding: 4px 8px; }
+
+/* Jurnalul de forță */
+.str-hint { display: block; margin-top: 4px; font-size: 12.5px; color: var(--accent, #c8f04a); opacity: 0.9; }
+.str-log { margin-top: 14px; }
+.str-log-edit { display: grid; gap: 10px; }
+.str-log-row { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.str-log-row label { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; font-size: 13px; color: var(--muted, #9aa); }
+.str-log-row input { width: 64px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); color: inherit; font: inherit; }
