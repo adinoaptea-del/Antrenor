@@ -12,6 +12,7 @@ import { hasConsent } from '../_lib/consent.js';
 import { disconnect } from '../_lib/tokens.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
+import type { Sport } from '../../src/types.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, reevaluateAfterImport, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
@@ -20,7 +21,7 @@ import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
 import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
 import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
-import { AWAY_LABEL, applyAway, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
+import { AWAY_LABEL, applyAway, changeSport, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs } from '../_lib/prefs.js';
 import { markBadgesSeen } from '../_lib/badges.js';
 import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
@@ -325,7 +326,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'actiune') {
-      // Acțiunile sportivului pe o ședință: { workoutId, op: 'muta', date } sau { workoutId, op: 'usor' }.
+      // Acțiunile sportivului pe o ședință: { workoutId, op: 'muta', date }, { workoutId, op: 'usor' } sau { workoutId, op: 'sport', sport }.
       const id = String(body.workoutId ?? '');
       const op = String(body.op ?? '');
       const row = await one<{ date: string }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: 'date' });
@@ -342,6 +343,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       try {
         if (op === 'muta') next = moveWorkout(workouts, id, String(body.date ?? ''), today, at, done);
         else if (op === 'usor') next = easyWorkout(w, at);
+        else if (op === 'sport') next = changeSport(w, String(body.sport ?? '') as Sport, at);
         else throw new HttpError(400, 'acțiune necunoscută');
       } catch (e) {
         if (e instanceof HttpError) throw e;

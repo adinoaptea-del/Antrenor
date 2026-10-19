@@ -115,6 +115,51 @@ export function easyWorkout(w: PlannedWorkout, at: string): PlannedWorkout {
   return withOriginal(w, fitStructure(next), at);
 }
 
+// ——— Alt sport ———
+
+const SPORT_NAME: Record<Sport, string> = { alergare: 'alergare', bicicleta: 'bicicletă', inot: 'înot', forta: 'forță' };
+export const SWAP_SPORTS: Sport[] = ['alergare', 'bicicleta', 'inot'];
+
+/** Se poate schimba sportul ședinței? Motivul, când nu. */
+export function sportSwapBlock(w: PlannedWorkout): string | null {
+  if (!active(w)) return 'ședința nu mai e activă';
+  if (w.sport === 'forta') return 'forța nu se schimbă cu alt sport (alt scop și alt echipament); o poți muta în altă zi';
+  if (w.type === 'brick') return 'brick-ul are deja două sporturi; îl poți muta sau face ușor';
+  if (/^TEST/i.test(w.structure ?? '')) return 'un test se face în sportul lui; îl poți muta în altă zi';
+  return null;
+}
+
+/**
+ * „Azi fac alt sport”: aceeași zi și aceeași durată, ușor (zona 2; la înot tehnică, 20–60 min). Intensitatea și ieșirea
+ * lungă nu se transferă în alt sport (încărcarea nu e echivalentă), progresia sportului inițial așteaptă. Înapoi la
+ * sportul din plan = ședința din plan, exact cum era.
+ */
+export function changeSport(w: PlannedWorkout, sport: Sport, at: string): PlannedWorkout {
+  const block = sportSwapBlock(w);
+  if (block) throw new Error(block);
+  if (!SWAP_SPORTS.includes(sport)) throw new Error('sport necunoscut');
+  if (sport === w.sport) throw new Error(`ședința e deja ${SPORT_NAME[sport]}`);
+  const o = w.original;
+  if (o && o.sport === sport && o.date === w.date) {
+    return withOriginal(w, { ...w, sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones] as PlannedWorkout['targetZones'], structure: o.structure ?? undefined, key: o.key, intervals: o.intervals ?? undefined, note: undefined }, at);
+  }
+  const swim = sport === 'inot';
+  const minutes = swim ? Math.min(60, Math.max(20, w.plannedMinutes)) : w.plannedMinutes;
+  const lost = w.key || w.type === 'calitate' || w.type === 'lung' || w.targetZones.some((z) => z >= 3);
+  const next: PlannedWorkout = {
+    ...w,
+    sport,
+    type: swim ? 'tehnica' : 'z2',
+    key: false,
+    plannedMinutes: minutes,
+    targetZones: swim ? [1, 2] : [2],
+    intervals: undefined,
+    structure: swim ? 'tehnică și bucăți ușoare' : `${minutes} min ușor, să poți vorbi`,
+    note: `alt sport la cererea ta: ${SPORT_NAME[w.sport]} → ${SPORT_NAME[sport]}, ușor${minutes !== w.plannedMinutes ? `, ${minutes} min` : ', aceeași durată'}${lost ? '; intensitatea sau ieșirea lungă nu se mută în alt sport, progresia așteaptă' : ''}`,
+  };
+  return withOriginal(w, fitStructure(next), at);
+}
+
 // ——— Plecat ———
 
 export type AwayKind = 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic';

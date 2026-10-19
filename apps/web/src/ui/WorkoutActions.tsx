@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
-import { moveOptions } from '@core/calendar/actions.js';
+import { SWAP_SPORTS, moveOptions, sportSwapBlock } from '@core/calendar/actions.js';
+import type { Sport } from '@core/types.js';
 import { weekday } from '@core/util/dates.js';
 import { Icons } from './common';
 import { useData, useMe } from '../data/store';
@@ -45,10 +46,12 @@ export function YellowDay({ w }: { w: PlannedWorkout }) {
   return <div className="wk-yellow">Zi galbenă: apasă „Fă-o ușoară” și ședința rămâne, fără intensitate.</div>;
 }
 
+const SPORT_LABEL: Record<Sport, string> = { alergare: 'Alergare', bicicleta: 'Bicicletă', inot: 'Înot', forta: 'Forță' };
+
 export function Actions({ w }: { w: PlannedWorkout }) {
   const me = useMe();
   const { submitForm, local } = useData();
-  const [mode, setMode] = useState<null | 'muta' | 'timp'>(null);
+  const [mode, setMode] = useState<null | 'muta' | 'timp' | 'sport'>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const intense = w.type === 'calitate' || w.type === 'brick' || w.type === 'lung' || w.targetZones.some((z) => z >= 3);
@@ -86,6 +89,25 @@ export function Actions({ w }: { w: PlannedWorkout }) {
               {Icons.timer} Am mai puțin timp
             </button>
           )}
+          {!sportSwapBlock(w) && (
+            <button className="pill" disabled={busy} onClick={() => setMode('sport')}>
+              Alt sport
+            </button>
+          )}
+        </div>
+      )}
+      {mode === 'sport' && (
+        <div className="wk-pick">
+          <div className="wk-pick-k">Ce faci în loc?</div>
+          <div className="wk-note">Aceeași zi, ușor{w.sport === 'inot' ? '' : ', aceeași durată'}. Intensitatea sau ieșirea lungă nu se mută în alt sport. Te poți răzgândi oricând: revii la sportul din plan și ședința e exact cum era.</div>
+          <div className="wk-btns">
+            {SWAP_SPORTS.filter((sp) => sp !== w.sport).map((sp) => (
+              <button key={sp} className="pill on" disabled={busy} onClick={() => void run('actiune', { workoutId: w.id, op: 'sport', sport: sp }, w.original?.sport === sp ? 'Gata: ședința e din nou cea din plan.' : `Gata: azi ${SPORT_LABEL[sp]}, ușor.`)}>
+                {SPORT_LABEL[sp]}
+              </button>
+            ))}
+            <button className="pill" onClick={() => setMode(null)}>Renunț</button>
+          </div>
         </div>
       )}
       {mode === 'muta' && (

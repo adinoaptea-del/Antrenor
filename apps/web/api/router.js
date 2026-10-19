@@ -3740,6 +3740,40 @@ function easyWorkout(w, at) {
   };
   return withOriginal(w, fitStructure(next), at);
 }
+var SPORT_NAME = { alergare: "alergare", bicicleta: "biciclet\u0103", inot: "\xEEnot", forta: "for\u021B\u0103" };
+var SWAP_SPORTS = ["alergare", "bicicleta", "inot"];
+function sportSwapBlock(w) {
+  if (!active(w)) return "\u0219edin\u021Ba nu mai e activ\u0103";
+  if (w.sport === "forta") return "for\u021Ba nu se schimb\u0103 cu alt sport (alt scop \u0219i alt echipament); o po\u021Bi muta \xEEn alt\u0103 zi";
+  if (w.type === "brick") return "brick-ul are deja dou\u0103 sporturi; \xEEl po\u021Bi muta sau face u\u0219or";
+  if (/^TEST/i.test(w.structure ?? "")) return "un test se face \xEEn sportul lui; \xEEl po\u021Bi muta \xEEn alt\u0103 zi";
+  return null;
+}
+function changeSport(w, sport, at) {
+  const block = sportSwapBlock(w);
+  if (block) throw new Error(block);
+  if (!SWAP_SPORTS.includes(sport)) throw new Error("sport necunoscut");
+  if (sport === w.sport) throw new Error(`\u0219edin\u021Ba e deja ${SPORT_NAME[sport]}`);
+  const o = w.original;
+  if (o && o.sport === sport && o.date === w.date) {
+    return withOriginal(w, { ...w, sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, intervals: o.intervals ?? void 0, note: void 0 }, at);
+  }
+  const swim = sport === "inot";
+  const minutes = swim ? Math.min(60, Math.max(20, w.plannedMinutes)) : w.plannedMinutes;
+  const lost = w.key || w.type === "calitate" || w.type === "lung" || w.targetZones.some((z) => z >= 3);
+  const next = {
+    ...w,
+    sport,
+    type: swim ? "tehnica" : "z2",
+    key: false,
+    plannedMinutes: minutes,
+    targetZones: swim ? [1, 2] : [2],
+    intervals: void 0,
+    structure: swim ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`,
+    note: `alt sport la cererea ta: ${SPORT_NAME[w.sport]} \u2192 ${SPORT_NAME[sport]}, u\u0219or${minutes !== w.plannedMinutes ? `, ${minutes} min` : ", aceea\u0219i durat\u0103"}${lost ? "; intensitatea sau ie\u0219irea lung\u0103 nu se mut\u0103 \xEEn alt sport, progresia a\u0219teapt\u0103" : ""}`
+  };
+  return withOriginal(w, fitStructure(next), at);
+}
 var AWAY_LABEL = { fara_bazin: "f\u0103r\u0103 bazin", fara_bicicleta: "f\u0103r\u0103 biciclet\u0103", doar_alergare: "doar alergare", nimic: "f\u0103r\u0103 antrenament" };
 var AWAY_NOTE = "plecat";
 function applyAway(plan, away, today, at, doneIds = []) {
@@ -10304,6 +10338,7 @@ async function handler10(req, res) {
       try {
         if (op === "muta") next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done);
         else if (op === "usor") next = easyWorkout(w, at);
+        else if (op === "sport") next = changeSport(w, String(body.sport ?? ""), at);
         else throw new HttpError(400, "ac\u021Biune necunoscut\u0103");
       } catch (e) {
         if (e instanceof HttpError) throw e;

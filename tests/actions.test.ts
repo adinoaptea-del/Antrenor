@@ -114,3 +114,26 @@ describe('Întâlniri fixe', () => {
     assert.ok(sat / longs.length >= 0.8, `${sat}/${longs.length} sâmbăta`);
   });
 });
+
+it('alt sport: aceeași zi, ușor; intensitatea nu se mută; înapoi = ședința din plan exact; forța, brick-ul și testele nu se schimbă', async () => {
+  const { changeSport, sportSwapBlock } = await import('../src/calendar/actions.js');
+  const run = { id: 'r', date: '2026-10-20', sport: 'alergare' as const, type: 'calitate' as const, plannedMinutes: 50, targetZones: [4] as never, key: true, status: 'planificat' as const, structure: '5 × 3 min Z4', intervals: { count: 5, minutes: 3, zone: 4 } } as never as import('../src/types.js').PlannedWorkout;
+  const bike = changeSport(run, 'bicicleta', '2026-10-20T10:00:00Z');
+  assert.equal(bike.sport, 'bicicleta');
+  assert.equal(bike.type, 'z2');
+  assert.equal(bike.plannedMinutes, 50);
+  assert.equal(bike.key, false);
+  assert.ok(!bike.intervals);
+  assert.match(bike.note ?? '', /intensitatea sau ieșirea lungă nu se mută/);
+  assert.equal(bike.original?.sport, 'alergare');
+  const swim = changeSport(bike, 'inot', '2026-10-20T10:05:00Z');
+  assert.equal(swim.type, 'tehnica');
+  const back = changeSport(swim, 'alergare', '2026-10-20T10:10:00Z');
+  assert.equal(back.type, 'calitate');
+  assert.equal(back.structure, '5 × 3 min Z4');
+  assert.equal(back.key, true);
+  assert.ok(!back.original, 'înapoi la plan: fără eticheta de schimbare');
+  assert.match(sportSwapBlock({ ...run, sport: 'forta', type: 'forta' }) ?? '', /forța/);
+  assert.match(sportSwapBlock({ ...run, type: 'brick' }) ?? '', /brick/);
+  assert.match(sportSwapBlock({ ...run, structure: 'TEST: 30 min' }) ?? '', /test/);
+});
