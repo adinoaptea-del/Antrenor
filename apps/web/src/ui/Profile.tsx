@@ -726,7 +726,7 @@ function AppleCard() {
   );
 }
 
-const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: string; steps: (u: string) => { label: string; value: string }[] }[] = [
+const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: string; steps: (u: string) => { label: string; value: string }[]; before?: { text: string; href?: string }[]; after?: string[]; final?: string[] }[] = [
   {
     id: 'whoop',
     name: 'WHOOP',
@@ -750,10 +750,28 @@ const PROVIDER_SETUP: { id: 'whoop' | 'strava' | 'oura'; name: string; site: str
     id: 'oura',
     name: 'Oura',
     site: 'https://cloud.ouraring.com/oauth/applications',
+    // Pas cu pas: nu e nevoie de inel, doar de un cont Oura (gratuit).
+    before: [
+      { text: 'Fă-ți cont Oura gratuit, dacă nu ai: din aplicația Oura (App Store / Google Play). Nu trebuie inel.', href: 'https://ouraring.com/app' },
+      { text: 'Loghează-te pe cloud.ouraring.com cu contul ăsta.', href: 'https://cloud.ouraring.com' },
+      { text: 'Deschide Applications și apasă „Create New”.', href: 'https://cloud.ouraring.com/oauth/applications' },
+    ],
     steps: (u) => [
-      { label: 'Redirect URI', value: `${u}/api/oauth/oura/callback` },
+      { label: 'Display Name (numele aplicației)', value: 'AIRON' },
+      { label: 'Description', value: 'AIRON: antrenor personal pentru prieteni (somn, HRV, readiness, antrenamente). Datele se folosesc doar pentru planul sportivului.' },
+      { label: 'Contact Email', value: 'adresa ta de email (o scrii tu)' },
       { label: 'Website', value: u },
-      { label: 'Privacy Policy / Terms', value: `${u}/confidentialitate.html` },
+      { label: 'Privacy Policy URL', value: `${u}/confidentialitate.html` },
+      { label: 'Terms of Service URL', value: `${u}/confidentialitate.html` },
+      { label: 'Redirect URIs (exact, fără spațiu la final)', value: `${u}/api/oauth/oura/callback` },
+      { label: 'Scopes (bifează, dacă cere)', value: 'daily, heartrate, workout, session, personal' },
+    ],
+    after: [
+      'Apasă Save. Pagina aplicației îți arată Client ID și Client Secret (la Secret uneori apeși „Show”).',
+    ],
+    final: [
+      'Verificare: Profil → Dispozitive → Oura → Conectează. Dacă Oura refuză, eroarea apare sus în Profil.',
+      'Aplicația nouă primește până la 10 oameni. Peste 10: în pagina aplicației, „Request more users” (după ce s-a conectat primul om).',
     ],
   },
 ];
@@ -880,20 +898,38 @@ function AdminKeys() {
             </button>
             {open === p.id && (
               <>
-                <a className="tiny" href={p.site} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-2)' }}>
-                  1. Deschide {p.site.replace('https://', '')} și fă o aplicație nouă
-                </a>
-                <div className="tiny muted">2. Copiază în formularul lor:</div>
+                {p.before ? (
+                  p.before.map((b, i) => (
+                    <a key={b.text} className="tiny" href={b.href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-2)' }}>
+                      {i + 1}. {b.text}
+                    </a>
+                  ))
+                ) : (
+                  <a className="tiny" href={p.site} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-2)' }}>
+                    1. Deschide {p.site.replace('https://', '')} și fă o aplicație nouă
+                  </a>
+                )}
+                <div className="tiny muted">{(p.before?.length ?? 1) + 1}. Copiază în formularul lor, câmp cu câmp:</div>
                 {p.steps(a.appUrl).map((s) => (
                   <CopyLine key={s.label} label={s.label} value={s.value} />
                 ))}
-                <div className="tiny muted">3. Lipește aici ce îți dau ei:</div>
+                {p.after?.map((t, i) => (
+                  <div key={t} className="tiny muted">
+                    {(p.before?.length ?? 1) + 2 + i}. {t}
+                  </div>
+                ))}
+                <div className="tiny muted">{(p.before?.length ?? 1) + 2 + (p.after?.length ?? 0)}. Lipește aici ce îți dau ei:</div>
                 <input className="date" placeholder="Client ID" autoComplete="off" value={vals[p.id]?.id ?? ''} onChange={(e) => setVals({ ...vals, [p.id]: { id: e.target.value, secret: vals[p.id]?.secret ?? '' } })} />
                 <input className="date" type="password" placeholder="Client Secret" autoComplete="off" value={vals[p.id]?.secret ?? ''} onChange={(e) => setVals({ ...vals, [p.id]: { id: vals[p.id]?.id ?? '', secret: e.target.value } })} />
                 <button className="btn" disabled={!vals[p.id]?.id || !vals[p.id]?.secret} onClick={() => void save(p.id)}>
                   Salvează cheile {p.name.split(' ')[0]}
                 </button>
                 {msg[p.id] && <div className="tiny">{msg[p.id]}</div>}
+                {p.final?.map((t, i) => (
+                  <div key={t} className="tiny muted">
+                    {(p.before?.length ?? 1) + 3 + (p.after?.length ?? 0) + i}. {t}
+                  </div>
+                ))}
               </>
             )}
           </div>
