@@ -4,7 +4,7 @@
 // tranziție (S17–20) · menținere (S21–26). La „întreținere” se poate începe direct cu menținerea, după acomodare.
 // Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (F1/F2); trecerea la trei e posibilă din S5, la patru
 // din S9 — DAR doar după prezență reală (3 săptămâni la rând cu ≥ 80% din ședințe, `unlockedDays`), nu pentru că a
-// trecut timpul. Prima săptămână cu o zi în plus distribuie volumul (accesoriile la o serie), nu îl adaugă.
+// trecut timpul. Prima săptămână cu o zi în plus distribuie volumul (fără serii în plus), nu îl adaugă.
 // Ședințele (exercițiile, seriile, pauzele) sunt în src/strength/ppl.ts; aici sunt etapele, calendarul săptămânilor,
 // mișcarea zilnică și regulile pentru agent.
 
@@ -150,7 +150,7 @@ export interface UnlockResult {
  *    (ponderat: la 2 ședințe/săpt. înseamnă 5 din 6, nu „2 din 2 în fiecare săptămână”);
  *  - feedback în fiecare din cele 3 săptămâni (lipsa feedbackului nu e toleranță);
  *  - fără durere raportată și fără restricție activă.
- * Prima săptămână cu o zi în plus distribuie doza existentă (accesoriile la o serie), nu o crește.
+ * Prima săptămână cu o zi în plus distribuie doza existentă (fără serii în plus), nu o crește.
  */
 export function unlockDecision(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: AttendanceWeek[], opts: { freeDays?: number; restricted?: boolean } = {}): UnlockResult {
   let level: number = startDays(p);
@@ -204,7 +204,7 @@ export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'acti
 
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */
 export const FITNESS_WEEK_ACTION: Record<number, string> = {
-  1: 'Alegi două ședințe F1/F2; câte o serie pe exercițiu poate fi suficientă. Notezi setările aparatelor.',
+  1: 'Alegi două ședințe F1/F2; două serii ușoare pe exercițiu. Notezi setările aparatelor.',
   2: 'Repeți F1/F2. Două serii la exercițiile principale doar dacă prima săptămână a mers bine.',
   3: 'Crești repetările în intervalul prescris la unul sau două exerciții. Nu crești toate greutățile.',
   4: 'Revizuiești tehnica, timpul și simptomele. Păstrezi doza sau o reduci dacă recuperarea e slabă.',

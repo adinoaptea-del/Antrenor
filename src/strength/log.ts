@@ -52,7 +52,7 @@ const totalReps = (e: StrengthLogEntry) => e.sets.reduce((n, x) => n + (x.reps ?
  *  - simptome raportate: fără creștere;
  *  - menținere: aceeași greutate și aceleași repetări, fără escaladare;
  *  - capătul de sus în toate seriile la două expuneri la rând, la aceeași greutate, cu rezerva cerută: cel mai mic pas;
- *  - performanță în scădere la două expuneri la rând (mai puține repetări la aceeași greutate): o serie mai puțin și
+ *  - performanță în scădere la două expuneri la rând (mai puține repetări la aceeași greutate): greutate puțin mai mică și
  *    rezervă mai mare, temporar (revizuire), nu „mai tare”;
  *  - altfel: aceeași greutate, o repetare în plus la o serie.
  */
@@ -72,7 +72,7 @@ export function suggest(exercise: string, reps: string, rir: string, history: St
   const prev2 = own.at(-3);
   const atTop = (e: StrengthLogEntry) => e.sets.length > 0 && e.sets.every((s) => (s.reps ?? 0) >= hi) && (e.rir == null || e.rir >= minRir(rir));
   if (prev && prev2 && topKg(prev) === kg && topKg(prev2) === kg && totalReps(last) < totalReps(prev) && totalReps(prev) < totalReps(prev2))
-    return { kind: 'scade', last: lastText, today: `Repetările scad de două ori la rând la ${fmtKg(kg)}: azi o serie mai puțin și te oprești mai departe de limită (mai puteai 3–4). Uită-te la somn, mâncare și stres; nu compensezi cu mai mult.` };
+    return { kind: 'scade', last: lastText, today: `Repetările scad de două ori la rând la ${fmtKg(kg)}: azi aceleași serii cu greutatea cu ~5–10% mai mică și te oprești mai departe de limită (mai puteai 3–4). Uită-te la somn, mâncare și stres; nu compensezi cu mai mult.` };
   if (prev && prev2 && !atTop(last) && topKg(prev) === kg && topKg(prev2) === kg && totalReps(last) === totalReps(prev) && totalReps(prev) === totalReps(prev2))
     return { kind: 'stagnare', last: lastText, today: `Trei ședințe la fel la ${fmtKg(kg)}: e stagnare, nu eșec. Păstrezi greutatea; verifici somnul, mâncarea și execuția. Dacă nu se mișcă nici data viitoare, scazi ~5–10% și reconstruiești repetările.` };
   if (atTop(last) && prev && atTop(prev) && topKg(prev) === kg) return { kind: 'creste', last: lastText, today: `Ai atins ${hi} repetări în toate seriile de două ori la ${fmtKg(kg)}: pune greutatea imediat următoare și revii la ${lo}–${Math.min(hi, lo + 2)} repetări.` };

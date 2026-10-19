@@ -47,15 +47,15 @@ test('întreținere: acomodare, apoi menținere', () => {
   assert.equal(ws[2]!.block, 'mentinere');
 });
 
-test('S1: o serie pe exercițiu; L1 are 11 serii, L2 9 (limita de jos din program)', () => {
+test('S1: minimum două serii pe exercițiu (nu una); totalurile pe ședință cu acest minim', () => {
   const s1 = prescribeFull({ session: 'f1', block: 'acomodare', week: 1, len: 4 });
-  assert.ok(s1.items.every((r) => r.sets === 1));
+  assert.ok(s1.items.every((r) => r.sets === 2));
   const sets = (id: 'l1' | 'l2' | 'a3' | 'b3' | 'c3') => prescribeFull({ session: id, block: 'progres', week: 2, len: 4 }).items.reduce((n, r) => n + r.sets, 0);
-  assert.equal(sets('l1'), 11);
-  assert.equal(sets('l2'), 9);
-  assert.equal(sets('a3'), 10);
-  assert.equal(sets('b3'), 12);
-  assert.equal(sets('c3'), 11);
+  assert.equal(sets('l1'), 12);
+  assert.equal(sets('l2'), 12);
+  assert.equal(sets('a3'), 12);
+  assert.equal(sets('b3'), 14);
+  assert.equal(sets('c3'), 14);
 });
 
 test('ședința încape în minutele avute: la 35 min rămân exercițiile principale', () => {

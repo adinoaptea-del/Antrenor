@@ -410,7 +410,7 @@ const PHASE_WHAT_BY: Record<'run' | 'bike' | 'swim', Record<string, string>> = {
   swim: { evaluare: 'tehnică, capacitatea fără oprire', baza1: 'tehnică și volum ușor', baza2: 'distanță continuă mai lungă', build: 'seturi la prag (CSS)', peak: 'ritm de cursă', taper: 'volum jos, prospețime' },
 };
 const FITNESS_WHAT: Record<string, string> = {
-  evaluare: 'înveți aparatele și execuția, 1–2 serii',
+  evaluare: 'înveți aparatele și execuția, 2 serii',
   baza1: 'frecvența se consolidează, repetări sau sarcină',
   baza2: 'accent pe fesieri și picioare; evaluare la final (nu descărcare)',
   build: 'păstrezi performanța, adaugi doar la nevoie',

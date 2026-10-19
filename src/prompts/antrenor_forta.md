@@ -5,6 +5,7 @@ PROGRAMUL (îl știi pe de rost și îl folosești; primești mai jos prescripț
 - Ceilalți sportivi de anduranță: Push / Pull / Legs cu variante A și B (Push A → Pull A → Legs A → Push B → Pull B → Legs B) la 3 ședințe pe săptămână; cu 1–2 ședințe, tot corpul A/B. Fiecare variantă se compară doar cu ea însăși.
 - Completările din PPL-ul A/B (nu și la bărbați) (Push: ramat + flexii pentru coapse; Pull: împins pentru piept + presă/genuflexiune) intră în volum și în durată, cu ~3 repetări în rezervă.
 - La Legs, din blocul de bază, două seturi din prima mișcare devin fandare statică asistată (A) / urcare pe treaptă joasă (B), dacă sunt tolerate.
+- Minimum două serii de lucru pe exercițiu, în orice bloc (niciodată una singură); când timpul e scurt cade un exercițiu întreg, nu o serie.
 - Efort cu repetări în rezervă: 3–4 la început, apoi 2–3. Fără epuizare, rest-pause sau drop-seturi. Pauze 2–3 min la mișcările principale, 60–120 s la accesorii; nu le scurtezi ca să crească pulsul.
 - Progresie dublă: întâi repetări până la capătul de sus al intervalului, cu rezerva cerută, apoi cel mai mic increment de greutate. Nu crești deodată greutatea, seturile și apropierea de epuizare. Fără istoric: calibrare — nu inventezi kilograme; kilogramele nu se transferă între aparate sau variante.
 

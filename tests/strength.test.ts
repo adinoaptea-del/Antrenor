@@ -65,7 +65,7 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
   it('Legs din bază: două seturi din prima mișcare devin fandare / treaptă, fără volum în plus', () => {
     const base = prescribeFull({ session: 'legsA', block: 'baza', week: 2, len: 4 });
     assert.equal(base.items[0]!.ex.id, 'legs-press');
-    assert.equal(base.items[0]!.sets, 1);
+    assert.equal(base.items[0]!.sets, 2, 'minimum două serii de lucru');
     assert.equal(base.items[1]!.ex.id, 'legs-split-squat');
     assert.equal(base.items[1]!.sets, 2);
   });
@@ -129,5 +129,18 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
     const base = r.weeks.filter((x) => x.phase === 'baza1' && !x.recovery);
     assert.ok(base.some((x) => x.workouts.filter((y) => y.type === 'forta').length === 3));
     assert.ok(r.weeks.flatMap((x) => x.workouts).some((y) => /^Push A/.test(y.structure ?? '')));
+  });
+});
+
+describe('minimum două serii de lucru pe exercițiu, în orice bloc și orice ședință', () => {
+  it('nicio prescripție nu are o singură serie', () => {
+    const blocks: Block[] = ['acomodare', 'baza', 'forta', 'hipertrofie', 'integrare', 'consolidare', 'evaluare', 'mentinere', 'precursa', 'construire', 'progres', 'tranzitie'];
+    for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[])
+      for (const block of blocks)
+        for (const recovery of [false, true])
+          for (const minutes of [30, 45, 60]) {
+            const p = prescribe({ session: id, block, week: 1, len: 4, recovery, legs: 'usor' }, minutes);
+            assert.ok(p.items.every((r) => r.sets >= 2), `${id} ${block} ${recovery} ${minutes}: ${p.items.map((r) => `${r.ex.id}×${r.sets}`).join(' ')}`);
+          }
   });
 });
