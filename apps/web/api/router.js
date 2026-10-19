@@ -6428,7 +6428,7 @@ function applyMissedStrength(plan, ev, ctx, changes) {
   const done = new Set(ctx.done ?? []);
   const rest = plan.filter((x) => x.type === "forta" && isActiveWorkout(x) && !done.has(x.id) && x.date > missed.date && x.date >= ctx.today && diffDays(monday, x.date) < 7).sort((a, b) => a.date < b.date ? -1 : 1);
   if (!rest.length) {
-    changes.push(`${missed.id}: \u0219edin\u021Ba ratat\u0103 nu se recupereaz\u0103 (nu mai e alt\u0103 zi de sal\u0103 s\u0103pt\u0103m\xE2na asta); s\u0103pt\u0103m\xE2na viitoare porne\u0219te normal`);
+    changes.push(`sal\u0103 ratat\u0103 pe ${missed.date}: \u0219edin\u021Ba nu se recupereaz\u0103 (nu mai e alt\u0103 zi de sal\u0103 s\u0103pt\u0103m\xE2na asta); s\u0103pt\u0103m\xE2na viitoare porne\u0219te normal`);
     return;
   }
   const specs = [spec0, ...rest.map((x) => parseStrength(x.structure))];
@@ -6443,7 +6443,7 @@ function applyMissedStrength(plan, ev, ctx, changes) {
     x.note = `rota\u021Bia continu\u0103 dup\u0103 \u0219edin\u021Ba ratat\u0103 din ${missed.date}`;
   });
   const dropped = specs[specs.length - 1];
-  changes.push(`${missed.id}: ratat\u0103; rota\u021Bia continu\u0103 (${rest.map((x) => x.date).join(", ")})${dropped ? `; ${dropped.session} nu se mai face s\u0103pt\u0103m\xE2na asta` : ""}; nimic dublat`);
+  changes.push(`sal\u0103 ratat\u0103 pe ${missed.date}: rota\u021Bia continu\u0103 (${rest.map((x) => x.date).join(", ")})${dropped ? `; ${SESSIONS[dropped.session].name} nu se mai face s\u0103pt\u0103m\xE2na asta` : ""}; nimic dublat`);
 }
 
 // server/_lib/agents.ts

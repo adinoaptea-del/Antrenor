@@ -3,7 +3,7 @@
 
 import { fitStructure, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
-import { isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
+import { SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -489,7 +489,7 @@ function applyMissedStrength(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { k
     .filter((x) => x.type === 'forta' && isActiveWorkout(x) && !done.has(x.id) && x.date > missed.date && x.date >= ctx.today && diffDays(monday, x.date) < 7)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   if (!rest.length) {
-    changes.push(`${missed.id}: ședința ratată nu se recuperează (nu mai e altă zi de sală săptămâna asta); săptămâna viitoare pornește normal`);
+    changes.push(`sală ratată pe ${missed.date}: ședința nu se recuperează (nu mai e altă zi de sală săptămâna asta); săptămâna viitoare pornește normal`);
     return;
   }
   // Decalare: fiecare slot rămas primește ședința dinaintea lui; ultima din săptămână rămâne nefăcută (nu se dublează).
@@ -505,5 +505,5 @@ function applyMissedStrength(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { k
     x.note = `rotația continuă după ședința ratată din ${missed.date}`;
   });
   const dropped = specs[specs.length - 1];
-  changes.push(`${missed.id}: ratată; rotația continuă (${rest.map((x) => x.date).join(', ')})${dropped ? `; ${dropped.session} nu se mai face săptămâna asta` : ''}; nimic dublat`);
+  changes.push(`sală ratată pe ${missed.date}: rotația continuă (${rest.map((x) => x.date).join(', ')})${dropped ? `; ${SESSIONS[dropped.session].name} nu se mai face săptămâna asta` : ''}; nimic dublat`);
 }
