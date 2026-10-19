@@ -10,7 +10,7 @@
 //  - ținta de puls a unui segment nu poate depăși plafonul ședinței.
 
 import type { PlannedWorkout } from '../types.js';
-import type { Step } from './session-steps.js';
+import { fitStrides, parseStrides, type Step } from './session-steps.js';
 
 const round5 = (m: number) => Math.round(m / 5) * 5;
 
@@ -64,6 +64,15 @@ export function normalizeWorkout(w: PlannedWorkout): PlannedWorkout {
     const cool = m >= 50 ? 10 : 5;
     return { ...w, structure: BIKE_TEST(Math.max(10, m - 20 - cool), cool) };
   }
+  // Alergarea cu accelerări: rezumatul spune câte încap de fapt în minutele finale (aceeași regulă ca pașii).
+  if (w.sport === 'alergare' && w.type !== 'calitate') {
+    const planned = parseStrides(w.structure);
+    if (planned) {
+      const fit = fitStrides(m, planned);
+      if (!fit) return { ...w, structure: (w.structure ?? '').replace(/[;,]?\s*\+?\s*\d+\s*accelerări de\s*\d+\s*s[^,;]*/, '').trim() || 'ușor' };
+      if (fit.n !== planned.n) return { ...w, structure: (w.structure ?? '').replace(/(\d+)(\s*accelerări de)/, `${fit.n}$2`) };
+    }
+  }
   return w;
 }
 
@@ -80,6 +89,11 @@ export function coherenceIssues(w: PlannedWorkout, steps: Step[], swimCap?: numb
     const run = /(\d+) min/.exec(steps.find((s) => s.label === 'Alergare')?.text ?? '');
     if (p && bike && Number(bike[1]) !== Number(p[1])) out.push(`${w.id}: brick, bicicleta ${bike[1]} în pași vs ${p[1]} în rezumat`);
     if (p && run && Number(run[1]) !== Number(p[2])) out.push(`${w.id}: brick, alergarea ${run[1]} în pași vs ${p[2]} în rezumat`);
+  }
+  if (w.sport === 'alergare') {
+    const sum = parseStrides(w.structure);
+    const st = /(\d+) × (\d+) s rapid/.exec(steps.find((s) => s.label === 'Accelerări')?.text ?? '');
+    if (sum && st && Number(st[1]) !== sum.n) out.push(`${w.id}: ${sum.n} accelerări în rezumat vs ${st[1]} în pași`);
   }
   if (/^TEST:/.test(w.structure ?? '') && w.sport !== 'inot') {
     const sum = testParts(w.structure).reduce((a, b) => a + b, 0);

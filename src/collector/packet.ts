@@ -833,7 +833,7 @@ export function buildPacket(input: CollectorInput): Packet {
     raspuns_recuperare: input.recoveryEffects ?? [],
     istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {
-      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
+      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, mornings: (input.morningHistory ?? []) as never, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;
     })(),
     semnale: {

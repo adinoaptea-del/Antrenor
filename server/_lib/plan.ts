@@ -2,13 +2,14 @@
 import { applyAway } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs } from './prefs.js';
 import { insert, one, remove, rpc, select, update, upsert } from './db.js';
-import { loadActivities, loadForms, loadZones, toWorkoutRow } from './collect.js';
+import { loadActivities, loadForms, loadPlan, loadZones, toWorkoutRow } from './collect.js';
+import { carryAdjustments, planSignature, weekTotals } from '../../src/calendar/regen-carry.js';
 import { loadSchedules } from './agents.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
-import type { FreeBlock, IntensityAllowed } from '../../src/types.js';
-import { addDays, diffDays, weekStart } from '../../src/util/dates.js';
+import type { FreeBlock, IntensityAllowed, PlannedWorkout } from '../../src/types.js';
+import { addDays, diffDays, weekStart, weekday } from '../../src/util/dates.js';
 import { FITNESS_WEEKS, GOAL_LABEL, isFitnessGoal, isRunGoal, type Goal } from '../../src/calendar/phases.js';
 import { fitnessProfile, unlockDecision, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
 import { activeRestriction } from '../../src/calendar/safety.js';
@@ -109,6 +110,16 @@ export interface PlanOutcome {
   from?: string;
   firstWeekHours?: number;
   firstWeekSessions?: number;
+  /** Amprenta candidatului previzualizat: confirmarea activează exact acest plan (altfel cere o nouă privire). */
+  signature?: string;
+  /** Ajustările tale păstrate și cele care nu se mai aplică (cu motiv), plecările aplicate. */
+  kept?: string[];
+  dropped?: string[];
+  awayApplied?: number;
+  /** Între previzualizare și confirmare s-a schimbat ceva: nimic activat, uite varianta nouă. */
+  stale?: boolean;
+  /** Planul activ e deja exact acesta: nimic de schimbat (ex. a doua apăsare). */
+  unchanged?: boolean;
   /** De ce e planul altfel decât s-ar aștepta sportivul (ex. intensitate limitată din analize). */
   note?: string;
   /** Planul e făcut fără analize valabile (mai noi de 12 luni). */
@@ -160,22 +171,26 @@ export async function reevaluateAfterImport(userId: string, today: string): Prom
   return r.ok ? { changed: true, message: d.message } : { changed: false, message: `Istoricul e salvat, dar planul nu s-a putut reface: ${r.reason}` };
 }
 
-export async function generateAndStore(userId: string, today: string, intake: IntakeLike, opts: { preview?: boolean } = {}): Promise<PlanOutcome> {
+export async function generateAndStore(userId: string, today: string, intake: IntakeLike, opts: { preview?: boolean; expect?: string } = {}): Promise<PlanOutcome> {
   if (intake.obiectiv === 'full') {
     return { ok: false, reason: 'Ironman complet nu e în versiunea asta a planului; alege 70.3 pentru acum.', budgetHours: 0 };
   }
-  const nextMonday = addDays(weekStart(today), 7);
+  const nextMonday0 = addDays(weekStart(today), 7);
   // Același obiectiv și aceeași cursă: planul continuă din fazele lui (nu revine la evaluare); trecutul și săptămâna
   // curentă rămân cum sunt, se refac doar săptămânile de la lunea viitoare.
   const current = await one<{ id: string; start_date: string; race_date: string; goal: string }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' });
   // Fitness: fără cursă; programul are 26 de săptămâni de la început. Același obiectiv = același program, continuat.
+  // Primul plan (L-SIM-11): dacă azi e luni–joi, începe săptămâna asta, din zilele rămase; altfel de luni.
+  const startThisWeek = !current && weekday(today) <= 3;
+  const firstDay = startThisWeek ? today : nextMonday0;
+  const nextMonday = firstDay;
   const fitness = isFitnessGoal(intake.obiectiv);
   if (fitness) {
-    const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday;
-    intake = { ...intake, dataCursa: same ? current!.race_date : addDays(nextMonday, FITNESS_WEEKS * 7) };
+    const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday0;
+    intake = { ...intake, dataCursa: same ? current!.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, FITNESS_WEEKS * 7) };
   }
-  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday;
-  const startDate = continuing ? current!.start_date : nextMonday;
+  const continuing = !!current && current.goal === intake.obiectiv && current.race_date === intake.dataCursa && current.start_date < nextMonday0;
+  const startDate = continuing ? current!.start_date : startThisWeek ? weekStart(today) : nextMonday0;
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
   const prefs = await loadPrefs(userId);
@@ -208,22 +223,39 @@ export async function generateAndStore(userId: string, today: string, intake: In
       : undefined,
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
-  if (opts.preview) {
-    // Previzualizare: ce s-ar schimba, fără să atingă planul activ.
-    const fut = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
-    const firstWeek = fut.filter((x) => x.date < addDays(nextMonday, 7));
-    return {
-      ok: true,
-      preview: true,
-      budgetHours: result.budgetHours,
-      currentBudgetHours: (await one<{ budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' }))?.budget_hours ?? null,
-      weeks: result.weeks.length,
-      workouts: fut.length,
-      from: nextMonday,
-      firstWeekHours: Math.round((firstWeek.reduce((n, x) => n + x.plannedMinutes, 0) / 60) * 10) / 10,
-      firstWeekSessions: firstWeek.length,
-    };
+  // Candidatul complet (L-SIM-02): planul generat + plecările anunțate + ajustările tale de pe planul vechi. Același
+  // candidat se previzualizează și se activează.
+  const at = new Date().toISOString();
+  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
+  let awayApplied = 0;
+  for (const away of currentAway(prefs, today)) {
+    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
+    awayApplied += changed.size;
+    future = future.map((w) => changed.get(w.id) ?? w);
   }
+  const old = current ? (await loadPlan(userId, nextMonday, addDays(intake.dataCursa, 1)).catch(() => ({ workouts: [] as PlannedWorkout[] }))).workouts.filter((w) => w.date >= nextMonday) : [];
+  const carried = carryAdjustments(future, old, nextMonday, today, at);
+  future = carried.workouts;
+  const signature = planSignature(future);
+  const first = weekTotals(future, nextMonday, addDays(weekStart(nextMonday), 7));
+  const summary = {
+    budgetHours: result.budgetHours,
+    currentBudgetHours: current ? (await one<{ budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }, { order: 'created_at.desc' }))?.budget_hours ?? null : null,
+    weeks: result.weeks.length,
+    workouts: future.filter((x) => x.status === 'planificat' || x.status === 'mutat').length,
+    from: nextMonday,
+    firstWeekHours: first.hours,
+    firstWeekSessions: first.sessions,
+    signature,
+    kept: carried.kept,
+    dropped: carried.dropped,
+    awayApplied,
+  };
+  if (opts.preview) return { ok: true, preview: true, ...summary };
+  // Confirmarea activează exact ce s-a văzut; dacă între timp s-au schimbat datele, nimic nu se activează în tăcere.
+  if (opts.expect && opts.expect !== signature) return { ok: false, stale: true, reason: 'Între timp s-au schimbat datele planului. Uite din nou ce se schimbă, apoi confirmi.', preview: true, ...summary };
+  // A doua apăsare (sau aceleași intrări): planul activ e deja exact candidatul — nicio versiune nouă, nimic dublat.
+  if (old.length && planSignature(old) === signature) return { ok: true, unchanged: true, ...summary };
 
   // Planul nou se construiește întreg (inactiv), apoi se activează într-o singură tranzacție; un eșec la mijloc lasă
   // planul vechi activ, nu un plan gol sau pe jumătate.
@@ -237,13 +269,6 @@ export async function generateAndStore(userId: string, today: string, intake: In
     version: (prev[0]?.version ?? 0) + 1,
     active: false,
   });
-  let future = result.weeks.flatMap((w) => w.workouts).filter((x) => x.date >= nextMonday);
-  // Plecările deja anunțate se aplică și pe planul nou (altfel „Refă planul” le-ar șterge).
-  const at = new Date().toISOString();
-  for (const away of currentAway(prefs, today)) {
-    const changed = new Map(applyAway(future, away, today, at).map((w) => [w.id, w]));
-    future = future.map((w) => changed.get(w.id) ?? w);
-  }
   const rows = future.map((x) => toWorkoutRow({ ...x, id: `${plan!.id}-${x.id}` }, userId, plan!.id));
   try {
     for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));
@@ -262,7 +287,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
     weeks: result.weeks.length,
     workouts: rows.length,
     withoutLabs: !labs.valid,
-    note: labs.limitIntensity ? `Intensitatea rămâne la Z1–Z2: ${labs.why}. De discutat cu medicul; planul se reface când urci analize noi.` : undefined,
+    note: [labs.limitIntensity ? `Intensitatea rămâne la Z1–Z2: ${labs.why}. De discutat cu medicul; planul se reface când urci analize noi.` : null, startThisWeek ? 'Planul începe săptămâna asta, din zilele rămase.' : null].filter(Boolean).join(' ') || undefined,
+    kept: carried.kept,
+    dropped: carried.dropped,
+    awayApplied,
+    signature,
   };
 }
 

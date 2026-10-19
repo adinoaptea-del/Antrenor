@@ -22,6 +22,24 @@ export function parseStrides(structure: string | null | undefined): { n: number;
 /** Minutele accelerărilor, cu ~1 min ușor după fiecare. */
 export const stridesMinutes = (s: { n: number; sec: number }) => Math.ceil((s.n * (s.sec + 60)) / 60);
 
+/** Încălzirea și revenirea alergării ușoare pentru minutele date (aceeași regulă în pași și în rezumat). */
+export function easyWarmCool(m: number): { warm: number; cool: number } {
+  return { warm: m >= 45 ? 10 : m >= 30 ? Math.max(5, Math.round(m * 0.2)) : Math.floor(m / 3), cool: m >= 30 ? 5 : Math.floor(m / 6) };
+}
+
+/**
+ * Câte accelerări încap: partea ușoară rămâne cel puțin ~45% din ședință; altfel mai puține (minimum 3) sau deloc.
+ * Folosită și la rezumat (structura din plan), și la pași — ca să spună același număr (L-SIM-07).
+ */
+export function fitStrides(m: number, planned: { n: number; sec: number } | null): { n: number; sec: number } | null {
+  if (!planned) return null;
+  const { warm, cool } = easyWarmCool(m);
+  let s: { n: number; sec: number } | null = planned;
+  while (s && s.n > 3 && m - warm - cool - stridesMinutes(s) < Math.ceil(m * 0.45)) s = { ...s, n: s.n - 1 };
+  if (s && m - warm - cool - stridesMinutes(s) < Math.ceil(m * 0.45)) s = null;
+  return s;
+}
+
 export function stridesStep(s: { n: number; sec: number }): Step {
   return { label: 'Accelerări', text: `${s.n} × ${s.sec} s rapid dar relaxat (nu sprint), cu ~1 min trap ușor sau mers între ele` };
 }

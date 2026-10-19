@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CircleBtn, Dot, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
-import { FITNESS_PHASE_LABEL, isFitnessGoal, phaseWeeks } from '@core/calendar/phases.js';
+import { FITNESS_PHASE_LABEL, goalKind, isFitnessGoal, phaseWeeks } from '@core/calendar/phases.js';
 import { fitnessPlanWeeks, fitnessProfile, type FitnessIntake } from '@core/strength/fitness.js';
 import { AWAY_LABEL, type AwayKind } from '@core/calendar/actions.js';
 import { addDays, weekStart, weekday } from '@core/util/dates.js';
@@ -93,7 +93,7 @@ export function Calendar({ onOpen }: { onBack: () => void; onOpen: (screen: stri
                     {ws2.map((w) => (
                       <span key={w.id} className={`wr-chip c-${colorOf(me, w)} ${w.status === 'anulat_sistem' ? 'off' : ''} ${w.type === 'calitate' || w.type === 'brick' ? 'hard' : ''}`}>
                         {SPORT_ICON[w.sport]}
-                        {fmtMinutes(w.plannedMinutes)}
+                        {w.status === 'anulat_sistem' ? 'anulat' : fmtMinutes(w.plannedMinutes)}
                         {w.original && w.status !== 'anulat_sistem' ? <em title="actualizat">•</em> : null}
                       </span>
                     ))}
@@ -403,6 +403,12 @@ const PHASE_WHAT: Record<string, string> = {
   peak: 'ritm de cursă, intervale Z5',
   taper: 'volum jos, prospețime',
 };
+/** Fazele pe disciplină (L-SIM-09): la alergare nu există sweet spot sau brick. */
+const PHASE_WHAT_BY: Record<'run' | 'bike' | 'swim', Record<string, string>> = {
+  run: { evaluare: 'alergare ușoară, test doar dacă e permis', baza1: 'volum ușor, accelerări, tempo scurt', baza2: 'volum mai mare, tempo lung', build: 'prag, alergarea lungă crește', peak: 'ritm de cursă', taper: 'volum jos, prospețime' },
+  bike: { evaluare: 'pedalat ușor, test doar dacă e permis', baza1: 'volum aerob, cadență', baza2: 'volum mai mare, sweet spot', build: 'prag, ture lungi', peak: 'ritm de cursă', taper: 'volum jos, prospețime' },
+  swim: { evaluare: 'tehnică, capacitatea fără oprire', baza1: 'tehnică și volum ușor', baza2: 'distanță continuă mai lungă', build: 'seturi la prag (CSS)', peak: 'ritm de cursă', taper: 'volum jos, prospețime' },
+};
 const FITNESS_WHAT: Record<string, string> = {
   evaluare: 'înveți aparatele și execuția, 1–2 serii',
   baza1: 'frecvența se consolidează, repetări sau sarcină',
@@ -438,7 +444,8 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
   const max = Math.max(1, ...[...hours.values()].map((h) => h.min));
   const fit = isFitnessGoal(me.user.goal);
   const LBL = fit ? FITNESS_PHASE_LABEL : PHASE_LABEL;
-  const WHAT = fit ? FITNESS_WHAT : PHASE_WHAT;
+  const kind = goalKind(me.user.goal);
+  const WHAT = fit ? FITNESS_WHAT : kind === 'run' || kind === 'bike' || kind === 'swim' ? PHASE_WHAT_BY[kind] : PHASE_WHAT;
   const thisWeek = weekStart(me.today);
   const phases = [...new Set(weeks.map((w) => w.phase))];
   return (

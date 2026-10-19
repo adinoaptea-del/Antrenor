@@ -94,6 +94,7 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
     const planned = Math.round((workouts.reduce((n, w) => n + w.plannedMinutes, 0) / 60) * 10) / 10;
     out.push({ weekStart: ws, phase: fw.phase, recovery: fw.recovery, targetHours: planned, plannedHours: planned, workouts: workouts.filter((w) => w.date < input.raceDate), notes });
   }
-  const hours = Math.max(...out.map((w) => w.plannedHours));
+  // Rotunjit în sus: bugetul afișat nu poate fi sub minutele planificate (L-SIM-10).
+  const hours = Math.ceil(Math.max(...out.map((w) => w.workouts.reduce((n, x) => n + x.plannedMinutes, 0))) / 6) / 10;
   return { ok: true, weeks: out, budgetHours: hours };
 }

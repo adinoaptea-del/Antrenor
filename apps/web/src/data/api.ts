@@ -259,9 +259,9 @@ export const server = {
   adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; inviteUrl?: string }>('/api/admin'),
   newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
   adminAction: (action: 'sync' | 'plan' | 'parola' | 'detalii', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
-  regeneratePlan: (preview = false) =>
-    api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number; preview?: boolean; currentBudgetHours?: number | null; from?: string; firstWeekHours?: number; firstWeekSessions?: number; workouts?: number }>(
-      `/api/plan/generate${preview ? '?preview=1' : ''}`,
+  regeneratePlan: (preview = false, expect?: string) =>
+    api<{ ok: boolean; reason?: string; budgetHours: number; weeks?: number; preview?: boolean; currentBudgetHours?: number | null; from?: string; firstWeekHours?: number; firstWeekSessions?: number; workouts?: number; signature?: string; kept?: string[]; dropped?: string[]; awayApplied?: number; stale?: boolean; unchanged?: boolean; note?: string }>(
+      `/api/plan/generate${preview ? '?preview=1' : expect ? `?expect=${encodeURIComponent(expect)}` : ''}`,
       { method: 'POST' },
     ),
 };

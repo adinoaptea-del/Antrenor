@@ -379,13 +379,8 @@ function sportsTabLabel(goal: string | null): string {
   return k === 'run' ? 'Alergare' : k === 'swim' ? 'Înot' : k === 'bike' ? 'Bicicletă' : k === 'fitness' ? 'Fitness' : 'Sporturi';
 }
 
-/** „19–25 octombrie 2026”: săptămâna curentă. */
+/** „Azi: 19 octombrie 2026” — doar data de azi; săptămâna afișată o spune calendarul (L-SIM-05). */
 function planSub(today: string): string {
   const M = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
-  const d = new Date(`${today}T12:00:00Z`);
-  const dow = (d.getUTCDay() + 6) % 7;
-  const mon = new Date(d.getTime() - dow * 86400000);
-  const sun = new Date(mon.getTime() + 6 * 86400000);
-  const a = `${mon.getUTCDate()}${mon.getUTCMonth() !== sun.getUTCMonth() ? ` ${M[mon.getUTCMonth()]}` : ''}`;
-  return `Săptămâna ${a}–${sun.getUTCDate()} ${M[sun.getUTCMonth()]} ${sun.getUTCFullYear()}`;
+  return `Azi: ${Number(today.slice(8, 10))} ${M[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}`;
 }

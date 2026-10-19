@@ -30,10 +30,20 @@ function splitMessage(body: string): { main: string[]; food: string[]; medical: 
   return { main, food, medical };
 }
 
+/** „Vreau să adaptez planul”: întâi motivul, apoi locul unde se face schimbarea, cu ce se va întâmpla (L-SIM-06). */
+const ADAPT_WHY: { t: string; d: string; to: string }[] = [
+  { t: 'Sunt obosit', d: 'Completezi notele de dimineață; dacă ziua iese galbenă sau roșie, ședința de azi devine ușoară sau pauză.', to: 'dimineata' },
+  { t: 'Am mai puțin timp azi', d: 'Deschizi ședința de azi → „Am mai puțin timp”: se scurtează corect, restul săptămânii nu crește.', to: 'calendar' },
+  { t: 'Am sărit o ședință', d: 'Deschizi ședința trecută → „Nu am făcut-o”, cu motivul. Nu se dublează; îți spun ce se păstrează.', to: 'calendar' },
+  { t: 'Plec / nu pot câteva zile', d: 'În calendar, „Plecat”: alegi zilele și ce ai la dispoziție; la întoarcere revine planul.', to: 'calendar' },
+  { t: 'Vreau altă zi', d: 'Deschizi ședința → „Mută”: vezi zilele permise și de ce celelalte nu.', to: 'calendar' },
+];
+
 export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string) => void }) {
   const me = useMe();
   const { runAgents, local } = useData();
   const [busy, setBusy] = useState(false);
+  const [adapt, setAdapt] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [showOld, setShowOld] = useState(false);
   const [showData, setShowData] = useState(false);
@@ -125,12 +135,23 @@ export function Coach({ onOpen }: { onBack: () => void; onOpen: (screen: string)
               <button className="btn sm" disabled={busy} onClick={() => void ask()}>
                 {busy ? 'Se gândește… (până la un minut)' : doneToday ? 'Cum a fost antrenamentul?' : stale || !latest ? 'Scrie mesajul de azi' : 'Ce s-a schimbat?'}
               </button>
-              <button className="pill" onClick={() => onOpen('calendar')}>
+              <button className="pill" onClick={() => setAdapt(!adapt)} aria-expanded={adapt}>
                 Vreau să adaptez planul
               </button>
               <button className="pill" onClick={() => onOpen('dimineata')}>
                 Am o durere
               </button>
+            </div>
+          )}
+          {adapt && (
+            <div className="adapt-why">
+              <div className="small" style={{ fontWeight: 600 }}>Ce s-a întâmplat?</div>
+              {ADAPT_WHY.map((a) => (
+                <button key={a.t} className="adapt-opt" onClick={() => onOpen(a.to)}>
+                  <b>{a.t}</b>
+                  <span>{a.d}</span>
+                </button>
+              ))}
             </div>
           )}
           {note && note !== 'Gata.' && <p className="tiny muted" style={{ marginTop: 8 }}>{note}</p>}

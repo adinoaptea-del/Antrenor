@@ -43,7 +43,7 @@ export interface SourceActivity extends Activity {
 export interface MorningForm {
   date: string;
   hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null }; // 1–7
-  semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
+  semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null; /** După un simptom cardiac: „am fost evaluat medical și pot face efort” (declarat de sportiv). */ cardiac_evaluat?: boolean | null };
   /** Doar când brățările n-au date: „ești odihnit și apt de antrenament azi?”. Sportivul decide. */
   apt?: 'da' | 'partial' | 'nu' | null;
 }

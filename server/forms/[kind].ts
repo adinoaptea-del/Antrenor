@@ -1,7 +1,7 @@
 import { cleanEntry } from '../../src/strength/log.js';
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
-import { insert, one, remove, update, upsert } from '../_lib/db.js';
+import { insert, one, remove, select, update, upsert } from '../_lib/db.js';
 import { geocode } from '../_lib/weather.js';
 import { readTest } from '../_lib/test-extract.js';
 import { readLabs } from '../_lib/labs-extract.js';
@@ -26,6 +26,7 @@ import { markBadgesSeen } from '../_lib/badges.js';
 import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
 import { isGoal } from '../../src/calendar/phases.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
+import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
 
 /**
  * POST /api/forms/intrare   → salvează chestionarul, programul, avizul, consimțământul; generează planul.
@@ -283,6 +284,32 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const shorter = shortenWorkout(w, minutes);
       await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: shorter.plannedMinutes, type: shorter.type, target_zones: shorter.targetZones, intervals: shorter.intervals ?? null, structure: shorter.structure ?? null, note: shorter.note ?? null, is_key: shorter.key });
       json(res, 200, { ok: true, structura: shorter.structure ?? null });
+      return;
+    }
+    if (kind === 'nefacut') {
+      // { workoutId, status: 'ratat' | 'partial', motiv, minute?, nota? }: declarată de sportiv, cu motiv; separată de
+      // „anulată” (sistem / plecare) și de „fără date”. Retransmiterea suprascrie aceeași declarație, nu o dublează.
+      const id = String(body.workoutId ?? '');
+      const status = body.status === 'partial' ? 'partial' : body.status === 'ratat' ? 'ratat' : null;
+      const motiv = ['timp', 'oboseala', 'durere', 'boala', 'altul'].includes(String(body.motiv)) ? (String(body.motiv) as OutcomeMotiv) : null;
+      if (!status || !motiv) throw new HttpError(400, 'alege ce s-a întâmplat și motivul');
+      const row = await one<{ id: string; date: string; status: string; planned_minutes: number }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: 'id,date,status,planned_minutes' });
+      if (!row) throw new HttpError(404, 'ședință inexistentă');
+      if (row.date > today) throw new HttpError(409, 'ședința n-a avut loc încă; pentru zilele viitoare folosește Mută sau Plecat');
+      if (row.status === 'anulat_sistem' || row.status === 'sters') throw new HttpError(409, 'ședința era deja anulată: nu e nimic de declarat');
+      const minutes = status === 'partial' ? Number(body.minute) : null;
+      if (status === 'partial' && (!Number.isInteger(minutes) || minutes! < 1 || minutes! >= row.planned_minutes)) throw new HttpError(400, `câte minute ai făcut? între 1 și ${row.planned_minutes - 1}`);
+      const nota = typeof body.nota === 'string' ? body.nota.trim().slice(0, 300) : null;
+      const reportedAt = new Date().toISOString();
+      await upsert('workout_outcomes', { user_id: u.id, workout_id: id, date: row.date, status, motiv, minutes, nota, reported_at: reportedAt }, 'user_id,workout_id');
+      const rows = await select<{ workout_id: string; date: string; status: 'ratat' | 'partial'; motiv: OutcomeMotiv; minutes: number | null }>('workout_outcomes', { user_id: `eq.${u.id}`, date: `gte.${addDays(today, -14)}` }, { limit: 50 }).catch(() => []);
+      const outcomes: Outcome[] = rows.map((r) => ({ workoutId: r.workout_id, date: r.date, status: r.status, motiv: r.motiv, minutes: r.minutes }));
+      const { planId, workouts } = await loadPlan(u.id, addDays(today, -14), addDays(today, 14));
+      const fb = outcomeFeedback(workouts, outcomes, { workoutId: id, date: row.date, status, motiv, minutes, reportedAt }, today, reportedAt);
+      if (planId && fb.changed.length) await upsert('workouts_planned', fb.changed.map((w) => toWorkoutRow(w, u.id, planId)), 'id');
+      await insert('journal', { user_id: u.id, date: today, entry: `declarat de sportiv: ${fb.message}` }).catch(() => undefined);
+      await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
+      json(res, 200, { ok: true, mesaj: fb.message, decizie: fb.decision });
       return;
     }
     if (kind === 'actiune') {

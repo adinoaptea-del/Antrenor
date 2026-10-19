@@ -896,10 +896,17 @@ function RegenPlan() {
     }
   };
   const run = async () => {
+    if (busy) return;
     setBusy(true);
     try {
-      const r = await server.regeneratePlan(false);
-      setMsg(r.ok ? 'Planul a fost refăcut.' : r.reason ?? 'Nu s-a putut reface planul.');
+      const r = await server.regeneratePlan(false, prev?.signature);
+      if (r.stale) {
+        // Datele s-au schimbat între previzualizare și confirmare: arătăm varianta nouă, nu activăm nimic în tăcere.
+        setPrev(r);
+        setMsg(r.reason ?? 'S-au schimbat datele; verifică din nou.');
+        return;
+      }
+      setMsg(r.ok ? (r.unchanged ? 'Planul era deja acesta: nimic de schimbat.' : `Planul a fost refăcut.${r.note ? ` ${r.note}` : ''}`) : r.reason ?? 'Nu s-a putut reface planul.');
       setPrev(null);
       await refresh();
     } catch (e) {
@@ -926,7 +933,28 @@ function RegenPlan() {
           </div>
           {prev.firstWeekSessions != null && (
             <div className="small">
-              Prima săptămână: {prev.firstWeekSessions} ședințe, {fmt(prev.firstWeekHours ?? 0)} h. Ce ai făcut deja și săptămâna asta rămân cum sunt.
+              Prima săptămână: {prev.firstWeekSessions} ședințe, {fmt(prev.firstWeekHours ?? 0)} h (exact ce se activează). Ce ai făcut deja și săptămâna asta rămân cum sunt.
+            </div>
+          )}
+          {(prev.awayApplied ?? 0) > 0 && <div className="small">Plecările anunțate rămân: {prev.awayApplied} ședințe schimbate sau anulate în zilele acelea.</div>}
+          {(prev.kept ?? []).length > 0 && (
+            <div className="small">
+              Ce ai ajustat tu rămâne:
+              <ul className="regen-list">
+                {prev.kept!.map((k) => (
+                  <li key={k}>{k}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(prev.dropped ?? []).length > 0 && (
+            <div className="small warn-line">
+              Ajustări care nu se mai aplică:
+              <ul className="regen-list">
+                {prev.dropped!.map((k) => (
+                  <li key={k}>{k}</li>
+                ))}
+              </ul>
             </div>
           )}
           <div className="wk-btns">

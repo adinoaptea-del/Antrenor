@@ -47,6 +47,30 @@ export function painSafetyEvents(date: string, durere: unknown): MorningSafety {
 
 export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string } | null;
 
+/** Acțiunea afișată la stop, aceeași în formular, pe Home și în mesajul antrenorului (L-SIM-03). */
+export const CARDIAC_ACTION = 'Azi nu te antrenezi. Cere o evaluare medicală azi. Dacă ai durere în piept, leșin, lipsă de aer sau palpitații care nu trec, sună la 112.';
+export const FEVER_ACTION = 'Azi nu te antrenezi. Dacă febra nu scade sau apar dureri în piept ori lipsă de aer, mergi la medic.';
+export function stopAction(reason: string | null | undefined): string {
+  if (/cardiac|piept|leșin|lesin|palpita|lipsă de aer|lipsa de aer|evaluare medical/i.test(reason ?? '')) return CARDIAC_ACTION;
+  if (/febr/i.test(reason ?? '')) return FEVER_ACTION;
+  return 'Azi nu te antrenezi.';
+}
+
+/**
+ * Simptomul cardiac nu expiră odată cu ziua (L-SIM-03/04): după ziua raportării, până la o evaluare medicală
+ * declarată de sportiv, doar ușor — fără teste, intervale sau ieșiri lungi. Fereastra: 14 zile. AI-ul nu dă aviz:
+ * ridicarea vine doar din bifa sportivului „am fost evaluat medical și pot face efort”.
+ */
+export function pendingCardiac(mornings: { date?: string; semnale?: Record<string, unknown> | null }[] | undefined, today: string): string | null {
+  const rows = (mornings ?? []).filter((m) => m.date && m.date <= today && m.date >= addDaysIso(today, -14)).sort((a, b) => (a.date! < b.date! ? -1 : 1));
+  let since: string | null = null;
+  for (const m of rows) {
+    if (m.semnale?.simptom_cardiac === true) since = m.date!;
+    else if (since && m.semnale?.cardiac_evaluat === true) since = null;
+  }
+  return since;
+}
+
 /**
  * Restricția activă azi, aceeași pentru API, calendar și ecrane. Datele brățărilor (somn, HRV) nu o pot ridica:
  *  - febră sau simptom cardiac raportat azi, ori stop salvat azi → stop;
@@ -75,6 +99,8 @@ export function activeRestriction(input: {
   savedVerdict?: 'verde' | 'galben' | 'rosu' | 'stop' | null;
   /** Activitățile de azi (după dedublare) și RPE-ul declarat: un efort mare azi închide ziua. */
   todayActivities?: { sport: string; minutes: number; rpe?: number | null }[];
+  /** Chestionarele de dimineață din ultimele 14 zile: un simptom cardiac rămâne activ până la evaluarea declarată. */
+  mornings?: { date?: string; semnale?: Record<string, unknown> | null }[];
 }): Restriction {
   const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? (input.morning.semnale ?? {}) : {};
   if (s.simptom_cardiac === true) return { verdict: 'stop', reason: 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.' };
@@ -83,6 +109,9 @@ export function activeRestriction(input: {
   if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
   if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
   if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };
+  const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
+  const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
+  if (cardiacSince && cardiacSince < input.today) return { verdict: 'galben', reason: `Simptom cardiac raportat pe ${cardiacSince}: până la o evaluare medicală, doar ușor — fără teste, intervale sau ieșiri lungi. Când medicul ți-a permis efortul, bifează în chestionarul de dimineață.` };
   const worst = activePain(input.evenings, input.today);
   if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): fără antrenament până la reevaluare. Când a scăzut, spune în formular.` };
   // Efortul mare de azi nu mai e o restricție de sănătate: îl echivalează regula „acoperit” (efort făcut față de cel

@@ -203,7 +203,7 @@ export const localServer = {
   async runAgents(): Promise<{ skipped: string }> {
     return { skipped: 'Agenții rulează pe server, cu cheia modelului. În previzualizare nu există server.' };
   },
-  async regeneratePlan(preview = false): Promise<{ ok: boolean; reason?: string; budgetHours: number; preview?: boolean }> {
+  async regeneratePlan(preview = false, _expect?: string): Promise<{ ok: boolean; reason?: string; budgetHours: number; preview?: boolean }> {
     if (!state.intake) return { ok: false, reason: 'fără chestionar', budgetHours: 0 };
     if (preview) return { ok: true, preview: true, budgetHours: weeklyBudget(state.intake.program, undefined, state.intake.oreSport ?? null).hours };
     const r = await localServer.form('intrare', state.intake);

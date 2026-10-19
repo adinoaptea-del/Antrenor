@@ -20,7 +20,15 @@ export interface Execution {
   pain?: number | null;
   /** Scurtată de sportiv pentru timp („Am mai puțin timp”). */
   shortenedForTime?: boolean;
+  /**
+   * „Nu am făcut ședința” / „am făcut doar o parte”, cu motivul declarat. Timpul e neutru (nu e incapacitate);
+   * oboseala, durerea și boala contează ca expunere nereușită: nu se avansează, iar două la rând coboară treapta.
+   */
+  outcome?: { status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul' } | null;
 }
+
+const NOT_TOLERATED = new Set(['oboseala', 'durere', 'boala']);
+const notTolerated = (e: Execution | null) => !!e?.outcome && NOT_TOLERATED.has(e.outcome.motiv);
 
 export type Decision = 'progress' | 'keep' | 'regress' | 'recalibrate';
 
@@ -129,9 +137,20 @@ export function decideFamily(f: Family, past: { date: string; step: number; ex: 
     const s = Math.max(0, cur - 1);
     return { family: f.id, decision: 'recalibrate', step: s, stepName: name(s), evidence: `ultima expunere pe ${last.date} (peste 21 de zile): reluare cu o treaptă mai jos` };
   }
+  // Pauză scurtă (8–21 de zile fără o expunere făcută): contează cauza declarată. Boală, durere sau oboseală → o treaptă
+  // mai jos; lipsa de timp sau nimic declarat → aceeași treaptă, cu pauza scrisă în dovezi (auditul live, secțiunea 06).
+  const doneAt = [...past].reverse().find((p) => p.ex && !p.ex.outcome && p.ex.color != null);
+  if (doneAt && diffDays(doneAt.date, nextDate) >= 8) {
+    const gap = diffDays(doneAt.date, nextDate);
+    const cause = past.filter((p) => p.date > doneAt.date && p.ex?.outcome).map((p) => p.ex!.outcome!.motiv);
+    if (cause.some((c) => NOT_TOLERATED.has(c))) {
+      const s = Math.max(0, cur - 1);
+      return { family: f.id, decision: 'recalibrate', step: s, stepName: name(s), evidence: `${gap} zile fără expunere făcută, din ${[...new Set(cause)].map((c) => ({ timp: 'lipsă de timp', oboseala: 'oboseală', durere: 'durere', boala: 'boală', altul: 'alt motiv' })[c]).join('/')} (declarat de tine): reluare cu o treaptă mai jos` };
+    }
+  }
   const atCur = past.filter((p) => p.step === cur);
-  const ok = (e: Execution | null) => !!e && e.color === 'verde' && (e.rpe == null || e.rpe <= f.rpeMax) && (e.pain ?? 0) < 3 && !e.shortenedForTime && e.rpe != null;
-  const bad = (e: Execution | null) => !!e && (e.color === 'rosu' || e.color === 'portocaliu' || (e.pain ?? 0) >= 3);
+  const ok = (e: Execution | null) => !!e && !e.outcome && e.color === 'verde' && (e.rpe == null || e.rpe <= f.rpeMax) && (e.pain ?? 0) < 3 && !e.shortenedForTime && e.rpe != null;
+  const bad = (e: Execution | null) => !!e && (e.color === 'rosu' || e.color === 'portocaliu' || (e.pain ?? 0) >= 3 || notTolerated(e));
   const l2 = atCur.slice(-2);
   if (last.ex && (last.ex.pain ?? 0) >= 3) {
     const s = Math.max(0, cur - 1);
@@ -145,7 +164,8 @@ export function decideFamily(f: Family, past: { date: string; step: number; ex: 
     const s = cur + 1;
     return { family: f.id, decision: 'progress', step: s, stepName: name(s), evidence: `${name(cur)} finalizat de două ori la rând (${l2.map((p) => `${p.date}, efort ${p.ex!.rpe}/10`).join('; ')}), fără durere` };
   }
-  const why = !last.ex || last.ex.color == null ? 'fără execuție înregistrată la ultima ședință (lipsa datelor nu e toleranță)' : last.ex.rpe == null ? 'fără feedback de efort la ultima ședință: rămâne treapta, se cere feedback' : last.ex.shortenedForTime ? 'ultima ședință a fost scurtată pentru timp: nici eșec, nici dovadă de toleranță' : l2.length < 2 ? 'o singură expunere bună la treapta asta; mai trebuie una' : `ultimele expuneri nu au fost amândouă bine tolerate (${l2.map((p) => p.ex?.color ?? '—').join(', ')})`;
+  const MOTIV = { timp: 'lipsă de timp', oboseala: 'oboseală', durere: 'durere', boala: 'boală', altul: 'alt motiv' } as const;
+  const why = last.ex?.outcome ? `ultima ședință ${last.ex.outcome.status === 'ratat' ? 'nu s-a făcut' : 's-a făcut doar parțial'} (${MOTIV[last.ex.outcome.motiv]}, declarat de tine): ${NOT_TOLERATED.has(last.ex.outcome.motiv) ? 'rămâne treapta; încă una la fel și coboară' : 'nu e incapacitate, dar nici dovadă de toleranță'}` : !last.ex || last.ex.color == null ? 'fără execuție înregistrată la ultima ședință (lipsa datelor nu e toleranță)' : last.ex.rpe == null ? 'fără feedback de efort la ultima ședință: rămâne treapta, se cere feedback' : last.ex.shortenedForTime ? 'ultima ședință a fost scurtată pentru timp: nici eșec, nici dovadă de toleranță' : l2.length < 2 ? 'o singură expunere bună la treapta asta; mai trebuie una' : `ultimele expuneri nu au fost amândouă bine tolerate (${l2.map((p) => p.ex?.color ?? '—').join(', ')})`;
   return { family: f.id, decision: 'keep', step: cur, stepName: name(cur), evidence: why };
 }
 

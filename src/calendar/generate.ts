@@ -108,7 +108,13 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     };
   }
   const age = input.athlete?.age ?? null;
-  const weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal);
+  let weeks: ReturnType<typeof phaseWeeks>;
+  try {
+    weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal);
+  } catch (e) {
+    // Obiectiv prea aproape: un răspuns explicit, nu o eroare și nu o probabilitate inventată.
+    return { ok: false, reason: `${e instanceof Error ? e.message : String(e)} Alege o dată mai îndepărtată sau un obiectiv mai scurt; până atunci, antrenament ușor de întreținere.`, budgetHours: budget.hours, minimumHours: 0, options: ['mută data cursei', 'alege un obiectiv mai scurt'] };
+  }
   const hours = PHASE_HOURS[input.goal];
 
   const phasesUsed = [...new Set(weeks.map((w) => w.phase))];
@@ -240,8 +246,31 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     // Nimic după cursă (nici în săptămâna ei, dacă e la mijlocul săptămânii); durata și repetările din aceleași cifre.
     w.workouts = v.workouts.filter((x) => x.date < input.raceDate).map(fitStructure).map(normalizeWorkout);
     if (v.notes.length) w.notes.push(...v.notes);
+    capToBudget(w, budget.hours);
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
+}
+
+/**
+ * Bugetul declarat e un plafon, nu o țintă aproximativă (L-SIM-10): dacă rotunjirile și duratele minime împing
+ * săptămâna peste, se scurtează câte 5 min ședințele ușoare (cele mai lungi întâi), apoi forța, fără să coboare sub
+ * minimul sportului; ședințele-cheie și ieșirea lungă rămân. Structura se rescrie din aceleași cifre.
+ */
+export function capToBudget(w: WeekPlan, hours: number): void {
+  const cap = Math.round(hours * 60);
+  const total = () => w.workouts.filter((x) => x.status !== 'anulat_sistem').reduce((n, x) => n + x.plannedMinutes, 0);
+  let guard = 200;
+  while (total() > cap && guard-- > 0) {
+    const pick = (pred: (x: PlannedWorkout) => boolean) =>
+      w.workouts.filter((x) => x.status !== 'anulat_sistem' && !x.key && x.type !== 'lung' && x.type !== 'brick' && pred(x) && x.plannedMinutes - 5 >= MIN_SESSION_MIN[x.sport]).sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0];
+    // Ultima soluție: orice ședință care nu e test, chiar și cea lungă (câte 5 min, cea mai lungă întâi).
+    const anyLong = () => w.workouts.filter((y) => y.status !== 'anulat_sistem' && !/^TEST:/.test(y.structure ?? '') && y.plannedMinutes - 5 >= MIN_SESSION_MIN[y.sport]).sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0];
+    const x = pick((y) => y.type === 'z2' || y.type === 'tehnica') ?? pick((y) => y.type === 'forta') ?? pick((y) => y.type === 'calitate') ?? anyLong();
+    if (!x) break;
+    const i = w.workouts.indexOf(x);
+    w.workouts[i] = x.type === 'forta' ? { ...x, plannedMinutes: x.plannedMinutes - 5 } : normalizeWorkout(fitStructure({ ...x, plannedMinutes: x.plannedMinutes - 5 }));
+  }
+  w.plannedHours = Math.round((total() / 60) * 10) / 10;
 }
 
 /**

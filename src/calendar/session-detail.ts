@@ -16,7 +16,7 @@
 
 import type { PlannedWorkout, Zone } from '../types.js';
 import { RUN_MODULES, moduleMinutes, parseModule } from './run-modules.js';
-import { openWaterSet, parseStrides, stridesMinutes, swimSet, type Step } from './session-steps.js';
+import { easyWarmCool, fitStrides, openWaterSet, parseStrides, stridesMinutes, swimSet, type Step } from './session-steps.js';
 import { brickSplit, testParts } from './coherence.js';
 import { shortIntervalSteps } from './bike-swim-modules.js';
 
@@ -184,14 +184,11 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   }
 
   // Ușor / lung (alergare, bicicletă), cu accelerări dacă sunt în plan.
-  const warm = m >= 45 ? 10 : m >= 30 ? Math.max(5, Math.round(m * 0.2)) : Math.floor(m / 3);
-  const cool = m >= 30 ? 5 : Math.floor(m / 6);
+  const { warm, cool } = easyWarmCool(m);
   // Accelerările încap doar dacă partea ușoară rămâne cel puțin ~jumătate din ședință; altfel mai puține (minimum 3)
-  // sau deloc — nu comprimăm alergarea ușoară ca să încapă rutina.
+  // sau deloc — nu comprimăm alergarea ușoară ca să încapă rutina. Rezumatul din plan e deja potrivit (normalizeWorkout).
   const planned = w.sport === 'alergare' ? parseStrides(w.structure) : null;
-  let strides = planned;
-  while (strides && strides.n > 3 && m - warm - cool - stridesMinutes(strides) < Math.ceil(m * 0.45)) strides = { ...strides, n: strides.n - 1 };
-  if (strides && m - warm - cool - stridesMinutes(strides) < Math.ceil(m * 0.45)) strides = null;
+  const strides = fitStrides(m, planned);
   const sMin = strides ? stridesMinutes(strides) : 0;
   const main = m - warm - cool - sMin;
   const target: Zone = (w.targetZones.length ? Math.max(...w.targetZones) : 2) as Zone;
@@ -199,7 +196,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   const run = w.sport === 'alergare';
   return withNote([
     { label: 'Încălzire', text: run ? `${warm} min alergare foarte ușoară în ${z(1)}${strides ? '; opțional 3 min mobilitate dinamică' : ''}` : `${warm} min pedalat ușor în ${z(1)}, cadență 85–95` },
-    { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? ', constant; la peste 75 min, apă și 30–60 g carbohidrați pe oră' : ''}${talk}` },
+    { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? (m > 75 ? ', constant; apă și 30–60 g carbohidrați pe oră, din prima jumătate de oră' : ', constant') : ''}${talk}` },
     ...(planned && !strides ? [{ label: 'Accelerări', text: 'azi fără: ședința e prea scurtă ca să încapă și partea ușoară; le faci data viitoare.' }] : []),
     ...(strides && sMin ? [{ label: 'Accelerări', text: `${strides.n} × ${strides.sec} s rapid dar relaxat (nu sprint), pe teren drept, cu ~1 min mers sau trap între ele (${sMin} min)${planned && planned.n !== strides.n ? `; azi ${strides.n}, nu ${planned.n}: ședința e scurtă și partea ușoară are prioritate` : ''}` }] : []),
     { label: 'Revenire', text: run && cool >= 5 ? `${cool} min mers și întinderi ușoare (gambe, coapse, fesieri)` : `${cool} min foarte ușor` },

@@ -160,6 +160,10 @@ export interface Me {
   badges?: (import('./badges/badges.js').BadgesResult & { fresh: string[] }) | null;
   /** Decizia zilei: una singură, citită de toate ecranele. null = fără date azi. */
   day?: import('./calendar/day.js').DayDecision | null;
+  /** Data unui simptom cardiac încă neevaluat medical (formularul de dimineață arată bifa de evaluare). */
+  cardiacPending?: string | null;
+  /** Ședințele declarate nefăcute sau parțiale (cu motiv), pe id. */
+  outcomes?: Record<string, { status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reportedAt: string }>;
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */
   sources?: MeSource[];
   /** Plecări anunțate și întâlniri fixe. */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Me } from '@core/api-types.js';
@@ -105,7 +105,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               {SPORT_LABEL[w.sport]} · {w.type === 'forta' ? (rx?.session.name ?? sessionName(w.structure) ?? 'forță') : PLAIN[w.type]}
             </b>
             <span>
-              {when} · {fmtMinutes(rx ? Math.min(w.plannedMinutes, rx.minutes) : w.plannedMinutes)}
+              {when} · {w.status === 'anulat_sistem' ? `anulată · 0 min active (era ${fmtMinutes(w.plannedMinutes)})` : fmtMinutes(rx ? Math.min(w.plannedMinutes, rx.minutes) : w.plannedMinutes)}
               {zones ? ` · ${zones}` : ''}
               {w.key ? ' · cheie' : ''}
             </span>
@@ -134,7 +134,9 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
             </div>
           )}
           {yellow && <YellowDay w={w} />}
+          {!upcoming && w.status !== 'anulat_sistem' && w.date <= me.today && <Missed w={w} done={done && !!act} />}
 
+          <OldPlan off={w.status === 'anulat_sistem'}>
           <div className="sheet-why">{fitness && w.type === 'forta' ? 'Forță pentru obiectivul tău: mușchi construit sau păstrat, mai multă forță în viața de zi cu zi. Greutățile le alegi tu: una cu care mai aveai câteva repetări la final.' : purposeOf(w)}</div>
 
           {rx ? (
@@ -209,6 +211,8 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
             </>
           )}
 
+          </OldPlan>
+
           {w.sport === 'inot' && upcoming && <SwimPlace />}
           {w.note && w.status !== 'anulat_sistem' && <div className="wk-note">{w.note}</div>}
           {upcoming && !paused && (
@@ -226,6 +230,88 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
       </div>
     </div>,
     document.body,
+  );
+}
+
+const MOTIVE = [
+  ['timp', 'n-am avut timp'],
+  ['oboseala', 'oboseală'],
+  ['durere', 'durere'],
+  ['boala', 'boală'],
+  ['altul', 'alt motiv'],
+] as const;
+
+/**
+ * Ședința care a trecut: „Nu am făcut-o” sau „Am făcut doar o parte”, cu motiv. E separată de „anulată” (decizia
+ * sistemului) și de „fără date”; după trimitere, aplicația spune ce păstrează sau schimbă și de ce.
+ */
+function Missed({ w, done }: { w: PlannedWorkout; done: boolean }) {
+  const me = useMe();
+  const { submitForm } = useData();
+  const saved = me.outcomes?.[w.id] ?? null;
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<'ratat' | 'partial'>(done ? 'partial' : 'ratat');
+  const [minute, setMinute] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const send = async (motiv: string) => {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await submitForm('nefacut', { workoutId: w.id, status, motiv, ...(status === 'partial' ? { minute: Number(minute) } : {}) });
+      setMsg(String(r.data?.mesaj ?? 'Am înregistrat.'));
+      setOpen(false);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const label = saved ? `${saved.status === 'ratat' ? 'Nefăcută' : `Făcută parțial${saved.minutes ? ` (${saved.minutes} min)` : ''}`}: ${MOTIVE.find((m) => m[0] === saved.motiv)?.[1] ?? saved.motiv}` : done ? null : 'Fără date: nu e nicio activitate legată și nimic declarat.';
+  return (
+    <div className="missed">
+      {label && <div className="small muted">{label}</div>}
+      {msg && <div className="wk-note" role="status">{msg}</div>}
+      {!open ? (
+        <button className="pill" style={{ marginTop: 6 }} onClick={() => setOpen(true)}>
+          {saved ? 'Schimbă ce ai declarat' : done ? 'Am făcut doar o parte' : 'Nu am făcut-o / am făcut doar o parte'}
+        </button>
+      ) : (
+        <div className="missed-form">
+          {!done && (
+            <div className="wk-btns">
+              <button className={`pill ${status === 'ratat' ? 'on' : ''}`} onClick={() => setStatus('ratat')}>Nu am făcut-o</button>
+              <button className={`pill ${status === 'partial' ? 'on' : ''}`} onClick={() => setStatus('partial')}>Am făcut doar o parte</button>
+            </div>
+          )}
+          {status === 'partial' && (
+            <label className="small" style={{ display: 'block', marginTop: 6 }}>
+              Câte minute ai făcut? <input inputMode="numeric" value={minute} onChange={(e) => setMinute(e.target.value)} style={{ width: 60 }} aria-label="minute făcute" />
+            </label>
+          )}
+          <div className="small" style={{ marginTop: 6 }}>De ce?</div>
+          <div className="wk-btns">
+            {MOTIVE.map(([k, t]) => (
+              <button key={k} className="pill" disabled={busy || (status === 'partial' && !(Number(minute) > 0))} onClick={() => void send(k)}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Ședința anulată: ce era planificat rămâne de citit, pliat și etichetat clar că nu se mai face (L-SIM-04). */
+function OldPlan({ off, children }: { off: boolean; children: ReactNode }) {
+  if (!off) return <>{children}</>;
+  return (
+    <details className="sheet-old">
+      <summary>Ce era planificat (nu se mai face)</summary>
+      {children}
+    </details>
   );
 }
 

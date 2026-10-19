@@ -9,6 +9,7 @@
 //  3. starea de acum (brățări + cum te simți, cu restricția ca podea); portocaliu se citește galben („mai ușor”);
 //  4. decizia salvată dimineața, dacă nu există stare.
 
+import { stopAction } from './safety.js';
 import type { PlannedWorkout } from '../types.js';
 
 export type DayLevel = 'verde' | 'galben' | 'rosu' | 'stop';
@@ -90,13 +91,16 @@ export function decideDay(i: DayInput): DayDecision | null {
   // Zi fără nicio ședință în plan (odihnă): verde sau galben nu schimbă nimic, deci nu se spune „fă varianta ușoară”.
   if (sessions.length === 0 || (active.length === 0 && cancelled.length === 0)) {
     const hard = candidates.filter((c) => c.level === 'stop' || c.level === 'rosu').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
-    if (!hard) return { level: 'verde', title: 'Zi de odihnă', action: 'Azi odihnă, cum e în plan.', reason: null, rest: true };
+    const tired = candidates.find((c) => c.level === 'galben');
+    if (!hard) return { level: 'verde', title: 'Zi de odihnă', action: 'Azi odihnă, cum e în plan.', reason: tired ? `${cap(tired.reason ?? 'Ai notat că nu ești în formă')}. Azi oricum e pauză: planul rămâne, iar înainte de următoarea ședință se reevaluează cum te simți.` : null, rest: true };
   }
   if (!candidates.length) return null;
   const top = candidates.reduce((a, b) => (RANK[b.level] > RANK[a.level] ? b : a));
   // Motivul vine de la sursa care a decis; la egalitate, primul cu text.
   const reason = candidates.find((c) => c.level === top.level && c.reason)?.reason ?? null;
-  return { level: top.level, ...DAY_TEXT[top.level], reason: reason ? cap(reason) : null };
+  // Zi fără ședințe în plan: spune explicit că nu s-a schimbat nimic și când se reevaluează (auditul T02).
+  const restNote = sessions.length === 0 && top.level === 'rosu' ? { action: 'Azi era deja pauză în plan: nu se adaugă nimic. Planul rămâne; înainte de următoarea ședință se reevaluează cum te simți.' } : {};
+  return { level: top.level, ...DAY_TEXT[top.level], ...restNote, ...(top.level === 'stop' ? { action: stopAction(reason) } : {}), reason: reason ? cap(reason) : null };
 }
 
 /** Un mesaj (al antrenorului) se potrivește cu decizia zilei? Altfel e depășit și nu se arată. */

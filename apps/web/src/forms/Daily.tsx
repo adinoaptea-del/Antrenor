@@ -1,4 +1,5 @@
 import { hooperSum } from '@core/collector/readiness.js';
+import { activeRestriction, stopAction } from '@core/calendar/safety.js';
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import { CircleBtn, DAY_NAMES, Icons, LiveTitle, fmtDayMonth, fmtMinutes } from '../ui/common';
@@ -19,6 +20,8 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   const setS = (k: keyof MorningForm['semnale'], v: boolean) => setM({ ...m, semnale: { ...m.semnale, [k]: v } });
   // Contează și răspunsurile parțiale; totalul apare de la 3 din 4 răspunsuri (cu mai puține nu inventăm restul).
   const { suma, raspunse } = hooperSum(m.hooper);
+  // Semnalele de siguranță au prioritate față de scorul notelor: nu scrie „în regulă” lângă un simptom (L-SIM-03).
+  const safety = activeRestriction({ today: date, morning: { date, semnale: m.semnale as never }, evenings: [] });
   const anyAnswer = raspunse > 0 || Object.values(m.semnale).some((v) => v === true);
 
   return (
@@ -58,11 +61,16 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
             <Toggle label="Deplasare / drum" value={m.semnale.deplasare} onChange={(v) => setS('deplasare', v)} />
             <Toggle label="Simptom cardiac" value={m.semnale.simptom_cardiac} onChange={(v) => setS('simptom_cardiac', v)} danger />
           </div>
+          {me.cardiacPending && me.cardiacPending < date && !m.semnale.simptom_cardiac && (
+            <div style={{ marginTop: 10 }}>
+              <Toggle label={`Am fost evaluat medical după simptomul din ${me.cardiacPending.split('-').reverse().slice(0, 2).join('.')} și pot face efort`} value={m.semnale.cardiac_evaluat ?? null} onChange={(v) => setS('cardiac_evaluat', v)} />
+            </div>
+          )}
         </Q>
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{suma == null ? (raspunse > 0 ? `Cum te simți: ${raspunse} din 4 răspunsuri, prea puține pentru un total; contează fiecare în parte` : 'Cum te simți: –') : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
+        <div className="small muted">{safety ? `${safety.verdict === 'stop' ? 'Stop' : safety.verdict === 'rosu' ? 'Zi roșie' : 'Zi galbenă'}: ${safety.verdict === 'stop' ? stopAction(safety.reason) : safety.reason}` : suma == null ? (raspunse > 0 ? `Cum te simți: ${raspunse} din 4 răspunsuri, prea puține pentru un total; contează fiecare în parte` : 'Cum te simți: –') : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
         <button
           className="btn"
           disabled={!anyAnswer || busy}

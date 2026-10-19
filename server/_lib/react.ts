@@ -96,11 +96,14 @@ export async function missedStrength(userId: string, today: string): Promise<str
 export async function moduleProgression(userId: string, today: string): Promise<string[]> {
   const { planId, workouts } = await loadPlan(userId, addDays(today, -42), addDays(today, 14));
   if (!planId) return [];
-  const [scores, forms, raw] = await Promise.all([
+  const [scores, forms, raw, outs] = await Promise.all([
     select<{ workout_id: string; color: Color }>('scores', { user_id: `eq.${userId}` }, { select: 'workout_id,color', limit: 400 }).catch(() => []),
     loadForms(userId, today),
     loadActivities(userId, addDays(today, -42)),
+    // Ședințele declarate nefăcute / parțiale, cu motiv (schema 8; pe o schemă veche lista e goală).
+    select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul' }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { select: 'workout_id,status,motiv', limit: 200 }).catch(() => []),
   ]);
+  const outcome = new Map(outs.map((o) => [o.workout_id, { status: o.status, motiv: o.motiv }]));
   const acts = dedupeActivities(raw);
   const m = matchActivities(workouts.filter((w) => w.date < today), acts, today);
   const actOf = new Map(m.matches.filter((x) => x.activity).map((x) => [x.planned.id, x.activity!]));
@@ -110,7 +113,7 @@ export async function moduleProgression(userId: string, today: string): Promise<
     .map((w) => {
       const a = actOf.get(w.id);
       const ev = forms.evenings.find((e) => e.activityId === `plan-${w.id}` || (a && (e.activityId === a.id || e.activityId === (a as { externalId?: string }).externalId)));
-      return { workoutId: w.id, color: color.get(w.id) ?? null, rpe: ev?.rpe ?? null, pain: ev?.durere?.scor ?? null, shortenedForTime: /^scurtat la cererea ta/.test(w.note ?? '') };
+      return { workoutId: w.id, color: color.get(w.id) ?? null, rpe: ev?.rpe ?? null, pain: ev?.durere?.scor ?? null, shortenedForTime: /^scurtat la cererea ta/.test(w.note ?? '') || outcome.get(w.id)?.motiv === 'timp', outcome: outcome.get(w.id) ?? null };
     });
   return applyPlanEvents(userId, today, planId, workouts, [{ kind: 'trepte', date: today }], undefined, executions);
 }

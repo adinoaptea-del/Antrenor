@@ -12,7 +12,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const today = todayIn(user.tz);
     const { intake } = await loadForms(u.id, today);
     if (!intake) throw new HttpError(400, 'fără chestionar de intrare');
-    json(res, 200, await generateAndStore(u.id, today, intake as unknown as IntakeLike, { preview: q(req, 'preview') === '1' }));
+    json(res, 200, await generateAndStore(u.id, today, intake as unknown as IntakeLike, { preview: q(req, 'preview') === '1', ...(q(req, 'expect') ? { expect: String(q(req, 'expect')) } : {}) }));
   } catch (e) {
     fail(res, e);
   }

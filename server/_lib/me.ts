@@ -26,7 +26,7 @@ import { matchActivities } from '../../src/scoring/match.js';
 import type { Color, FreeBlock } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
-import { activeRestriction, stricter, type Restriction } from '../../src/calendar/safety.js';
+import { activeRestriction, pendingCardiac, stricter, type Restriction } from '../../src/calendar/safety.js';
 import { aerobicEfficiency } from '../../src/collector/efficiency.js';
 import type { StrengthLogEntry } from '../../src/strength/log.js';
 
@@ -50,6 +50,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
   // Jurnalul de forță (schema 7); pe o schemă veche lipsește tabela: lista rămâne goală, nu cade pagina.
+  const outcomeRows = await select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reported_at: string }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
 
   // Bărbații: forța viitoare trece la Push / Pull / Picioare cu exerciții care se schimbă (o singură dată; apoi nu mai
@@ -119,7 +120,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
-  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
+  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, mornings: forms.mornings as never, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
   // Ieri a fost efort peste plan? Atunci azi contează și durerile musculare (brățara nu vede oboseala musculară).
   const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
   const ieri = overYesterday(today, planned, withRpe);
@@ -239,6 +240,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessOut,
     day,
+    cardiacPending: pendingCardiac(forms.mornings as never, today),
+    outcomes: Object.fromEntries(outcomeRows.map((o) => [o.workout_id, { status: o.status, motiv: o.motiv, minutes: o.minutes, reportedAt: o.reported_at }])),
     efficiency: aerobicEfficiency(activities, today),
     strengthLog: strengthRows,
     raceReady: user.goal && user.goal in GOAL_NAME

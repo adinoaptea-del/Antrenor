@@ -42,7 +42,7 @@ export interface PlannedWorkout {
    * accepted = true → varianta ușoară intră în calendar; false → face ședința din plan; null → n-a ales încă.
    */
   /** Varianta propusă (sportivul alege). `sport` = altă disciplină (ex. fără impact la durere), doar cu confirmare. */
-  suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null; sport?: Sport } | null;
+  suggestion?: { minutes: number; zones: Zone[]; structure: string; reason: string; accepted: boolean | null; sport?: Sport; original?: { minutes: number; zones: number[]; structure: string | null; sport?: string; type?: string; key?: boolean } } | null;
   /** Cum arăta ședința în plan înainte de prima schimbare (de sistem sau a sportivului): pentru „Actualizat” și pentru revenire. */
   original?: WorkoutSnapshot | null;
   /** Când s-a schimbat ultima dată (ISO). */

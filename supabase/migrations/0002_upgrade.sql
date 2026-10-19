@@ -285,6 +285,23 @@ create table if not exists public.strength_log (
 alter table public.strength_log enable row level security;
 revoke all on public.strength_log from anon, authenticated;
 
+-- Ședința nefăcută sau făcută parțial, cu motivul declarat (schema 8): separat de „anulată” (decizia sistemului sau
+-- plecare anunțată) și de „fără date”. O retransmitere suprascrie același rând (cheie: sportiv + ședință), nu dublează.
+create table if not exists public.workout_outcomes (
+  user_id uuid not null references public.users(id) on delete cascade,
+  workout_id text not null,
+  date date not null,
+  status text not null check (status in ('ratat', 'partial')),
+  motiv text not null check (motiv in ('timp', 'oboseala', 'durere', 'boala', 'altul')),
+  minutes int,
+  nota text,
+  reported_at timestamptz not null default now(),
+  primary key (user_id, workout_id)
+);
+create index if not exists workout_outcomes_user_date on public.workout_outcomes (user_id, date desc);
+alter table public.workout_outcomes enable row level security;
+revoke all on public.workout_outcomes from anon, authenticated;
+
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
   key text primary key,
@@ -293,5 +310,5 @@ create table if not exists public.schema_meta (
 );
 alter table public.schema_meta enable row level security;
 revoke all on public.schema_meta from anon, authenticated;
-insert into public.schema_meta (key, value) values ('version', 7)
+insert into public.schema_meta (key, value) values ('version', 8)
   on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();

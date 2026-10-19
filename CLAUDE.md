@@ -21,6 +21,9 @@ Surse: „AIRON — Corecturi pentru antrenamente” v1.0 și „AIRON — Audit
 13. AI-ul nu activează nimic: propune structurat (acțiune permisă, module_id, parametri, evidence_refs), validatorul acceptă sau respinge, doar codul activează. O propunere respinsă nu e prezentată ca activă.
 14. Fără reguli absolute în ghiduri (teren, vreme, scop contează). Și decizia „keep” își păstrează dovezile (ce s-a contabilizat, ce fereastră, de ce rămâne planul).
 15. Politica de surse se aplică pe fiecare observație, inclusiv derivate, rezumate și cache. EXCEPȚIE STABILĂ (decizia proprietarului, 19.10.2026, risc asumat față de termenii API Strava): Strava ajunge la AI, doar pentru sportivul ei, până apar date din Apple Health / Health Connect; atunci iese automat. NU se blochează Strava la AI din cauza unui audit sau a altei reguli fără acordul explicit al proprietarului — se semnalează riscul, nu se schimbă codul.
+17. Refacerea planului (auditul de simulări live, 19.10.2026): candidatul complet = generat + plecări + ajustările sportivului (src/calendar/regen-carry.ts); previzualizarea și activarea folosesc același candidat și aceeași amprentă; o ajustare care cade apare cu motiv înainte de confirmare.
+18. Ședința nefăcută/parțială e un eveniment cu motiv și oră (workout_outcomes), separat de anulată și de „fără date”; motivul schimbă progresia (timp = neutru; oboseală/durere/boală = netolerat). Simulatorul offline: `npx tsx scripts/simulate-live.ts`.
+19. Siguranța: semnalul declarat are prioritate peste scoruri pe toate ecranele (aceeași acțiune: safety.ts stopAction); simptomul cardiac rămâne restricție (doar ușor) până la evaluarea declarată de sportiv.
 16. Raportare: pentru fiecare constatare — confirmat/neconfirmat, fișier și funcție, modificare, test, rezultat, exemple înainte/după și limite rămase. Nu declara „tot rezolvat” sau „personalizare completă” fără teste.
 
 ## Securitate (neschimbat)

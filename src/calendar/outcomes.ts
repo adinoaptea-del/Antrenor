@@ -1,0 +1,75 @@
+// „Nu am făcut ședința” / „am făcut doar o parte”, cu motiv (auditul de simulări live, secțiunea 02).
+//
+// Anulată (decizia sistemului sau plecarea anunțată) ≠ ratată (declarată de sportiv, cu motiv) ≠ parțială ≠ fără date
+// (nimic declarat, nimic înregistrat). Ședința ratată nu se recuperează prin dublare. Motivul contează:
+//  - lipsa de timp nu e incapacitate: nu schimbă nimic;
+//  - oboseala, durerea, boala: o dată = se păstrează planul și se urmărește; de două ori în 7 zile = următoarea ședință
+//    grea din 7 zile devine ușoară (doza se reevaluează), cu dovezile scrise. Pragul e o regulă de produs, explicabilă.
+// Obiectivul nu se declară pierdut sau garantat dintr-o săptămână.
+
+import type { PlannedWorkout, Sport } from '../types.js';
+import { addDays, diffDays, weekday } from '../util/dates.js';
+import { withOriginal } from './actions.js';
+import { fitStructure } from './validate.js';
+
+export type OutcomeStatus = 'ratat' | 'partial';
+export type OutcomeMotiv = 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul';
+export interface Outcome {
+  workoutId: string;
+  date: string;
+  status: OutcomeStatus;
+  motiv: OutcomeMotiv;
+  minutes?: number | null;
+  reportedAt?: string;
+}
+
+export const MOTIV_LABEL: Record<OutcomeMotiv, string> = { timp: 'lipsă de timp', oboseala: 'oboseală', durere: 'durere', boala: 'boală', altul: 'alt motiv' };
+const NOT_TOLERATED: OutcomeMotiv[] = ['oboseala', 'durere', 'boala'];
+const DAY = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
+const SPORT: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' };
+const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'mutat';
+const dm = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
+const hard = (w: PlannedWorkout) => w.key || w.type === 'calitate' || w.type === 'brick' || w.targetZones.some((z) => z >= 3);
+
+/** Ce înseamnă declarația pentru plan și mesajul pentru sportiv. `outcomes` include deja declarația nouă. */
+export function outcomeFeedback(plan: PlannedWorkout[], outcomes: Outcome[], now: Outcome, today: string, at: string): { changed: PlannedWorkout[]; message: string; decision: 'pastrat' | 'modificat' } {
+  const w = plan.find((x) => x.id === now.workoutId);
+  const label = w ? `${SPORT[w.sport]} de ${DAY[weekday(w.date)]} ${dm(w.date)}` : `ședința din ${dm(now.date)}`;
+  const what = now.status === 'ratat' ? 'nefăcută' : `făcută parțial${now.minutes ? ` (${now.minutes} min)` : ''}`;
+  const recent = outcomes.filter((o) => NOT_TOLERATED.includes(o.motiv) && diffDays(o.date, today) <= 7 && o.date <= today);
+  const changed: PlannedWorkout[] = [];
+  let nextLine: string;
+  let decision: 'pastrat' | 'modificat' = 'pastrat';
+  if (recent.length >= 2) {
+    const target = plan.filter((x) => active(x) && x.date >= today && x.date <= addDays(today, 7) && hard(x)).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
+    if (target) {
+      const swim = target.sport === 'inot';
+      const minutes = target.type === 'lung' ? Math.max(30, Math.round((target.plannedMinutes * 0.75) / 5) * 5) : target.plannedMinutes;
+      const easy: PlannedWorkout = fitStructure({
+        ...target,
+        type: target.type === 'lung' ? 'lung' : swim ? 'tehnica' : 'z2',
+        key: false,
+        targetZones: swim ? [1, 2] : target.type === 'lung' ? [1, 2] : [2],
+        intervals: undefined,
+        plannedMinutes: minutes,
+        structure: target.type === 'lung' ? `${minutes} min constant, Z1–Z2` : swim ? 'tehnică și bucăți ușoare' : `${minutes} min ușor, să poți vorbi`,
+        note: `ușurată: ${recent.length} ședințe nefăcute sau parțiale din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join('/')} în ultimele 7 zile (declarat de tine); revine la plan după o ședință bine tolerată`,
+      });
+      changed.push(withOriginal(target, easy, at));
+      decision = 'modificat';
+      nextLine = `Următoarea ședință grea (${SPORT[target.sport]}, ${DAY[weekday(target.date)]} ${dm(target.date)}) devine ușoară, deoarece ai declarat ${recent.length} ședințe nefăcute din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join('/')} în ultimele 7 zile.`;
+    } else nextLine = `În următoarele 7 zile nu ai nicio ședință grea: planul rămâne; ai declarat ${recent.length} ședințe nefăcute din oboseală/durere/boală, iar la bilanțul săptămânal se reevaluează doza.`;
+  } else {
+    const next = w ? plan.filter((x) => active(x) && x.date > now.date && x.date >= today && x.sport === w.sport).sort((a, b) => (a.date < b.date ? -1 : 1))[0] : undefined;
+    const where = next ? ` (${DAY[weekday(next.date)]} ${dm(next.date)})` : '';
+    nextLine =
+      now.motiv === 'timp'
+        ? `Următoarea ședință${where} rămâne cum e: lipsa de timp nu înseamnă că nu poți.`
+        : now.motiv === 'altul'
+          ? `Următoarea ședință${where} rămâne cum e.`
+          : `Următoarea ședință${where} rămâne cum e: e prima din ultimele 7 zile; dacă se repetă, se ușurează.`;
+  }
+  const extra = now.motiv === 'durere' ? ' Spune și cât de tare doare (formularul de seară), ca restricția să fie corectă.' : now.motiv === 'boala' ? ' Dacă ai febră, bifeaz-o dimineața: atunci ziua e stop.' : '';
+  const goal = recent.length >= 2 ? 'Despre obiectiv: neschimbat deocamdată; dacă oboseala continuă, se reevaluează la bilanțul săptămânal.' : 'Despre obiectiv: neschimbat; o ședință nu schimbă ce se poate.';
+  return { changed, decision, message: `Am înregistrat: ${label}, ${what} (${MOTIV_LABEL[now.motiv]}). Nu o recuperăm prin dublare. ${nextLine}${extra} ${goal}` };
+}

@@ -1192,3 +1192,13 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .str-log-row { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .str-log-row label { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; font-size: 13px; color: var(--muted, #9aa); }
 .str-log-row input { width: 76px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); color: inherit; font: inherit; }
+
+.sheet-old { margin-top: 10px; border: 1px dashed var(--line, rgba(127,127,127,.35)); border-radius: 12px; padding: 8px 12px; opacity: .8; }
+.sheet-old > summary { cursor: pointer; font-weight: 600; }
+.regen-list { margin: 4px 0 6px 18px; padding: 0; }
+
+.adapt-why { margin-top: 12px; display: grid; gap: 8px; }
+.adapt-opt { text-align: left; display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: inherit; }
+.adapt-opt span { font-size: 12px; opacity: .75; }
+.missed { margin-top: 10px; }
+.missed-form { margin-top: 8px; }
