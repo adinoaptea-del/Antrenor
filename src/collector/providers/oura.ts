@@ -167,7 +167,7 @@ export function normalizeOuraWorkout(w: OuraWorkout): SourceActivity | null {
     avgHr: null,
     maxHr: null,
     timeInZonesMin: null,
-    name: `oura ${w.label || w.activity}${w.intensity ? ` (${w.intensity === 'easy' ? 'ușor' : w.intensity === 'moderate' ? 'moderat' : 'greu'})` : ''}${w.source === 'autodetected' ? ', detectat automat' : ''}`,
+    name: `oura ${w.label || w.activity}${w.intensity ? ` (${w.intensity === 'easy' ? 'ușor' : w.intensity === 'moderate' ? 'moderat' : 'greu'})` : ''}`,
   };
 }
 

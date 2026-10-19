@@ -7332,7 +7332,7 @@ function normalizeOuraWorkout(w) {
     avgHr: null,
     maxHr: null,
     timeInZonesMin: null,
-    name: `oura ${w.label || w.activity}${w.intensity ? ` (${w.intensity === "easy" ? "u\u0219or" : w.intensity === "moderate" ? "moderat" : "greu"})` : ""}${w.source === "autodetected" ? ", detectat automat" : ""}`
+    name: `oura ${w.label || w.activity}${w.intensity ? ` (${w.intensity === "easy" ? "u\u0219or" : w.intensity === "moderate" ? "moderat" : "greu"})` : ""}`
   };
 }
 function normalizeOuraOther(w) {
