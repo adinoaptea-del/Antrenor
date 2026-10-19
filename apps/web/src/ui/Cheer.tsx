@@ -1,0 +1,123 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { Me } from '@core/api-types.js';
+import type { PlannedWorkout } from '@core/types.js';
+import { addDays, diffDays } from '@core/util/dates.js';
+import { cheerFor, type CheerSport } from '@core/cheers.js';
+import { Orb } from './Orb';
+import { GlassFX } from './Glass';
+import { activityFor, colorOf } from '../data/model';
+import { strengthOf } from './WorkoutSheet';
+
+/**
+ * Felicitarea de după o ședință: o fereastră care vine ca un asteroid din aceeași materie ca bula, cu un mesaj potrivit
+ * sportului făcut. Doar pentru ședințele de azi și ieri executate cel puțin 60% (src/cheers.ts), o singură dată pe
+ * ședință, pe acest telefon. Cu „mișcare redusă”: apare simplu, fără zbor.
+ */
+
+const SEEN_KEY = (uid: string) => `airon-cheer-${uid}`;
+const readSeen = (uid: string): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(SEEN_KEY(uid)) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+const writeSeen = (uid: string, ids: string[]) => {
+  try {
+    localStorage.setItem(SEEN_KEY(uid), JSON.stringify(ids.slice(-200)));
+  } catch {
+    /* fără stocare: felicitarea poate reapărea o dată */
+  }
+};
+
+/** Cât din ședință s-a făcut: minutele față de plan; la forță, exercițiile notate față de cele propuse. */
+export function executionOf(me: Me, w: PlannedWorkout): { ratio: number | null; minutes: number | null; km: number | null } {
+  const act = activityFor(me, w);
+  if (w.sport === 'forta') {
+    const rx = strengthOf(me, w);
+    const logs = (me.strengthLog ?? []).filter((e) => e.date === w.date);
+    if (rx && logs.length) {
+      // Un exercițiu se numără făcut doar cu seriile cerute (cel puțin 3, regula de forță), nu doar atins.
+      const done = rx.items.filter((r) => logs.some((e) => e.exercise === r.ex.id && e.sets.length >= Math.min(3, r.sets))).length;
+      return { ratio: done / Math.max(1, rx.items.length), minutes: act?.minutes ?? null, km: null };
+    }
+  }
+  if (!act || !w.plannedMinutes) return { ratio: null, minutes: null, km: null };
+  return { ratio: act.minutes / w.plannedMinutes, minutes: act.minutes, km: act.distanceKm ?? null };
+}
+
+function nextCheer(me: Me, seen: string[]) {
+  const from = addDays(me.today, -1);
+  const list = me.plan
+    .filter((w) => w.date >= from && w.date <= me.today && w.type !== 'odihna' && w.status !== 'sters' && w.status !== 'anulat_sistem' && !seen.includes(w.id))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  for (const w of list) {
+    if (colorOf(me, w) === 'rosu') continue;
+    const ex = executionOf(me, w);
+    const sport = w.sport as CheerSport;
+    const same = me.activities.filter((a) => a.sport === w.sport && a.date <= w.date && diffDays(a.date, w.date) < 14);
+    const act = activityFor(me, w);
+    // Dovada pentru „din ce în ce mai bine”: ritm (alergare) sau viteză (bicicletă) mai bune decât media ultimelor 3.
+    const prev = same.filter((a) => a.id !== act?.id).slice(-3);
+    const speed = (a: { distanceKm: number | null; minutes: number }) => (a.distanceKm && a.minutes ? a.distanceKm / a.minutes : null);
+    const now = act ? speed(act) : null;
+    const prevS = prev.map(speed).filter((x): x is number => x != null);
+    const improving = now != null && prevS.length >= 2 && now > (prevS.reduce((s, x) => s + x, 0) / prevS.length) * 1.02;
+    const c = cheerFor({
+      sport,
+      ratio: ex.ratio,
+      name: me.user.name,
+      minutes: ex.minutes,
+      km: ex.km,
+      nThisSport14: same.length,
+      nSwimTotal: me.activities.filter((a) => a.sport === 'inot').length,
+      improving,
+      seed: w.id,
+    });
+    if (c) return { w, c };
+  }
+  return null;
+}
+
+export function Cheer({ me, blocked }: { me: Me; blocked: boolean }) {
+  const uid = me.user.id ?? 'eu';
+  const [seen, setSeen] = useState<string[]>(() => readSeen(uid));
+  const [closing, setClosing] = useState(false);
+  const pick = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
+  const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  useEffect(() => {
+    setClosing(false);
+  }, [pick?.w.id]);
+  if (!pick) return null;
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(
+      () => {
+        const next = [...seen, pick.w.id];
+        writeSeen(uid, next);
+        setSeen(next);
+      },
+      reduce ? 0 : 380,
+    );
+  };
+  return (
+    <div className={`cheer-wrap ${closing ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={pick.c.title} onClick={close}>
+      <div className="cheer-orb">
+        <Orb onPress={close} label={`${pick.c.title}. ${pick.c.text} Închide.`}>
+          <span />
+        </Orb>
+      </div>
+      <div className="cheer glass" onClick={(e) => e.stopPropagation()}>
+        <GlassFX level={0.3} seed={pick.w.id.length} />
+        <div className="cheer-k">{pick.c.title}</div>
+        <p className="cheer-t" aria-live="polite">
+          {pick.c.text}
+        </p>
+        <button className="btn" onClick={close} autoFocus>
+          Mulțumesc!
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -28,9 +28,10 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
     let w = 0;
     let h = 0;
     const fit = () => {
+      // Mărimea din layout, nu cea vizuală: o animație cu scale (ex. felicitarea) nu micșorează rezoluția.
       const r = c.getBoundingClientRect();
-      w = r.width;
-      h = r.height;
+      w = c.clientWidth || r.width;
+      h = c.clientHeight || r.height;
       c.width = Math.round(w * dpr);
       c.height = Math.round(h * dpr);
     };

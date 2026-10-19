@@ -1404,3 +1404,27 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 }
 .ok-alert { background: radial-gradient(110% 70% at 90% 115%, rgba(87, 217, 154, 0.16), transparent 60%), var(--glass-fill); border-color: rgba(87, 217, 154, 0.4); }
 .sheet > :not(.sheet-body):not(.glass-fx) { flex-shrink: 0; }
+
+/* ——— Felicitarea: vine ca un asteroid din materia bulei, se așază, apoi mesajul ——— */
+.cheer-wrap { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; align-content: center; gap: 0; padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(70% 50% at 50% 40%, rgba(110, 236, 140, 0.1), transparent 70%), rgba(4, 7, 7, 0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: cheer-in 0.35s ease-out both; }
+.cheer-wrap.out { animation: cheer-out 0.38s ease-in both; }
+.cheer-orb { width: min(62vw, 240px); margin-bottom: -46px; z-index: 2; animation: asteroid 1.15s cubic-bezier(0.18, 0.9, 0.24, 1.08) both; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
+.cheer-orb .orb { width: 100%; }
+.cheer { width: min(100%, 400px); border-radius: 30px; padding: 58px 22px 20px; display: grid; gap: 12px; text-align: center; overflow: hidden; animation: cheer-card 0.6s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cheer > :not(.glass-fx) { position: relative; z-index: 1; }
+.cheer-k { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.cheer-t { margin: 0; font: 700 22px/1.25 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; }
+.cheer .btn { justify-self: center; min-width: 160px; }
+@keyframes asteroid {
+  0% { transform: translate(-48vw, -60vh) scale(0.18) rotate(-40deg); opacity: 0; border-radius: 40% 60% 55% 45%; filter: blur(6px) drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
+  45% { opacity: 1; filter: blur(2px) drop-shadow(0 0 40px rgba(222, 252, 70, 0.45)); }
+  70% { transform: translate(2vw, 2vh) scale(1.08, 0.94) rotate(4deg); }
+  85% { transform: translate(-1vw, -1vh) scale(0.97, 1.04) rotate(-1deg); }
+  100% { transform: none; opacity: 1; filter: drop-shadow(0 0 30px rgba(110, 236, 140, 0.35)); }
+}
+@keyframes cheer-card { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes cheer-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cheer-out { to { opacity: 0; transform: scale(0.98); } }
+@media (prefers-reduced-motion: reduce) {
+  .cheer-wrap, .cheer-wrap.out, .cheer-orb, .cheer { animation: none; }
+}

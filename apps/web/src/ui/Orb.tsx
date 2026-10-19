@@ -58,9 +58,10 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
     let w = 0;
     let h = 0;
     const size = () => {
+      // Mărimea din layout, nu cea vizuală: o animație cu scale (ex. felicitarea) nu micșorează rezoluția.
       const r = cv.getBoundingClientRect();
-      w = r.width;
-      h = r.height;
+      w = cv.clientWidth || r.width;
+      h = cv.clientHeight || r.height;
       cv.width = Math.round(w * dpr);
       cv.height = Math.round(h * dpr);
     };

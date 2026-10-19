@@ -26,9 +26,10 @@ export function GlassFX({ level = 0.22, seed = 5 }: { level?: number; seed?: num
     let w = 0;
     let h = 0;
     const fit = () => {
+      // Mărimea din layout, nu cea vizuală: o animație cu scale (ex. felicitarea) nu micșorează rezoluția.
       const r = c.getBoundingClientRect();
-      w = r.width;
-      h = r.height;
+      w = c.clientWidth || r.width;
+      h = c.clientHeight || r.height;
       c.width = Math.max(1, Math.round(w * dpr));
       c.height = Math.max(1, Math.round(h * dpr));
     };

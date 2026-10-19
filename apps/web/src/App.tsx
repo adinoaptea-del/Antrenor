@@ -1,3 +1,4 @@
+import { Cheer } from './ui/Cheer';
 import { WalkPage } from './ui/Walking';
 import { BadgesScreen } from './ui/Badges';
 import { useEffect, useRef, useState } from 'react';
@@ -308,6 +309,8 @@ function Shell() {
       )}
       {tour && screen === 'acasa' && <Tour onClose={() => setTour(false)} />}
       {memento && !countdown && me.intakeComplete && <Memento onClose={() => setMemento(false)} />}
+      {/* Felicitarea după o ședință făcută (cel puțin 60%): după mesajul de deschidere, nu peste formulare. */}
+      {me.intakeComplete && !local && <Cheer me={me} blocked={memento || !!countdown || tour || isForm} />}
       {ambient && <Ambient level={level} />}
       {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
