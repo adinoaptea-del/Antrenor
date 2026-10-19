@@ -4,6 +4,7 @@ import { useMe } from '../data/store';
 import { BackHeader } from './Shell';
 import { Icons } from './common';
 import { Tube } from './Tube';
+import { readyView } from '@core/bar/ready-view.js';
 import { fitnessWeekOf } from './FitnessProgress';
 import { colorOf, dayOf } from '../data/model';
 
@@ -23,7 +24,8 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
   const strengthDone = strength.filter((w) => ['verde', 'galben', 'portocaliu'].includes(colorOf(me, w))).length;
   // Fitness: cât din program ai făcut efectiv (ședințe făcute din toate ședințele programului), nu cât timp a trecut.
   const programTotal = fit ? me.plan.filter((w) => w.sport === 'forta').length : 0;
-  const goalPct = fit ? (programTotal ? Math.round((strengthDone / programTotal) * 100) : null) : (r?.ready ?? null);
+  const rv = readyView(r);
+  const goalPct = fit ? (programTotal ? Math.round((strengthDone / programTotal) * 100) : null) : rv.pct;
   const legs = fit ? [] : (r?.links ?? []).filter((l) => l.name !== 'Cumul');
   const todayScore = me.state?.score ?? me.wellnessToday?.recoveryScore ?? null;
   const day = dayOf(me);
@@ -48,7 +50,7 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
         <section className="prog-main">
           <div className="prog-row">
             <b>{fit ? `Programul de ${FITNESS_WEEKS} de săptămâni` : `Pregătit pentru ${me.user.raceName ?? goalName}`}</b>
-            <span>{goalPct == null ? 'îți evaluăm nivelul' : `${goalPct}%`}</span>
+            <span>{goalPct == null ? 'îți evaluăm nivelul' : `${goalPct}%${!fit && rv.partial ? '*' : ''}`}</span>
           </div>
           <Tube pct={goalPct} label={fit ? 'Programul de fitness' : `Pregătirea pentru ${goalName}`} />
           <p className="prog-note">
@@ -56,6 +58,8 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
               ? `${strengthDone} ședințe făcute din ${programTotal} ale programului${fitWeek ? ` · săptămâna ${fitWeek} din ${FITNESS_WEEKS}` : ' · începe luni'}. Plin = programul dus la capăt.`
               : goalPct == null
                 ? `Tubul se umple pe măsură ce ceasul înregistrează ședințe la fiecare probă (${r ? `${r.coverage.withData} din ${r.coverage.total} au date` : 'încă fără date'}).`
+                : rv.partial
+                  ? `* Parțial: pe ${rv.withData} din ${rv.total} probe. Fără date în ultimele 8 săptămâni: ${rv.missing.join(', ').toLowerCase()}; prima ședință înregistrată completează indicele (și îl poate coborî).`
                 : 'Plin = ai demonstrat reperele probei. Contează veriga cea mai slabă; e un indice, nu o promisiune.'}
           </p>
         </section>

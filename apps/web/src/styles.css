@@ -1182,3 +1182,5 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .prog-tips { display: grid; gap: 10px; }
 .prog-tips p { margin: 0; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
 .prog .prog-more { justify-self: start; }
+
+.azi-ready { margin: -4px 0 0; border: 0; background: transparent; color: var(--fg); font: 600 15px/1.3 var(--font-ui); text-align: center; text-wrap: balance; cursor: pointer; padding: 4px 8px; }

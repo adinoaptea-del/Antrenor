@@ -13,6 +13,7 @@ import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
 import { Orb } from './Orb';
+import { readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
 import { fmtTime } from '@core/goals/run-target.js';
@@ -50,6 +51,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const dayLabel = (d: string) => (d === me.today ? 'azi' : d === yesterday ? 'ieri' : `${DAY_NAMES[weekday(d)]}`);
   const hour = new Date().getHours();
   const { open: openSheet, sheet, isOpen } = useWorkoutSheet(onOpen);
+  const rv = readyView(me.raceReady);
 
   const day = dayOf(me);
   const paused = !!day && (day.level === 'rosu' || day.level === 'stop');
@@ -128,6 +130,12 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       {sheet}
       <div className="azi">
         <p className="azi-k">{eyebrow}</p>
+        {!fit && me.user.raceDate && (
+          <button className="azi-ready" onClick={() => onOpen('progres')}>
+            {rv.pct == null ? 'Pregătirea: îți evaluăm nivelul' : `Pregătit: ${rv.pct}%${rv.partial ? ` (parțial, fără ${rv.missing.join(', ').toLowerCase()})` : ''}`}
+            {days != null ? ` · ${days} zile` : ''}
+          </button>
+        )}
         <Orb onPress={!me.intakeComplete ? () => onOpen('intake') : openToday} label={orbLabel} paused={isOpen} dim={paused}>
           {orbBody}
         </Orb>
