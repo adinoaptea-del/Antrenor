@@ -176,8 +176,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             {Icons.trend} Progresul tău
           </button>
         </div>
-        <button className="linkish azi-coach" onClick={() => onOpen('antrenor')}>
-          Întreabă antrenorul
+        <button className="btn azi-meals" onClick={() => onOpen('mese')}>
+          {Icons.bowl} Mese recomandate pentru azi
         </button>
       </div>
 

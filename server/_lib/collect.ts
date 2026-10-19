@@ -4,7 +4,9 @@ import type { Goal } from '../../src/calendar/phases.js';
 import { select, one } from './db.js';
 import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivity, SourceDaily, ZonesInput } from '../../src/collector/types.js';
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
-import { addDays, labsExpired } from '../../src/util/dates.js';
+import { addDays, labsExpired, weekday } from '../../src/util/dates.js';
+import { loadPrefs } from './prefs.js';
+import { DEFAULT_PREFS, nutritionDay } from '../../src/nutrition/engine.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import { isFitnessGoal, isRunGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
@@ -302,7 +304,21 @@ export async function collect(userId: string, today: string, event: CollectorInp
   ]);
   // Pachetul merge la AI: sursele din registrul de blocare (permissions.ts) nu intră deloc, nici prin derivate.
   const others = allowedForAI(await loadOthers(userId, addDays(today, -8)));
+  // Mesele de azi, din același motor ca ecranul „Mese recomandate” (aceleași intrări, aceeași zi a planului).
+  const bodyRow = await one<{ date: string; weight_kg: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' }).catch(() => null);
+  const prefs = await loadPrefs(userId).catch(() => null);
+  const program = ((forms.intake?.program as { day: number; startMin: number }[] | undefined) ?? []).filter((x) => x.day === weekday(today)).map((x) => x.startMin).sort((a, b) => a - b);
+  const age = user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null;
+  const mealsToday = nutritionDay({
+    date: today,
+    athlete: { sex: user.sex ?? null, age, heightCm: user.height_cm ?? null, weightKg: bodyRow?.weight_kg != null ? Number(bodyRow.weight_kg) : null, weightDate: bodyRow?.date ?? null },
+    goal: user.goal ?? null,
+    sessions: planRes.workouts.filter((w) => w.date === today && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna').map((w, i) => ({ sport: w.sport, type: w.type, minutes: w.plannedMinutes, key: w.key, startMin: program[i] ?? program[0] ?? null })),
+    prefs: { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) },
+    blockers: { pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da', minor: age != null && age < 18 },
+  });
   const input: CollectorInput = {
+    mealsToday,
     others,
     today,
     event,

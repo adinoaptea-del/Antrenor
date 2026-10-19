@@ -25,6 +25,7 @@ Surse: „AIRON — Corecturi pentru antrenamente” v1.0 și „AIRON — Audit
 18. Ședința nefăcută/parțială e un eveniment cu motiv și oră (workout_outcomes), separat de anulată și de „fără date”; motivul schimbă progresia (timp = neutru; oboseală/durere/boală = netolerat). Simulatorul offline: `npx tsx scripts/simulate-live.ts`.
 19. Siguranța: semnalul declarat are prioritate peste scoruri pe toate ecranele (aceeași acțiune: safety.ts stopAction); simptomul cardiac rămâne restricție (doar ușor) până la evaluarea declarată de sportiv.
 20. Forța: minimum două serii de lucru pe exercițiu, în orice bloc și program (MIN_WORK_SETS), și cel mult 10 serii pe același mușchi într-o ședință (testat); bărbații: Push / Pull / Picioare cu exerciții care se schimbă; explicații pe înțeles, fără jargon.
+21. Nutriția (ghidul „AIRON Nutriționist sportiv” v1.0): codul calculează ținta, porțiile, costul și totalurile (src/nutrition); AI-ul doar explică din nutritie_azi. Preț lipsă = cost incomplet, nu zero; alimentarea din efort se numără o singură dată; fără deficit în zile lungi/grele, boală, sarcină, minori, oboseală repetată; varietatea testată pe 180 de zile.
 16. Raportare: pentru fiecare constatare — confirmat/neconfirmat, fișier și funcție, modificare, test, rezultat, exemple înainte/după și limite rămase. Nu declara „tot rezolvat” sau „personalizare completă” fără teste.
 
 ## Securitate (neschimbat)

@@ -162,6 +162,19 @@ export interface Packet {
   zone: CollectorInput['zones'];
   corp: { greutate_azi: number | null; greutate_media7: number | null; /** Indicele de masă corporală din media greutății pe 7 zile și înălțime (calculat). */ imc: number | null; cantariri_7z: number; grasime_pct: number | null; data_masurare: string | null };
   nutritie_ieri: { kcal: number | null; carbohidrati_g: number | null; proteine_g: number | null; apa_l: number | null } | null;
+  /** Ținta și mesele de azi, calculate în cod. Nutriționistul alege și explică doar din ele; nu inventează cifre. */
+  nutritie_azi: {
+    personalizat: boolean;
+    lipseste: string[];
+    tinta_kcal: [number, number] | null;
+    proteine_g: number | null;
+    tip_zi: string;
+    obiectiv: string;
+    mese: { masa: string; reteta_id: string; nume: string; kcal: number; proteine_g: number; de_ce: string | null }[];
+    efort: { sedinta: string; carbohidrati_g: number; interval_g_ora: [number, number] }[];
+    cost: string;
+    avertizari: string[];
+  } | null;
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
   /** Restricția activă din cod (febră, simptom cardiac, boală, durere în ultimele 2 zile); null = niciuna. */
   restrictie_activa: { verdict: 'stop' | 'rosu' | 'galben'; motiv: string } | null;
@@ -824,6 +837,20 @@ export function buildPacket(input: CollectorInput): Packet {
       grasime_pct: lastWeight?.bodyFatPct ?? null,
       data_masurare: lastWeight?.date ?? null,
     },
+    nutritie_azi: input.mealsToday
+      ? {
+          personalizat: input.mealsToday.personalized,
+          lipseste: input.mealsToday.missing,
+          tinta_kcal: input.mealsToday.energy ? [Math.round(input.mealsToday.energy.low), Math.round(input.mealsToday.energy.high)] : null,
+          proteine_g: input.mealsToday.protein ? Math.round(input.mealsToday.protein.target) : null,
+          tip_zi: input.mealsToday.dayType,
+          obiectiv: input.mealsToday.goalNote,
+          mese: input.mealsToday.meals.map((m) => ({ masa: m.label, reteta_id: m.recipe.id, nume: m.recipe.name, kcal: Math.round(m.kcal), proteine_g: Math.round(m.protein), de_ce: m.why })),
+          efort: input.mealsToday.fuel.map((f) => ({ sedinta: f.sessionLabel, carbohidrati_g: f.plannedG, interval_g_ora: f.carbsPerHour })),
+          cost: input.mealsToday.totals.costComplete ? `~${input.mealsToday.totals.costKnown.toFixed(2)} RON` : 'incomplet (lipsesc prețuri)',
+          avertizari: input.mealsToday.warnings,
+        }
+      : null,
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,
     eficienta_aeroba: aerobicEfficiency(acts, today),
     acoperire_azi: aziCover.extra ? aziCover.coverage : null,

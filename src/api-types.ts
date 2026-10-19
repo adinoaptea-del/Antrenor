@@ -167,7 +167,7 @@ export interface Me {
   /** Starea fiecărei surse de date: ultima citire și ultima zi cu date (lipsa datelor trebuie să se vadă). */
   sources?: MeSource[];
   /** Plecări anunțate și întâlniri fixe. */
-  prefs?: { plecari: { dela: string; panala: string; ce: 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic' }[]; fixe: { zi: number; sport: 'inot' | 'bicicleta' | 'alergare'; tip: 'lung' | 'calitate' | 'usor'; eticheta?: string }[]; mediuInot?: 'bazin' | 'ape' };
+  prefs?: { plecari: { dela: string; panala: string; ce: 'fara_bazin' | 'fara_bicicleta' | 'doar_alergare' | 'nimic' }[]; fixe: { zi: number; sport: 'inot' | 'bicicleta' | 'alergare'; tip: 'lung' | 'calitate' | 'usor'; eticheta?: string }[]; mediuInot?: 'bazin' | 'ape'; nutritie?: import('./nutrition/engine.js').NutritionPrefs };
 }
 
 export interface MeSource {

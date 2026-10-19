@@ -6,6 +6,7 @@ import { Home } from './ui/Home';
 import { Train } from './ui/Train';
 import { Stats } from './ui/Stats';
 import { Calendar } from './ui/Calendar';
+import { Meals } from './ui/Meals';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento } from './ui/Memento';
@@ -27,7 +28,7 @@ import { SPORT_LABEL, dayLevel, thisWeekDates } from './data/model';
 
 // Trei taburi jos: Azi (bula cu ședințele zilei; Starea de azi și Obiectivul se deschid din ea), Plan, Coach.
 // Profilul se deschide din avatar; formularele și ecranele secundare nu marchează niciun tab.
-type Screen = 'progres' | 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
+type Screen = 'mese' | 'progres' | 'antrenament' | 'acasa' | 'recuperare' | 'obiectiv' | 'calendar' | 'antrenor' | 'profil' | 'prieteni' | 'intake' | 'dimineata' | 'seara' | 'saptamanal' | 'analize' | 'teste' | 'corp' | 'insigne';
 type Tab = 'acasa' | 'plan' | 'coach';
 const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; screens: Screen[] }[] = [
   { id: 'acasa', label: 'Azi', icon: 'home', go: 'acasa', screens: ['acasa', 'recuperare', 'obiectiv', 'insigne'] },
@@ -37,7 +38,7 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icons; go: Screen; scre
 const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))?.id ?? null;
 // O singură pagină principală (Azi); restul se deschid din butoanele de sub bulă și au „înapoi”.
 const MAIN: { id: Screen }[] = [{ id: 'acasa' }];
-const ALL: Screen[] = ['progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
+const ALL: Screen[] = ['mese', 'progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
 
 function readScreen(): Screen {
@@ -344,6 +345,13 @@ function Shell() {
             </>
           )}
           {screen === 'antrenor' && <Coach onBack={back} onOpen={go} />}
+          {screen === 'mese' && (
+            <>
+              <BackHeader title="Mese recomandate" onBack={() => go('acasa')} />
+              <PageTitle title="" sub={planSub(me.today)} />
+              <Meals onOpen={go} />
+            </>
+          )}
           {screen === 'profil' && <Profile onBack={back} onOpen={go} ambient={ambient} onAmbient={setAmbient} />}
           {screen === 'insigne' && <BadgesScreen onBack={() => go('obiectiv')} onOpen={go} />}
           {screen === 'prieteni' && me.admin && <Admin onBack={() => go('profil')} />}

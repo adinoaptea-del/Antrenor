@@ -135,6 +135,8 @@ export interface CollectorInput {
   /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */
   others?: OtherActivity[];
   nutrition?: NutritionDay[];
+  /** Mesele de azi calculate de motorul nutriționistului (src/nutrition): AI-ul le explică, nu le recalculează. */
+  mealsToday?: import('../nutrition/engine.js').NutritionDay | null;
   load?: LoadInput | null;
   aviz: { cardiolog: 'da' | 'nu' | string; intensitate_permisa: IntensityAllowed };
   /** Prognoza pentru orașul din profil (Open-Meteo). null fără oraș. */

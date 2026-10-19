@@ -27,6 +27,7 @@ import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
 import { isGoal } from '../../src/calendar/phases.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
+import { RECIPE } from '../../src/nutrition/recipes.js';
 
 /**
  * POST /api/forms/intrare   → salvează chestionarul, programul, avizul, consimțământul; generează planul.
@@ -398,6 +399,34 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const program = (intakeRow?.answers as { program?: { day: number }[] } | undefined)?.program ?? [];
       const outside = fixe.filter((f) => !program.some((b) => b.day === f.zi)).map((f) => f.zi);
       json(res, 200, { ok: true, plan, inAfaraProgramului: outside });
+      return;
+    }
+    if (kind === 'nutritie') {
+      // Preferințele de mese: { diet, exclude, allergiesConfirmed, budget, meals } sau o alegere „Schimbă”:
+      // { alegere: { date, slot, recipeId } } (recipeId null = revine la propunere). Alergiile nu se relaxează aici.
+      const prefs = await loadPrefs(u.id);
+      const cur = prefs.nutritie!;
+      if (body.alegere) {
+        const a = body.alegere as { date?: string; slot?: string; recipeId?: string | null };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.date)) || !['mic_dejun', 'pranz', 'cina', 'gustare'].includes(String(a.slot))) throw new HttpError(400, 'alegere greșită');
+        if (a.recipeId != null && !RECIPE[String(a.recipeId)]) throw new HttpError(400, 'rețetă necunoscută');
+        const choices = Object.fromEntries(Object.entries(cur.choices ?? {}).filter(([d]) => d >= addDays(today, -28)));
+        const day = { ...(choices[String(a.date)] ?? {}) } as Record<string, string>;
+        if (a.recipeId == null) delete day[String(a.slot)];
+        else day[String(a.slot)] = String(a.recipeId);
+        choices[String(a.date)] = day;
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, choices } });
+        json(res, 200, { ok: true });
+        return;
+      }
+      const diet = ['omnivor', 'vegetarian', 'vegan'].includes(String(body.diet)) ? (String(body.diet) as 'omnivor') : cur.diet;
+      const allowed = ['lapte', 'ou', 'gluten', 'peste', 'nuci', 'arahide', 'soia'];
+      const exclude = Array.isArray(body.exclude) ? (body.exclude as unknown[]).map(String).filter((x) => allowed.includes(x)) : cur.exclude;
+      const budget = body.budget == null || body.budget === '' ? null : Number(body.budget);
+      if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, 'bugetul: între 20 și 150 RON pe zi');
+      const meals = Number(body.meals) === 3 ? 3 : 4;
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals } });
+      json(res, 200, { ok: true });
       return;
     }
     if (kind === 'inot-mediu') {
