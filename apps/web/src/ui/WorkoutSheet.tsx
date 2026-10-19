@@ -146,22 +146,32 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               <div className="sheet-k">Ce faci</div>
               <ol className="sheet-steps">
                 <li>
-                  <b>Încălzire</b> 5–8 min de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără).
+                  <b>Încălzire · {rx.warmup.min} min</b> {rx.warmup.text}.
                 </li>
                 <li>
-                  <b>Exercițiile</b> în ordinea de mai jos. La fiecare serie te oprești când mai aveai încă {rx.items[0]?.rir ?? '2–3'} repetări bune în tine; nu mergi până nu mai poți.
+                  <b>Exercițiile · {rx.items.length}</b> în ordinea de mai jos, câte {Math.min(...rx.items.map((r) => r.sets)) === Math.max(...rx.items.map((r) => r.sets)) ? Math.min(...rx.items.map((r) => r.sets)) : `${Math.min(...rx.items.map((r) => r.sets))}–${Math.max(...rx.items.map((r) => r.sets))}`} serii. La fiecare serie te oprești când mai aveai încă {rx.items[0]?.rir ?? '2–3'} repetări bune în tine; nu mergi până nu mai poți.
                 </li>
+                {rx.finisher && (
+                  <li>
+                    <b>La final · {rx.finisher.min} min</b> {rx.finisher.text}.
+                  </li>
+                )}
                 <li>
-                  <b>La final</b> 3–5 min de revenire ușoară, opțional.
+                  <b>Total</b> {rx.minutes} min.
                 </li>
               </ol>
               <div className="str-list" style={{ marginTop: 10 }}>
-                {rx.items.map((r) => (
+                {rx.items.map((r, i) => (
                   <div key={r.ex.id + (r.completion ? '-c' : '')} className="str-row">
                     <div className="str-ex">
-                      <b>{r.ex.name}</b>
+                      {r.ss && rx.items[i - 1]?.ss !== r.ss && <span className="str-ss">Superserie {r.ss}: {rx.items.filter((x) => x.ss === r.ss).length} exerciții unul după altul, fără pauză între ele</span>}
+                      <b>
+                        {r.ss ? `${r.ss}${rx.items.filter((x, j) => x.ss === r.ss && j <= i).length}. ` : `${i + 1}. `}
+                        {r.ex.name}
+                      </b>
+                      <span className="str-scheme">{r.sets} serii × {r.reps}</span>
                       <span>
-                        {r.ex.purpose ?? r.ex.group} · pauză {fmtRest(r.rest)}
+                        {r.ex.purpose ?? r.ex.group} · {r.ss && rx.items[i + 1]?.ss === r.ss ? 'fără pauză, treci la următorul' : `pauză ${fmtRest(r.rest)}`}
                         {r.ex.unilateral ? ' · pe fiecare parte' : ''}
                         {r.optional ? ' · opțional' : ''}
                         {r.completion ? ' · în plus' : ''}
@@ -174,7 +184,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
                     </div>
                     <div className="str-sets">
                       <span className="str-set">
-                        {r.sets} × {r.reps}
+                        {r.sets} serii
                       </span>
                     </div>
                   </div>

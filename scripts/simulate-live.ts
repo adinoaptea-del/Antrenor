@@ -143,7 +143,10 @@ for (const { p, label } of matrix) {
 // Auditul F55: femeie 55, fitness acasă (gantere + bandă), 3 zile dorite, 35 min, începătoare. Planul complet: nimic de
 // sală în nicio ședință din 26 de săptămâni, aceeași durată în calendar și în prescripție, apoi febră → aceeași regulă.
 {
-  const fin = { ...input({ goal: 'fit-masa', sex: 'f', age: 55, level: 'debutant', intens: 'toate' }), freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 19 * 60, endMin: 19 * 60 + 35 })), fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 35, acces: 'acasa', miscare: 'sedentara' }) };
+  // Regula proprietarului (19.10.2026): nicio ședință sub 45 de minute. Ferestre de 35 min = plan refuzat, cu motiv.
+  const short = generatePlan({ ...input({ goal: 'fit-masa', sex: 'f', age: 55, level: 'debutant', intens: 'toate' }), freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 19 * 60, endMin: 19 * 60 + 35 })), fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 45, acces: 'acasa', miscare: 'sedentara' }) });
+  add('F55 ferestre de 35 min', 'fără plan sub 45 de minute, cu motiv', short.ok ? 'plan generat' : short.reason, !short.ok && /45 de minute/.test(short.reason));
+  const fin = { ...input({ goal: 'fit-masa', sex: 'f', age: 55, level: 'debutant', intens: 'toate' }), freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 19 * 60, endMin: 19 * 60 + 50 })), fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 45, acces: 'acasa', miscare: 'sedentara' }) };
   const r = generatePlan(fin);
   if (!r.ok) add('F55 fitness acasă', 'plan eligibil', r.reason, false);
   else {
@@ -154,7 +157,7 @@ for (const { p, label } of matrix) {
     add('F55 fitness acasă: o singură durată', 'durata din calendar = durata prescripției, la fiecare ședință', `nepotriviri: ${mismatch.length} din ${ws.length}`, mismatch.length === 0);
     const after = adapt(ws.filter((w) => w.date < '2026-11-10'), { kind: 'febra', date: '2026-10-26' }, { today: '2026-10-26', freeBlocks: [], recentKeyScores: [] }).plan.filter((w) => w.status !== 'anulat_sistem' && w.note?.includes('febr'));
     const bad = after.filter((w) => prescribe(parseStrength(w.structure)!, w.plannedMinutes).minutes !== w.plannedMinutes);
-    add('F55 febră: ședințele de după', 'durată redusă, aceeași în calendar și detaliu; mesaj condiționat', `${after.length} ședințe reduse; nepotriviri: ${bad.length}; nota: „${after[0]?.note ?? '—'}”`, after.length > 0 && bad.length === 0 && /doar dacă/.test(after[0]!.note ?? ''));
+    add('F55 febră: ședințele de după', 'forță ușoară (greutăți mai mici, ≥ 45 min, 3 serii), aceeași durată în calendar și detaliu; mesaj condiționat', `${after.length} ședințe ușurate; nepotriviri: ${bad.length}; nota: „${after[0]?.note ?? '—'}”`, after.length > 0 && bad.length === 0 && after.every((w) => w.plannedMinutes >= 45 && parseStrength(w.structure)!.recovery) && /doar dacă/.test(after[0]!.note ?? ''));
   }
 }
 

@@ -201,11 +201,11 @@ describe('audit 14 · o „regulă” nu poate acoperi o măsurătoare', () => {
 });
 
 describe('audit 21 · forța în faza de învățare', () => {
-  it('acomodarea: 1–2 seturi, 3–4 repetări în rezervă, fără completări, pe toate ședințele', () => {
+  it('acomodarea: 3 serii (regula proprietarului: 3–4 mereu), 3–4 repetări în rezervă, fără completări, pe toate ședințele', () => {
     for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[]) {
       const p = prescribeFull({ session: id, block: 'acomodare', week: 1, len: 4 });
       for (const r of p.items) {
-        assert.ok(r.sets >= 1 && r.sets <= 2, `${id} ${r.ex.name}`);
+        assert.equal(r.sets, 3, `${id} ${r.ex.name}`);
         assert.equal(r.rir, '3–4');
         assert.ok(!r.completion);
       }

@@ -4,7 +4,7 @@
 import { fitStructure, resizeWorkout, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
 import { applyProgression, type Execution } from './progression.js';
-import { SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
+import { MIN_STRENGTH_MINUTES, SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -70,7 +70,8 @@ export interface AdaptResult {
 const CHANGE_MIN = 10;
 // Formulat condiționat (auditul F55, F03): recuperarea nu e presupusă; ziua o decide chestionarul de dimineață.
 const FEVER_HALF_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: volum −50%, fără cheie; altfel pauză și reevaluare';
-const isFeverHalf = (n: string | null | undefined) => n === FEVER_HALF_NOTE || n === 'prima săptămână după febră: volum −50%, fără cheie';
+const FEVER_STRENGTH_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: forță ușoară — aceleași 3 serii, greutăți mai mici; altfel pauză și reevaluare';
+const isFeverHalf = (n: string | null | undefined) => n === FEVER_HALF_NOTE || n === FEVER_STRENGTH_NOTE || n === 'prima săptămână după febră: volum −50%, fără cheie';
 
 /**
  * Cheia stabilă a unui eveniment. Serverul o salvează înainte să aplice evenimentul (unică pe sportiv):
@@ -338,7 +339,18 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
         x.intervals = undefined;
       }
       x.targetZones = x.sport === 'forta' ? [] : [1, 2];
-      // Durata și conținutul din aceleași cifre (forța: exercițiile care încap; restul: structura rescrisă).
+      const sp = x.sport === 'forta' ? parseStrength(x.structure) : null;
+      if (sp) {
+        // Forța nu scade sub 45 de minute și sub 3 serii (regula proprietarului): după febră devine ședință ușoară —
+        // greutăți mai mici, mai multe repetări în rezervă, durata minimă.
+        const light = { ...sp, recovery: true };
+        x.structure = strengthStructure(light);
+        x.plannedMinutes = prescribe(light, MIN_STRENGTH_MINUTES).minutes;
+        x.note = FEVER_STRENGTH_NOTE;
+        changes.push(`${x.id}: forță ușoară după febră (greutăți mai mici, ${x.plannedMinutes} min)`);
+        continue;
+      }
+      // Durata și conținutul din aceleași cifre (structura rescrisă).
       Object.assign(x, resizeWorkout(x, Math.max(15, Math.round((x.plannedMinutes * 0.5) / 5) * 5)));
       x.note = FEVER_HALF_NOTE;
       changes.push(`${x.id}: −50%, fără intensitate (după febră)`);
@@ -559,10 +571,11 @@ function applyMissedStrength(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { k
     const sp = specs[i];
     if (!sp) return;
     const longest = ctx.freeBlocks.filter((b) => b.day === weekday(x.date)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
-    const avail = Math.max(30, Math.min(longest || x.plannedMinutes, 75));
+    // Ședința mutată încape în timpul slotului ei din plan (nu crește), dar nu sub 45 de minute.
+    const avail = Math.max(MIN_STRENGTH_MINUTES, Math.min(longest || x.plannedMinutes, x.plannedMinutes, 75));
     const rx = prescribe(sp, avail);
     x.structure = strengthStructure(sp);
-    x.plannedMinutes = Math.min(avail, rx.minutes);
+    x.plannedMinutes = rx.minutes;
     x.note = `rotația continuă după ședința ratată din ${missed.date}`;
   });
   const dropped = specs[specs.length - 1];

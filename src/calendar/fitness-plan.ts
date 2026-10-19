@@ -5,12 +5,13 @@
 import type { FreeBlock, PlannedWorkout } from '../types.js';
 import { addDays, weekStart } from '../util/dates.js';
 import { fitnessPlanWeeks, type FitnessProfile } from '../strength/fitness.js';
-import { prescribe, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
+import { FitnessRotator, MIN_STRENGTH_MINUTES, newSplitState, nextSplit, prescribe, strengthStructure, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import type { GenerateResult, WeekPlan } from './generate.js';
 
 /** Zilele preferate din program, când ferestrele permit: 2 → luni/joi, 3 → luni/miercuri/vineri, 4 → luni/marți/joi/sâmbătă. */
 const PATTERN: Record<number, number[]> = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 5] };
-const MIN_SESSION = 30;
+// Nicio ședință sub 45 de minute cu încălzirea (regula proprietarului, 19.10.2026).
+const MIN_SESSION = MIN_STRENGTH_MINUTES;
 
 /** Cea mai lungă fereastră liberă din fiecare zi (minute). */
 function longestByDay(blocks: FreeBlock[]): Map<number, number> {
@@ -57,7 +58,11 @@ export function pickFitnessDays(blocks: FreeBlock[], n: number, minutes: number)
   return best;
 }
 
-export function generateFitnessPlan(input: { startDate: string; raceDate: string; freeBlocks: FreeBlock[]; fitness: FitnessProfile }): GenerateResult {
+/**
+ * Femeile: picioare și partea de sus alternativ (niciodată în aceeași ședință), prin toate cele cinci ședințe
+ * (FitnessRotator). Bărbații: Push → Pull → Picioare, cu exerciții care se schimbă. Varianta amplă A–D rămâne pe tiparul ei.
+ */
+export function generateFitnessPlan(input: { startDate: string; raceDate: string; freeBlocks: FreeBlock[]; fitness: FitnessProfile; male?: boolean }): GenerateResult {
   const f = input.fitness;
   const first = weekStart(input.startDate);
   // Aceeași structură ca în calendar și în explicații (fitnessPlanWeeks), nu fazele de anduranță.
@@ -66,25 +71,32 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
   const free = longestByDay(input.freeBlocks);
   const daysAll = pickFitnessDays(input.freeBlocks, maxDays, f.minutes);
   if (!daysAll.length) {
-    return { ok: false, reason: `Nu ai nicio fereastră liberă de cel puțin ${MIN_SESSION} de minute. Bifează în program zilele în care poți ajunge la sală.`, budgetHours: 0, minimumHours: 1, options: ['adaugă în program ferestre de 45–60 de minute în 2–3 zile'] };
+    return { ok: false, reason: `Nu ai nicio fereastră liberă de cel puțin ${MIN_SESSION} de minute. Bifează în program zilele în care poți ajunge la sală.`, budgetHours: 0, minimumHours: 1, options: ['adaugă în program ferestre de 60 de minute (minimum 45) în 2–3 zile'] };
   }
   const out: WeekPlan[] = [];
+  const rot = new FitnessRotator();
+  const split = newSplitState();
   for (const fw of weeks) {
     const ws = addDays(first, (fw.week - 1) * 7);
     // Zilele săptămânii: din zilele alese pentru frecvența maximă, cele mai depărtate pentru frecvența de acum.
     const days = fw.days >= daysAll.length ? daysAll : pickFitnessDays(input.freeBlocks.filter((b) => daysAll.includes(b.day)), fw.days, f.minutes);
     const notes: string[] = [];
     if (days.length < fw.days) notes.push(`programul are ${fw.days} zile în săptămâna asta, dar ai ferestre libere doar în ${days.length}`);
+    const order: { session: SessionId; variant?: number }[] = input.male
+      ? days.map(() => nextSplit(split, false, false))
+      : fw.variant === 'ampla'
+        ? days.map((_, i) => ({ session: fw.rotation[i % fw.rotation.length]! }))
+        : rot.week(days.length).map((session) => ({ session }));
     const workouts: PlannedWorkout[] = days.map((d, i) => {
-      const spec: StrengthSpec = { session: fw.rotation[i % fw.rotation.length]!, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}) };
-      const avail = Math.max(MIN_SESSION, Math.min(f.minutes, free.get(d) ?? f.minutes));
+      const spec: StrengthSpec = { session: order[i]!.session, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(order[i]!.variant != null ? { variant: order[i]!.variant } : {}), ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}) };
+      const avail = Math.max(MIN_SESSION, Math.min(Math.max(f.minutes, MIN_SESSION), free.get(d) ?? f.minutes));
       const rx = prescribe(spec, avail);
       return {
         id: `${ws}-${i + 1}`,
         date: addDays(ws, d),
         sport: 'forta',
         type: 'forta',
-        plannedMinutes: Math.min(avail, rx.minutes),
+        plannedMinutes: rx.minutes,
         targetZones: [],
         key: false,
         structure: strengthStructure(spec),

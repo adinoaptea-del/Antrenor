@@ -23,10 +23,21 @@ export interface StrengthLogEntry {
 
 /** „8–12” → [8, 12]; „10” → [10, 10]; „30–45 s” → null (timp, nu repetări). */
 export function repRange(reps: string): [number, number] | null {
-  if (/s\b|sec|min/.test(reps)) return null;
+  // Doar o durată („30–45 s”, „2 min”) nu are repetări; „3 s ținut sus” e un tempo, nu o durată.
+  if (/^\s*\d+\s*(?:[–-]\s*\d+\s*)?(s|sec|min)\b/.test(reps)) return null;
   const m = /(\d+)(?:\s*[–-]\s*(\d+))?/.exec(reps);
   if (!m) return null;
   return [Number(m[1]), Number(m[2] ?? m[1])];
+}
+
+/** Repetările-țintă pe fiecare serie: la piramidă (20 / 15 / 12 / 8) ținta seriei; altfel capătul de jos, la toate. */
+export function repTargets(reps: string, sets: number): number[] {
+  if (/\d+\s*\/\s*\d+\s*\/\s*\d+/.test(reps)) {
+    const t = (reps.split('—')[0] ?? reps).match(/\d+/g)!.map(Number);
+    return Array.from({ length: sets }, (_, i) => t[Math.min(i, t.length - 1)]!);
+  }
+  const r = repRange(reps);
+  return r ? Array(sets).fill(r[0]) : [];
 }
 
 /** Rezerva minimă cerută: „2–3” → 2, „3–4” → 3. */
@@ -64,6 +75,16 @@ export function suggest(exercise: string, reps: string, rir: string, history: St
   const kg = topKg(last);
   const lastText = `${last.sets.length} × ${last.sets.map((s) => s.reps ?? '?').join('/')}${kg >= 0 ? ` la ${fmtKg(kg)}` : ''}${last.rir != null ? `, mai puteai ${last.rir}` : ''}`;
   if (opts.pain) return { kind: 'stop-durere', last: lastText, today: 'Ai raportat durere recent: fără creștere azi. Aceeași greutate sau mai puțin, în amplitudinea fără durere; dacă exercițiul doare, îl oprești.' };
+  // Piramida (20 / 15 / 12 / 8 cu greutatea crescută la fiecare serie): fiecare serie are ținta ei; nu e un interval.
+  if (/\d+\s*\/\s*\d+\s*\/\s*\d+/.test(reps)) {
+    const targets = (reps.split('—')[0] ?? reps).match(/\d+/g)!.map(Number);
+    const hit = last.sets.length >= targets.length && targets.every((t, i) => (last.sets[i]?.reps ?? 0) >= t);
+    if (kg < 0) return { kind: 'fara-kg', last: lastText, today: `Piramidă: la fiecare serie greutatea crește (${targets.join(' / ')} repetări). Notează greutatea de la fiecare serie, ca data viitoare să ai de unde porni.` };
+    if (opts.maintain) return { kind: 'mentine', last: lastText, today: 'Menținere: aceleași greutăți pe serii ca data trecută; nu e nevoie să crești.' };
+    return hit
+      ? { kind: 'creste', last: lastText, today: `Ai făcut toate seriile piramidei (${targets.join(' / ')}): data asta pornești cu greutatea imediat următoare și crești la fel de la o serie la alta.` }
+      : { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): aceleași greutăți pe serii ca data trecută până ies toate repetările; abia apoi crești.` };
+  }
   if (!range) return { kind: 'ramai', last: lastText, today: 'Aceeași durată; crești doar dacă ai ținut-o ușor și corect.' };
   const [lo, hi] = range;
   if (kg < 0) return { kind: 'fara-kg', last: lastText, today: `Greutatea nu e notată: alegi una cu care faci ${lo}–${hi} repetări și mai puteai ${rir}; scrie-o după ședință, ca data viitoare să ai de unde porni.` };

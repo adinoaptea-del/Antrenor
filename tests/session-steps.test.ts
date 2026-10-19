@@ -38,13 +38,13 @@ test('cu CSS: repetări de 100 m, iar calitatea e la ritmul pragului', () => {
 });
 
 import { prescribe } from '../src/strength/ppl.js';
-test('tot corpul: picioarele mari primele; la timp scurt rămâne câte o mișcare de picioare, împins și tras', () => {
-  for (const s of ['fullA', 'fullB'] as const) {
-    for (const m of [30, 45, 60]) {
-      const r = prescribe({ session: s, block: 'baza', week: 2, len: 4 } as never, m);
-      const pats = new Set(r.items.map((i) => i.ex.id.split('-')[0]));
-      assert.ok(pats.has('legs') && pats.has('push') && pats.has('pull'), `${s} ${m}: ${[...pats].join(',')}`);
-      assert.equal(r.items[0]!.ex.region, 'legs');
-    }
+test('două ședințe pe săptămână: picioarele și partea de sus separat, niciodată în aceeași ședință; cel puțin 45 min', () => {
+  for (const m of [30, 45, 60]) {
+    const a = prescribe({ session: 'fullA', block: 'baza', week: 2, len: 4 } as never, m);
+    const b = prescribe({ session: 'fullB', block: 'baza', week: 2, len: 4 } as never, m);
+    assert.ok(a.items.every((i) => i.ex.region !== 'upper') && a.items[0]!.ex.region === 'legs', `fullA ${m}`);
+    const pats = new Set(b.items.map((i) => i.ex.id.split('-')[0]));
+    assert.ok(b.items.every((i) => i.ex.region !== 'legs') && pats.has('push') && pats.has('pull'), `fullB ${m}: ${[...pats].join(',')}`);
+    assert.ok(a.minutes >= 45 && b.minutes >= 45);
   }
 });

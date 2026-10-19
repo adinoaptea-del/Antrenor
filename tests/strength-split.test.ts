@@ -45,7 +45,7 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     }
   });
 
-  it('2 ședințe pe săptămână la bărbat: Push → Pull → Picioare în continuare, cu variantă crescătoare; femeia rămâne la tot corpul', () => {
+  it('2 ședințe pe săptămână la bărbat: Push → Pull → Picioare în continuare, cu variantă crescătoare; femeia: picioare / partea de sus alternativ', () => {
     const mk = () => [week('2026-11-02', [w('2026-11-03', 'forta'), w('2026-11-05', 'forta')]), week('2026-11-09', [w('2026-11-10', 'forta'), w('2026-11-12', 'forta')]), week('2026-11-16', [w('2026-11-17', 'forta'), w('2026-11-19', 'forta')])];
     const men = mk();
     assignStrengthDays(men, undefined, 'ppl');
@@ -53,7 +53,8 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     assert.deepEqual(s.map((x) => `${x.session}${x.variant}`), ['push0', 'pull0', 'legs0', 'push1', 'pull1', 'legs1']);
     const women = mk();
     assignStrengthDays(women);
-    assert.deepEqual(women.flatMap((x) => x.workouts.map((y) => y.structure!.split(' · ')[0])), ['Tot corpul A', 'Tot corpul B', 'Tot corpul A', 'Tot corpul B', 'Tot corpul A', 'Tot corpul B']);
+    // Femeia: picioarele și partea de sus alternativ, niciodată în aceeași ședință.
+    assert.deepEqual(women.flatMap((x) => x.workouts.map((y) => y.structure!.split(' · ')[0])), ['Picioare și trunchi', 'Partea de sus și trunchi', 'Picioare și trunchi', 'Partea de sus și trunchi', 'Picioare și trunchi', 'Partea de sus și trunchi']);
   });
 
   it('Picioarele nu cad în ajunul ședinței-cheie: trec la următoarea zi de sală', () => {

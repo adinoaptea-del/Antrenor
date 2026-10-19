@@ -51,33 +51,33 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
     assert.deepEqual(s12.items.map((r) => r.sets), s26.items.map((r) => r.sets));
   });
 
-  it('doza pe blocuri: acomodare 1–2 seturi la 3–4 RIR; forță 5–8 la prima mișcare; înainte de cursă jumătate din seturi', () => {
+  it('doza pe blocuri: acomodare 3 serii la 3–4 RIR; forță 5–8 la prima mișcare, 4 serii; înainte de cursă tot 3 serii, mai ușor', () => {
     const a = prescribeFull({ session: 'legsA', block: 'acomodare', week: 1, len: 4 });
-    assert.ok(a.items.every((r) => r.sets <= 2 && r.rir === '3–4'));
+    assert.ok(a.items.every((r) => r.sets === 3 && r.rir === '3–4'));
     const f = prescribeFull({ session: 'pushA', block: 'forta', week: 1, len: 4 });
     assert.equal(f.items[0]!.reps, '5–8');
-    assert.ok(f.items.some((r) => r.completion), 'completările intră în volum');
+    assert.equal(f.items[0]!.sets, 4);
+    assert.ok(!f.items.some((r) => r.completion), 'fără completări: o zi de împins nu primește picioare');
+    assert.ok(f.items.every((r) => r.ex.region !== 'legs'));
     const p = prescribeFull({ session: 'pullA', block: 'precursa', week: 1, len: 2 });
-    assert.ok(p.items.every((r) => !r.completion && r.rir === '3–4'));
-    assert.equal(p.items[0]!.sets, 2);
+    assert.ok(p.items.every((r) => !r.completion && r.rir === '3–4' && r.sets === 3));
   });
 
-  it('Legs din bază: două seturi din prima mișcare devin fandare / treaptă, fără volum în plus', () => {
+  it('Legs din bază: prima mișcare cu 4 serii, restul 3–4; doar picioare și trunchi', () => {
     const base = prescribeFull({ session: 'legsA', block: 'baza', week: 2, len: 4 });
     assert.equal(base.items[0]!.ex.id, 'legs-press');
-    assert.equal(base.items[0]!.sets, 2, 'minimum două serii de lucru');
-    assert.equal(base.items[1]!.ex.id, 'legs-split-squat');
-    assert.equal(base.items[1]!.sets, 2);
+    assert.equal(base.items[0]!.sets, 4);
+    assert.ok(base.items.every((r) => r.sets >= 3 && r.sets <= 4 && r.ex.region !== 'upper'));
   });
 
-  it('încape în timpul dat: întâi cad completările și accesoriile, pauzele principale rămân 2–3 min', () => {
+  it('încape în timpul dat, dar nu sub 45 de minute: întâi cad accesoriile, pauzele principale rămân 2–3 min, serii minimum 3', () => {
     const full = prescribeFull({ session: 'pushA', block: 'baza', week: 2, len: 4 });
-    assert.ok(full.minutes >= 40, `complet: ${full.minutes}`);
+    assert.ok(full.minutes >= 45, `complet: ${full.minutes}`);
     const short = prescribe({ session: 'pushA', block: 'baza', week: 2, len: 4 }, 30);
-    assert.ok(estimateMinutes(short.items) <= 30);
-    assert.ok(short.items.every((r) => !r.completion));
+    assert.ok(estimateMinutes(short.items) <= 45);
+    assert.equal(short.minutes, 45);
     assert.equal(short.items[0]!.ex.id, 'push-db-bench');
-    assert.equal(short.items[0]!.sets, 3);
+    assert.ok(short.items.every((r) => r.sets >= 3));
     assert.equal(short.items[0]!.rest, 150);
     assert.ok(short.trimmed.length > 0);
     // Cu timp mai mult nu se adaugă volum.
@@ -93,13 +93,13 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
     assert.equal(parseStrength('Push 1 · programul complet'), null);
   });
 
-  it('2 ședințe pe săptămână → tot corpul A/B; 3 → PPL în ordine; Legs nu cade în ajunul ședinței-cheie', () => {
+  it('2 ședințe pe săptămână → picioare / partea de sus alternativ; 3 → PPL în ordine; Legs nu cade în ajunul ședinței-cheie', () => {
     const two = [
       { weekStart: '2026-11-02', phase: 'baza1' as const, recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: [w('2026-11-03', 'forta'), w('2026-11-05', 'forta')] },
       { weekStart: '2026-11-09', phase: 'baza1' as const, recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: [w('2026-11-10', 'forta'), w('2026-11-12', 'forta')] },
     ];
     assignStrengthDays(two);
-    assert.deepEqual(two.flatMap((x) => x.workouts.map((y) => y.structure!.split(' · ')[0])), ['Tot corpul A', 'Tot corpul B', 'Tot corpul A', 'Tot corpul B']);
+    assert.deepEqual(two.flatMap((x) => x.workouts.map((y) => y.structure!.split(' · ')[0])), ['Picioare și trunchi', 'Partea de sus și trunchi', 'Picioare și trunchi', 'Partea de sus și trunchi']);
     const three = [{ weekStart: '2026-11-02', phase: 'baza2' as const, recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: [w('2026-11-02', 'forta'), w('2026-11-03', 'forta'), w('2026-11-06', 'forta'), w('2026-11-07', 'lung', true)] }, { weekStart: '2026-11-09', phase: 'baza2' as const, recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: [w('2026-11-09', 'forta'), w('2026-11-11', 'forta'), w('2026-11-13', 'forta')] }];
     assignStrengthDays(three);
     const names = three.flatMap((x) => x.workouts.filter((y) => y.type === 'forta').map((y) => y.structure!.split(' · ')[0]));
@@ -121,27 +121,36 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
     }
   });
 
-  it('a treia ședință (PPL) apare în bază doar când programul total o permite', () => {
-    const blocks = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day as 0, startMin: 6 * 60, endMin: 8 * 60 }));
-    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-05-30', goal: '10k', freeBlocks: blocks, sportHours: 7, historyHoursPerWeek: [5, 5, 5], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 300, canDoDistance: true, longestRunKm: 12 } });
+  it('a treia ședință (PPL) apare doar când orele permit (ședințele de forță au acum cel puțin 45 min)', () => {
+    const blocks = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day as 0, startMin: 6 * 60, endMin: 9 * 60 }));
+    const r = generatePlan({ startDate: '2026-10-19', raceDate: '2027-08-30', goal: 'maraton', freeBlocks: blocks, sportHours: 10, historyHoursPerWeek: [8, 8, 8], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 300, canDoDistance: true, longestRunKm: 16 } });
     assert.ok(r.ok);
     if (!r.ok) return;
-    const base = r.weeks.filter((x) => x.phase === 'baza1' && !x.recovery);
-    assert.ok(base.some((x) => x.workouts.filter((y) => y.type === 'forta').length === 3));
     assert.ok(r.weeks.flatMap((x) => x.workouts).some((y) => /^Push A/.test(y.structure ?? '')));
+    assert.ok(r.weeks.every((x) => x.workouts.filter((y) => y.type === 'forta').every((y) => y.plannedMinutes >= 45)));
   });
 });
 
-describe('minimum două serii de lucru pe exercițiu, în orice bloc și orice ședință', () => {
-  it('nicio prescripție nu are o singură serie', () => {
+describe('3–4 serii de lucru pe exercițiu, în orice bloc și orice ședință; cel puțin 45 de minute', () => {
+  it('orice ședință, bloc, variantă, timp, descărcare, acasă: 3–4 serii, ≥ 45 min, fără picioare + partea de sus împreună', () => {
     const blocks: Block[] = ['acomodare', 'baza', 'forta', 'hipertrofie', 'integrare', 'consolidare', 'evaluare', 'mentinere', 'precursa', 'construire', 'progres', 'tranzitie'];
     for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[])
       for (const block of blocks)
         for (const recovery of [false, true])
-          for (const minutes of [30, 45, 60]) {
-            const p = prescribe({ session: id, block, week: 1, len: 4, recovery, legs: 'usor' }, minutes);
-            assert.ok(p.items.every((r) => r.sets >= 2), `${id} ${block} ${recovery} ${minutes}: ${p.items.map((r) => `${r.ex.id}×${r.sets}`).join(' ')}`);
-          }
+          for (const place of ['sala', 'acasa'] as const)
+            for (const variant of [0, 1, 2])
+              for (const minutes of [20, 30, 45, 60, 90]) {
+                const p = prescribe({ session: id, block, week: 1, len: 4, recovery, legs: 'usor', place, variant }, minutes);
+                const tag = `${id} ${block} ${recovery} ${place} v${variant} ${minutes}: ${p.items.map((r) => `${r.ex.id}×${r.sets}`).join(' ')}`;
+                assert.ok(p.items.length > 0 && p.items.every((r) => r.sets >= 3 && r.sets <= 4), tag);
+                assert.ok(p.minutes >= 45, tag);
+                assert.ok(!(p.items.some((r) => r.ex.region === 'legs') && p.items.some((r) => r.ex.region === 'upper')), `picioare + sus: ${tag}`);
+                assert.equal(p.warmup.min, 10);
+                // Durata = încălzire + exerciții + cardio de final (diferența de rotunjire sub 5 min intră în pauze).
+                const work = Math.ceil(estimateMinutes(p.items));
+                if (p.finisher) assert.equal(p.minutes, work + p.finisher.min, tag);
+                else assert.ok(p.minutes >= work && p.minutes - work < 5, tag);
+              }
   });
 });
 

@@ -31,14 +31,24 @@ test('începătoare cu 4 zile și prezență demonstrată: 2 zile în S1–4, 3 
   assert.equal(ws[11]!.evaluation, true);
 });
 
-test('cu două zile alese rămâne la F1/F2 tot programul', () => {
+test('cu două zile alese: picioare + partea de sus în fiecare săptămână, prin toate cele 5 ședințe, niciodată amestecate', () => {
   assert.equal(daysAt({ days: 2, beginner: false }, 20), 2);
   const r = plan({ goal: 'fit-slabire', days: 2, minutes: 60, beginner: true });
   assert.ok(r.ok);
   if (!r.ok) return;
   for (const w of r.weeks) assert.equal(w.workouts.length, 2);
   const names = new Set(r.weeks.flatMap((w) => w.workouts.map((x) => parseStrength(x.structure)!.session)));
-  assert.deepEqual([...names].sort(), ['f1', 'f2']);
+  assert.deepEqual([...names].sort(), ['l1', 'l2', 'l3', 'u1', 'u2']);
+  for (const w of r.weeks) {
+    const s = w.workouts.map((x) => parseStrength(x.structure)!.session);
+    assert.ok(s.filter((x) => x.startsWith('l')).length === 1 && s.filter((x) => x.startsWith('u')).length === 1, s.join());
+  }
+  for (const x of r.weeks.flatMap((w) => w.workouts)) {
+    const rx = prescribe(parseStrength(x.structure)!, x.plannedMinutes);
+    const regions = new Set(rx.items.map((i) => (i.ex.region === 'legs' ? 'legs' : i.ex.region === 'upper' ? 'upper' : 'other')));
+    assert.ok(!(regions.has('legs') && regions.has('upper')), `${x.structure}: picioare + partea de sus`);
+    assert.ok(x.plannedMinutes >= 45 && rx.items.every((i) => i.sets >= 3 && i.sets <= 4));
+  }
 });
 
 test('întreținere: acomodare, apoi menținere', () => {
@@ -47,22 +57,24 @@ test('întreținere: acomodare, apoi menținere', () => {
   assert.equal(ws[2]!.block, 'mentinere');
 });
 
-test('S1: minimum două serii pe exercițiu (nu una); totalurile pe ședință cu acest minim', () => {
-  const s1 = prescribeFull({ session: 'f1', block: 'acomodare', week: 1, len: 4 });
-  assert.ok(s1.items.every((r) => r.sets === 2));
-  const sets = (id: 'l1' | 'l2' | 'a3' | 'b3' | 'c3') => prescribeFull({ session: id, block: 'progres', week: 2, len: 4 }).items.reduce((n, r) => n + r.sets, 0);
-  assert.equal(sets('l1'), 12);
-  assert.equal(sets('l2'), 12);
-  assert.equal(sets('a3'), 12);
-  assert.equal(sets('b3'), 14);
-  assert.equal(sets('c3'), 14);
+test('S1: 3 serii pe exercițiu (acomodare); în progres 3–4, cel mult 10 pe mușchi; ședințele vechi F1/A3… dau ședința nouă', () => {
+  const s1 = prescribeFull({ session: 'l1', block: 'acomodare', week: 1, len: 4 });
+  assert.ok(s1.items.every((r) => r.sets === 3));
+  for (const id of ['l1', 'l2', 'l3', 'u1', 'u2'] as const) {
+    const p = prescribeFull({ session: id, block: 'progres', week: 2, len: 4 });
+    assert.ok(p.items.every((r) => r.sets >= 3 && r.sets <= 4), id);
+    assert.ok(p.minutes >= 45, id);
+  }
+  assert.equal(prescribeFull({ session: 'f1', block: 'progres', week: 2, len: 4 }).session.id, 'l1');
+  assert.equal(prescribeFull({ session: 'b3', block: 'progres', week: 2, len: 4 }).session.id, 'u1');
 });
 
-test('ședința încape în minutele avute: la 35 min rămân exercițiile principale', () => {
-  const rx = prescribe({ session: 'b3', block: 'progres', week: 2, len: 4 }, 35);
-  assert.ok(rx.minutes <= 35);
-  assert.ok(rx.items.every((r) => r.ex.role === 'main'));
-  assert.ok(rx.items.length >= 3);
+test('ședința are cel puțin 45 de minute: cu 35 min cerute rămâne la 45, cu exercițiile principale și cardio scurt la final', () => {
+  const rx = prescribe({ session: 'u1', block: 'progres', week: 2, len: 4 }, 35);
+  assert.equal(rx.minutes, 45);
+  assert.ok(rx.items.some((r) => r.ex.id === 'fit-lat'));
+  assert.ok(rx.items.length >= 3 && rx.items.every((r) => r.sets >= 3));
+  assert.equal(rx.warmup.min, 10);
 });
 
 test('zilele de sală: cât mai depărtate, din ferestrele libere', () => {

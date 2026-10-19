@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Prescription, Rx } from '@core/strength/ppl.js';
-import { minRir, nextSuggestion, parseRepsInput, repRange, type StrengthLogEntry } from '@core/strength/log.js';
+import { minRir, nextSuggestion, parseRepsInput, repRange, repTargets, type StrengthLogEntry } from '@core/strength/log.js';
 import { addDays } from '@core/util/dates.js';
 import type { Me } from '@core/api-types.js';
 import { useData, useMe } from '../data/store';
@@ -49,7 +49,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
       items.map((r) => {
         const prev = saved.find((x) => x.exercise === r.ex.id);
         const kg = prev ? Math.max(...prev.sets.map((s) => s.kg ?? -1)) : lastKg(log, r.ex.id) ?? -1;
-        return [r.ex.id, { kg: kg >= 0 ? String(kg) : '', reps: prev ? prev.sets.map((x) => x.reps ?? '').join('/') : String(repRange(r.reps)![0]), rir: String(prev?.rir ?? minRir(r.rir)) }];
+        return [r.ex.id, { kg: kg >= 0 ? String(kg) : '', reps: prev ? prev.sets.map((x) => x.reps ?? '').join('/') : repTargets(r.reps, r.sets).join('/'), rir: String(prev?.rir ?? minRir(r.rir)) }];
       }),
     ),
   );
@@ -62,7 +62,7 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
       const body = items.map((r) => {
         const v = vals[r.ex.id]!;
         const kg = source === 'confirmat' ? lastKg(log, r.ex.id) : v.kg.trim() === '' ? null : Number(v.kg.replace(',', '.'));
-        const reps = source === 'confirmat' ? Array(r.sets).fill(repRange(r.reps)![0]) : parseRepsInput(v.reps, r.sets);
+        const reps = source === 'confirmat' ? repTargets(r.reps, r.sets) : parseRepsInput(v.reps, r.sets);
         return { exercise: r.ex.id, sets: reps.map((n) => ({ kg: kg != null && Number.isFinite(kg) ? kg : null, reps: n })), rir: source === 'confirmat' ? minRir(r.rir) : Number(v.rir), source };
       });
       await submitForm('forta-jurnal', { date: w.date, items: body });

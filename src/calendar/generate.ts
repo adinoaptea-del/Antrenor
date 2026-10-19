@@ -93,12 +93,13 @@ const MIN_WEEKS: Partial<Record<Goal, [number, number]>> = {
 const RECOVERY_FACTOR = 0.65;
 const CHANGE_MIN = 10; // minute de schimbat/duș în jurul unei ședințe
 /** Sub aceste durate o ședință nu mai are sens; se taie, nu se scurtează. */
-const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 30 };
+// Forța: nicio ședință sub 45 de minute cu încălzirea (regula proprietarului, 19.10.2026).
+const MIN_SESSION_MIN: Record<Sport, number> = { inot: 30, alergare: 30, bicicleta: 40, forta: 45 };
 
 export function generatePlan(input: GenerateInput): GenerateResult {
   if (goalKind(input.goal) === 'fitness') {
     const fitness: FitnessProfile = input.fitness ?? { goal: input.goal as FitnessProfile['goal'], days: 2, minutes: 45, beginner: true };
-    return generateFitnessPlan({ startDate: input.startDate, raceDate: input.raceDate, freeBlocks: input.freeBlocks, fitness });
+    return generateFitnessPlan({ startDate: input.startDate, raceDate: input.raceDate, freeBlocks: input.freeBlocks, fitness, male: input.athlete?.sex === 'm' });
   }
   const budget = weeklyBudget(input.freeBlocks, undefined, input.sportHours ?? null);
   if (!budget.valid) {
@@ -322,16 +323,18 @@ function longRunOf(pw: PhaseWeek, minutes: number, easyText: string): Session {
 
 /** Timpul alocat unei ședințe de forță (programul cere 45–65 min); conținutul se potrivește apoi în el. */
 function strengthMinutes(p: Phase): number {
-  return p === 'taper' ? 35 : p === 'peak' ? 40 : p === 'build' ? 50 : 55;
+  return p === 'taper' ? 45 : p === 'peak' ? 50 : p === 'build' ? 55 : 60;
 }
 
 /**
  * Ședințele de forță ale săptămânii: 2 de regulă (tot corpul A/B), 3 în fazele de bază când programul total o permite
  * (PPL A/B), una în taper. A treia are prioritatea cea mai mică: cade prima dacă orele sau zilele nu ajung.
  */
+// Prioritatea: prima ședință de forță e importantă (4); a doua (≥ 45 min, regula proprietarului) cade înaintea
+// alergărilor ușoare când orele nu ajung (7,2 > 7), a treia prima.
 function strengthSessions(p: Phase, slots: number): Session[] {
   const n = p === 'taper' ? 1 : (p === 'baza1' || p === 'baza2') && slots >= 3 ? 3 : 2;
-  return Array.from({ length: n }, (_, i) => ({ sport: 'forta' as Sport, type: 'forta' as const, minutes: strengthMinutes(p), zones: [] as Zone[], key: false, priority: i === 0 ? 4 : i === 1 ? 6.5 : 7.5, structure: 'forță' }));
+  return Array.from({ length: n }, (_, i) => ({ sport: 'forta' as Sport, type: 'forta' as const, minutes: strengthMinutes(p), zones: [] as Zone[], key: false, priority: i === 0 ? 4 : i === 1 ? 7.2 : 7.5, structure: 'forță' }));
 }
 
 /**
@@ -377,14 +380,16 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?:
           }
         }
       } else {
+        // Două ședințe: picioare și partea de sus, alternativ. Lângă cursă, ziua de picioare devine partea de sus.
         session = FULL_ROTATION[fullI++ % FULL_ROTATION.length]!;
+        if (session === 'fullA' && nearRace) session = 'fullB';
       }
       const legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
       const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs: split === 'ppl' && legs === 'usor' ? 'normal' : legs, ...(variant != null ? { variant } : {}) };
       const rx = prescribe(spec, x.plannedMinutes);
       x.structure = strengthStructure(spec);
-      // Ședința durează cât conținutul ei, cel mult cât are în calendar.
-      x.plannedMinutes = Math.min(x.plannedMinutes, rx.minutes);
+      // O singură durată: cea a prescripției (cel puțin 45 de minute, cel mult cât are în calendar când încape).
+      x.plannedMinutes = rx.minutes;
     }
   });
 }

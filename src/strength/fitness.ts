@@ -2,7 +2,7 @@
 //
 // 26 de săptămâni de referință: acomodare (S1–4) · construire (S5–8) · progres (S9–12) · consolidare (S13–16) ·
 // tranziție (S17–20) · menținere (S21–26). La „întreținere” se poate începe direct cu menținerea, după acomodare.
-// Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (F1/F2); trecerea la trei e posibilă din S5, la patru
+// Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (picioare / partea de sus); trecerea la trei e posibilă din S5, la patru
 // din S9 — DAR doar după prezență reală (3 săptămâni la rând cu ≥ 80% din ședințe, `unlockedDays`), nu pentru că a
 // trecut timpul. Prima săptămână cu o zi în plus distribuie volumul (fără serii în plus), nu îl adaugă.
 // Ședințele (exercițiile, seriile, pauzele) sunt în src/strength/ppl.ts; aici sunt etapele, calendarul săptămânilor,
@@ -206,18 +206,18 @@ export function unlockedDays(p: Pick<FitnessProfile, 'days' | 'beginner' | 'acti
 
 /** Ce face săptămâna, din calendarul de referință (S1–S26). Pași de decizie, nu obligații de progres. */
 export const FITNESS_WEEK_ACTION: Record<number, string> = {
-  1: 'Alegi două ședințe F1/F2; două serii ușoare pe exercițiu. Notezi greutățile (și setările aparatelor, la sală).',
-  2: 'Repeți F1/F2. Două serii la exercițiile principale doar dacă prima săptămână a mers bine.',
+  1: 'Două ședințe: o zi de picioare și una pentru partea de sus; 3 serii pe exercițiu cu greutăți ușoare. Notezi greutățile (și setările aparatelor, la sală).',
+  2: 'Continui rotația (alt accent la picioare, altă zi de sus). Rămân 3 serii; crești greutatea doar dacă prima săptămână a mers bine.',
   3: 'Crești repetările în intervalul prescris la unul sau două exerciții. Nu crești toate greutățile.',
   4: 'Revizuiești tehnica, timpul și simptomele. Păstrezi doza sau o reduci dacă recuperarea e slabă.',
-  5: 'Continui două zile sau treci la trei, cu seriile reduse la început, nu cu tot volumul dintr-odată.',
+  5: 'Continui două zile sau treci la trei (picioare, sus, picioare), cu 3 serii la început, nu cu tot volumul dintr-odată.',
   6: 'Cum crești: întâi repetări, apoi greutatea imediat următoare.',
   7: 'Menții. Mersul/cardio-ul crește numai dacă nu te simți mai obosită la sală.',
   8: 'Verifici performanța, energia și tendințele, fără test maximal. Cel mult 1–2 înlocuiri, dacă există motiv.',
   9: 'Consolidezi schema aleasă. Patru zile doar prin distribuirea volumului existent.',
   10: 'Crești sarcina la un exercițiu dacă toate seriile au atins capătul de sus fără să mergi până la limită.',
   11: 'Păstrezi exercițiile de referință; opțional o serie în plus la un exercițiu prioritar care merge bine.',
-  12: 'Revizuire. Dacă se adună oboseala: mai puține serii și oprit mai departe de limită.',
+  12: 'Revizuire. Dacă se adună oboseala: greutăți mai mici și oprit mai departe de limită (seriile rămân 3).',
   13: 'Începe consolidarea, de la cât duci acum, fără salt automat față de săptămâna 11.',
   14: 'Verifici seriile la fesieri/picioare și efectul mersului. Adaugi doar dacă progresul stagnează și recuperarea permite.',
   15: 'Progresezi repetări sau greutate; nu și cardio, și toate seriile deodată.',
@@ -227,7 +227,7 @@ export const FITNESS_WEEK_ACTION: Record<number, string> = {
   19: 'Exersezi o săptămână aglomerată cu varianta de două zile, dacă e util.',
   20: 'Stabilești volumul de menținere și preferințele pe termen lung. Fără test de epuizare.',
   21: 'Alegi 2, 3 sau 4 zile sustenabile; păstrezi mișcările principale, oprindu-te când mai aveai 2–3 repetări.',
-  22: 'Dacă reduci volumul, elimini întâi accesoriile, nu ședințele principale.',
+  22: 'Dacă reduci volumul, elimini întâi un exercițiu de la coadă, nu serii sub 3 și nu ședințele principale.',
   23: 'Verifici dacă performanța se menține la doza redusă.',
   24: 'Te uiți cum te simți, măsurătorile opționale și cât de mulțumită ești de plan.',
   25: 'Pregătești următorul bloc: continui menținerea sau alegi un obiectiv nou de forță/masă musculară.',
@@ -292,12 +292,13 @@ export interface FitnessIntake {
   sarcina?: 'nu' | 'da' | 'nu_spun' | null;
 }
 
-/** Profilul de fitness din chestionar; valorile lipsă iau varianta prudentă (începătoare, 2 zile, 45 min). */
+/** Profilul de fitness din chestionar; valorile lipsă iau varianta prudentă (începătoare, 2 zile, 60 min, minimum 45). */
 export function fitnessProfile(goal: string, f: FitnessIntake | undefined): FitnessProfile {
   return {
     goal: goal as FitnessProfile['goal'],
     days: f?.zile ?? 2,
-    minutes: f?.minute ?? 45,
+    // Cel puțin 45 de minute pe ședință (regula proprietarului); fără răspuns, 60 (cât încape o ședință întreagă).
+    minutes: Math.max(45, f?.minute ?? 60),
     beginner: f?.experienta !== 'stabila',
     activity: f?.miscare ?? null,
     postpartum: f?.sarcina === 'da',
@@ -306,10 +307,13 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined): Fitn
 }
 
 export const FITNESS_RULES: { t: string; d: string }[] = [
-  { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 3–4 repetări bune (la început), apoi 2–3. Nu mergi până nu mai poți.' },
-  { t: 'Cum crești', d: 'La 2 × 8–12: alegi greutatea cu care faci cel puțin 8 repetări corecte. Data viitoare adaugi repetări. Când ambele serii ajung la 12, corect, de două ori la rând, pui greutatea imediat următoare și revii la 8–10.' },
-  { t: 'Încălzire', d: '5–8 min de mișcare ușoară și 1–3 serii progresive la primele exerciții. Nu sunt serii de lucru și nu e nevoie de 20 de minute de „activare”.' },
-  { t: 'Pauze', d: '90–120 s la exercițiile mari, 60–90 s la cele mici, 45–60 s la abdomen.' },
+  { t: 'Structura', d: 'Picioarele și partea de sus nu sunt niciodată în aceeași ședință. Femei: trei zile de picioare cu accente diferite (cvadriceps; fesieri și femurali; abductori) și două pentru partea de sus (spate și biceps; piept, umeri și triceps). Bărbați: Push, Pull, Picioare pe rând.' },
+  { t: 'Durata', d: 'Fiecare ședință are cel puțin 45 de minute: 10 min de încălzire, exercițiile, apoi cardio la final (scări, mers rapid sau eliptică).' },
+  { t: 'Serii', d: '3 sau 4 serii la fiecare exercițiu, mereu. În zilele mai ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
+  { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune (la început 3–4). Nu mergi până nu mai poți.' },
+  { t: 'Piramida', d: 'La 20 / 15 / 12 / 8 crești greutatea la fiecare serie, pentru că scad repetările. Pauza 1–2 minute, nu mai mult.' },
+  { t: 'Superserie', d: 'Exercițiile cu aceeași literă le faci unul după altul, fără pauză; pauza vine după ultimul din grup.' },
+  { t: 'Cum crești', d: 'Notezi greutatea și repetările. Când faci numărul maxim de repetări la toate seriile, de două ori la rând, pui greutatea imediat următoare.' },
   { t: 'Ședință ratată', d: 'Continui rotația de unde ai rămas. Nu dublezi și nu înghesui două zile de picioare.' },
   { t: 'Tonifiere', d: 'Înseamnă mușchi construit sau păstrat, plus compoziția corporală când o dorești. Nu există slăbire localizată pe abdomen, coapse sau brațe.' },
   { t: 'Durere', d: 'Durere nouă în articulație sau care crește: oprești exercițiul și spui în formularul de seară. Durere în piept, leșin sau lipsă de aer: oprești efortul și ceri ajutor medical.' },

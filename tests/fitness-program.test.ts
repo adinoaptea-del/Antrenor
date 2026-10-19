@@ -64,7 +64,7 @@ test('stagnare: aceleași repetări nu cresc greutatea; scăderea de două ori c
 test('4) durata include ambele picioare și schimbarea părții', () => {
   const bul = { ex: CATALOG['fit-bulgarian']!, sets: 2, reps: '8–10/picior', rir: '2–3', rest: 105 };
   const bilat = { ...bul, ex: { ...bul.ex, unilateral: false } };
-  assert.ok(estimateMinutes([bul]) - estimateMinutes([bilat]) >= (2 * (40 + 15)) / 60 - 0.01);
+  assert.ok(estimateMinutes([bul]) - estimateMinutes([bilat]) >= (2 * (30 + 15)) / 60 - 0.01);
   const a = prescribeFull({ session: 'fa', block: 'construire', week: 1, len: 4 });
   assert.ok(a.minutes >= 55 && a.minutes <= 75, `A durează ${a.minutes} min (programul: 55–70)`);
 });
@@ -90,20 +90,22 @@ test('6) simptomele opresc progresia', () => {
 
 test('7) timpul redus păstrează o ședință coerentă: accesoriile pleacă, pauzele și mișcările principale rămân', () => {
   const full = prescribe({ session: 'fa', block: 'construire', week: 2, len: 4 }, 90);
-  for (const m of [45, 35]) {
+  for (const m of [60, 45, 35]) {
     const r = prescribe({ session: 'fa', block: 'construire', week: 2, len: 4 }, m);
-    assert.ok(r.minutes <= m, `${m}: ${r.minutes}`);
+    // Cel puțin 45 de minute (regula proprietarului): sub 45 nu se scurtează mai mult.
+    assert.ok(r.minutes <= Math.max(45, m) && r.minutes >= 45, `${m}: ${r.minutes}`);
+    assert.ok(r.items.every((x) => x.sets >= 3 && x.sets <= 4));
     assert.ok(r.items.some((x) => x.ex.id === 'fit-hip-thrust') && r.items.some((x) => x.ex.id === 'fit-leg-press'), 'principalele rămân');
     for (const x of r.items) assert.equal(x.rest, full.items.find((y) => y.ex.id === x.ex.id)!.rest, 'pauza nu se comprimă');
   }
 });
 
-test('8) menținerea nu escaladează: stabilizare, apoi o serie mai puțin; sugestia nu cere creștere', () => {
+test('8) menținerea nu escaladează: 3 serii pe exercițiu, constant; sugestia nu cere creștere', () => {
   const ws = fitnessWeeks({ goal: 'fit-tonifiere', days: 4, minutes: 60, beginner: false, activity: 'activa' });
   const maint = ws.filter((w) => w.block === 'mentinere');
   const sets = maint.map((w) => prescribeFull({ session: 'fa', block: w.block, week: w.blockWeek, len: w.blockLen }).items.reduce((n, r) => n + r.sets, 0));
   assert.ok(sets.every((n, i) => i === 0 || n <= sets[i - 1]!), `seriile în menținere: ${sets.join(', ')}`);
-  assert.ok(sets.at(-1)! < sets[0]!);
+  for (const w of maint) assert.ok(prescribeFull({ session: 'fa', block: w.block, week: w.blockWeek, len: w.blockLen }).items.every((r) => r.sets === 3));
   assert.equal(suggest('fit-hip-thrust', '8–12', '2–3', log([[12, 12, 12], [12, 12, 12]]), { maintain: true }).kind, 'mentine');
 });
 

@@ -142,7 +142,7 @@ export interface Packet {
     /** true doar dacă a spus „da” la sarcină / primul an după naștere: fără ramura standard de slăbire. */
     sarcina_postpartum: boolean;
   } | null;
-  forta?: { urmatoarea: { data: string; sedinta: string; bloc: string; durata_min: number; exercitii: string[]; note: string[] } | null; expuneri_21_zile: { planificate: number; facute: number } } | null;
+  forta?: { urmatoarea: { data: string; sedinta: string; bloc: string; durata_min: number; incalzire: string; exercitii: string[]; final: string | null; note: string[] } | null; expuneri_21_zile: { planificate: number; facute: number } } | null;
   plan_saptamana: { interval: string; zile: Record<string, string> };
   /** Ultimele 14 zile (fără azi): ședințe planificate vs făcute (activitate pe același sport, ±1 zi). null fără activități de la brățări în 28 de zile: nu putem ști dacă s-a sărit sau doar nu s-a sincronizat. */
   vreme: CollectorInput['weather'] | null;
@@ -544,7 +544,9 @@ function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['f
       sedinta: rx.session.name,
       bloc: `${BLOCK_LABEL[spec.block]}, săpt. ${spec.week} din ${spec.len}`,
       durata_min: next.plannedMinutes,
-      exercitii: rx.items.map((r) => `${r.ex.name}: ${r.sets} × ${r.reps}, ${r.rir} RIR, pauză ${r.rest} s${r.completion ? ' (completare)' : ''}`),
+      incalzire: `${rx.warmup.min} min: ${rx.warmup.text}`,
+      exercitii: rx.items.map((r) => `${r.ss ? `[superserie ${r.ss}] ` : ''}${r.ex.name}: ${r.sets} serii × ${r.reps}, ${r.rir} RIR, pauză ${r.rest} s${r.ss ? ' (după ultimul din superserie)' : ''}`),
+      final: rx.finisher ? `${rx.finisher.min} min: ${rx.finisher.text}` : null,
       note: rx.notes,
     },
     expuneri_21_zile: { planificate: planned, facute: done },

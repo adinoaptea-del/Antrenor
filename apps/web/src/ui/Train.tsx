@@ -369,7 +369,7 @@ function StrengthCard() {
   const fit = isFitnessSession(sp.session);
   return (
     <Card tight>
-      <Label>{fit ? `Programul de fitness · ${rx.session.id.startsWith('f') ? '2 zile, F1/F2' : rx.session.id.endsWith('3') ? '3 zile, A3/B3/C3' : '4 zile, L1/U1/L2/U2'}` : `Programul de forță · ${sp.session.startsWith('full') ? 'tot corpul A/B' : sp.variant != null ? 'Push / Pull / Picioare' : 'Push / Pull / Legs A/B'}`}</Label>
+      <Label>{fit ? `Programul de fitness · ${sp.variant != null ? 'Push / Pull / Picioare' : /^f[a-d]$/.test(rx.session.id) ? 'A–D, picioare și partea de sus în zile separate' : 'picioare și partea de sus în zile separate'}` : `Programul de forță · ${sp.session.startsWith('full') ? 'picioare / partea de sus, alternativ' : sp.variant != null ? 'Push / Pull / Picioare' : 'Push / Pull / Legs A/B'}`}</Label>
       <div className="det-pills" role="tablist" aria-label="Ședința de forță">
         {upcoming.slice(0, 6).map((x, i) => (
           <button key={x.id} role="tab" aria-selected={i === idx} className={`det-pill ${i === idx ? 'on' : ''}`} onClick={() => setIdx(i)}>
@@ -393,14 +393,19 @@ function StrengthCard() {
           {rx.session.focus}. Te oprești din serie când mai aveai {rx.items[0]?.rir ?? '2–3'} repetări bune.
         </span>
       </div>
+      <div className="str-warm small">
+        <b>Încălzire · {rx.warmup.min} min.</b> {rx.warmup.text}.
+      </div>
       <div className="str-list">
-        {rx.items.map((r) => (
+        {rx.items.map((r, i) => (
           <button key={r.ex.id + (r.completion ? '-c' : '')} className="str-row" onClick={() => setOpenEx(openEx === r.ex.id ? null : r.ex.id)} aria-expanded={openEx === r.ex.id}>
             <div className="str-ex">
-              <b>{r.ex.name}</b>
+              {r.ss && rx.items[i - 1]?.ss !== r.ss && <span className="str-ss">Superserie {r.ss}: unul după altul, fără pauză între ele</span>}
+              <b>{r.ss ? `${r.ss}${rx.items.filter((x, j) => x.ss === r.ss && j <= i).length}. ` : `${i + 1}. `}{r.ex.name}</b>
+              <span className="str-scheme">{r.sets} serii × {r.reps}</span>
               <span>
                 {r.completion ? 'completare · ' : ''}
-                {r.ex.group} · pauză {fmtRest(r.rest)}
+                {r.ex.group} · {r.ss && rx.items[i + 1]?.ss === r.ss ? 'fără pauză, treci la următorul' : `pauză ${fmtRest(r.rest)}`}
                 {r.optional ? ' · opțional' : ''}
               </span>
               {openEx === r.ex.id && (
@@ -410,13 +415,16 @@ function StrengthCard() {
               )}
             </div>
             <div className="str-sets">
-              <span className="str-set">
-                {r.sets} × {r.reps}
-              </span>
+              <span className="str-set">{r.sets} serii</span>
             </div>
           </button>
         ))}
       </div>
+      {rx.finisher && (
+        <div className="str-warm small">
+          <b>La final · {rx.finisher.min} min.</b> {rx.finisher.text}.
+        </div>
+      )}
       {rx.notes.length > 0 && (
         <ul className="str-notes">
           {rx.notes.map((n) => (
@@ -434,7 +442,7 @@ function StrengthCard() {
               <b>{r.t}.</b> {r.d}
             </div>
           ))}
-          <div className="tiny muted">Ședința încape în timpul din calendar: când e puțin timp, sari întâi peste abdomen și exercițiile mici, nu peste pauze.</div>
+          <div className="tiny muted">Ședința are cel puțin 45 de minute și încape în timpul din calendar: când e puțin timp, sari întâi peste abdomen și exercițiile mici — niciodată sub 3 serii și nu peste pauze.</div>
         </div>
       )}
     </Card>

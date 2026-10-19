@@ -14,7 +14,7 @@ const BLOCKS: Block[] = ['acomodare', 'construire', 'progres', 'consolidare', 't
 test('F01: acasă, nicio ședință de fitness, în niciun bloc, nu cere aparat, cablu, bară sau bancă — nici în alternative', () => {
   for (const id of FIT)
     for (const block of BLOCKS)
-      for (const minutes of [20, 35, 60]) {
+      for (const minutes of [45, 60, 90]) {
         const p = prescribe({ session: id, block, week: 2, len: 4, place: 'acasa' }, minutes);
         assert.ok(p.items.length > 0, `${id} ${block}`);
         for (const r of p.items) {
@@ -25,15 +25,17 @@ test('F01: acasă, nicio ședință de fitness, în niciun bloc, nu cere aparat,
 });
 
 test('F01: la sală rămân exercițiile de sală; schimbarea acasă/sală schimbă efectiv selecția', () => {
-  const gym = prescribe({ session: 'f1', block: 'construire', week: 2, len: 4 }, 60).items.map((r) => r.ex.id);
-  const home = prescribe({ session: 'f1', block: 'construire', week: 2, len: 4, place: 'acasa' }, 60).items.map((r) => r.ex.id);
-  assert.ok(gym.includes('fit-leg-press') && gym.includes('fit-chest-press'));
+  const gym = prescribe({ session: 'l1', block: 'construire', week: 2, len: 4 }, 90).items.map((r) => r.ex.id);
+  const home = prescribe({ session: 'l1', block: 'construire', week: 2, len: 4, place: 'acasa' }, 90).items.map((r) => r.ex.id);
+  assert.ok(gym.includes('fit-leg-press') && gym.includes('fit-squat'));
   assert.notDeepEqual(gym, home);
-  assert.ok(home.includes('fit-h-goblet') && home.includes('fit-h-floor-press'));
+  assert.ok(home.includes('fit-h-goblet'));
+  const up = prescribe({ session: 'u2', block: 'construire', week: 2, len: 4, place: 'acasa' }, 90).items.map((r) => r.ex.id);
+  assert.ok(up.includes('fit-h-floor-press') && up.includes('fit-h-db-fly'));
 });
 
 test('F01: planul generat pentru „acasă” scrie locul în ședință și se citește înapoi', () => {
-  const r = generatePlan({ startDate: '2026-10-26', raceDate: addDays('2026-10-26', 26 * 7), goal: 'fit-masa', freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 18 * 60, endMin: 18 * 60 + 35 })), sportHours: 3, historyHoursPerWeek: [], intensityAllowed: 'toate', swimContinuous400: false, athlete: { age: 55, sex: 'f' }, fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 35, acces: 'acasa', miscare: 'sedentara' }) });
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: addDays('2026-10-26', 26 * 7), goal: 'fit-masa', freeBlocks: [0, 2, 4].map((day) => ({ day: day as 0, startMin: 18 * 60, endMin: 18 * 60 + 60 })), sportHours: 3, historyHoursPerWeek: [], intensityAllowed: 'toate', swimContinuous400: false, athlete: { age: 55, sex: 'f' }, fitness: fitnessProfile('fit-masa', { experienta: 'incepatoare', zile: 3, minute: 45, acces: 'acasa', miscare: 'sedentara' }) });
   assert.ok(r.ok);
   if (!r.ok) return;
   const all = r.weeks.flatMap((w) => w.workouts);
@@ -43,12 +45,14 @@ test('F01: planul generat pentru „acasă” scrie locul în ședință și se 
 });
 
 test('F02: după febră, durata din calendar = durata prescripției (o singură cifră pe toate ecranele)', () => {
-  const w = { id: 'f', date: '2026-10-26', sport: 'forta' as const, type: 'forta' as const, plannedMinutes: 35, targetZones: [], key: false, status: 'planificat' as const, structure: strengthStructure({ session: 'f1', block: 'acomodare', week: 1, len: 4, place: 'acasa' }) };
+  const w = { id: 'f', date: '2026-10-26', sport: 'forta' as const, type: 'forta' as const, plannedMinutes: 60, targetZones: [], key: false, status: 'planificat' as const, structure: strengthStructure({ session: 'l1', block: 'acomodare', week: 1, len: 4, place: 'acasa' }) };
   const r = adapt([w], { kind: 'febra', date: '2026-10-19' }, { today: '2026-10-19', freeBlocks: [], recentKeyScores: [] });
   const x = r.plan[0]!;
   const rx = prescribe(parseStrength(x.structure)!, x.plannedMinutes);
   assert.equal(x.plannedMinutes, rx.minutes);
-  assert.ok(x.plannedMinutes <= 20);
+  // Forța nu scade sub 45 de minute și sub 3 serii: după febră devine ușoară (greutăți mai mici), nu mai scurtă.
+  assert.equal(x.plannedMinutes, 45);
+  assert.ok(parseStrength(x.structure)!.recovery && rx.items.every((r) => r.sets >= 3));
   assert.match(x.note ?? '', /doar dacă dimineața nu mai ai febră/);
 });
 

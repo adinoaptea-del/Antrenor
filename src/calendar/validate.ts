@@ -1,6 +1,6 @@
 import { moduleStructure, parseModule } from './run-modules.js';
 import { normalizeWorkout } from './coherence.js';
-import { parseStrength, prescribe } from '../strength/ppl.js';
+import { parseStrength, MIN_STRENGTH_MINUTES, prescribe } from '../strength/ppl.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -190,7 +190,8 @@ function swapTarget(all: PlannedWorkout[], victim: PlannedWorkout): PlannedWorko
 export function resizeWorkout(w: PlannedWorkout, minutes: number): PlannedWorkout {
   if (w.type === 'forta') {
     const spec = parseStrength(w.structure);
-    return { ...w, plannedMinutes: spec ? Math.min(minutes, prescribe(spec, minutes).minutes) : minutes };
+    // Forța nu scade sub 45 de minute (regula proprietarului): durata e a prescripției, nu a minutelor cerute.
+    return { ...w, plannedMinutes: spec ? prescribe(spec, minutes).minutes : Math.max(MIN_STRENGTH_MINUTES, minutes) };
   }
   return normalizeWorkout(fitStructure({ ...w, plannedMinutes: minutes }));
 }

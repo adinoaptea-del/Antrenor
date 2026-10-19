@@ -188,7 +188,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const canContinue = (() => {
     switch (STEPS[step]) {
       case 'Obiectiv':
-        return (!fit || a.sex === 'f') && a.nume.trim().length > 0 && !!a.dataCursa && !!a.sex && !!a.inaltime && a.inaltime >= 120 && a.inaltime <= 230 && !!a.anNastere && a.anNastere >= 1930 && a.anNastere <= new Date().getFullYear() - 18;
+        return a.nume.trim().length > 0 && !!a.dataCursa && !!a.sex && !!a.inaltime && a.inaltime >= 120 && a.inaltime <= 230 && !!a.anNastere && a.anNastere >= 1930 && a.anNastere <= new Date().getFullYear() - 18;
       case 'Înot':
         return a.inot.nivel != null && a.inot.apeDeschise != null && a.inot.bazin != null;
       case 'Bicicletă':
@@ -238,14 +238,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
               <Chips
                 value={a.sex ?? null}
                 options={[{ id: 'f', label: 'Femeie' }, { id: 'm', label: 'Bărbat' }]}
-                onChange={(sex) => {
-                  set({ sex });
-                  // Fitness e deocamdată doar pentru femei.
-                  if (sex === 'm' && family === 'fitness') {
-                    setFamily('alergare');
-                    set({ sex, obiectiv: '5k' });
-                  }
-                }}
+                onChange={(sex) => set({ sex })}
               />
             </Q>
             <Q title="Cum te cheamă?" hint="Așa îți spune head coach-ul.">
@@ -268,11 +261,11 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 onChange={(d) => set({ alimentatie: d })}
               />
             </Q>
-            <Q title="Ce îți propui?" hint={a.sex === 'f' ? 'Fitness (sală, forță, corp) sau un sport. La fiecare, aplicația și antrenorul sunt doar pentru alegerea ta.' : 'Un singur sport sau triatlon. La un singur sport, aplicația și antrenorul sunt doar pentru sportul acela.'}>
+            <Q title="Ce îți propui?" hint="Fitness (sală, forță, corp) sau un sport. La fiecare, aplicația și antrenorul sunt doar pentru alegerea ta.">
               <Chips
                 value={family}
                 options={[
-                  ...(a.sex === 'f' ? [{ id: 'fitness' as const, label: 'Fitness', sub: 'sală · forță · corp' }] : []),
+                  { id: 'fitness' as const, label: 'Fitness', sub: 'sală · forță · corp' },
                   { id: 'alergare', label: 'Alergare', sub: '5 km … maraton' },
                   { id: 'inot', label: 'Înot', sub: '1.500 … 3.800 m' },
                   { id: 'bicicleta', label: 'Bicicletă', sub: '50 … 160 km' },
@@ -301,13 +294,13 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
         {STEPS[step] === 'Fitness' && (
           <>
             <Q title="Unde ești acum?" hint="Din ultimele 4–8 săptămâni. Nu se cere niciun test de forță maximă.">
-              <Chips value={fx.experienta ?? null} options={[{ id: 'incepatoare', label: 'Încep sau revin după o pauză', sub: 'pornim cu 2 zile, tot corpul' }, { id: 'stabila', label: 'Merg constant la sală', sub: 'știu exercițiile de bază' }]} onChange={(experienta) => setFx({ experienta })} />
+              <Chips value={fx.experienta ?? null} options={[{ id: 'incepatoare', label: 'Încep sau revin după o pauză', sub: a.sex === 'm' ? 'pornim cu 2 zile pe săptămână' : 'pornim cu 2 zile: picioare, apoi partea de sus' }, { id: 'stabila', label: 'Merg constant la sală', sub: 'știu exercițiile de bază' }]} onChange={(experienta) => setFx({ experienta })} />
             </Q>
-            <Q title="Câte zile pe săptămână poți merge la sală, pe termen lung?" hint="3 zile e varianta principală pentru multe femei; 4 e opțională, nu un nivel superior. Dacă începi, primele săptămâni sunt oricum 2 zile.">
+            <Q title="Câte zile pe săptămână poți merge la sală, pe termen lung?" hint={a.sex === 'm' ? 'Zilele merg pe rând: Push (piept, umeri, triceps), Pull (spate, biceps), Picioare. Dacă începi, primele săptămâni sunt 2 zile.' : 'Picioarele și partea de sus sunt mereu în zile separate. 3 zile e varianta principală; 4 e opțională. Dacă începi, primele săptămâni sunt 2 zile.'}>
               <Chips value={fx.zile ? String(fx.zile) : null} options={[{ id: '2', label: '2 zile' }, { id: '3', label: '3 zile' }, { id: '4', label: '4 zile' }]} onChange={(z) => setFx({ zile: Number(z) as 2 | 3 | 4 })} />
             </Q>
-            <Q title="Cât timp ai pentru o ședință?" hint="Cu încălzirea, pauzele și schimbatul între exerciții. Ședința se potrivește în timpul ăsta: când e scurt, cad întâi accesoriile.">
-              <Chips value={fx.minute ? String(fx.minute) : null} options={[{ id: '35', label: '30–35 min' }, { id: '45', label: '45 min' }, { id: '60', label: '60 min' }]} onChange={(m) => setFx({ minute: Number(m) })} />
+            <Q title="Cât timp ai pentru o ședință?" hint="Cu încălzirea (10 min), pauzele și cardio-ul de la final. O ședință are cel puțin 45 de minute; ideal 60–75, cât să încapă toate exercițiile.">
+              <Chips value={fx.minute ? String(Math.max(45, fx.minute)) : null} options={[{ id: '45', label: '45 min' }, { id: '60', label: '60 min' }, { id: '75', label: '75 min' }, { id: '90', label: '90 min' }]} onChange={(m) => setFx({ minute: Number(m) })} />
             </Q>
             <Q title="Unde te antrenezi?">
               <Chips value={fx.acces ?? null} options={[{ id: 'sala', label: 'La sală', sub: 'aparate și gantere' }, { id: 'acasa', label: 'Acasă', sub: 'gantere, bandă' }]} onChange={(acces) => setFx({ acces })} />
@@ -484,7 +477,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
 
         {STEPS[step] === 'Sănătate' && (
           <>
-            {fit ? (
+            {fit && a.sex === 'm' ? null : fit ? (
               <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, nu pornim programul de slăbire: alegem varianta de întreținere, iar recomandările se fac cu medicul.">
                 <Chips value={fx.sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => setFx({ sarcina })} />
               </Q>
@@ -517,7 +510,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 {fit ? (
                   <>
                     <li>
-                      {fx.experienta === 'stabila' ? `Până la ${Math.min(3, fx.zile ?? 2)} zile de sală de la început` : 'Două zile de sală în primele 4 săptămâni (F1/F2, tot corpul)'}{(fx.zile ?? 2) > 2 ? `, apoi treptat până la ${fx.zile}` : ''}, câte ~{fx.minute ?? 45} min, în zilele cele mai depărtate din ferestrele tale.
+                      {fx.experienta === 'stabila' ? `Până la ${Math.min(3, fx.zile ?? 2)} zile de sală de la început` : 'Două zile de sală în primele 4 săptămâni'}{(fx.zile ?? 2) > 2 ? `, apoi treptat până la ${fx.zile}` : ''}, câte ~{Math.max(45, fx.minute ?? 60)} min (minimum 45), în zilele cele mai depărtate din ferestrele tale. {a.sex === 'm' ? 'Push, Pull și Picioare pe rând, cu exerciții care se schimbă.' : 'Picioarele și partea de sus în zile separate: trei zile de picioare cu accente diferite, două pentru partea de sus.'}
                     </li>
                     <li>Fiecare ședință: exercițiile, seriile, repetările, pauza și cât să lași în rezervă. Greutățile le alegi tu; nu inventăm kilograme.</li>
                     <li>Mersul și cardio-ul cresc treptat, ca recomandare a săptămânii, nu ca obligație.</li>

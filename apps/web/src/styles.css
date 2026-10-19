@@ -716,9 +716,13 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .str-ex { min-width: 0; display: grid; gap: 1px; }
 .str-ex b { font-size: 13px; font-weight: 700; line-height: 1.3; }
 .str-ex span { font-size: 11px; color: var(--muted); }
-.str-sets { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 150px; }
+.str-sets { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; max-width: 150px; }
+.str-warm { margin: 8px 0; padding: 9px 11px; border-radius: 14px; border: 1px dashed var(--line); color: var(--muted); line-height: 1.45; }
+.str-warm b { color: var(--fg); }
 .str-set { display: inline-flex; flex-direction: column; align-items: center; min-width: 40px; padding: 4px 6px; border-radius: 9px; background: rgba(255, 255, 255, 0.06); font: 700 12px var(--font-ui); line-height: 1.1; }
 .str-set small { font-size: 9px; font-weight: 600; color: var(--muted); }
+.str-ex span.str-scheme { font: 600 12px/1.4 var(--font-ui); color: var(--fg); }
+.str-ss { display: block; margin-bottom: 4px; font: 700 10px/1.3 var(--font-ui); letter-spacing: 0.02em; color: var(--accent); }
 .str-set.k-heavy { background: var(--accent-soft); }
 .str-set.k-restpause { background: rgba(250, 204, 21, 0.16); }
 .str-rules { display: grid; gap: 8px; margin-top: 10px; font-size: 12.5px; line-height: 1.45; }
