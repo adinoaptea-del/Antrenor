@@ -12,7 +12,7 @@ export const MIGRATIONS = {
   /** Ședințele ușoare viitoare urcă la ce a demonstrat sportivul (regula 30). */
   raiseDemonstrated: 'podea-demonstrat-v1',
   /** Forța: PPL la bărbați și regulile de 45 min / 3–4 serii (regula 20). */
-  strengthSplit: 'forta-split-v1',
+  strengthSplit: 'forta-split-v2',
 } as const;
 
 /**

@@ -68,7 +68,11 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const acts = acts0;
   // Jurnalul de forță (schema 7); pe o schemă veche lipsește tabela: lista rămâne goală, nu cade pagina.
   const outcomeRows = await select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reported_at: string }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
-  const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
+  // A57: pe schema 11 jurnalul are ședința și apariția (workout_id, instance); pe o bază încă la schema 10, forma veche.
+  const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source,workout_id,instance,unit,load_convention', order: 'date.asc', limit: 500 })
+    .catch(() => select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }))
+    .catch(() => [] as StrengthLogEntry[])
+    .then((rows) => rows.map((r) => { const x = r as StrengthLogEntry & { workout_id?: string | null; load_convention?: string | null }; const { workout_id, load_convention, ...rest } = x; return { ...rest, ...(workout_id ? { workoutId: workout_id } : {}), ...(load_convention ? { loadConvention: load_convention } : {}) } as StrengthLogEntry; }));
 
   const activities = dedupeActivities(acts);
   // Auditul v93, A23 (decizia proprietarului 20.10.2026): regulile noi se aplică planului activ O SINGURĂ DATĂ, ca
