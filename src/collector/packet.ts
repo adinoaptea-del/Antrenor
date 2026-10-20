@@ -3,7 +3,7 @@ import { goalKind, goalSports } from '../calendar/phases.js';
 import { hooperSum } from './readiness.js';
 import { activeRestriction, withIncidents } from '../calendar/safety.js';
 import { aerobicEfficiency, type EffTrend } from './efficiency.js';
-import { mergeDetails } from './details.js';
+import { mergeIndependent } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
@@ -478,7 +478,11 @@ export function pickRecording(a: SourceActivity, b: SourceActivity): SourceActiv
     const extraKm = lKm - sKm;
     const kmh = (extraKm / extraMin) * 60;
     const minKm = S.sport === 'inot' ? 0.1 : Math.max(0.5, sKm * 0.03);
-    if (extraKm >= minKm && kmh >= (EXTRA_EFFORT_KMH[S.sport] ?? Infinity)) return L;
+    // Auditul v93, A17: pragul de viteză e relativ la ședință (≥ 70% din viteza medie a celei scurte), nu fix —
+    // altfel un alergător lent sau mers-alergare (sub 6,7 km/h) își pierde minutele reale.
+    const sKmh = S.minutes > 0 ? (sKm / S.minutes) * 60 : 0;
+    const need = Math.min(EXTRA_EFFORT_KMH[S.sport] ?? Infinity, sKmh > 0 ? sKmh * 0.7 : Infinity);
+    if (extraKm >= minKm && kmh >= need) return L;
     return S;
   }
   // Fără distanță pe ambele: pulsul bucății în plus se poate deduce doar când ea e mare (≥ 10 min și ≥ 25% din cea
@@ -502,7 +506,7 @@ export function dedupeActivities(acts: SourceActivity[]): SourceActivity[] {
     }
     const chosen = pickRecording(dup, a);
     const other = chosen === dup ? a : dup;
-    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details), mergedSources: [...new Set([...(dup.mergedSources ?? [dup.source]), a.source])], mergedIds: [...new Set([...(dup.mergedIds ?? [dup.id]), a.id])] };
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeIndependent(chosen.details, other.details), mergedSources: [...new Set([...(dup.mergedSources ?? [dup.source]), a.source])], mergedIds: [...new Set([...(dup.mergedIds ?? [dup.id]), a.id])] };
   }
   return kept;
 }

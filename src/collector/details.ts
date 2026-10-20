@@ -211,6 +211,19 @@ export function mergeDetails(a: ActivityDetails | null | undefined, b: ActivityD
 }
 
 /**
+ * Auditul v93, A17: din a doua înregistrare a aceleiași ședințe (alt ceas) se completează doar câmpurile care nu depind
+ * de fereastra înregistrării (cadența, lungimea pasului, puterea, vârfurile). Ture, kilometri, zone, minute, calorii și
+ * traseul rămân ale înregistrării alese: altfel s-ar amesteca ferestre diferite.
+ */
+const WINDOW_FREE: (keyof ActivityDetails)[] = ['cadence', 'stepsPerKm', 'strideM', 'avgWatts', 'npWatts', 'maxWatts', 'maxSpeedKmh', 'genericStrength'];
+export function mergeIndependent(chosen: ActivityDetails | null | undefined, other: ActivityDetails | null | undefined): ActivityDetails | null {
+  if (!other) return chosen ?? null;
+  const out: ActivityDetails = { ...(chosen ?? {}) };
+  for (const k of WINDOW_FREE) if (out[k] == null && other[k] != null) (out as Record<string, unknown>)[k] = other[k];
+  return Object.keys(out).length ? out : null;
+}
+
+/**
  * Căderea pe final la o ieșire lungă: ritmul mediu din a doua jumătate față de prima (pe kilometri întregi).
  * Pozitiv = mai lent în a doua parte (cădere); negativ = final mai rapid. null = prea puțini kilometri (sub 6).
  * Pe teren cu urcări mari rezultatul nu e comparabil; apelantul decide dacă îl folosește.

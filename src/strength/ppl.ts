@@ -1324,9 +1324,10 @@ function prescribeGym(spec: StrengthSpec, ctx?: StrengthDayContext): Prescriptio
 
   // Pliometria (Llanos-Lagos și colab. 2024): doar în ziua de picioare a sportivilor de anduranță, din blocurile de
   // forță / integrare / consolidare, imediat după încălzire; nu cu picioarele protejate.
-  if (spec.session === 'fullA' && (spec.block === 'forta' || spec.block === 'integrare' || spec.block === 'consolidare') && (spec.legs ?? 'normal') === 'normal') {
+  // Auditul v93, A55: condiția e scrisă — fără sarcină/postpartum, fără durere de tendon sau gambă; altfel se sare.
+  if (spec.session === 'fullA' && (spec.block === 'forta' || spec.block === 'integrare' || spec.block === 'consolidare') && (spec.legs ?? 'normal') === 'normal' && !(spec as { pregnancy?: boolean }).pregnancy) {
     const pg = CATALOG['legs-pogo']!;
-    items.unshift({ ex: pg, sets: 3, reps: pg.reps, rir, rest: 60, note: 'înaintea greutăților, cât ești proaspăt' });
+    items.unshift({ ex: pg, sets: 3, reps: pg.reps, rir, rest: 60, note: 'înaintea greutăților, cât ești proaspăt; doar fără durere la tendonul lui Ahile, gambă sau genunchi — dacă ai, sari peste' });
   }
   if (spec.block === 'forta' && items[0]?.ex.role === 'main' && !items[0].ex.unilateral) {
     items[0].reps = '5–8';

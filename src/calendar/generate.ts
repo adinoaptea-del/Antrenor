@@ -45,6 +45,10 @@ export interface GenerateInput {
     branch?: 'finalizare' | 'timp';
     /** Debutant sau revenire: mers-alergare și fără ședințe rapide în bază. */
     beginner?: boolean;
+    /** Auditul v93, A32: ritmul de cursă echivalent ACUM (din ultimul rezultat), separat de țintă. */
+    nowPaceSecKm?: number | null;
+    /** Intern: câte săptămâni are planul (pentru progresia ritmului de la „acum” la țintă). */
+    planWeeks?: number;
   };
   /** Doar la înot: câți metri înoată acum fără oprire (declarat sau măsurat). */
   swim?: { continuousM: number | null };
@@ -56,6 +60,8 @@ export interface GenerateInput {
   fixed?: FixedMeet[];
   /** Intern: istoric consistent (≥ 6 h/săpt. în ultimele săptămâni) sau test de bicicletă; deblochează intervalele 30/15. */
   experiencedBike?: boolean;
+  /** Auditul v93, A27: echipamentul declarat în chestionar (null = nu știm). */
+  equipment?: { pool?: boolean | null; bike?: boolean | null; trainer?: boolean | null; power?: boolean | null };
   /** Doar la fitness: zilele, minutele, nivelul și contextul din chestionar. */
   fitness?: FitnessProfile;
   /** Ce a demonstrat sportivul în ultimele 6 săptămâni (src/calendar/demonstrated.ts): podeaua ședințelor ușoare și
@@ -190,6 +196,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // A26: experiența pe bicicletă se judecă din bicicletă (ședințe măsurate în ultimele 6 săptămâni sau cea mai lungă tură
   // declarată), nu din orele totale: 7 h de alergare nu fac pe cineva gata de 30/15.
   const bikeSessions = input.demonstrated?.n.bicicleta ?? 0;
+  if (input.run) input = { ...input, run: { ...input.run, planWeeks: weeks.length } };
   input = { ...input, experiencedBike: measuredAvg >= 6 && (bikeSessions >= 6 || (input.level?.longestRideH ?? 0) >= 2), strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
@@ -262,6 +269,13 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
     // Distribuția explicată (auditul M35, V02): ședințe în toate cele 7 zile = minimul pe sport, scurte, nu timp umplut.
     const days = new Set(placed.workouts.map((w) => w.date)).size;
+    // A27: echipamentul declarat se spune pe plan, o dată (ședințele rămân; alegerea locului e a sportivului).
+    if (out.length === 0 && input.equipment) {
+      const eq = input.equipment;
+      if (eq.pool === false && placed.workouts.some((w) => w.sport === 'inot')) placed.notes.push('Ai spus că nu ai acces la bazin: înotul din plan cere un bazin (ape libere doar în zilele în care confirmi condițiile). Până găsești unul, spune și mutăm doza pe celelalte sporturi la refacerea planului.');
+      if (eq.bike === false && placed.workouts.some((w) => w.sport === 'bicicleta' || w.type === 'brick')) placed.notes.push(eq.trainer ? 'Fără bicicletă de șosea: tururile se fac pe trainer, cu aceeași durată și efort; ieșirile lungi pe trainer pot fi cu ~10–20% mai scurte, la același efort.' : 'Ai spus că nu ai bicicletă: ședințele de bicicletă se fac pe bicicleta staționară de la sală (aceeași durată și efort), până ai una.');
+      if (eq.power === false && placed.workouts.some((w) => w.sport === 'bicicleta' && w.type === 'calitate')) placed.notes.push('Fără senzor de putere: intervalele de bicicletă le conduci după efort și puls, nu după procente de FTP.');
+    }
     // A25: prima săptămână mult peste media reală → se spune, cu cifrele (nu se ascunde saltul).
     if (out.length === 0 && avgHistory > 0 && plannedHours > avgHistory * 1.3) {
       placed.notes.push(`Prima săptămână are ${plannedHours} h, peste media ta din ultimele săptămâni (${round1(avgHistory)} h, cu săptămânile fără antrenament incluse): minimul pe sport cere asta. Dacă e prea mult, spune și scurtăm ședințele ușoare.`);
@@ -562,7 +576,11 @@ function fmtPace(sec: number): string {
 function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: number; walkStep?: number }): Session[] {
   const p = pw.phase;
   const s: Session[] = [];
-  const pace = input.run?.goalPaceSecKm ?? null;
+  // Auditul v93, A32: ritmul de cursă din module pornește de la ce poate sportivul acum și ajunge la ritmul planului
+  // spre final (liniar pe săptămâni); ținta nu dictează ritmul din prima săptămână.
+  const goalPace = input.run?.goalPaceSecKm ?? null;
+  const nowPace = input.run?.nowPaceSecKm ?? null;
+  const pace = goalPace != null && nowPace != null && nowPace > goalPace && (input.run?.planWeeks ?? 0) > 1 ? Math.round(nowPace + (goalPace - nowPace) * Math.min(1, pw.index / ((input.run!.planWeeks ?? 2) - 1))) : goalPace;
   const race = (isRunGoal(input.goal) ? input.goal : 'semimaraton') as RunGoal;
   const short = race === '5k' || race === '10k';
   const branch = input.run?.branch ?? (pace ? 'timp' : 'finalizare');

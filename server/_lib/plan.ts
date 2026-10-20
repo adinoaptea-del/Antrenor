@@ -10,7 +10,7 @@ import { labsExpired } from '../../src/util/dates.js';
 import { generatePlan, type GenerateResult } from '../../src/calendar/generate.js';
 import type { FreeBlock, IntensityAllowed, PlannedWorkout } from '../../src/types.js';
 import { addDays, diffDays, weekStart, weekday } from '../../src/util/dates.js';
-import { FITNESS_WEEKS, GOAL_LABEL, WALK_WEEKS, isFitnessGoal, isRunGoal, isWalkGoal, type Goal } from '../../src/calendar/phases.js';
+import { FITNESS_WEEKS, GOAL_LABEL, RUN_DISTANCE_KM, WALK_WEEKS, isFitnessGoal, isRunGoal, isWalkGoal, type Goal, type RunGoal } from '../../src/calendar/phases.js';
 import { loadWalkRows } from './walking.js';
 import { demonstratedMin, toWalkRecords } from '../../src/walking/rows.js';
 import { fitnessProfile, unlockDecision, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
@@ -223,6 +223,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
     freeBlocks: intake.program,
     sportHours: intake.oreSport ?? null,
     historyHoursPerWeek: history,
+    // A27: echipamentul declarat (bazin, bicicletă, trainer, putere).
+    equipment: (() => {
+      const i = intake as unknown as { inot?: { bazin?: boolean | null }; bicicleta?: { tip?: string | null; trainer?: boolean | null; putere?: boolean | null } };
+      return { pool: i.inot?.bazin ?? null, bike: i.bicicleta?.tip == null ? null : i.bicicleta.tip !== 'nu_am', trainer: i.bicicleta?.trainer ?? null, power: i.bicicleta?.putere ?? null };
+    })(),
     declaredRecentHours: intake.oreRecente ?? null,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
@@ -235,6 +240,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
       ? {
           // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
           goalPaceSecKm: runBranch(intake) === 'finalizare' ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake as RunIntakeLike), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
+          // A32: ritmul echivalent de acum (din ultimul rezultat), de la care pornesc modulele spre ritmul planului.
+          nowPaceSecKm: runBranch(intake) === 'finalizare' ? null : (() => {
+            const v = planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake as RunIntakeLike), diffDays(startDate, intake.dataCursa) / 7).verdict;
+            return v?.equivalentNowSec ? v.equivalentNowSec / RUN_DISTANCE_KM[intake.obiectiv as RunGoal] : null;
+          })(),
           canDoDistance: intake.alergare?.poateDistanta ?? null,
           longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
           branch: runBranch(intake),
@@ -378,7 +388,7 @@ export async function reevaluateFitnessDays(userId: string, today: string): Prom
   return { changed: r.ok, days: want };
 }
 
-/** Cea mai lungă plimbare din ultimele 14 zile (minute): capacitatea demonstrată pentru planul de mers. */
+/** Plimbarea obișnuită din ultimele 14 zile (mediana, minute): capacitatea demonstrată pentru planul de mers (A88). */
 async function walkDemonstrated(userId: string, today: string): Promise<number | null> {
   const u = await one<{ tz: string | null }>('users', { id: `eq.${userId}` }, { select: 'tz' }).catch(() => null);
   const { rows } = await loadWalkRows(userId, addDays(today, -15)).catch(() => ({ rows: [] }));

@@ -106,7 +106,7 @@ export function walkStructure(totalMin: number, kind: WalkKind): string {
   return `Mers ${s.totalMin} min: ${s.warmup.min} min ușor + ${s.main.min} min ${main} + ${s.cooldown.min} min ușor${s.shorter ? `. Mai scurt: ${s.shorter.text}` : ''}`;
 }
 
-/** Capacitatea folosită: cea declarată sau cea demonstrată recent (cea mai lungă plimbare din 14 zile), cel mult 60. */
+/** Capacitatea folosită: cea declarată sau cea demonstrată recent (plimbarea obișnuită din 14 zile, A88), cel mult 60. */
 export function sessionCap(declaredMin: number, demonstratedMin: number | null): number {
   const c = Math.max(declaredMin || 0, demonstratedMin ?? 0);
   return Math.min(MAX_SESSION_MIN, Math.max(MIN_SESSION_MIN, Math.floor(c / 5) * 5 || MIN_SESSION_MIN));

@@ -231,3 +231,37 @@ test('T26 / A39: fără FTP procentele dispar; cu FTP devin wați', async () => 
   assert.match(ftpText(t, 250), /220–235 W/);
   assert.doesNotMatch(ftpText('2 × 12 min la prag (Z4, 95–100% FTP), 5 min ușor între', null), /%/);
 });
+
+test('A88: capacitatea la mers = plimbarea obișnuită (mediana), nu cea mai lungă', async () => {
+  const { demonstratedMin } = await import('../src/walking/rows.js');
+  const r = (date: string, min: number, i: number) => ({ id: `w${i}`, date, movingSec: min * 60, elapsedSec: min * 60, source: 'apple', startUtc: `${date}T08:0${i}:00Z` }) as never;
+  const recs = [r('2026-10-14', 20, 1), r('2026-10-16', 25, 2), r('2026-10-18', 90, 3)];
+  assert.equal(demonstratedMin(recs, '2026-10-20'), 25);
+});
+
+test('T45 / A17: alergătorul lent nu-și pierde minutele; ferestrele nu se amestecă', async () => {
+  const { pickRecording, dedupeActivities } = await import('../src/collector/packet.js');
+  const base = { date: '2026-10-20', sport: 'alergare', startLocal: '08:00', avgHr: 140, maxHr: 160 };
+  // 5,5 km/h: ceasul scurt s-a oprit după 40 min (3,67 km); cel lung are 60 min și 5,5 km (bucata în plus tot la ~5,5 km/h).
+  const S = { ...base, id: 'a', source: 'strava', externalId: 'a', minutes: 40, distanceKm: 3.67 } as never;
+  const L = { ...base, id: 'b', source: 'apple', externalId: 'b', minutes: 60, distanceKm: 5.5 } as never;
+  assert.equal((pickRecording(S, L) as { id: string }).id, 'b');
+  const a = { ...base, id: 'x', source: 'strava', externalId: 'x', minutes: 60, distanceKm: 10, details: { splitsSecPerKm: [360], cadence: null } } as never;
+  const b = { ...base, id: 'y', source: 'apple', externalId: 'y', minutes: 60, distanceKm: 10, details: { cadence: 170, splitsSecPerKm: [300, 300], laps: 12 } } as never;
+  const [m] = dedupeActivities([a, b]);
+  const d = m!.details as { splitsSecPerKm?: number[]; cadence?: number; laps?: number };
+  assert.equal(d.cadence, 170, 'cadența se completează');
+  assert.ok(!(d.splitsSecPerKm?.length === 2 && d.laps === 12) || (m as { id: string }).id === 'y', 'kilometrii și turele rămân ale înregistrării alese');
+});
+
+test('T79 / A18: ședința în două fișiere (pauză 5 min) = o ședință; a doua parte nu e „în afara planului”', async () => {
+  const { matchActivities } = await import('../src/scoring/match.js');
+  const p = { id: 'p', date: '2026-10-20', sport: 'alergare', type: 'z2', plannedMinutes: 60, targetZones: [2], key: false, status: 'planificat' } as never;
+  const a1 = { id: 'a1', date: '2026-10-20', sport: 'alergare', minutes: 35, startLocal: '07:00' } as never;
+  const a2 = { id: 'a2', date: '2026-10-20', sport: 'alergare', minutes: 25, startLocal: '07:40' } as never;
+  const far = { id: 'a3', date: '2026-10-20', sport: 'alergare', minutes: 20, startLocal: '18:00' } as never;
+  const r = matchActivities([p], [a1, a2, far], '2026-10-20');
+  assert.equal(r.matches[0]!.activity?.id, 'a1');
+  assert.equal(r.matches[0]!.extraActivity?.id, 'a2');
+  assert.deepEqual(r.unplanned.map((x) => x.id), ['a3'], 'alergarea de seară rămâne separată');
+});

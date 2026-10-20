@@ -97,3 +97,21 @@ test('A29: doza din prima săptămână nu crește când orizontul e mai scurt',
   const short = first('2026-12-20'), long = first('2027-05-23');
   assert.ok(short <= long + 0.05, `8 săpt.: ${short} h, 30 săpt.: ${long} h`);
 });
+
+test('T14 / A27: echipamentul declarat (fără bazin, fără bicicletă, fără putere) se spune pe plan', () => {
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-09-26', goal: '70.3', freeBlocks: blocks, historyHoursPerWeek: [7, 7, 7, 7], intensityAllowed: 'toate', swimContinuous400: true, equipment: { pool: false, bike: false, trainer: false, power: false } });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const n = r.weeks[0]!.notes.join(' | ');
+  assert.match(n, /acces la bazin/);
+  assert.match(n, /bicicleta staționară/);
+});
+
+test('T15 / A32: ritmul de cursă din module pornește de la „acum” și ajunge la ritmul planului spre final', () => {
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-04-25', goal: '10k', freeBlocks: blocks, historyHoursPerWeek: [5, 5, 5, 5], intensityAllowed: 'toate', swimContinuous400: false, run: { goalPaceSecKm: 330, nowPaceSecKm: 360, canDoDistance: true, longestRunKm: 12, branch: 'timp', beginner: false } });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const paces = r.weeks.flatMap((w) => w.workouts).map((x) => /(\d):(\d\d)\/km/.exec(x.structure ?? '')).filter((m): m is RegExpExecArray => !!m).map((m) => Number(m[1]) * 60 + Number(m[2]));
+  assert.ok(paces.length > 2);
+  assert.ok(Math.max(...paces.slice(0, 2)) > 330, `primele: ${paces.slice(0, 2)}`);
+});

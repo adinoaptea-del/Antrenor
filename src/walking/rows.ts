@@ -84,10 +84,14 @@ export function walkActivities(records: WalkRecord[], tz: string): SourceActivit
   return out;
 }
 
-/** Cea mai lungă plimbare din ultimele 14 zile (minute), măsurată sau declarată; null fără plimbări. */
+/** Plimbarea obișnuită din ultimele 14 zile (mediana, minute; auditul v93 A88 — înainte: cea mai lungă), măsurată sau declarată; null fără plimbări. */
 export function demonstratedMin(records: WalkRecord[], today: string): number | null {
   const from = addDays(today, -14);
   const { kept } = dedupeWalks(records);
-  const xs = kept.filter((w) => w.date >= from && w.date <= today).map((w) => Math.floor((w.movingSec ?? w.elapsedSec) / 60));
-  return xs.length ? Math.max(...xs) : null;
+  const xs = kept.filter((w) => w.date >= from && w.date <= today).map((w) => Math.floor((w.movingSec ?? w.elapsedSec) / 60)).sort((a, b) => a - b);
+  if (!xs.length) return null;
+  // Auditul v93, A88: capacitatea = ce tolerează de obicei (mediana, cu cel puțin 3 plimbări), nu cea mai lungă
+  // plimbare ocazională; cu 1–2 plimbări, cea mai scurtă dintre ele (prudent).
+  if (xs.length < 3) return xs[0]!;
+  return xs.length % 2 ? xs[(xs.length - 1) / 2]! : Math.round((xs[xs.length / 2 - 1]! + xs[xs.length / 2]!) / 2);
 }

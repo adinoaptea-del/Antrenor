@@ -50,12 +50,37 @@ export function matchActivities(planned: PlannedWorkout[], activities: Activity[
 
     const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
     if (best) used.add(best.id);
-    found.set(p.id, { planned: p, activity: best, extraActivity: null });
+    // Auditul v93, A18: aceeași ședință înregistrată în două fișiere (ceasul oprit și repornit, încălzirea separată):
+    // o activitate din același sport și aceeași zi care începe la ≤ 15 min după sfârșitul celei potrivite (sau se termină
+    // cu ≤ 15 min înainte de începutul ei) e a doua parte — minutele se adună o singură dată, nu devine „efort în plus”.
+    // Doar când nu mai e altă ședință din același sport în ziua aceea care să o aștepte.
+    let part: Activity | null = null;
+    if (best && !ordered.some((o) => o !== p && o.date === p.date && o.sport === p.sport && !found.get(o.id)?.activity)) {
+      part = candidates.find((a) => a.sport === p.sport && inWindow(a) && a.id !== best.id && gapBetween(best, a) != null && gapBetween(best, a)! <= 15) ?? null;
+      if (part) used.add(part.id);
+    }
+    found.set(p.id, { planned: p, activity: best, extraActivity: part });
   }
 
   const matches = ordered.map((p) => found.get(p.id) ?? { planned: p, activity: null, extraActivity: null });
   const unplanned = candidates.filter((a) => !used.has(a.id));
   return { matches, unplanned };
+}
+
+/** Pauza (min) dintre două înregistrări ale aceleiași zile, în orice ordine; null fără ore de start. */
+function gapBetween(a: Activity, b: Activity): number | null {
+  const hm = (x: Activity) => {
+    const s = (x as Activity & { startLocal?: string | null }).startLocal;
+    const m = s ? /^(\d{1,2}):(\d{2})/.exec(s) : null;
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const as = hm(a);
+  const bs = hm(b);
+  if (as == null || bs == null) return null;
+  const [first, second, fs, ss] = as <= bs ? [a, b, as, bs] : [b, a, bs, as];
+  void second;
+  const gap = ss - (fs + first.minutes);
+  return gap >= -2 ? Math.max(0, gap) : null;
 }
 
 /** Minutele dintre sfârșitul bicicletei și începutul alergării: din câmpul sursei sau din orele de start. */

@@ -85,7 +85,9 @@ export function balanceCheck(today: string, plan: PlannedWorkout[], acts: Activi
       text: over
         ? `În ultimele ${WINDOW} de zile: ${NAME[over.sport]} ${over.procent}% din plan, ${NAME[s.sport]} doar ${s.procent}% (${s.facut_min} din ${s.planificat_min} min). Pentru ${goalLabel} contează toate probele: riști să ajungi la start nepregătit la ${NAME[s.sport]}.`
         : `În ultimele ${WINDOW} de zile: ${NAME[s.sport]} ${s.procent}% din plan (${s.facut_min} din ${s.planificat_min} min). Pentru ${goalLabel} riști să ajungi la start nepregătit la ${NAME[s.sport]}.`,
-      ce_faci: `Ședințele de ${NAME[s.sport]} din săptămâna asta au prioritate${over ? `; ${NAME[over.sport]} în plus nu le înlocuiește` : ''}.`,
+      // Auditul v93, A48: sub 50% trei săptămâni la rând = fezabilitatea obiectivului se discută (dovezi + opțiuni),
+      // fără schimbarea automată a obiectivului.
+      ce_faci: `Ședințele de ${NAME[s.sport]} din săptămâna asta au prioritate${over ? `; ${NAME[over.sport]} în plus nu le înlocuiește` : ''}.${s.procent < 50 ? ` Dacă rămâne așa încă 2 săptămâni, obiectivul trebuie revăzut: mai mult timp pentru ${NAME[s.sport]}, o distanță mai scurtă sau o dată mai târzie — alegi tu, nimic nu se schimbă automat.` : ''}`,
     });
   }
   for (const q of calitate) {
