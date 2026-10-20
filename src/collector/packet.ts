@@ -1,7 +1,7 @@
 import { GOAL_NAME, sportReadiness } from '../bar/sport-readiness.js';
 import { goalKind, goalSports } from '../calendar/phases.js';
 import { hooperSum } from './readiness.js';
-import { activeRestriction } from '../calendar/safety.js';
+import { activeRestriction, withIncidents } from '../calendar/safety.js';
 import { aerobicEfficiency, type EffTrend } from './efficiency.js';
 import { mergeDetails } from './details.js';
 // Construiește pachetul de date al agenților din datele normalizate. Deterministic, fără model.
@@ -875,7 +875,7 @@ export function buildPacket(input: CollectorInput): Packet {
     raspuns_recuperare: input.recoveryEffects ?? [],
     istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {
-      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, mornings: (input.morningHistory ?? []) as never, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
+      const r = activeRestriction({ today, morning: input.morning ?? null, evenings: withIncidents(input.evenings, input.incidents?.evenings), mornings: withIncidents(input.morningHistory ?? [], input.incidents?.mornings) as never, todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r ? { verdict: r.verdict, motiv: r.reason } : null;
     })(),
     semnale: {

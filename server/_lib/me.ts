@@ -37,7 +37,7 @@ import { matchActivities } from '../../src/scoring/match.js';
 import type { Color, FreeBlock } from '../../src/types.js';
 import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
-import { activeRestriction, pendingCardiac, stricter, type Restriction } from '../../src/calendar/safety.js';
+import { activeRestriction, pendingCardiac, stricter, withIncidents, type Restriction } from '../../src/calendar/safety.js';
 import { aerobicEfficiency } from '../../src/collector/efficiency.js';
 import type { StrengthLogEntry } from '../../src/strength/log.js';
 
@@ -140,7 +140,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
-  const restriction = activeRestriction({ today, morning: mf as never, evenings: forms.evenings, mornings: forms.mornings as never, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
+  const restriction = activeRestriction({ today, morning: mf as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
   // Ieri a fost efort peste plan? Atunci azi contează și durerile musculare (brățara nu vede oboseala musculară).
   const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
   const ieri = overYesterday(today, planned, withRpe);
@@ -270,7 +270,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, tempDevC: todayW.tempDevC, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessOut,
     day,
-    cardiacPending: pendingCardiac(forms.mornings as never, today),
+    cardiacPending: pendingCardiac(withIncidents(forms.mornings, forms.incidents.mornings) as never, today),
     // Frecvența de fitness: câte zile vrea, câte are acum și de ce (auditul F55, F06).
     fitnessFreq: isFitnessGoal(user.goal) && planLoad.planId
       ? await (async () => {

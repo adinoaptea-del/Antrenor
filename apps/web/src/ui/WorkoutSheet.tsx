@@ -274,14 +274,27 @@ function Missed({ w, done }: { w: PlannedWorkout; done: boolean }) {
   const [minute, setMinute] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Boală / durere: întrebările minime de siguranță, aici (auditul v93, A03), nu în alt formular.
+  const [triage, setTriage] = useState<'boala' | 'durere' | null>(null);
+  const [febra, setFebra] = useState(false);
+  const [piept, setPiept] = useState(false);
+  const [scor, setScor] = useState<number | null>(null);
+  const [loc, setLoc] = useState('');
+  const [nota, setNota] = useState('');
   const send = async (motiv: string) => {
     if (busy) return;
+    if ((motiv === 'boala' || motiv === 'durere') && triage !== motiv) {
+      setTriage(motiv);
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
-      const r = await submitForm('nefacut', { workoutId: w.id, status, motiv, ...(status === 'partial' ? { minute: Number(minute) } : {}) });
+      const extra = motiv === 'boala' ? { febra, simptom_cardiac: piept } : motiv === 'durere' ? { scor, loc } : {};
+      const r = await submitForm('nefacut', { workoutId: w.id, status, motiv, ...extra, ...(nota.trim() ? { nota: nota.trim() } : {}), ...(status === 'partial' ? { minute: Number(minute) } : {}) });
       setMsg(String(r.data?.mesaj ?? 'Am înregistrat.'));
       setOpen(false);
+      setTriage(null);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -313,11 +326,42 @@ function Missed({ w, done }: { w: PlannedWorkout; done: boolean }) {
           <div className="small" style={{ marginTop: 6 }}>De ce?</div>
           <div className="wk-btns">
             {MOTIVE.map(([k, t]) => (
-              <button key={k} className="pill" disabled={busy || (status === 'partial' && !(Number(minute) > 0))} onClick={() => void send(k)}>
+              <button key={k} className={`pill ${triage === k ? 'on' : ''}`} disabled={busy || (status === 'partial' && !(Number(minute) > 0))} onClick={() => void send(k)}>
                 {t}
               </button>
             ))}
           </div>
+          {triage === 'boala' && (
+            <div className="missed-triage">
+              <label className="small">
+                <input type="checkbox" checked={febra} onChange={(e) => setFebra(e.target.checked)} /> Am febră
+              </label>
+              <label className="small">
+                <input type="checkbox" checked={piept} onChange={(e) => setPiept(e.target.checked)} /> Durere în piept, palpitații, leșin sau lipsă de aer
+              </label>
+            </div>
+          )}
+          {triage === 'durere' && (
+            <div className="missed-triage">
+              <div className="small">Cât de tare doare (0–10)?</div>
+              <div className="wk-btns">
+                {[2, 3, 4, 5, 6, 7, 8].map((v) => (
+                  <button key={v} className={`pill ${scor === v ? 'on' : ''}`} onClick={() => setScor(v)} aria-label={`durere ${v} din 10`}>
+                    {v === 8 ? '8+' : v}
+                  </button>
+                ))}
+              </div>
+              <input className="input" placeholder="Unde? (genunchi, gleznă, spate, umăr…)" value={loc} onChange={(e) => setLoc(e.target.value)} aria-label="unde doare" />
+            </div>
+          )}
+          {triage && (
+            <>
+              <textarea className="input" rows={2} placeholder="Altceva important? (opțional)" value={nota} onChange={(e) => setNota(e.target.value)} aria-label="notă" />
+              <button className="btn sm" disabled={busy || (triage === 'durere' && scor == null)} onClick={() => void send(triage)}>
+                Trimite
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

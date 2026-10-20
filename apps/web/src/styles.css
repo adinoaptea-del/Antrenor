@@ -1475,3 +1475,5 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .welcome-fire .cosmic-t { font-size: clamp(17px, 4.9vw, 22px); text-shadow: 0 0 16px rgba(7, 16, 18, 0.95); }
 .welcome-fire .wf-go { position: fixed; transform: translateX(-50%); }
 .welcome-fire.still .wf-go { position: fixed; transform: translateX(-50%); margin: 0; }
+.missed-triage { display: grid; gap: 6px; margin-top: 8px; }
+.missed-triage label { display: flex; gap: 8px; align-items: flex-start; }

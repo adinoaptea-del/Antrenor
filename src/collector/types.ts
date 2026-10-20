@@ -136,6 +136,8 @@ export interface CollectorInput {
   /** Chestionarele de dimineață din ultimele 14 zile (și cele parțiale): ce a simțit sportivul se ține minte. */
   morningHistory?: MorningForm[];
   evenings: EveningForm[];
+  /** Incidentele din ultimele 12 luni (durere, simptom cardiac), pentru restricția activă (auditul v93, A02). */
+  incidents?: { mornings: MorningForm[]; evenings: EveningForm[] };
   labs?: LabsInput | null;
   /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */
   others?: OtherActivity[];

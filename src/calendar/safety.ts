@@ -45,7 +45,11 @@ export function painSafetyEvents(date: string, durere: unknown): MorningSafety {
   };
 }
 
-export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string } | null;
+/**
+ * Restricția activă. Toate incidentele se adună (auditul v93, A01): culoarea e cea mai strictă dintre ele, iar `reason`
+ * începe cu motivul care a decis și le păstrează pe celelalte (`others`), ca o durere să nu fie ascunsă de oboseală.
+ */
+export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string; others?: string[] } | null;
 
 /** Acțiunea afișată la stop, aceeași în formular, pe Home și în mesajul antrenorului (L-SIM-03). */
 export const CARDIAC_ACTION = 'Azi nu te antrenezi. Cere o evaluare medicală azi. Dacă ai durere în piept, leșin, lipsă de aer sau palpitații care nu trec, sună la 112.';
@@ -58,11 +62,12 @@ export function stopAction(reason: string | null | undefined): string {
 
 /**
  * Simptomul cardiac nu expiră odată cu ziua (L-SIM-03/04): după ziua raportării, până la o evaluare medicală
- * declarată de sportiv, doar ușor — fără teste, intervale sau ieșiri lungi. Fereastra: 14 zile. AI-ul nu dă aviz:
+ * declarată de sportiv, doar ușor — fără teste, intervale sau ieșiri lungi. Fără fereastră de expirare. AI-ul nu dă aviz:
  * ridicarea vine doar din bifa sportivului „am fost evaluat medical și pot face efort”.
  */
 export function pendingCardiac(mornings: { date?: string; semnale?: Record<string, unknown> | null }[] | undefined, today: string): string | null {
-  const rows = (mornings ?? []).filter((m) => m.date && m.date <= today && m.date >= addDaysIso(today, -14)).sort((a, b) => (a.date! < b.date! ? -1 : 1));
+  // Fără fereastră (auditul v93, A02): un simptom cardiac rămâne până la evaluarea declarată, oricât timp a trecut.
+  const rows = (mornings ?? []).filter((m) => m.date && m.date <= today).sort((a, b) => (a.date! < b.date! ? -1 : 1));
   let since: string | null = null;
   for (const m of rows) {
     if (m.semnale?.simptom_cardiac === true) since = m.date!;
@@ -84,12 +89,19 @@ export function pendingCardiac(mornings: { date?: string; semnale?: Record<strin
  */
 const URGENT = /(dur(ere|eri)|apăsare|apasare|strânsoare|jungh(i|iuri))\s+(în|in|la)\s+piept|piept(ul)?\s+(mă|ma)\s+(doare|strânge)|leșin|lesin|am\s+leșinat|palpita(ț|t)ii|inima\s+(o\s+ia\s+razna|bate\s+neregulat)|bătăi\s+neregulate|nu\s+(mai\s+)?puteam\s+respira|lipsă\s+de\s+aer|lipsa\s+de\s+aer|sufoca/i;
 const NEG = /(fără|fara|nu\s+am|n-am|nu\s+a\s+fost|niciun|nicio)\s+(\S+\s+){0,3}$/i;
+/** Granița propoziției: negația dintr-o propoziție nu acoperă simptomul din următoarea („Nu am febră, dar am durere în piept”). */
+const CLAUSE = /.*(?:[,;.!?:]|\b(?:dar|însă|insa|iar|apoi|totuși|totusi|și|si)\b)/is;
 export function urgentText(text: string | null | undefined): string | null {
   if (!text) return null;
-  const m = URGENT.exec(text);
-  if (!m) return null;
-  if (NEG.test(text.slice(Math.max(0, m.index - 40), m.index))) return null;
-  return m[0];
+  // Fiecare apariție, nu doar prima: o negație la prima nu o ascunde pe a doua (auditul v93, A04).
+  const re = new RegExp(URGENT.source, 'gi');
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    let before = text.slice(Math.max(0, m.index - 40), m.index);
+    const cut = CLAUSE.exec(before);
+    if (cut) before = before.slice(cut[0].length);
+    if (!NEG.test(before)) return m[0];
+  }
+  return null;
 }
 
 export function activeRestriction(input: {
@@ -102,13 +114,15 @@ export function activeRestriction(input: {
   /** Chestionarele de dimineață din ultimele 14 zile: un simptom cardiac rămâne activ până la evaluarea declarată. */
   mornings?: { date?: string; semnale?: Record<string, unknown> | null }[];
 }): Restriction {
+  const found: { verdict: 'stop' | 'rosu' | 'galben'; reason: string }[] = [];
+  const add = (verdict: 'stop' | 'rosu' | 'galben', reason: string) => found.push({ verdict, reason });
   const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? (input.morning.semnale ?? {}) : {};
-  if (s.simptom_cardiac === true) return { verdict: 'stop', reason: 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.' };
+  if (s.simptom_cardiac === true) add('stop', 'Simptom cardiac raportat azi: fără antrenament, cere o evaluare medicală.');
   const written = [typeof s.nota === 'string' ? s.nota : null, ...input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -1)).map((e) => e.comentariu ?? null)].map(urgentText).find(Boolean);
-  if (written) return { verdict: 'stop', reason: `Ai scris „${written}”: azi fără antrenament și cere o evaluare medicală azi. Dacă durerea în piept, leșinul sau lipsa de aer apar acum, sună la 112.` };
-  if (s.febra === true) return { verdict: 'stop', reason: 'Febră raportată azi: fără antrenament.' };
-  if (input.savedVerdict === 'stop') return { verdict: 'stop', reason: 'Stop pentru azi.' };
-  if (s.boala === true) return { verdict: 'rosu', reason: 'Boală raportată azi: pauză.' };
+  if (written) add('stop', `Ai scris „${written}”: azi fără antrenament și cere o evaluare medicală azi. Dacă durerea în piept, leșinul sau lipsa de aer apar acum, sună la 112.`);
+  if (s.febra === true) add('stop', 'Febră raportată azi: fără antrenament.');
+  if (input.savedVerdict === 'stop') add('stop', 'Stop pentru azi.');
+  if (s.boala === true) add('rosu', 'Boală raportată azi: pauză.');
   // Semnalele individuale înaintea sumei (auditul M35, E01): epuizare sau dureri musculare 6–7/7 nu sunt „în regulă”
   // doar pentru că celelalte note sunt bune. Oboseala nu e diagnostic; durerea musculară se separă de durerea focală.
   const hm = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;
@@ -118,30 +132,33 @@ export function activeRestriction(input: {
     const zona = hm?.dureri_zona;
     const where = zona === 'picioare' ? ' la picioare' : zona === 'spate' ? ' la spate' : zona === 'brate' ? ' la umeri și brațe' : zona === 'tot' ? ' pe tot corpul' : '';
     const act = zona === 'picioare' ? 'azi fără alergare și fără picioare la sală; înot sau bicicletă doar foarte ușor și doar dacă nu încarcă zona' : zona === 'brate' ? 'azi fără înot și fără partea de sus la sală; alergare sau bicicletă doar ușor' : zona === 'spate' ? 'azi fără sală și fără ședințe lungi; doar ușor, dacă nu doare' : zona === 'tot' ? 'azi pauză sau doar mers ușor' : 'azi doar ușor; spune unde (picioare, spate, umeri) ca să știm ce ședințe rămân';
-    return { verdict: 'galben', reason: `Dureri musculare ${dureri}/7${where}: ${act}.${hm?.dureri_mers ? ' Doare și la mers: dacă e într-un singur punct sau ascuțită, e durere, nu oboseală — spune-o în formularul de seară.' : ''} Reevaluăm mâine dimineață.` };
+    add('galben', `Dureri musculare ${dureri}/7${where}: ${act}.${hm?.dureri_mers ? ' Doare și la mers: dacă e într-un singur punct sau ascuțită, e durere, nu oboseală — spune-o în formularul de seară.' : ''} Reevaluăm mâine dimineață.`);
   }
   if (oboseala != null && oboseala >= 6) {
     const days = (input.mornings ?? []).filter((m) => m.date && m.date < input.today && m.date >= addDaysIso(input.today, -3) && Number((m as { hooper?: { oboseala?: number } }).hooper?.oboseala ?? 0) >= 6).length;
-    return { verdict: 'galben', reason: `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ''}: doar ușor sau pauză. ${days >= 2 ? 'E persistentă: verificăm cauza (somn, mâncare, boală) înainte de următoarea ședință grea; obiectivul rămâne, planul se reevaluează.' : 'Dacă ține 2–3 zile, verificăm cauza (somn, mâncare, boală).'}` };
+    add('galben', `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ''}: doar ușor sau pauză. ${days >= 2 ? 'E persistentă: verificăm cauza (somn, mâncare, boală) înainte de următoarea ședință grea; obiectivul rămâne, planul se reevaluează.' : 'Dacă ține 2–3 zile, verificăm cauza (somn, mâncare, boală).'}`);
   }
   const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
   const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
-  if (cardiacSince && cardiacSince < input.today) return { verdict: 'galben', reason: `Simptom cardiac raportat pe ${cardiacSince}: până la o evaluare medicală, doar ușor — fără teste, intervale sau ieșiri lungi. Când medicul ți-a permis efortul, bifează în chestionarul de dimineață.` };
+  if (cardiacSince && cardiacSince < input.today) add('galben', `Simptom cardiac raportat pe ${cardiacSince}: până la o evaluare medicală, doar ușor — fără teste, intervale sau ieșiri lungi. Când medicul ți-a permis efortul, bifează în chestionarul de dimineață.`);
   const worst = activePain(input.evenings, input.today);
-  if (worst && worst.scor >= 5) return { verdict: 'rosu', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): fără antrenament până la reevaluare. Când a scăzut, spune în formular.` };
+  if (worst && worst.scor >= 5) add('rosu', `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): fără antrenament până la reevaluare. Când a scăzut, spune în formular.`);
   // Efortul mare de azi nu mai e o restricție de sănătate: îl echivalează regula „acoperit” (efort făcut față de cel
   // planificat), iar ziua de mâine o decid datele de dimineață.
-  if (worst && worst.scor >= 3) return { verdict: 'galben', reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): doar ușor, fără impact; o alternativă se face doar dacă nu doare.` };
-  return null;
+  else if (worst && worst.scor >= 3) add('galben', `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): doar ușor, fără impact; o alternativă se face doar dacă nu doare.`);
+  if (!found.length) return null;
+  const top = found.reduce((x, y) => (RANK[y.verdict] > RANK[x.verdict] ? y : x));
+  const others = found.filter((f) => f !== top).map((f) => f.reason);
+  return { verdict: top.verdict, reason: others.length ? `${top.reason} Și: ${others.join(' ')}` : top.reason, ...(others.length ? { others } : {}) };
 }
 
 /**
  * Durerea activă: cea mai recentă raportare cu scor, per loc. O durere ≥ 3 rămâne activă până la o raportare ulterioară
- * mai mică pentru același loc (sau fără loc) — trecerea timpului singură nu o ridică. Fereastra: 28 de zile (o durere
- * mai veche, fără nicio raportare de atunci, nu mai blochează, dar o spune mesajul de dimineață).
+ * mai mică pentru același loc (sau fără loc) — trecerea timpului singură nu o ridică, oricât ar fi (auditul v93, A02;
+ * apelanții dau incidentele din ultimele 12 luni).
  */
 export function activePain(evenings: { date: string; durere?: { scor: number | null; loc: string | null } | null }[], today: string): { scor: number; loc: string | null; date: string } | null {
-  const rows = evenings.filter((e) => e.date <= today && e.date >= addDaysIso(today, -28) && e.durere?.scor != null).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const rows = evenings.filter((e) => e.date <= today && e.durere?.scor != null).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const byLoc = new Map<string, { scor: number; loc: string | null; date: string }>();
   for (const e of rows) {
     const loc = (e.durere!.loc ?? '').trim().toLowerCase();
@@ -176,4 +193,12 @@ export function bigEffort(acts: { sport: string; minutes: number; rpe?: number |
   const h = Math.floor(a.minutes / 60);
   const m = a.minutes % 60;
   return `${SPORT_WORD[a.sport] ?? a.sport} ${h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`}${(a.rpe ?? 0) >= 7 ? `, efort ${a.rpe}/10` : ''}`;
+}
+
+/** Lista completă pentru restricție: formularele recente + incidentele vechi, fără dubluri (aceeași zi și același loc). */
+export function withIncidents<T extends { date?: string }>(recent: T[], old: T[] | undefined): T[] {
+  if (!old?.length) return recent;
+  const key = (x: T) => `${x.date}|${JSON.stringify((x as { durere?: unknown }).durere ?? (x as { semnale?: unknown }).semnale ?? null)}`;
+  const seen = new Set(recent.map(key));
+  return [...old.filter((x) => !seen.has(key(x))), ...recent];
 }

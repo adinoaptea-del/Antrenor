@@ -2239,7 +2239,7 @@ function stopAction(reason) {
   return "Azi nu te antrenezi.";
 }
 function pendingCardiac(mornings, today) {
-  const rows = (mornings ?? []).filter((m) => m.date && m.date <= today && m.date >= addDaysIso(today, -14)).sort((a, b) => a.date < b.date ? -1 : 1);
+  const rows = (mornings ?? []).filter((m) => m.date && m.date <= today).sort((a, b) => a.date < b.date ? -1 : 1);
   let since = null;
   for (const m of rows) {
     if (m.semnale?.simptom_cardiac === true) since = m.date;
@@ -2249,21 +2249,28 @@ function pendingCardiac(mornings, today) {
 }
 var URGENT = /(dur(ere|eri)|apăsare|apasare|strânsoare|jungh(i|iuri))\s+(în|in|la)\s+piept|piept(ul)?\s+(mă|ma)\s+(doare|strânge)|leșin|lesin|am\s+leșinat|palpita(ț|t)ii|inima\s+(o\s+ia\s+razna|bate\s+neregulat)|bătăi\s+neregulate|nu\s+(mai\s+)?puteam\s+respira|lipsă\s+de\s+aer|lipsa\s+de\s+aer|sufoca/i;
 var NEG = /(fără|fara|nu\s+am|n-am|nu\s+a\s+fost|niciun|nicio)\s+(\S+\s+){0,3}$/i;
+var CLAUSE = /.*(?:[,;.!?:]|\b(?:dar|însă|insa|iar|apoi|totuși|totusi|și|si)\b)/is;
 function urgentText(text) {
   if (!text) return null;
-  const m = URGENT.exec(text);
-  if (!m) return null;
-  if (NEG.test(text.slice(Math.max(0, m.index - 40), m.index))) return null;
-  return m[0];
+  const re = new RegExp(URGENT.source, "gi");
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    let before = text.slice(Math.max(0, m.index - 40), m.index);
+    const cut = CLAUSE.exec(before);
+    if (cut) before = before.slice(cut[0].length);
+    if (!NEG.test(before)) return m[0];
+  }
+  return null;
 }
 function activeRestriction(input) {
+  const found = [];
+  const add = (verdict, reason) => found.push({ verdict, reason });
   const s = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning.semnale ?? {} : {};
-  if (s.simptom_cardiac === true) return { verdict: "stop", reason: "Simptom cardiac raportat azi: f\u0103r\u0103 antrenament, cere o evaluare medical\u0103." };
+  if (s.simptom_cardiac === true) add("stop", "Simptom cardiac raportat azi: f\u0103r\u0103 antrenament, cere o evaluare medical\u0103.");
   const written = [typeof s.nota === "string" ? s.nota : null, ...input.evenings.filter((e) => e.date <= input.today && e.date >= addDaysIso(input.today, -1)).map((e) => e.comentariu ?? null)].map(urgentText).find(Boolean);
-  if (written) return { verdict: "stop", reason: `Ai scris \u201E${written}\u201D: azi f\u0103r\u0103 antrenament \u0219i cere o evaluare medical\u0103 azi. Dac\u0103 durerea \xEEn piept, le\u0219inul sau lipsa de aer apar acum, sun\u0103 la 112.` };
-  if (s.febra === true) return { verdict: "stop", reason: "Febr\u0103 raportat\u0103 azi: f\u0103r\u0103 antrenament." };
-  if (input.savedVerdict === "stop") return { verdict: "stop", reason: "Stop pentru azi." };
-  if (s.boala === true) return { verdict: "rosu", reason: "Boal\u0103 raportat\u0103 azi: pauz\u0103." };
+  if (written) add("stop", `Ai scris \u201E${written}\u201D: azi f\u0103r\u0103 antrenament \u0219i cere o evaluare medical\u0103 azi. Dac\u0103 durerea \xEEn piept, le\u0219inul sau lipsa de aer apar acum, sun\u0103 la 112.`);
+  if (s.febra === true) add("stop", "Febr\u0103 raportat\u0103 azi: f\u0103r\u0103 antrenament.");
+  if (input.savedVerdict === "stop") add("stop", "Stop pentru azi.");
+  if (s.boala === true) add("rosu", "Boal\u0103 raportat\u0103 azi: pauz\u0103.");
   const hm4 = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;
   const dureri = hm4?.hooper?.dureri ?? null;
   const oboseala = hm4?.hooper?.oboseala ?? null;
@@ -2271,22 +2278,25 @@ function activeRestriction(input) {
     const zona = hm4?.dureri_zona;
     const where = zona === "picioare" ? " la picioare" : zona === "spate" ? " la spate" : zona === "brate" ? " la umeri \u0219i bra\u021Be" : zona === "tot" ? " pe tot corpul" : "";
     const act = zona === "picioare" ? "azi f\u0103r\u0103 alergare \u0219i f\u0103r\u0103 picioare la sal\u0103; \xEEnot sau biciclet\u0103 doar foarte u\u0219or \u0219i doar dac\u0103 nu \xEEncarc\u0103 zona" : zona === "brate" ? "azi f\u0103r\u0103 \xEEnot \u0219i f\u0103r\u0103 partea de sus la sal\u0103; alergare sau biciclet\u0103 doar u\u0219or" : zona === "spate" ? "azi f\u0103r\u0103 sal\u0103 \u0219i f\u0103r\u0103 \u0219edin\u021Be lungi; doar u\u0219or, dac\u0103 nu doare" : zona === "tot" ? "azi pauz\u0103 sau doar mers u\u0219or" : "azi doar u\u0219or; spune unde (picioare, spate, umeri) ca s\u0103 \u0219tim ce \u0219edin\u021Be r\u0103m\xE2n";
-    return { verdict: "galben", reason: `Dureri musculare ${dureri}/7${where}: ${act}.${hm4?.dureri_mers ? " Doare \u0219i la mers: dac\u0103 e \xEEntr-un singur punct sau ascu\u021Bit\u0103, e durere, nu oboseal\u0103 \u2014 spune-o \xEEn formularul de sear\u0103." : ""} Reevalu\u0103m m\xE2ine diminea\u021B\u0103.` };
+    add("galben", `Dureri musculare ${dureri}/7${where}: ${act}.${hm4?.dureri_mers ? " Doare \u0219i la mers: dac\u0103 e \xEEntr-un singur punct sau ascu\u021Bit\u0103, e durere, nu oboseal\u0103 \u2014 spune-o \xEEn formularul de sear\u0103." : ""} Reevalu\u0103m m\xE2ine diminea\u021B\u0103.`);
   }
   if (oboseala != null && oboseala >= 6) {
     const days = (input.mornings ?? []).filter((m) => m.date && m.date < input.today && m.date >= addDaysIso(input.today, -3) && Number(m.hooper?.oboseala ?? 0) >= 6).length;
-    return { verdict: "galben", reason: `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ""}: doar u\u0219or sau pauz\u0103. ${days >= 2 ? "E persistent\u0103: verific\u0103m cauza (somn, m\xE2ncare, boal\u0103) \xEEnainte de urm\u0103toarea \u0219edin\u021B\u0103 grea; obiectivul r\u0103m\xE2ne, planul se reevalueaz\u0103." : "Dac\u0103 \u021Bine 2\u20133 zile, verific\u0103m cauza (somn, m\xE2ncare, boal\u0103)."}` };
+    add("galben", `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ""}: doar u\u0219or sau pauz\u0103. ${days >= 2 ? "E persistent\u0103: verific\u0103m cauza (somn, m\xE2ncare, boal\u0103) \xEEnainte de urm\u0103toarea \u0219edin\u021B\u0103 grea; obiectivul r\u0103m\xE2ne, planul se reevalueaz\u0103." : "Dac\u0103 \u021Bine 2\u20133 zile, verific\u0103m cauza (somn, m\xE2ncare, boal\u0103)."}`);
   }
   const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
   const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
-  if (cardiacSince && cardiacSince < input.today) return { verdict: "galben", reason: `Simptom cardiac raportat pe ${cardiacSince}: p\xE2n\u0103 la o evaluare medical\u0103, doar u\u0219or \u2014 f\u0103r\u0103 teste, intervale sau ie\u0219iri lungi. C\xE2nd medicul \u021Bi-a permis efortul, bifeaz\u0103 \xEEn chestionarul de diminea\u021B\u0103.` };
+  if (cardiacSince && cardiacSince < input.today) add("galben", `Simptom cardiac raportat pe ${cardiacSince}: p\xE2n\u0103 la o evaluare medical\u0103, doar u\u0219or \u2014 f\u0103r\u0103 teste, intervale sau ie\u0219iri lungi. C\xE2nd medicul \u021Bi-a permis efortul, bifeaz\u0103 \xEEn chestionarul de diminea\u021B\u0103.`);
   const worst = activePain(input.evenings, input.today);
-  if (worst && worst.scor >= 5) return { verdict: "rosu", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""} (raportat\u0103 pe ${worst.date}): f\u0103r\u0103 antrenament p\xE2n\u0103 la reevaluare. C\xE2nd a sc\u0103zut, spune \xEEn formular.` };
-  if (worst && worst.scor >= 3) return { verdict: "galben", reason: `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""} (raportat\u0103 pe ${worst.date}): doar u\u0219or, f\u0103r\u0103 impact; o alternativ\u0103 se face doar dac\u0103 nu doare.` };
-  return null;
+  if (worst && worst.scor >= 5) add("rosu", `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""} (raportat\u0103 pe ${worst.date}): f\u0103r\u0103 antrenament p\xE2n\u0103 la reevaluare. C\xE2nd a sc\u0103zut, spune \xEEn formular.`);
+  else if (worst && worst.scor >= 3) add("galben", `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ""} (raportat\u0103 pe ${worst.date}): doar u\u0219or, f\u0103r\u0103 impact; o alternativ\u0103 se face doar dac\u0103 nu doare.`);
+  if (!found.length) return null;
+  const top = found.reduce((x, y) => RANK2[y.verdict] > RANK2[x.verdict] ? y : x);
+  const others = found.filter((f) => f !== top).map((f) => f.reason);
+  return { verdict: top.verdict, reason: others.length ? `${top.reason} \u0218i: ${others.join(" ")}` : top.reason, ...others.length ? { others } : {} };
 }
 function activePain(evenings, today) {
-  const rows = evenings.filter((e) => e.date <= today && e.date >= addDaysIso(today, -28) && e.durere?.scor != null).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const rows = evenings.filter((e) => e.date <= today && e.durere?.scor != null).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   const byLoc = /* @__PURE__ */ new Map();
   for (const e of rows) {
     const loc = (e.durere.loc ?? "").trim().toLowerCase();
@@ -2304,6 +2314,12 @@ function addDaysIso(iso, n2) {
   const d = /* @__PURE__ */ new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n2);
   return d.toISOString().slice(0, 10);
+}
+function withIncidents(recent, old) {
+  if (!old?.length) return recent;
+  const key2 = (x) => `${x.date}|${JSON.stringify(x.durere ?? x.semnale ?? null)}`;
+  const seen = new Set(recent.map(key2));
+  return [...old.filter((x) => !seen.has(key2(x))), ...recent];
 }
 
 // src/collector/efficiency.ts
@@ -5884,7 +5900,7 @@ function buildPacket(input) {
     raspuns_recuperare: input.recoveryEffects ?? [],
     istoric: input.trainingHistory ?? null,
     restrictie_activa: (() => {
-      const r2 = activeRestriction({ today, morning: input.morning ?? null, evenings: input.evenings, mornings: input.morningHistory ?? [], todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
+      const r2 = activeRestriction({ today, morning: input.morning ?? null, evenings: withIncidents(input.evenings, input.incidents?.evenings), mornings: withIncidents(input.morningHistory ?? [], input.incidents?.mornings), todayActivities: acts.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: input.evenings.find((e) => e.activityId === a.externalId || e.activityId === a.id)?.rpe ?? null })) });
       return r2 ? { verdict: r2.verdict, motiv: r2.reason } : null;
     })(),
     semnale: {
@@ -6132,7 +6148,12 @@ async function loadForms(userId, today) {
   const morningRows = await select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `gte.${addDays(today, -14)}` }, { order: "created_at.desc", limit: 60 }).catch(() => []);
   const byDay = /* @__PURE__ */ new Map();
   for (const r2 of morningRows) if (!byDay.has(r2.for_date)) byDay.set(r2.for_date, { ...r2.answers, date: r2.for_date });
-  return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null };
+  const [painRows, cardiacRows] = await Promise.all([
+    select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: `gte.${addDays(today, -365)}`, "answers->durere->>scor": "not.is.null" }, { order: "for_date.asc", limit: 1e3 }).catch(() => []),
+    select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `gte.${addDays(today, -365)}`, or: "(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true)" }, { order: "for_date.asc", limit: 1e3 }).catch(() => [])
+  ]);
+  const incidents = { evenings: painRows.map((r2) => ({ ...r2.answers, date: r2.answers.date ?? r2.for_date })), mornings: cardiacRows.map((r2) => ({ ...r2.answers, date: r2.for_date })) };
+  return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null, incidents };
 }
 async function loadZones(userId) {
   const z = await one("zones", { user_id: `eq.${userId}` });
@@ -6258,6 +6279,7 @@ async function collect(userId, today, event) {
     morning: forms.morning,
     morningHistory: forms.mornings,
     evenings: forms.evenings,
+    incidents: forms.incidents,
     labs,
     load: null,
     aviz,
@@ -7312,7 +7334,7 @@ async function fitnessWithAttendance(userId, today, p, planId) {
   });
   const freeDays = new Set((await loadSchedules(userId).catch(() => [])).map((b) => b.day)).size;
   const forms = await loadForms(userId, today).catch(() => null);
-  const restricted = forms ? activeRestriction({ today, morning: forms.morning, evenings: forms.evenings }) != null : false;
+  const restricted = forms ? activeRestriction({ today, morning: forms.morning, evenings: withIncidents(forms.evenings, forms.incidents?.evenings), mornings: withIncidents(forms.mornings ?? [], forms.incidents?.mornings) }) != null : false;
   const d = unlockDecision(p, weeks, { freeDays, restricted });
   return { ...p, unlocked: d.days, unlockWhy: d.why };
 }
@@ -7551,6 +7573,10 @@ var DAY_TEXT = {
   stop: { title: "Stop", action: "Azi nu te antrenezi. Dac\u0103 simptomele continu\u0103, mergi la medic." }
 };
 var RANK3 = { verde: 0, galben: 1, rosu: 2, stop: 3 };
+function finished(r2, title, action, reason) {
+  if (!r2) return { level: "verde", title, action, reason, rest: true };
+  return { level: r2.verdict, title, action: `${action} Aten\u021Bie: ${r2.reason}`, reason: cap(r2.reason), rest: true };
+}
 function decideDay(i) {
   const candidates = [];
   if (i.restriction) candidates.push({ level: i.restriction.verdict, reason: i.restriction.reason });
@@ -7567,10 +7593,10 @@ function decideDay(i) {
   const covered = sessions.filter((w) => w.status === "anulat_sistem" && coveredNote(w));
   if (sessions.length && covered.length && active6.length === 0) {
     const hard3 = candidates.filter((c2) => c2.level === "stop").sort((a, b) => RANK3[b.level] - RANK3[a.level])[0];
-    if (!hard3) return { level: "verde", title: "Ziua e acoperit\u0103", action: "Ai f\u0103cut deja efortul zilei.", reason: "M\xE2ine diminea\u021B\u0103 antrenorii se uit\u0103 la somn, recuperare \u0219i dureri, apoi decid ziua.", rest: true };
+    if (!hard3) return finished(i.restriction, "Ziua e acoperit\u0103", "Ai f\u0103cut deja efortul zilei.", "M\xE2ine diminea\u021B\u0103 antrenorii se uit\u0103 la somn, recuperare \u0219i dureri, apoi decid ziua.");
   }
   if (sessions.length && done.length && active6.length === 0 && cancelled.length === 0 && !candidates.some((c2) => c2.level === "stop")) {
-    return { level: "verde", title: "Gata pe azi", action: "Ai f\u0103cut ce era \xEEn plan. Restul zilei odihn\u0103.", reason: null, rest: true };
+    return finished(i.restriction, "Gata pe azi", "Ai f\u0103cut ce era \xEEn plan. Restul zilei odihn\u0103.", null);
   }
   if (i.ask && active6.length && !candidates.some((c2) => c2.level === "stop" || c2.level === "rosu")) {
     return {
@@ -8153,7 +8179,7 @@ async function buildMe(userId, today) {
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning;
   const hs = hooperSum(mf?.hooper).suma;
-  const restriction = activeRestriction({ today, morning: mf, evenings: forms.evenings, mornings: forms.mornings, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
+  const restriction = activeRestriction({ today, morning: mf, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings), savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
   const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
   const ieri = overYesterday(today, planned, withRpe);
   const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
@@ -8263,7 +8289,7 @@ async function buildMe(userId, today) {
     wellnessToday: todayW ? { hrv: todayW.hrv, rhr: todayW.rhr, sleepMin: todayW.sleepMin, bedtime: todayW.bedtime, sleepScore: todayW.sleepScore, recoveryScore: todayW.recoveryScore, tempDevC: todayW.tempDevC, source: todayW.sources.hrv ?? todayW.sources.somn ?? null } : null,
     readiness: readinessOut,
     day: day2,
-    cardiacPending: pendingCardiac(forms.mornings, today),
+    cardiacPending: pendingCardiac(withIncidents(forms.mornings, forms.incidents.mornings), today),
     // Frecvența de fitness: câte zile vrea, câte are acum și de ce (auditul F55, F06).
     fitnessFreq: isFitnessGoal(user.goal) && planLoad.planId ? await (async () => {
       const f = forms.intake?.fitness ?? {};
@@ -11184,8 +11210,9 @@ async function handler10(req, res) {
       const fb = outcomeFeedback(workouts, outcomes, { workoutId: id, date: row.date, status, motiv, minutes, reportedAt }, today, reportedAt);
       if (planId && fb.changed.length) await upsert("workouts_planned", fb.changed.map((w) => toWorkoutRow(w, u.id, planId)), "id");
       await insert("journal", { user_id: u.id, date: today, entry: `declarat de sportiv: ${fb.message}` }).catch(() => void 0);
+      const safety = await nefacutTriage(u.id, today, user.tz, motiv, body, nota);
       await rescore(u.id, today, user.goal ?? "70.3").catch(() => void 0);
-      json(res, 200, { ok: true, mesaj: fb.message, decizie: fb.decision });
+      json(res, 200, { ok: true, mesaj: safety.message ? `${safety.message} ${fb.message}` : fb.message, decizie: fb.decision, protectie: safety.events.length ? { verdict: safety.verdict, changes: safety.changes } : null });
       return;
     }
     if (kind === "actiune") {
@@ -11383,6 +11410,33 @@ async function handler10(req, res) {
   } catch (e) {
     fail(res, e);
   }
+}
+async function nefacutTriage(userId, today, tz, motiv, body, nota) {
+  const urgent = urgentText(nota);
+  const sick = motiv === "boala" || urgent != null;
+  let out = { verdict: null, events: [], message: null, changes: [] };
+  if (sick) {
+    const add = { boala: motiv === "boala" || void 0, febra: body.febra === true || void 0, simptom_cardiac: body.simptom_cardiac === true || urgent != null || void 0 };
+    const prev = await one("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `eq.${today}`, activity_id: "is.null" }).catch(() => null);
+    const answers = prev?.answers ?? { date: today };
+    const sem = { ...answers.semnale ?? {} };
+    for (const [k, v] of Object.entries(add)) if (v === true) sem[k] = true;
+    if (nota) sem.nota = [typeof sem.nota === "string" ? sem.nota : null, nota].filter(Boolean).join(" \xB7 ");
+    await upsert("questionnaires", { user_id: userId, kind: "dimineata", for_date: today, activity_id: null, answers: { ...answers, semnale: sem } }, "user_id,kind,for_date,activity_id");
+    const safety = morningSafetyEvents(today, sem);
+    out = { ...safety, changes: await protect(userId, today, tz, safety) };
+  }
+  if (motiv === "durere") {
+    const scor = typeof body.scor === "number" && body.scor >= 0 && body.scor <= 10 ? Math.round(body.scor) : null;
+    const loc = typeof body.loc === "string" ? body.loc.trim().slice(0, 60) : null;
+    if (scor != null) {
+      await upsert("questionnaires", { user_id: userId, kind: "seara", for_date: today, activity_id: `nefacut-${today}`, answers: { date: today, durere: { scor, loc }, comentariu: nota } }, "user_id,kind,for_date,activity_id");
+      const pain = painSafetyEvents(today, { scor, loc });
+      const changes = await protect(userId, today, tz, pain);
+      if (pain.events.length && (out.verdict == null || pain.verdict === "rosu")) out = { ...pain, verdict: out.verdict === "stop" ? "stop" : pain.verdict, events: [...out.events, ...pain.events], message: out.message ?? pain.message, changes: [...out.changes, ...changes] };
+    }
+  }
+  return out;
 }
 async function protect(userId, today, tz, safety) {
   if (!safety.events.length) return [];

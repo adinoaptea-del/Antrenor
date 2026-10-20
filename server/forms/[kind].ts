@@ -19,7 +19,7 @@ import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
 import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
-import { morningSafetyEvents, painSafetyEvents, type MorningSafety } from '../../src/calendar/safety.js';
+import { morningSafetyEvents, painSafetyEvents, urgentText, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { AWAY_LABEL, applyAway, changeSport, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs, walkProfileOf } from '../_lib/prefs.js';
@@ -336,8 +336,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const fb = outcomeFeedback(workouts, outcomes, { workoutId: id, date: row.date, status, motiv, minutes, reportedAt }, today, reportedAt);
       if (planId && fb.changed.length) await upsert('workouts_planned', fb.changed.map((w) => toWorkoutRow(w, u.id, planId)), 'id');
       await insert('journal', { user_id: u.id, date: today, entry: `declarat de sportiv: ${fb.message}` }).catch(() => undefined);
+      // Auditul v93, A03: boala sau durerea declarate aici intră în ACEEAȘI evaluare de siguranță ca formularele de
+      // dimineață/seară, imediat, fără alt formular și fără AI. Semnalele se adaugă la ziua de azi (nu se șterg).
+      const safety = await nefacutTriage(u.id, today, user.tz, motiv, body, nota);
       await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
-      json(res, 200, { ok: true, mesaj: fb.message, decizie: fb.decision });
+      json(res, 200, { ok: true, mesaj: safety.message ? `${safety.message} ${fb.message}` : fb.message, decizie: fb.decision, protectie: safety.events.length ? { verdict: safety.verdict, changes: safety.changes } : null });
       return;
     }
     if (kind === 'actiune') {
@@ -554,6 +557,40 @@ export default async function handler(req: Req, res: Res): Promise<void> {
 }
 
 /** Aplică pe plan evenimentele de siguranță (o singură dată fiecare) și scrie avertismentul din cod, o dată pe zi. */
+/**
+ * Triajul din „Nu am făcut-o” (auditul v93, A03). Boală: febră / simptom cardiac / boală se adaugă la semnalele de azi
+ * (aceleași reguli ca dimineața). Durere: scorul și locul intră ca raportare de durere (aceeași regulă ca seara). Nota
+ * liberă trece prin detectorul de simptome urgente. Nimic nu așteaptă alt formular.
+ */
+async function nefacutTriage(userId: string, today: string, tz: string | null | undefined, motiv: string, body: Record<string, unknown>, nota: string | null): Promise<MorningSafety & { changes: string[] }> {
+  const urgent = urgentText(nota);
+  const sick = motiv === 'boala' || urgent != null;
+  let out: MorningSafety & { changes: string[] } = { verdict: null, events: [], message: null, changes: [] };
+  if (sick) {
+    const add: Record<string, unknown> = { boala: motiv === 'boala' || undefined, febra: body.febra === true || undefined, simptom_cardiac: body.simptom_cardiac === true || urgent != null || undefined };
+    const prev = await one<{ answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `eq.${today}`, activity_id: 'is.null' }).catch(() => null);
+    const answers = prev?.answers ?? { date: today };
+    const sem = { ...((answers.semnale as Record<string, unknown> | undefined) ?? {}) };
+    for (const [k, v] of Object.entries(add)) if (v === true) sem[k] = true;
+    if (nota) sem.nota = [typeof sem.nota === 'string' ? sem.nota : null, nota].filter(Boolean).join(' · ');
+    await upsert('questionnaires', { user_id: userId, kind: 'dimineata', for_date: today, activity_id: null, answers: { ...answers, semnale: sem } }, 'user_id,kind,for_date,activity_id');
+    const safety = morningSafetyEvents(today, sem);
+    out = { ...safety, changes: await protect(userId, today, tz, safety) };
+  }
+  if (motiv === 'durere') {
+    const scor = typeof body.scor === 'number' && body.scor >= 0 && body.scor <= 10 ? Math.round(body.scor) : null;
+    const loc = typeof body.loc === 'string' ? body.loc.trim().slice(0, 60) : null;
+    if (scor != null) {
+      // Ca raportare de seară separată (fără să suprascrie formularul de seară al unei ședințe).
+      await upsert('questionnaires', { user_id: userId, kind: 'seara', for_date: today, activity_id: `nefacut-${today}`, answers: { date: today, durere: { scor, loc }, comentariu: nota } }, 'user_id,kind,for_date,activity_id');
+      const pain = painSafetyEvents(today, { scor, loc });
+      const changes = await protect(userId, today, tz, pain);
+      if (pain.events.length && (out.verdict == null || pain.verdict === 'rosu')) out = { ...pain, verdict: out.verdict === 'stop' ? 'stop' : pain.verdict, events: [...out.events, ...pain.events], message: out.message ?? pain.message, changes: [...out.changes, ...changes] };
+    }
+  }
+  return out;
+}
+
 async function protect(userId: string, today: string, tz: string | null | undefined, safety: MorningSafety): Promise<string[]> {
   if (!safety.events.length) return [];
   const { planId, workouts } = await loadPlan(userId, addDays(today, -7), addDays(today, 14));

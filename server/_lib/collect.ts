@@ -210,7 +210,7 @@ export async function loadWellness(userId: string, from: string): Promise<Source
   return rows.map(toSourceDaily);
 }
 
-export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; mornings: MorningForm[]; evenings: EveningForm[]; intake: Record<string, unknown> | null }> {
+export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; mornings: MorningForm[]; evenings: EveningForm[]; intake: Record<string, unknown> | null; incidents: { mornings: MorningForm[]; evenings: EveningForm[] } }> {
   const morningRow = await one<{ answers: MorningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `eq.${today}` }, { order: 'created_at.desc' });
   const eveningRows = await select<{ answers: EveningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -14)}` }, { order: 'created_at.desc', limit: 50 });
   const intakeRow = await one<{ answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
@@ -218,7 +218,14 @@ export async function loadForms(userId: string, today: string): Promise<{ mornin
   // Una pe zi (cea mai recentă), cu data zilei; și cele parțiale.
   const byDay = new Map<string, MorningForm>();
   for (const r of morningRows) if (!byDay.has(r.for_date)) byDay.set(r.for_date, { ...r.answers, date: r.for_date });
-  return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null };
+  // Incidentele (auditul v93, A02): durerea și simptomul cardiac nu expiră odată cu fereastra de citire. Se încarcă
+  // raportările din ultimele 12 luni; se închid doar prin declarația sportivului („a trecut” / „evaluat medical”).
+  const [painRows, cardiacRows] = await Promise.all([
+    select<{ answers: EveningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -365)}`, 'answers->durere->>scor': 'not.is.null' }, { order: 'for_date.asc', limit: 1000 }).catch(() => []),
+    select<{ answers: MorningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `gte.${addDays(today, -365)}`, or: '(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true)' }, { order: 'for_date.asc', limit: 1000 }).catch(() => []),
+  ]);
+  const incidents = { evenings: painRows.map((r) => ({ ...r.answers, date: r.answers.date ?? r.for_date })), mornings: cardiacRows.map((r) => ({ ...r.answers, date: r.for_date })) };
+  return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null, incidents };
 }
 
 export async function loadZones(userId: string): Promise<ZonesInput | null> {
@@ -358,6 +365,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     morning: forms.morning,
     morningHistory: forms.mornings,
     evenings: forms.evenings,
+    incidents: forms.incidents,
     labs,
     load: null,
     aviz,

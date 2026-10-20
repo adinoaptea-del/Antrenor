@@ -14,7 +14,7 @@ import { FITNESS_WEEKS, GOAL_LABEL, WALK_WEEKS, isFitnessGoal, isRunGoal, isWalk
 import { loadWalkRows } from './walking.js';
 import { demonstratedMin, toWalkRecords } from '../../src/walking/rows.js';
 import { fitnessProfile, unlockDecision, type FitnessIntake, type FitnessProfile } from '../../src/strength/fitness.js';
-import { activeRestriction } from '../../src/calendar/safety.js';
+import { activeRestriction, withIncidents } from '../../src/calendar/safety.js';
 import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } from '../../src/goals/run-target.js';
 
 /** Ramura de alergare: aleasă în chestionar; la cele vechi, „timp” dacă există o țintă. */
@@ -347,7 +347,7 @@ export async function fitnessWithAttendance(userId: string, today: string, p: Fi
   });
   const freeDays = new Set((await loadSchedules(userId).catch(() => [])).map((b) => b.day)).size;
   const forms = await loadForms(userId, today).catch(() => null);
-  const restricted = forms ? activeRestriction({ today, morning: forms.morning as never, evenings: forms.evenings }) != null : false;
+  const restricted = forms ? activeRestriction({ today, morning: forms.morning as never, evenings: withIncidents(forms.evenings, forms.incidents?.evenings), mornings: withIncidents(forms.mornings ?? [], forms.incidents?.mornings) as never }) != null : false;
   const d = unlockDecision(p, weeks, { freeDays, restricted });
   return { ...p, unlocked: d.days, unlockWhy: d.why };
 }

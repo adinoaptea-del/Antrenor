@@ -52,6 +52,15 @@ export interface DayInput {
   ask?: boolean;
 }
 
+/**
+ * Ziua încheiată (auditul v93, A04): „ai terminat” nu ridică siguranța. O restricție activă (durere, simptom) rămâne
+ * culoarea și motivul zilei, chiar dacă ședințele sunt bifate.
+ */
+function finished(r: DayInput['restriction'], title: string, action: string, reason: string | null): DayDecision {
+  if (!r) return { level: 'verde', title, action, reason, rest: true };
+  return { level: r.verdict, title, action: `${action} Atenție: ${r.reason}`, reason: cap(r.reason), rest: true };
+}
+
 export function decideDay(i: DayInput): DayDecision | null {
   const candidates: { level: DayLevel; reason: string | null }[] = [];
   if (i.restriction) candidates.push({ level: i.restriction.verdict, reason: i.restriction.reason });
@@ -72,11 +81,11 @@ export function decideDay(i: DayInput): DayDecision | null {
   const covered = sessions.filter((w) => w.status === 'anulat_sistem' && coveredNote(w));
   if (sessions.length && covered.length && active.length === 0) {
     const hard = candidates.filter((c) => c.level === 'stop').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
-    if (!hard) return { level: 'verde', title: 'Ziua e acoperită', action: 'Ai făcut deja efortul zilei.', reason: 'Mâine dimineață antrenorii se uită la somn, recuperare și dureri, apoi decid ziua.', rest: true };
+    if (!hard) return finished(i.restriction, 'Ziua e acoperită', 'Ai făcut deja efortul zilei.', 'Mâine dimineață antrenorii se uită la somn, recuperare și dureri, apoi decid ziua.');
   }
   // Ai făcut tot ce era azi în plan.
   if (sessions.length && done.length && active.length === 0 && cancelled.length === 0 && !candidates.some((c) => c.level === 'stop')) {
-    return { level: 'verde', title: 'Gata pe azi', action: 'Ai făcut ce era în plan. Restul zilei odihnă.', reason: null, rest: true };
+    return finished(i.restriction, 'Gata pe azi', 'Ai făcut ce era în plan. Restul zilei odihnă.', null);
   }
   // Fără date de la brățări și fără răspuns: întrebarea, nu o culoare ghicită (stopul rămâne stop).
   if (i.ask && active.length && !candidates.some((c) => c.level === 'stop' || c.level === 'rosu')) {
