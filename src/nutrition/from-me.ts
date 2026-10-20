@@ -4,7 +4,7 @@ import { DEFAULT_PREFS, nutritionDay, type DaySession, type NutritionDay, type N
 import { addDays, diffDays, weekday } from '../util/dates.js';
 
 export function nutritionInputFromMe(me: Me, date = me.today): NutritionInput {
-  const intake = (me.forms.intake ?? {}) as { program?: { day: number; startMin: number }[]; fitness?: { sarcina?: string } };
+  const intake = (me.forms.intake ?? {}) as { program?: { day: number; startMin: number }[]; fitness?: { sarcina?: string }; sarcina?: string };
   const starts = (intake.program ?? []).filter((b) => b.day === weekday(date)).map((b) => b.startMin).sort((a, b) => a - b);
   const sessions: DaySession[] = me.plan
     .filter((w) => w.date === date && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna')
@@ -20,7 +20,7 @@ export function nutritionInputFromMe(me: Me, date = me.today): NutritionInput {
     athleteId: me.user.id,
     sessions,
     prefs: { ...DEFAULT_PREFS, ...(me.prefs?.nutritie ?? {}) },
-    blockers: { restriction: date === me.today && (lvl === 'stop' || lvl === 'rosu') ? lvl : null, fatigue: tired, pregnancy: intake.fitness?.sarcina === 'da', minor: age != null && age < 18 },
+    blockers: { restriction: date === me.today && (lvl === 'stop' || lvl === 'rosu' || lvl === 'galben') ? lvl : null, fatigue: tired, pregnancy: intake.fitness?.sarcina === 'da' || intake.sarcina === 'da', minor: age != null && age < 18 },
   };
 }
 

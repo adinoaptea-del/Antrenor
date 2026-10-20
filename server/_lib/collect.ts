@@ -1,3 +1,4 @@
+import { activeRestriction, withIncidents } from '../../src/calendar/safety.js';
 import { loadWalkRows, withWalks } from './walking.js';
 import { isWalkName } from '../../src/walking/rows.js';
 import { walkingView } from '../../src/walking/view.js';
@@ -324,6 +325,8 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const prefs = await loadPrefs(userId).catch(() => null);
   const program = ((forms.intake?.program as { day: number; startMin: number }[] | undefined) ?? []).filter((x) => x.day === weekday(today)).map((x) => x.startMin).sort((a, b) => a - b);
   const age = user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null;
+  const nutritionRestriction = activeRestriction({ today, morning: forms.morning as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never })?.verdict ?? null;
+  const tiredRows = await select<{ workout_id: string }>('workout_outcomes', { user_id: `eq.${userId}`, motiv: 'eq.oboseala', reported_at: `gte.${addDays(today, -7)}` }, { select: 'workout_id', limit: 10 }).catch(() => []);
   const mealsToday = nutritionDay({
     date: today,
     athlete: { sex: user.sex ?? null, age, heightCm: user.height_cm ?? null, weightKg: bodyRow?.weight_kg != null ? Number(bodyRow.weight_kg) : null, weightDate: bodyRow?.date ?? null },
@@ -331,7 +334,9 @@ export async function collect(userId: string, today: string, event: CollectorInp
     athleteId: userId,
     sessions: planRes.workouts.filter((w) => w.date === today && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna').map((w, i) => ({ sport: w.sport, type: w.type, minutes: w.plannedMinutes, key: w.key, startMin: program[i] ?? program[0] ?? null })),
     prefs: { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) },
-    blockers: { pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da', minor: age != null && age < 18 },
+    // Auditul v93, A79: aceleași blocaje ca ecranul (restricția activă, oboseala repetată, sarcina, minorul), ca AI-ul să
+    // nu vadă deficit într-o zi roșie sau galbenă.
+    blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da' || (forms.intake as { sarcina?: string } | null)?.sarcina === 'da', minor: age != null && age < 18 },
   });
   const walkLoad = walkGoal ? await loadWalkRows(userId, addDays(weekStart(today), -63)).catch(() => null) : null;
   const input: CollectorInput = {
@@ -367,6 +372,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     evenings: forms.evenings,
     incidents: forms.incidents,
     labs,
+    labsLimit: await import('./plan.js').then((m) => m.labsGate(userId)).then((g) => (g.limitIntensity ? g.why : null)).catch(() => null),
     load: null,
     aviz,
     weather,

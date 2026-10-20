@@ -225,7 +225,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
   // plafon; pulsul din test sau estimat din vârstă, etichetat.
   const t = me.baseline.tests;
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
-  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimCapOf(me), swimRecentMaxM: swimRecentMaxOf(me), openWater: me.prefs?.mediuInot === 'ape', swimDeclared400Sec: declared400(me) });
+  return detailSteps(w, { zonesRun: t?.alergare_z ?? null, zonesBike: t?.bicicleta_z ?? null, fcmaxTest: t?.fcmax ?? null, css: t?.css ?? null, age, swimContinuousM: swimCapOf(me), swimRecentMaxM: swimRecentMaxOf(me), openWater: me.prefs?.mediuInot === 'ape' && (me.prefs?.apeConfirmat ?? []).includes(w.date), swimDeclared400Sec: declared400(me) });
 }
 
 /** De ce există ședința, într-o propoziție (din tipul ei). */

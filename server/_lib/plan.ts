@@ -49,6 +49,8 @@ export interface IntakeLike {
   evaluare?: { inot400?: string | null; ritmUsor?: string | null; ftp?: number | null; alergare5k?: string | null; alergare10k?: string | null; testEfort?: string | null };
   /** Doar la fitness (femei): nivelul, zilele, minutele, accesul, mișcarea de acum și contextul opțional. */
   fitness?: FitnessIntake;
+  /** Sarcină sau primul an după naștere (orice obiectiv, femei; opțional). Auditul v93, A56. */
+  sarcina?: 'nu' | 'da' | 'nu_spun' | null;
   /** Doar la mers: ținta de la început, cât merge acum fără oprire, mersul alert. */
   mers?: { tinta?: number | null; capacitate?: number | null; alert?: 'da' | 'nu' | 'nu_stiu' | null };
 }
@@ -193,6 +195,11 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const fitness = isFitnessGoal(intake.obiectiv);
   // Mersul pe jos: tot un program de 26 de săptămâni, fără cursă.
   const walk = isWalkGoal(intake.obiectiv);
+  // Auditul v93, A56: domeniul suportat pentru planurile de anduranță e adultul fără sarcină sau postpartum recent. În
+  // afara lui nu se generează automat o prescripție personalizată (fitness și mersul au varianta lor de întreținere).
+  if (!fitness && !walk && (intake.sarcina === 'da' || intake.fitness?.sarcina === 'da')) {
+    return { ok: false, reason: 'Pentru sarcină sau primul an după naștere, AIRON nu generează automat un plan de anduranță: ritmul, volumul și revenirea depind de evaluarea medicului sau a moașei. Poți alege programul de mers pe jos sau fitness de întreținere, ori revii după evaluare.', budgetHours: 0, options: ['mers pe jos', 'fitness — întreținere'] };
+  }
   if (fitness || walk) {
     const same = !!current && current.goal === intake.obiectiv && current.start_date < nextMonday0;
     intake = { ...intake, dataCursa: same ? current!.race_date : addDays(startThisWeek ? weekStart(today) : nextMonday0, (walk ? WALK_WEEKS : FITNESS_WEEKS) * 7) };
@@ -299,7 +306,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     weeks: result.weeks.length,
     workouts: rows.length,
     withoutLabs: !labs.valid,
-    note: [labs.limitIntensity ? `Intensitatea rămâne la Z1–Z2: ${labs.why}. De discutat cu medicul; planul se reface când urci analize noi.` : null, startThisWeek ? 'Planul începe săptămâna asta, din zilele rămase.' : null].filter(Boolean).join(' ') || undefined,
+    note: [labs.limitIntensity ? `Fără intensitate până discuți analizele cu medicul (${labs.why}). Asta nu înseamnă că efortul ușor a fost verificat medical: dacă apar oboseală neobișnuită, amețeli sau lipsă de aer, te oprești. Planul se reface când urci analize noi.` : null, startThisWeek ? 'Planul începe săptămâna asta, din zilele rămase.' : null].filter(Boolean).join(' ') || undefined,
     kept: carried.kept,
     dropped: carried.dropped,
     awayApplied,

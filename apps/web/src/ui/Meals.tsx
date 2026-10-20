@@ -1,13 +1,13 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { BurstAtTap, useOpenOrigin } from './OpenFrom';
-import type { Allergen } from '@core/nutrition/foods.js';
+import { ALL_ALLERGENS, ALLERGEN_LABEL, type Allergen } from '@core/nutrition/foods.js';
 import { NUTRITION_DISCLAIMER, alternatives, type Diet, type Meal } from '@core/nutrition/engine.js';
 import { nutritionForMe, nutritionInputFromMe, recentRecipes } from '@core/nutrition/from-me.js';
 import { Card, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
 
-const ALLERGENS: Allergen[] = ['lapte', 'ou', 'gluten', 'peste', 'crustacee', 'nuci', 'arahide', 'soia', 'susan'];
+const ALLERGENS: Allergen[] = ALL_ALLERGENS;
 const n0 = (x: number) => Math.round(x).toLocaleString('ro-RO');
 const ron = (x: number) => `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON`;
 
@@ -213,6 +213,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
   const cur = nutritionInputFromMe(me).prefs;
   const [diet, setDiet] = useState<Diet>(cur.diet);
   const [exclude, setExclude] = useState<Allergen[]>(cur.exclude);
+  const [other, setOther] = useState((cur.other ?? []).join(', '));
   const [confirmed, setConfirmed] = useState(cur.allergiesConfirmed);
   const [budget, setBudget] = useState(cur.budget != null ? String(cur.budget) : '');
   const [meals, setMeals] = useState<1 | 2 | 3 | 4>(cur.meals);
@@ -224,7 +225,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setErr(null);
     try {
-      await submitForm('nutritie', { diet, exclude, allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals, currentMeals, snacksOk });
+      await submitForm('nutritie', { diet, exclude, other: other.split(',').map((x) => x.trim()).filter(Boolean), allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals, currentMeals, snacksOk });
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -249,10 +250,12 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
       <div className="wk-btns">
         {ALLERGENS.map((a) => (
           <button key={a} className={`pill ${exclude.includes(a) ? 'on' : ''}`} onClick={() => tog(a)}>
-            {a}
+            {ALLERGEN_LABEL[a]}
           </button>
         ))}
       </div>
+      <input className="input" style={{ marginTop: 6 }} placeholder="Altceva (ex. kiwi, ardei), separat prin virgulă" value={other} onChange={(e) => setOther(e.target.value)} aria-label="alte alimente sau alergeni" />
+      <p className="tiny muted" style={{ marginTop: 4 }}>Filtrul exclude rețetele cu ingredientele alese, inclusiv la „Schimbă”. Nu poate garanta lipsa urmelor (contaminare în fabrică): la o alergie severă verifică eticheta fiecărui produs.</p>
       <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
         <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Lista de alergii e completă (confirm)
       </label>

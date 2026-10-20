@@ -92,10 +92,16 @@ test('Femeie 52, înot / adult 68: vârsta nu taie caloriile; la 68 de ani avert
 
 test('Minor, sarcină, oboseală repetată, restricție: fără deficit, cu motivul scris', () => {
   const s = [{ sport: 'forta' as const, type: 'forta', minutes: 40 }];
-  for (const [b, why] of [[{ minor: true }, /sub 18/], [{ pregnancy: true }, /sarcină/], [{ fatigue: true }, /oboseală/], [{ restriction: 'rosu' as const }, /restricție/]] as const) {
+  for (const [b, why] of [[{ fatigue: true }, /oboseală/], [{ restriction: 'rosu' as const }, /restricție/], [{ restriction: 'galben' as const }, /galbenă/]] as const) {
     const d = nutritionDay(woman({ sessions: s, blockers: b }));
     assert.equal(d.energy!.adjustPct, 0);
     assert.match(d.goalNote, why);
+  }
+  // Auditul v93, A56/A79: minor sau sarcină = în afara domeniului validat → fără țintă automată, cu motivul scris.
+  for (const [b, why] of [[{ minor: true }, /sub 18/], [{ pregnancy: true }, /sarcină/]] as const) {
+    const d = nutritionDay(woman({ sessions: s, blockers: b }));
+    assert.equal(d.energy, null);
+    assert.ok(d.warnings.some((x) => why.test(x)), d.warnings.join(' | '));
   }
 });
 
@@ -219,4 +225,12 @@ test('vegetarian pe 180 de zile: fără carne și pește, mese complete, cel pu�
   // Vegan: nimic de origine animală (nici miere).
   const v = nutritionDay({ date: '2026-10-19', athleteId: 'u-v', goal: '10k', athlete: { sex: 'm', age: 30, heightCm: 178, weightKg: 72 }, sessions: [], prefs: { ...DEFAULT_PREFS, diet: 'vegan' } });
   assert.ok(v.meals.every((m) => m.items.every((it) => !FOODS[it.food]!.animal)));
+});
+
+test('T54/A85: cele 14 categorii UE și alergenii personalizați; filtrul ține și la alternative', async () => {
+  const { ALL_ALLERGENS } = await import('../src/nutrition/foods.js');
+  for (const a of ['telina', 'mustar', 'sulfiti', 'lupin', 'moluste']) assert.ok((ALL_ALLERGENS as string[]).includes(a), a);
+  assert.equal(ALL_ALLERGENS.length, 14);
+  const d = nutritionDay(man({ prefs: { ...DEFAULT_PREFS, exclude: ['sulfiti'], other: ['banan'] } }));
+  assert.ok(d.meals.every((m) => m.items.every((it) => it.food !== 'stafide' && it.food !== 'banana')));
 });

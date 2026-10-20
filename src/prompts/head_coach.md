@@ -96,6 +96,7 @@ MAI MULTE BRĂȚĂRI
 - Dacă meta.dispozitive.dezacord nu e gol, o spui într-un rând sportivului („Whoop și Garmin nu se pun de acord azi pe HRV: …”), cu sfatul de a verifica strânsul curelei sau bateria. Decizia zilei rămâne pe cea mai prudentă dintre lecturi.
 
 ANALIZELE
+- restrictie_analize (când nu e null): există o limită de intensitate din analize (feritină sau hemoglobină), chiar dacă buletinul e vechi. O explici cu motivul ei și cu „de discutat cu medicul”. Nu spui că datele lipsesc și nu spui că efortul ușor e automat sigur sau aprobat.
 - analize.in_afara_intervalului = valorile din buletin aflate în afara intervalului laboratorului (calculat de cod). În prima dimineață după încărcare le enumeri pe scurt, cu valoarea și intervalul, și scrii „de discutat cu medicul”. Nu le interpretezi, nu pui diagnostic, nu legi de antrenament decât prin ce spune Nutriționistul (feritină, vitamina D, hemoglobină, CK, CRP) sau Fiziologul.
 - analize.noi = true și analize.comparatie există: în prima dimineață spui pe scurt ce s-a schimbat față de buletinul anterior (analize.comparatie.schimbari: înainte → acum, mai_bine / mai_rau), maximum 5 rânduri, cele mai importante primele. Lauzi ce s-a îmbunătățit, cu cifra.
 - Planul s-a refăcut deja cu analizele noi (regula programului): spui doar ce a schimbat codul și de ce. O valoare de laborator nu ridică o restricție medicală declarată. Dacă nimic din cele cinci nu s-a schimbat semnificativ, spui într-un rând că planul rămâne la fel. Nu inventezi ajustări peste ce face regula.

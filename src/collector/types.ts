@@ -139,6 +139,8 @@ export interface CollectorInput {
   /** Incidentele din ultimele 12 luni (durere, simptom cardiac), pentru restricția activă (auditul v93, A02). */
   incidents?: { mornings: MorningForm[]; evenings: EveningForm[] };
   labs?: LabsInput | null;
+  /** Limita de intensitate din analize (feritină / hemoglobină), cu motivul — trimisă chiar dacă buletinul e vechi (auditul v93, A89). */
+  labsLimit?: string | null;
   /** Recuperarea și mișcarea în plus de pe brățări (saună, yoga, plimbări, alte sporturi). */
   others?: OtherActivity[];
   /** Mersul pe jos (obiectivul „mers”): săptămâna calculată în cod (src/walking/view.ts). */

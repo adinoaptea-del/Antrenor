@@ -233,7 +233,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
 
           </OldPlan>
 
-          {w.sport === 'inot' && upcoming && <SwimPlace />}
+          {w.sport === 'inot' && upcoming && <SwimPlace date={w.date} />}
           {w.note && w.status !== 'anulat_sistem' && <div className="wk-note">{w.note}</div>}
           {upcoming && !paused && (
             <>
@@ -380,11 +380,21 @@ function OldPlan({ off, children }: { off: boolean; children: ReactNode }) {
 }
 
 /** Bazin sau ape libere: schimbă pașii ședințelor viitoare de înot (ape libere = alte condiții, fără test maximal). */
-function SwimPlace() {
+function SwimPlace({ date }: { date: string }) {
   const me = useMe();
   const { submitForm } = useData();
   const cur = me.prefs?.mediuInot ?? 'bazin';
+  const confirmed = (me.prefs?.apeConfirmat ?? []).includes(date);
+  const [chk, setChk] = useState({ apa: false, supraveghere: false, loc: false, conditii: false });
   const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await submitForm('inot-mediu', { confirm: { date, ...chk } });
+    } finally {
+      setBusy(false);
+    }
+  };
   const set = async (m: 'bazin' | 'ape') => {
     if (m === cur || busy) return;
     setBusy(true);
@@ -402,6 +412,26 @@ function SwimPlace() {
       <button className={`pill ${cur === 'ape' ? 'on' : ''}`} aria-pressed={cur === 'ape'} disabled={busy} onClick={() => void set('ape')}>
         Ape libere
       </button>
+      {cur === 'ape' && !confirmed && (
+        <div className="missed-triage" style={{ width: '100%' }}>
+          <div className="small">Ape libere în ziua asta? Pașii de ape libere apar doar după ce confirmi condițiile; până atunci vezi varianta de bazin.</div>
+          {(
+            [
+              ['apa', 'Știu temperatura APEI (nu a aerului) și e potrivită pentru mine'],
+              ['supraveghere', 'Înot supravegheat sau cu cineva care mă vede din apă/mal'],
+              ['loc', 'Loc cunoscut, cu intrare și ieșire ușoare'],
+              ['conditii', 'Fără valuri sau curenți puternici, vizibilitate bună'],
+            ] as const
+          ).map(([k, t]) => (
+            <label key={k} className="small">
+              <input type="checkbox" checked={chk[k]} onChange={(e) => setChk({ ...chk, [k]: e.target.checked })} /> {t}
+            </label>
+          ))}
+          <button className="btn sm" disabled={busy || !(chk.apa && chk.supraveghere && chk.loc && chk.conditii)} onClick={() => void confirm()}>
+            Confirm condițiile pentru ziua asta
+          </button>
+        </div>
+      )}
     </div>
   );
 }

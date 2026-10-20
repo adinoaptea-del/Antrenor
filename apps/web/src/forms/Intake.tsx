@@ -515,6 +515,11 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
                 <Chips value={ev.testEfort ?? null} options={[{ id: 'cpet', label: 'CPET', sub: 'ergospirometrie' }, { id: 'lactat', label: 'Test de lactat' }, { id: 'teren', label: 'Test de teren' }, { id: 'nu', label: 'Nu' }]} onChange={(testEfort) => setEv({ testEfort })} />
               </Q>
             )}
+            {!walk && !fit && a.sex === 'f' && (
+              <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, AIRON nu generează automat un plan de anduranță: volumul și revenirea se stabilesc cu medicul sau moașa.">
+                <Chips value={(a as { sarcina?: string | null }).sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => set({ sarcina } as never)} />
+              </Q>
+            )}
             <Q title={fit || walk ? 'Dureri, accidentări sau restricții de la medic' : 'Accidentări sau dureri în ultimul an'} hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
               <TextBox value={a.sanatate.accidentari} onChange={(accidentari) => set({ sanatate: { ...a.sanatate, accidentari } })} placeholder="ex. genunchi drept, primăvară; tendon ahilean stâng" />
             </Q>

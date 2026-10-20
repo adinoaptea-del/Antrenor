@@ -30,6 +30,7 @@ import { walkForm } from '../_lib/walk-forms.js';
 import type { WalkProfile } from '../../src/walking/plan.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
+import { ALL_ALLERGENS } from '../../src/nutrition/foods.js';
 import { RECIPE } from '../../src/nutrition/recipes.js';
 
 /**
@@ -60,6 +61,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
       if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness; mers pe jos');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
+      // Auditul v93, A56: aceeași regulă ca la profil și în aplicație — AIRON e pentru adulți (18+).
+      if (intake.anNastere != null && Number(today.slice(0, 4)) - Number(intake.anNastere) < 18) throw new HttpError(400, 'AIRON e pentru adulți (18 ani sau mai mult): planurile și mesele sunt calculate pentru adulți');
       await saveIntake(u.id, today, intake);
       // Alimentația declarată în chestionar devine preferința meselor (aceeași sursă ca ecranul „Mese recomandate”).
       const diet = (intake as { alimentatie?: unknown }).alimentatie;
@@ -459,23 +462,33 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         return;
       }
       const diet = ['omnivor', 'vegetarian', 'vegan'].includes(String(body.diet)) ? (String(body.diet) as 'omnivor') : cur.diet;
-      const allowed = ['lapte', 'ou', 'gluten', 'peste', 'crustacee', 'nuci', 'arahide', 'soia', 'susan'];
+      const allowed: string[] = ALL_ALLERGENS;
       const exclude = Array.isArray(body.exclude) ? (body.exclude as unknown[]).map(String).filter((x) => allowed.includes(x)) : cur.exclude;
+      const other = Array.isArray(body.other) ? (body.other as unknown[]).map((x) => String(x).trim().slice(0, 30)).filter((x) => x.length >= 2).slice(0, 10) : (cur.other ?? []);
       const budget = body.budget == null || body.budget === '' ? null : Number(body.budget);
       if (budget != null && (!Number.isFinite(budget) || budget < 20 || budget > 150)) throw new HttpError(400, 'bugetul: între 20 și 150 RON pe zi');
       const mn = Number(body.meals);
       const meals = ([1, 2, 3, 4].includes(mn) ? mn : 4) as 1 | 2 | 3 | 4;
       const cm = Number(body.currentMeals);
       const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, snacksOk: body.snacksOk !== false } });
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, snacksOk: body.snacksOk !== false } });
       json(res, 200, { ok: true });
       return;
     }
     if (kind === 'inot-mediu') {
       // Bazin | Ape libere: se salvează explicit; schimbă ședințele viitoare de înot afișate, nu istoricul.
+      const prefs = await loadPrefs(u.id);
+      // Auditul v93, A43: confirmarea condițiilor pe zi (apa, supravegherea, locul cu ieșire, valurile/curenții).
+      if (body.confirm) {
+        const c = body.confirm as { date?: string; apa?: boolean; supraveghere?: boolean; loc?: boolean; conditii?: boolean };
+        if (!isDate(c.date) || c.date < today) throw new HttpError(400, 'ziua confirmării nu e validă');
+        if (!(c.apa && c.supraveghere && c.loc && c.conditii)) throw new HttpError(400, 'toate cele patru condiții trebuie confirmate; altfel rămâi la bazin azi');
+        await savePrefs(u.id, { ...prefs, apeConfirmat: [...new Set([...(prefs.apeConfirmat ?? []).filter((d) => d >= addDays(today, -30)), c.date])] });
+        json(res, 200, { ok: true });
+        return;
+      }
       const mediu = body.mediu === 'ape' ? 'ape' : body.mediu === 'bazin' ? 'bazin' : null;
       if (!mediu) throw new HttpError(400, 'mediu: bazin sau ape');
-      const prefs = await loadPrefs(u.id);
       await savePrefs(u.id, { ...prefs, mediuInot: mediu });
       json(res, 200, { ok: true, mediu });
       return;

@@ -30,6 +30,7 @@ interface LocalState {
   lastSync: string | null;
   strengthLog?: StrengthLogEntry[];
   mediuInot?: 'bazin' | 'ape';
+  apeConfirmat?: string[];
 }
 
 const KEY = 'antrenor.local.v1';
@@ -86,7 +87,7 @@ function buildMe(): Me {
   const z = state.tests;
   return {
     strengthLog: state.strengthLog ?? [],
-    prefs: { plecari: [], fixe: [], mediuInot: state.mediuInot ?? 'bazin' },
+    prefs: { plecari: [], fixe: [], mediuInot: state.mediuInot ?? 'bazin', apeConfirmat: state.apeConfirmat ?? [] },
     profile: { sex: null, birthYear: null, heightCm: null, city: null, appleConnected: false, appleLastSync: null },
     admin: null,
     totals: null,
@@ -177,7 +178,9 @@ export const localServer = {
     } else if (kind === 'corp') {
       state = { ...state, body: body as BodyForm };
     } else if (kind === 'inot-mediu') {
-      state = { ...state, mediuInot: (body as { mediu?: string }).mediu === 'ape' ? 'ape' : 'bazin' };
+      const c = (body as { confirm?: { date?: string } }).confirm;
+      if (c?.date) state = { ...state, apeConfirmat: [...(state.apeConfirmat ?? []), c.date] };
+      else state = { ...state, mediuInot: (body as { mediu?: string }).mediu === 'ape' ? 'ape' : 'bazin' };
     } else if (kind === 'forta-jurnal') {
       const b = body as { date?: string; items?: unknown[] };
       const date = b.date ?? new Date().toISOString().slice(0, 10);

@@ -32,6 +32,8 @@ export type Diet = 'omnivor' | 'vegetarian' | 'vegan';
 export interface NutritionPrefs {
   diet: Diet;
   exclude: Allergen[];
+  /** Alte alimente sau alergeni ai sportivului, în afara celor 14 (text liber; se exclud alimentele care îi conțin în nume). */
+  other?: string[];
   /** Alergiile au fost confirmate de sportiv (altfel arătăm ingredientele și „alergii neconfirmate”). */
   allergiesConfirmed: boolean;
   /** RON/zi pentru ingredientele consumate (20–150), sau null. */
@@ -134,10 +136,13 @@ export function fuelFor(s: DaySession): { carbsPerHour: [number, number]; planne
   return { carbsPerHour: [60, 90], plannedG: Math.round((60 * s.minutes) / 60 / 5) * 5, note: 'până la 90 g/oră doar după ce ai exersat; pornești de la ~60 g/oră' };
 }
 
+const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
 function eligible(r: Recipe, p: NutritionPrefs): boolean {
   for (const i of r.ingredients) {
     const f = FOODS[i.food]!;
     if (f.allergens.some((a) => p.exclude.includes(a))) return false;
+    if ((p.other ?? []).some((t) => fold(t).length >= 3 && fold(`${f.name} ${i.food}`).includes(fold(t)))) return false;
     if (p.diet === 'vegan' && f.animal) return false;
     if (p.diet === 'vegetarian' && (f.animal === 'carne' || f.animal === 'peste')) return false;
   }
@@ -376,9 +381,14 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   if (a.heightCm == null) missing.push('înălțimea (Profil)');
   if (a.age == null) missing.push('anul nașterii (Profil)');
   if (a.sex == null) missing.push('parametrul ecuației: bărbat / femeie (Profil)');
-  const personalized = missing.length === 0;
+  const b0 = input.blockers ?? {};
+  // Auditul v93, A56/A79: formulele sunt pentru adulți fără sarcină. În afara domeniului nu se calculează automat o
+  // țintă de energie (nici deficit, nici surplus); mesele rămân orientative.
+  const outOfDomain = b0.minor ? 'sub 18 ani' : b0.pregnancy ? 'sarcină sau primul an după naștere' : null;
+  const personalized = missing.length === 0 && !outOfDomain;
   const sessions = input.sessions.filter((s) => s.minutes > 0);
   const warnings: string[] = [];
+  if (outOfDomain) warnings.push(`ținta de energie nu se calculează automat (${outOfDomain}): formula e pentru adulți fără sarcină; mesele sunt orientative, cantitățile se stabilesc cu medicul sau un nutriționist`);
 
   // Tipul zilei.
   const total = sessions.reduce((n, s) => n + s.minutes, 0);
@@ -400,7 +410,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   let adjustPct = 0;
   let goalNote = 'menținere: mâncarea urmează antrenamentele';
   if (input.goal === 'fit-slabire') {
-    const block = b.pregnancy ? 'sarcină / postpartum' : b.minor ? 'sub 18 ani' : b.restriction === 'stop' || b.restriction === 'rosu' ? 'restricție de sănătate activă' : b.fatigue ? 'oboseală declarată de mai multe ori' : null;
+    const block = b.pregnancy ? 'sarcină / postpartum' : b.minor ? 'sub 18 ani' : b.restriction === 'stop' || b.restriction === 'rosu' ? 'restricție de sănătate activă' : b.restriction === 'galben' ? 'zi galbenă (oboseală, durere sau recuperare la jumătate)' : b.fatigue ? 'oboseală declarată de mai multe ori' : null;
     if (block) goalNote = `fără deficit azi: ${block}`;
     else if (!easyDay) goalNote = 'fără deficit azi: e zi de antrenament mai lung sau mai greu';
     else {
@@ -408,7 +418,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
       goalNote = 'deficit mic (~12%) doar în zilele ușoare';
     }
   } else if (input.goal === 'fit-masa') {
-    adjustPct = b.restriction === 'stop' ? 0 : 7;
+    adjustPct = b.restriction === 'stop' || b.restriction === 'rosu' || b.pregnancy || b.minor ? 0 : 7;
     goalNote = adjustPct ? 'surplus mic (~7%) pentru masă musculară; se ajustează după tendință' : 'fără surplus azi: restricție de sănătate';
   }
 

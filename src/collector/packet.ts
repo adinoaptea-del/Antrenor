@@ -216,6 +216,8 @@ export interface Packet {
   /** Echilibrul pe ultimele 3 săptămâni: sporturi rămase în urmă, intensitate sărită. Din date, nu din impresie. */
   echilibru: Balance;
   analize: CollectorInput['labs'] | null;
+  /** Restricția activă din analize (motivul, chiar dacă buletinul e mai vechi de 12 luni) sau null. */
+  restrictie_analize: string | null;
   aviz: CollectorInput['aviz'];
 }
 
@@ -885,6 +887,7 @@ export function buildPacket(input: CollectorInput): Packet {
       simptom_cardiac: input.morning?.semnale.simptom_cardiac ?? null,
     },
     analize: input.labs ?? null,
+    restrictie_analize: input.labsLimit ?? null,
     aviz: input.aviz,
   };
 }

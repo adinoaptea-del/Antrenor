@@ -9,6 +9,8 @@ export interface CalendarPrefs {
   fixe: FixedMeet[];
   /** Unde înoată acum: bazin (implicit) sau ape libere. Schimbă structura ședințelor viitoare de înot, nu istoricul. */
   mediuInot?: 'bazin' | 'ape';
+  /** Zilele în care sportivul a confirmat condițiile de ape libere (auditul v93, A43). */
+  apeConfirmat?: string[];
   /** Mesele: dietă, alergii (confirmate sau nu), buget, câte mese, alegerile „Schimbă” pe zile. */
   nutritie?: NutritionPrefs;
   /** Mersul pe jos: ținta inițială, capacitatea declarată, mersul alert și jurnalul schimbărilor de țintă. */
@@ -18,7 +20,7 @@ export interface CalendarPrefs {
 export async function loadPrefs(userId: string): Promise<CalendarPrefs> {
   const row = await one<{ calendar_prefs: Partial<CalendarPrefs> | null }>('users', { id: `eq.${userId}` }, { select: 'calendar_prefs' }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) }, mers: walkProfileOf(p.mers) };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d: unknown) => typeof d === 'string').slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) }, mers: walkProfileOf(p.mers) };
 }
 
 /** Profilul de mers, validat (valori lipsă = implicite, jurnalul păstrat întreg). */

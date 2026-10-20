@@ -26,7 +26,10 @@ export interface Food {
   price?: { ronPerUnit: number; edible?: number; source: string; checkedAt: string };
 }
 
-export type Allergen = 'lapte' | 'ou' | 'gluten' | 'peste' | 'crustacee' | 'nuci' | 'arahide' | 'soia' | 'susan';
+/** Cele 14 categorii principale de alergeni din UE (Reg. 1169/2011, anexa II) — auditul v93, A85. */
+export type Allergen = 'lapte' | 'ou' | 'gluten' | 'peste' | 'crustacee' | 'nuci' | 'arahide' | 'soia' | 'susan' | 'telina' | 'mustar' | 'sulfiti' | 'lupin' | 'moluste';
+export const ALLERGEN_LABEL: Record<Allergen, string> = { lapte: 'lapte', ou: 'ou', gluten: 'gluten', peste: 'pește', crustacee: 'crustacee', nuci: 'nuci', arahide: 'arahide', soia: 'soia', susan: 'susan', telina: 'țelină', mustar: 'muștar', sulfiti: 'sulfiți', lupin: 'lupin', moluste: 'moluște' };
+export const ALL_ALLERGENS = Object.keys(ALLERGEN_LABEL) as Allergen[];
 
 const CHECKED = '2026-10-19';
 
@@ -104,7 +107,7 @@ export const FOODS: Record<string, Food> = Object.fromEntries(
       { id: 'afine', name: 'Afine', unit: 'g', kcal: 57, protein: 0.74, source: 'U / USDA FDC 171711 SR Legacy, „Blueberries, raw” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
       { id: 'kiwi', name: 'Kiwi verde, fără coajă', unit: 'g', kcal: 58, protein: 1.06, source: 'U / USDA FDC 327046 Foundation, „Kiwifruit, green, raw” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
       { id: 'curmale', name: 'Curmale Medjool, fără sâmbure', unit: 'g', kcal: 277, protein: 1.81, source: 'U / USDA FDC 168191 SR Legacy, „Dates, medjool” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
-      { id: 'stafide', name: 'Stafide', unit: 'g', kcal: 299, protein: 3.3, source: 'U / USDA FDC 168165 SR Legacy, „Raisins, dark, seedless” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
+      { id: 'stafide', name: 'Stafide', /* stafidele aurii sunt adesea tratate cu sulfiți */ unit: 'g', kcal: 299, protein: 3.3, source: 'U / USDA FDC 168165 SR Legacy, „Raisins, dark, seedless” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: ['sulfiti'] },
       { id: 'migdale', name: 'Migdale', unit: 'g', kcal: 579, protein: 21.1, source: 'U / USDA FDC 170567 SR Legacy, „Nuts, almonds” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: ['nuci'] },
       { id: 'seminte-dovleac', name: 'Semințe de dovleac decorticate', unit: 'g', kcal: 559, protein: 30.2, source: 'U / USDA FDC 170556 SR Legacy, „Seeds, pumpkin and squash seed kernels, dried” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
       { id: 'chia', name: 'Semințe de chia', unit: 'g', kcal: 486, protein: 16.5, source: 'U / USDA FDC 170554 SR Legacy, „Seeds, chia seeds, dried” (preluat prin getfoodfacts.com, 19.10.2026)', allergens: [] },
