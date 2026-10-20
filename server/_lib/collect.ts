@@ -15,7 +15,7 @@ import { daySessions, labIndications } from '../../src/nutrition/from-me.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import { isFitnessGoal, isRunGoal, isWalkGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
-import type { FitnessIntake } from '../../src/strength/fitness.js';
+import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
 import { allowedForAI, excludedFromAI } from '../../src/collector/permissions.js';
@@ -317,9 +317,9 @@ export async function loadClearance(userId: string): Promise<{ cardiolog: string
   return { cardiolog: c.cardiology ? `declarat de sportiv${c.cleared_at ? ` (${c.cleared_at})` : ''}` : 'necunoscut', intensitate_permisa: c.intensity_allowed };
 }
 
-export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4): Phase | null {
+export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4, intake?: Record<string, unknown> | null): Phase | null {
   try {
-    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal);
+    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal, goal && isFitnessGoal(goal) ? fitnessProfile(goal, intake?.fitness as never) : undefined);
     const w = [...weeks].reverse().find((x) => x.weekStart <= today);
     return w?.phase ?? null;
   } catch {
@@ -341,7 +341,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
     loadClearance(userId),
   ]);
   const planRow = planRes.planId ? await one<{ start_date: string; race_date: string }>('plans', { id: `eq.${planRes.planId}` }) : null;
-  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today, user.goal) ?? 'evaluare') : 'evaluare';
+  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, forms.intake) ?? 'evaluare') : 'evaluare';
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),

@@ -1,5 +1,6 @@
 // Fazele planului, așezate înapoi de la data cursei. Săptămâna cursei e ultima săptămână de taper.
 
+import { fitnessProfile, fitnessWeeks, type FitnessProfile } from '../strength/fitness.js';
 import type { Phase } from '../types.js';
 import { addDays, diffDays, weekStart } from '../util/dates.js';
 
@@ -286,12 +287,12 @@ export function phaseLengths(totalWeeks: number, taperWeeks?: number): Record<Ph
 }
 
 /** recoveryEvery: a câta săptămână din fază e descărcare (4 implicit; 3 de la 40 de ani, recuperarea e mai lentă). */
-export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4, goal?: string | null): PhaseWeek[] {
+export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4, goal?: string | null, fitness?: FitnessProfile): PhaseWeek[] {
   const first = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first, raceWeek) / 7) + 1;
   if (total < 4) throw new Error(`Prea puține săptămâni până la cursă (${total}); planul are nevoie de minimum 4.`);
-  if (isFitnessGoal(goal)) return fitnessPhaseWeeks(first, total, goal);
+  if (isFitnessGoal(goal)) return fitnessPhaseWeeks(first, total, fitness ?? fitnessProfile(goal, undefined));
   const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined);
   const weeks: PhaseWeek[] = [];
   let index = 0;
@@ -312,18 +313,16 @@ export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 
 }
 
 /**
- * Fitness: etapele programului de 26 de săptămâni, așezate peste fazele planului (acomodare = evaluare, construire =
- * baza1, progres = baza2, consolidare = build, tranziție = peak, menținere = taper). La întreținere: acomodare, apoi
- * menținere. Revizuirea din S12 e singura săptămână „de descărcare”. (Varianta exactă, cu nivelul sportivei, e în
- * src/strength/fitness.ts; aici e doar faza zilei, pentru pachet și ecrane.)
+ * Fitness: faza zilei vine din ACELAȘI calendar ca ședințele (src/strength/fitness.ts fitnessWeeks), cu profilul
+ * sportivei — auditul v93, A99 (regula 12: o singură structură de faze). Fără descărcare automată la fitness.
  */
-function fitnessPhaseWeeks(first: string, total: number, goal: FitnessGoal): PhaseWeek[] {
-  const seq: [Phase, number][] = goal === 'fit-intretinere' ? [['evaluare', 4], ['taper', 22]] : [['evaluare', 4], ['baza1', 4], ['baza2', 4], ['build', 4], ['peak', 4], ['taper', 6]];
+function fitnessPhaseWeeks(first: string, total: number, profile: FitnessProfile): PhaseWeek[] {
+  const fw = fitnessWeeks(profile, total);
   const out: PhaseWeek[] = [];
-  for (const [phase, len] of seq) {
-    for (let w = 0; w < len && out.length < total; w++) {
-      out.push({ weekStart: addDays(first, out.length * 7), index: out.length, phase, weekInPhase: w, recovery: phase === 'baza2' && w === len - 1 });
-    }
+  const startOf = new Map<Phase, number>();
+  for (const w of fw) {
+    if (!startOf.has(w.phase)) startOf.set(w.phase, out.length);
+    out.push({ weekStart: addDays(first, out.length * 7), index: out.length, phase: w.phase, weekInPhase: out.length - startOf.get(w.phase)!, recovery: false });
   }
   while (out.length < total) out.push({ weekStart: addDays(first, out.length * 7), index: out.length, phase: 'taper', weekInPhase: out.length, recovery: false });
   return out;

@@ -81,3 +81,25 @@ export function outcomeFeedback(plan: PlannedWorkout[], outcomes: Outcome[], now
   const goal = recent.length >= 2 ? 'Despre obiectiv: neschimbat deocamdată; dacă oboseala continuă, se reevaluează la bilanțul săptămânal.' : 'Despre obiectiv: neschimbat; o ședință nu schimbă ce se poate.';
   return { changed, decision, message: `Am înregistrat: ${label}, ${what} (${MOTIV_LABEL[now.motiv]}). Nu o recuperăm prin dublare. ${nextLine}${extra} ${goal}` };
 }
+
+/**
+ * Auditul v93, A62: nota „revine la plan după o ședință bine tolerată” are acum mecanism. O ședință viitoare ușurată
+ * din oboseală/durere/boală revine la forma din plan după o execuție verde, fără durere (sub 3), a aceluiași sport,
+ * făcută după ușurare. Fără execuție tolerată = rămâne ușoară (lipsa datelor nu e toleranță).
+ */
+export function restoreEased(plan: PlannedWorkout[], executions: { workoutId: string; color: string | null; pain?: number | null }[], today: string, at: string): PlannedWorkout[] {
+  const byId = new Map(plan.map((w) => [w.id, w]));
+  const out: PlannedWorkout[] = [];
+  for (const w of plan) {
+    if (!active(w) || w.date < today || !w.original || !(w.note ?? '').startsWith('ușurată:')) continue;
+    const since = (w.changedAt ?? '').slice(0, 10);
+    const ok = executions.some((e) => {
+      const p = byId.get(e.workoutId);
+      return !!p && p.sport === w.sport && p.date < today && (!since || p.date >= since) && e.color === 'verde' && (e.pain == null || e.pain < 3);
+    });
+    if (!ok) continue;
+    const o = w.original;
+    out.push({ ...w, sport: o.sport ?? w.sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? undefined, key: o.key, intervals: o.intervals ?? undefined, note: undefined, original: null, changedAt: at });
+  }
+  return out;
+}

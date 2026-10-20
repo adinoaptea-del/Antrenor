@@ -4,6 +4,9 @@
 
 import type { Zone } from '../types.js';
 
+/** Auditul v93, A110: modulele care există în catalog dar pe care generatorul nu le alege (rezervate, testat). */
+export const RESERVED_RUN_MODULES: readonly string[] = ['D1'];
+
 export type RunModuleId = 'V5' | 'V5b' | 'V10a' | 'V10' | 'T1' | 'T2' | 'H' | 'M' | 'D1' | 'R5' | 'R10' | 'RL';
 
 export interface RunModule {

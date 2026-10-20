@@ -570,7 +570,9 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   }
 
   // Ședința de calitate a săptămânii (sau nimic): un singur stimul greu, ales după ramură, nivel, fază și distanță.
-  const longFinish = branch === 'timp' && !short && !beginner && (p === 'build' || p === 'peak') && pw.weekInPhase % 2 === 1 && input.intensityAllowed !== 'Z2';
+  // Auditul v93, A110: în build lunga cu final la efort de cursă vine la 4 săptămâni (1, 5, 9…), iar în celelalte
+  // săptămâni impare rămâne T2 — înainte T2 nu apărea deloc în build (lunga cu final avea prioritate pe toate impare).
+  const longFinish = branch === 'timp' && !short && !beginner && (p === 'peak' ? pw.weekInPhase % 2 === 1 : p === 'build' && pw.weekInPhase % 4 === 1) && input.intensityAllowed !== 'Z2';
   const mod = (() => {
     if (input.intensityAllowed === 'Z2' || p === 'evaluare') return null;
     if (raceWeek) return race === '5k' ? 'R5' : race === '10k' ? 'R10' : 'RL';

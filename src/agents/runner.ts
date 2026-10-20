@@ -73,10 +73,15 @@ export interface RunResult {
 // ---------- clientul Anthropic (Messages API, răspuns structurat) ----------
 
 /** onUsage: tokenii consumați de fiecare apel (pentru costul real). */
+/** Timpul maxim al unui apel la model (auditul v93, A16). */
+export const MODEL_TIMEOUT_MS = 60_000;
+
 export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch, onUsage?: (model: string, usage: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }) => void): ModelClient {
   return {
     async json<T>(req: ModelRequest): Promise<T> {
+      // Auditul v93, A16: un apel blocat nu ține funcția (și cron-ul, care merge pe rând) până la limita platformei.
       const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
+        signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({

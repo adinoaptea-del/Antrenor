@@ -117,7 +117,7 @@ export function normalizeStravaActivity(a: StravaActivity): SourceActivity | nul
     avgWatts: a.average_watts != null ? Math.round(a.average_watts) : null,
     timeInZonesMin: null, // se calculează din stream-ul de FC cu zonele sportivului, nu din Strava
     name: `${a.name}${a.device_name ? ` · ${a.device_name}` : ''}`,
-    details: stravaDetails(a, sport),
+    details: { ...stravaDetails(a, sport), ...(sport === 'forta' && a.sport_type !== 'WeightTraining' ? { genericStrength: true } : {}) },
   };
 }
 

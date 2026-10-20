@@ -1,4 +1,4 @@
-import { stepsFromCadence, swimPace100, type ActivityDetails } from '../../src/collector/details.js';
+import { GENERIC_STRENGTH_RE, stepsFromCadence, swimPace100, type ActivityDetails } from '../../src/collector/details.js';
 import { classifyOther, type OtherActivity } from '../../src/collector/other.js';
 // Apple Watch prin aplicația iPhone „Health Auto Export” (REST API automation, format JSON).
 // Luăm somnul, HRV-ul, pulsul de repaus și antrenamentele (inclusiv cele de pe Garmin, trimise de Garmin Connect în Apple Health).
@@ -147,7 +147,7 @@ export function parseHealthWorkouts(body: unknown): AppleWorkout[] {
       max_hr: max == null ? null : Math.round(max),
       avg_pace_min_km: sport === 'alergare' && dist && dist > 0.2 ? r1(sec / 60 / dist) : null,
       name,
-      details: appleDetails(w, sport, sec, dist),
+      details: { ...appleDetails(w, sport, sec, dist), ...(sport === 'forta' && GENERIC_STRENGTH_RE.test(name) ? { genericStrength: true } : {}) },
     });
   }
   return out;

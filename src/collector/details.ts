@@ -2,6 +2,8 @@
 // Se salvează în activities.raw și se arată sportivului pe ecranul fiecărui sport.
 
 export interface ActivityDetails {
+  /** Auditul v93, A19: HIIT / CrossFit / core / antrenament generic — „forță” ca sport, dar nu ședința de sală prescrisă. */
+  genericStrength?: boolean | null;
   movingMin?: number | null;
   elapsedMin?: number | null;
   kcal?: number | null;
@@ -219,3 +221,6 @@ export function fadePct(splits: number[] | null | undefined): number | null {
   const second = avg(xs.slice(xs.length - half));
   return Math.round(((second / first) - 1) * 1000) / 10;
 }
+
+/** A19: denumiri de activitate care NU sunt sală cu greutăți (HIIT, CrossFit, core, funcțional, bootcamp). */
+export const GENERIC_STRENGTH_RE = /hiit|cross|core|functional|funcțional|bootcamp|interval|circuit/i;

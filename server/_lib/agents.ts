@@ -27,7 +27,16 @@ async function loadAgentFiles(userId: string): Promise<Partial<Record<AgentName,
 
 async function loadJournal(userId: string, today: string): Promise<string[]> {
   const rows = await select<{ date: string; entry: string }>('journal', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -14)}` }, { order: 'date.asc', limit: 200 });
-  return rows.map((r) => `${r.date}: ${r.entry}`);
+  return rows.filter((r) => journalForAI(r.entry)).map((r) => `${r.date}: ${r.entry}`);
+}
+
+/**
+ * Auditul v93, A15: la model ajung doar intrările scrise de cod (calendarul, declarațiile sportivului, plecările,
+ * migrările), nu textul liber scris de model, textele respinse sau eșecurile — altfel o „amintire” fără dovezi
+ * se întoarce în prompt ca fapt.
+ */
+export function journalForAI(entry: string): boolean {
+  return /^(calendar|declarat de sportiv|plecat |migrare )/.test(entry);
 }
 
 export async function loadSchedules(userId: string) {
@@ -112,7 +121,7 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   }
 
   // Jurnal.
-  const entries = [...result.head.jurnal, ...result.failures.map((f) => `model căzut: ${f}`), ...result.specialists.flatMap((s) => s.ce.filter((i) => i.stare === 'respins').map((i) => `respins: ${s.agent} - ${i.text} (${i.motiv})`)), ...result.specialists.flatMap((s) => s.avertismente.map((a) => `avertisment: ${s.agent} - ${a}`))];
+  const entries = [...result.head.jurnal.map((j) => `ai: ${j}`), ...result.failures.map((f) => `model căzut: ${f}`), ...result.specialists.flatMap((s) => s.ce.filter((i) => i.stare === 'respins').map((i) => `respins: ${s.agent} - ${i.text} (${i.motiv})`)), ...result.specialists.flatMap((s) => s.avertismente.map((a) => `avertisment: ${s.agent} - ${a}`))];
   if (entries.length) await insert('journal', entries.map((e) => ({ user_id: userId, date: today, entry: e })));
 
   // Mesajele către sportiv.
@@ -123,7 +132,7 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   if (event === 'dimineata') {
     await upsert(
       'readiness_daily',
-      { user_id: userId, date: today, verdict: result.decision, reason: result.specialists.find((s) => s.agent === 'fiziolog')?.ce.find((i) => i.stare === 'acceptat')?.text ?? null, hrv: packet.hrv.azi, hrv_baseline: packet.hrv.baseline60, rhr: packet.puls_repaus.azi, sleep_min: packet.somn.durata_min, hooper_sum: packet.readiness.hooper.suma, acwr: packet.incarcare.acwr, tsb: packet.incarcare.tsb },
+      { user_id: userId, date: today, verdict: result.decision, reason: result.specialists.find((s) => s.agent === 'fiziolog')?.ce.find((i) => i.stare === 'acceptat')?.text ?? (me?.day?.reason ? forAI(me.day.reason) : null) /* A15: în modul main, motivul din cod */, hrv: packet.hrv.azi, hrv_baseline: packet.hrv.baseline60, rhr: packet.puls_repaus.azi, sleep_min: packet.somn.durata_min, hooper_sum: packet.readiness.hooper.suma, acwr: packet.incarcare.acwr, tsb: packet.incarcare.tsb },
       'user_id,date',
     );
   }

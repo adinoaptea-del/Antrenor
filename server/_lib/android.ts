@@ -12,7 +12,7 @@
 // 37 HIKING, 53 ROWING, 54 ROWING_MACHINE, 56 RUNNING, 57 RUNNING_TREADMILL, 70 STRENGTH_TRAINING, 73 SWIMMING_OPEN_WATER,
 // 74 SWIMMING_POOL, 79 WALKING, 81 WEIGHTLIFTING, 83 YOGA. Stadiile de somn: 1 AWAKE, 3 OUT_OF_BED, 7 AWAKE_IN_BED.
 
-import { swimPace100, type ActivityDetails } from '../../src/collector/details.js';
+import { GENERIC_STRENGTH_RE, swimPace100, type ActivityDetails } from '../../src/collector/details.js';
 import { classifyOther, type OtherActivity } from '../../src/collector/other.js';
 import type { AppleDay, AppleWorkout } from './apple.js';
 
@@ -254,6 +254,7 @@ export function parseHealthConnect(body: unknown, tz: string): HealthConnectPars
         if (sec < 60) continue;
         const details: ActivityDetails = { movingMin: Math.round(sec / 60), elapsedMin: Math.round(elapsedSec / 60), avgSpeedKmh: distKm && distKm > 0.2 ? Math.round((distKm / (sec / 3600)) * 10) / 10 : null };
         if (sport === 'inot' && distKm) details.pace100mSec = swimPace100(sec, distKm * 1000);
+        if (sport === 'forta' && (GENERIC_STRENGTH_RE.test(String(kind)) || GENERIC_STRENGTH_RE.test(title))) details.genericStrength = true;
         workouts.push({ id: `android-${id}`, date: l.date, start_local: l.hm, sport, minutes: Math.round(sec / 60), distance_km: distKm, avg_hr: avg == null ? null : Math.round(avg), max_hr: max == null ? null : Math.round(max), avg_pace_min_km: sport === 'alergare' && distKm && distKm > 0.2 ? Math.round((sec / 60 / distKm) * 100) / 100 : null, name: `${title} · Samsung Health`, details });
       } else {
         const c = classifyOther(kind || title);

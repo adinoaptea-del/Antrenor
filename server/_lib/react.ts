@@ -14,10 +14,11 @@ import { matchActivities } from '../../src/scoring/match.js';
 import { activitySlot, legacySlot, type AdaptEvent } from '../../src/calendar/adapt.js';
 import { detectReturn } from '../../src/calendar/pause.js';
 import { extraOn } from '../../src/calendar/load.js';
-import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
+import { loadActivities, loadForms, loadPlan, loadUser, toWorkoutRow } from './collect.js';
 import { todayIn } from './auth.js';
 import { applyPlanEvents } from './agents.js';
-import { select } from './db.js';
+import { insert, select, upsert } from './db.js';
+import { restoreEased } from '../../src/calendar/outcomes.js';
 
 export interface Reaction {
   changes: string[];
@@ -85,7 +86,8 @@ export async function missedStrength(userId: string, today: string): Promise<str
   if (!yesterday.length) return [];
   const acts = dedupeActivities(await loadActivities(userId, addDays(today, -3)));
   const logged = await select<{ date: string }>('strength_log', { user_id: `eq.${userId}`, date: `eq.${y}` }, { select: 'date', limit: 1 }).catch(() => []);
-  if (logged.length || acts.some((a) => a.date === y && a.sport === 'forta')) return [];
+  // A19: un HIIT / CrossFit nu ține locul ședinței de sală prescrise (rotația merge mai departe doar cu sala făcută).
+  if (logged.length || acts.some((a) => a.date === y && a.sport === 'forta' && !(a.details as { genericStrength?: boolean } | null | undefined)?.genericStrength)) return [];
   return applyPlanEvents(userId, today, planId, workouts, yesterday.map((w) => ({ kind: 'forta-ratat' as const, workoutId: w.id })));
 }
 
@@ -115,5 +117,12 @@ export async function moduleProgression(userId: string, today: string): Promise<
       const ev = forms.evenings.find((e) => e.activityId === `plan-${w.id}` || (a && (e.activityId === a.id || e.activityId === (a as { externalId?: string }).externalId)));
       return { workoutId: w.id, color: color.get(w.id) ?? null, rpe: ev?.rpe ?? null, pain: ev?.durere?.scor ?? null, shortenedForTime: /^scurtat la cererea ta/.test(w.note ?? '') || outcome.get(w.id)?.motiv === 'timp', outcome: outcome.get(w.id) ?? null };
     });
-  return applyPlanEvents(userId, today, planId, workouts, [{ kind: 'trepte', date: today }], undefined, executions);
+  // A62: ședințele ușurate revin la plan după o execuție bine tolerată a aceluiași sport.
+  const back = restoreEased(workouts, executions, today, new Date().toISOString());
+  if (back.length) {
+    await upsert('workouts_planned', back.map((x) => toWorkoutRow(x, userId, planId)), 'id');
+    await insert('journal', back.map((x) => ({ user_id: userId, date: today, entry: `calendar: ${x.sport} ${x.date} revine la plan (ședință bine tolerată după ușurare)` }))).catch(() => undefined);
+  }
+  const restored = new Map(back.map((x) => [x.id, x]));
+  return [...back.map((x) => `${x.id}: revine la plan`), ...(await applyPlanEvents(userId, today, planId, workouts.map((w) => restored.get(w.id) ?? w), [{ kind: 'trepte', date: today }], undefined, executions))];
 }

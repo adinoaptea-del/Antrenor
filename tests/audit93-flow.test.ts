@@ -76,3 +76,71 @@ test('T14 / A65: mutarea ține cont de program și de plecări', async () => {
   assert.match(by['2026-10-22']!.reason ?? '', /nu ai timp liber/);
   assert.match(by['2026-10-23']!.reason ?? '', /plecat/);
 });
+
+test('T82 / A110: fiecare modul activ apare undeva în matricea obiectiv × ramură; T2 apare și în build; D1 e rezervat', async () => {
+  const { generatePlan } = await import('../src/calendar/generate.js');
+  const { RUN_MODULES, RESERVED_RUN_MODULES } = await import('../src/calendar/run-modules.js');
+  const blocks = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day as 0, startMin: 360, endMin: day >= 5 ? 720 : 540 }));
+  const seen = new Set<string>();
+  let t2InBuild = false;
+  for (const goal of ['5k', '10k', 'semimaraton', 'maraton'] as const) {
+    for (const age of [35, 60]) {
+      const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-09-26', goal, freeBlocks: blocks, historyHoursPerWeek: [5, 5, 5, 5], intensityAllowed: 'toate', swimContinuous400: false, athlete: { age, sex: 'm' }, run: { goalPaceSecKm: 300, canDoDistance: true, longestRunKm: 21, branch: 'timp', beginner: false } });
+      assert.ok(r.ok);
+      if (!r.ok) continue;
+      for (const w of r.weeks) for (const x of w.workouts) {
+        const m = /^([A-Z0-9a-z]+) · /.exec(x.structure ?? '');
+        if (m) seen.add(m[1]!);
+        if (w.phase === 'build' && m?.[1] === 'T2' && (goal === 'semimaraton' || goal === 'maraton')) t2InBuild = true;
+      }
+    }
+  }
+  const missing = Object.keys(RUN_MODULES).filter((id) => !RESERVED_RUN_MODULES.includes(id) && !seen.has(id));
+  assert.deepEqual(missing, [], `module active care nu apar: ${missing.join(', ')}`);
+  assert.ok(t2InBuild, 'T2 în build la semi/maraton');
+});
+
+test('T71 / A99: faza zilei la fitness vine din același calendar ca ședințele (o singură structură)', async () => {
+  const { phaseWeeks } = await import('../src/calendar/phases.js');
+  const { fitnessWeeks, fitnessProfile } = await import('../src/strength/fitness.js');
+  for (const [goal, exp] of [['fit-intretinere', 'stabila'], ['fit-intretinere', 'incepator'], ['fit-tonifiere', 'stabila']] as const) {
+    const prof = fitnessProfile(goal, { experienta: exp, zile: 3, minute: 60 } as never);
+    const a = phaseWeeks('2026-10-26', '2027-04-26', 4, goal, prof).slice(0, 26).map((w) => [w.phase, w.recovery]);
+    const b = fitnessWeeks(prof, a.length).map((w) => [w.phase, w.recovery]);
+    assert.deepEqual(a, b, `${goal} ${exp}`);
+  }
+});
+
+test('A15: la model ajung doar intrările de jurnal scrise de cod', async () => {
+  const { journalForAI } = await import('../server/_lib/agents.js');
+  assert.equal(journalForAI('calendar: progres: T1 → T2'), true);
+  assert.equal(journalForAI('declarat de sportiv: ...'), true);
+  assert.equal(journalForAI('ai: sportivul pare obosit'), false);
+  assert.equal(journalForAI('respins: fiziolog - ...'), false);
+  assert.equal(journalForAI('model căzut: timeout'), false);
+  assert.equal(journalForAI('Sportivul are probabil o accidentare'), false);
+});
+
+test('A19: CrossFit / Workout pe Strava sunt „forță generică”; WeightTraining e sală', async () => {
+  const { normalizeStravaActivity } = await import('../src/collector/providers/strava.js');
+  const base = { id: 1, name: 'x', start_date_local: '2026-10-20T10:00:00Z', start_date: '2026-10-20T08:00:00Z', moving_time: 3600, elapsed_time: 3600, distance: 0 } as never as Record<string, unknown>;
+  const cf = normalizeStravaActivity({ ...base, sport_type: 'Crossfit' } as never);
+  const wt = normalizeStravaActivity({ ...base, sport_type: 'WeightTraining' } as never);
+  assert.equal(cf?.sport, 'forta');
+  assert.equal((cf?.details as { genericStrength?: boolean })?.genericStrength, true);
+  assert.ok(!(wt?.details as { genericStrength?: boolean })?.genericStrength);
+});
+
+test('T36 / A62: ședința ușurată revine la plan după o execuție verde a aceluiași sport; fără ea, rămâne ușoară', async () => {
+  const { restoreEased } = await import('../src/calendar/outcomes.js');
+  const orig = { date: '2026-10-25', sport: 'alergare', type: 'calitate', plannedMinutes: 60, targetZones: [4], structure: '3 × 10 min', key: true, status: 'planificat' };
+  const eased = { id: 'q', date: '2026-10-25', sport: 'alergare', type: 'z2', plannedMinutes: 60, targetZones: [2], key: false, status: 'planificat', note: 'ușurată: 2 ședințe nefăcute din oboseală', original: orig, changedAt: '2026-10-21T08:00:00Z' };
+  const run = { id: 'r', date: '2026-10-22', sport: 'alergare', type: 'z2', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat' };
+  const plan = [eased, run] as never;
+  assert.equal(restoreEased(plan, [], '2026-10-23', 'x').length, 0, 'fără execuție');
+  assert.equal(restoreEased(plan, [{ workoutId: 'r', color: 'verde', pain: 4 }], '2026-10-23', 'x').length, 0, 'cu durere');
+  const back = restoreEased(plan, [{ workoutId: 'r', color: 'verde', pain: 0 }], '2026-10-23', 'x');
+  assert.equal(back.length, 1);
+  assert.equal(back[0]!.type, 'calitate');
+  assert.equal(back[0]!.original, null);
+});
