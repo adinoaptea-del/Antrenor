@@ -136,9 +136,17 @@ describe('runner · piramida', () => {
     const p = buildPacket(input);
     assert.deepEqual(verifyHeadText('HRV 27,9 ms [hrv.azi], somn 6:26 [somn.durata]', p, []), []);
     const bad = verifyHeadText('puls 71 [puls.azi]', p, []);
-    // număr fără sursă + măsurătoare fără sursă în pachet + câmp inexistent
-    assert.equal(bad.length, 3);
+    // număr fără sursă + măsurătoare fără sursă în pachet + măsurătoare fără câmp de puls + câmp inexistent
+    assert.equal(bad.length, 4);
     assert.ok(bad.some((b) => b.startsWith('măsurătoare fără sursă')));
+    assert.ok(bad.some((b) => b.startsWith('măsurătoare (puls)')));
+  });
+
+  it('T59/A14: cifra corectă cu indicatorul greșit e respinsă; T60: doza inventată în text e respinsă', () => {
+    const p = { ...buildPacket(input), test_puls: { medie: 120 } } as never;
+    assert.ok(verifyHeadText('Ai alergat 120 km săptămâna asta.', p, []).some((b) => b.startsWith('măsurătoare (distanta) 120')));
+    assert.deepEqual(verifyHeadText('Pulsul mediu 120 bpm.', p, []).filter((b) => b.startsWith('măsurătoare (puls)')), []);
+    assert.ok(verifyHeadText('Azi faci 7 × 13 min tare.', p, []).some((b) => b.startsWith('doză fără sursă')));
   });
 
   it('febra, durerea și cursa neplanificată devin evenimente pentru calendarul viu', () => {

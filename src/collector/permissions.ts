@@ -26,9 +26,13 @@ export const SOURCE_POLICY: Readonly<Record<string, SourcePolicy>> = {
 
 export const AI_BLOCKED_SOURCES: ReadonlySet<string> = new Set(Object.entries(SOURCE_POLICY).filter(([, p]) => !p.ai).map(([s]) => s));
 
-/** Observațiile permise la AI, una câte una. O observație fără sursă (introdusă manual) e permisă. */
-export function allowedForAI<T extends { source?: string | null; mergedSources?: readonly string[] | null }>(rows: T[]): T[] {
-  const present = new Set(rows.map((r) => r.source).filter((x): x is string => !!x));
+/**
+ * Observațiile permise la AI, una câte una. O observație fără sursă (introdusă manual) e permisă. `present` = sursele
+ * sportivului pe TOT istoricul (auditul v93, A93/A108): același verdict în toate ferestrele aceluiași pachet. Fără el,
+ * se deduce din rândurile date (comportamentul vechi, doar pentru apelurile izolate).
+ */
+export function allowedForAI<T extends { source?: string | null; mergedSources?: readonly string[] | null }>(rows: T[], presentAll?: ReadonlySet<string>): T[] {
+  const present = presentAll ?? new Set(rows.map((r) => r.source).filter((x): x is string => !!x));
   const blocked = (src: string) => {
     const p = SOURCE_POLICY[src];
     if (!p) return false;
@@ -36,4 +40,11 @@ export function allowedForAI<T extends { source?: string | null; mergedSources?:
     return (p.untilSources ?? []).some((u) => present.has(u));
   };
   return rows.filter((r) => !r.source || !blocked(r.source));
+}
+
+/** Sursele scoase din AI pentru sportivul ăsta (static sau prin regula „până apar date din…”), cu motivul. */
+export function excludedFromAI(present: ReadonlySet<string>): { source: string; reason: string }[] {
+  return Object.entries(SOURCE_POLICY)
+    .filter(([, p]) => !p.ai || (p.untilSources ?? []).some((u) => present.has(u)))
+    .map(([source, p]) => ({ source, reason: p.ai ? 'au apărut date din Apple Health / Health Connect: regula proprietarului o scoate din AI' : p.reason }));
 }

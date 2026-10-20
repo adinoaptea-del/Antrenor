@@ -17,7 +17,7 @@ import { isFitnessGoal, isRunGoal, isWalkGoal, RUN_DISTANCE_KM } from '../../src
 import type { FitnessIntake } from '../../src/strength/fitness.js';
 import { fmtDuration, fmtPaceSec, paceFromResult, type RunResult } from '../../src/util/run.js';
 import { phaseWeeks } from '../../src/calendar/phases.js';
-import { AI_BLOCKED_SOURCES, allowedForAI } from '../../src/collector/permissions.js';
+import { allowedForAI, excludedFromAI } from '../../src/collector/permissions.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
 import { historySummary, type HistorySummary } from '../../src/history/summary.js';
 import { mergeWellness } from '../../src/collector/packet.js';
@@ -211,6 +211,17 @@ export async function loadWellness(userId: string, from: string): Promise<Source
   return rows.map(toSourceDaily);
 }
 
+/** Sursele de date ale sportivului pe tot istoricul (pentru un singur verdict de politică pe pachet — auditul v93, A93). */
+export async function sourcesPresent(userId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const [a, w] = await Promise.all([
+    select<{ source: string }>('activities', { user_id: `eq.${userId}`, source: 'in.(apple,android)' }, { select: 'source', limit: 2 }).catch(() => []),
+    select<{ source: string }>('wellness_daily', { user_id: `eq.${userId}`, source: 'in.(apple,android)' }, { select: 'source', limit: 2 }).catch(() => []),
+  ]);
+  for (const r of [...a, ...w]) out.add(r.source);
+  return out;
+}
+
 export async function loadForms(userId: string, today: string): Promise<{ morning: MorningForm | null; mornings: MorningForm[]; evenings: EveningForm[]; intake: Record<string, unknown> | null; incidents: { mornings: MorningForm[]; evenings: EveningForm[] } }> {
   const morningRow = await one<{ answers: MorningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `eq.${today}` }, { order: 'created_at.desc' });
   const eveningRows = await select<{ answers: EveningForm }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -14)}` }, { order: 'created_at.desc', limit: 50 });
@@ -300,6 +311,7 @@ export function phaseAt(startDate: string, raceDate: string, today: string, goal
 /** Tot ce intră în pachet, pentru evenimentul dat. */
 export async function collect(userId: string, today: string, event: CollectorInput['event']): Promise<{ input: CollectorInput; user: UserRow; planId: string | null }> {
   const user = await loadUser(userId);
+  const present = await sourcesPresent(userId);
   const [planRes, activities, wellness, forms, zones, labs, aviz] = await Promise.all([
     loadPlan(userId, addDays(today, -35), addDays(today, 14)),
     loadActivities(userId, addDays(today, -70)),
@@ -319,7 +331,7 @@ export async function collect(userId: string, today: string, event: CollectorInp
   // Pachetul merge la AI: sursele din registrul de blocare (permissions.ts) nu intră deloc, nici prin derivate.
   // La obiectivul „mers”, plimbările sunt activitățile planului (nu „mișcare în plus”): nu se numără de două ori.
   const walkGoal = isWalkGoal(user.goal);
-  const others = allowedForAI(await loadOthers(userId, addDays(today, -8))).filter((o) => !(walkGoal && isWalkName(o.name)));
+  const others = allowedForAI(await loadOthers(userId, addDays(today, -8)), present).filter((o) => !(walkGoal && isWalkName(o.name)));
   // Mesele de azi, din același motor ca ecranul „Mese recomandate” (aceleași intrări, aceeași zi a planului).
   const bodyRow = await one<{ date: string; weight_kg: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' }).catch(() => null);
   const prefs = await loadPrefs(userId).catch(() => null);
@@ -359,12 +371,17 @@ export async function collect(userId: string, today: string, event: CollectorInp
       varsta: user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null,
       inaltimeCm: user.height_cm ?? null,
     },
-    wellness: allowedForAI(wellness),
-    activities: allowedForAI(activities),
+    wellness: allowedForAI(wellness, present),
+    activities: allowedForAI(activities, present),
     trainingHistory: await loadHistorySummary(userId, today).catch(() => null),
-    recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92))), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)))).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
+    recoveryEffects: recoverySummary(today, allowedForAI(await loadOthers(userId, addDays(today, -92)), present), mergeWellness(allowedForAI(await loadWellness(userId, addDays(today, -92)), present)).map((m) => ({ date: m.date, hrv: m.hrv, rhr: m.rhr, sleepMin: m.sleepMin }))).effects,
     // Doar faptul că o sursă blocată e conectată (din tokenuri, nu din datele ei): AI-ul știe că nu vede tot.
-    hiddenSources: AI_BLOCKED_SOURCES.size ? (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: `in.(${[...AI_BLOCKED_SOURCES].join(',')})` }, { select: 'provider', limit: 5 }).catch(() => [])).map((r) => r.provider) : [],
+    // Manifestul vizibilității (auditul v93, A108): ce surse conectate sunt scoase din AI acum, după regula efectiv aplicată.
+    hiddenSources: await (async () => {
+      const ex = excludedFromAI(present).map((e) => e.source);
+      if (!ex.length) return [];
+      return (await select<{ provider: string }>('oauth_tokens', { user_id: `eq.${userId}`, provider: `in.(${ex.join(',')})` }, { select: 'provider', limit: 5 }).catch(() => [])).map((r) => r.provider);
+    })(),
     plan: planRes.workouts,
     zones,
     morning: forms.morning,
@@ -408,7 +425,7 @@ export async function loadTotals(userId: string, since: string, forAI = false): 
     raw.push(...rows.map(toSourceActivity));
   }
   const all = applyOverrides(raw, await loadOverrides(userId));
-  const acts = dedupeActivities(forAI ? allowedForAI(all) : all);
+  const acts = dedupeActivities(forAI ? allowedForAI(all, await sourcesPresent(userId)) : all);
   const bySport = { inot: { km: 0, ore: 0, sedinte: 0 }, bicicleta: { km: 0, ore: 0, sedinte: 0 }, alergare: { km: 0, ore: 0, sedinte: 0 }, forta: { km: 0, ore: 0, sedinte: 0 }, mers: { km: 0, ore: 0, sedinte: 0 } };
   for (const a of acts) {
     const t = bySport[a.sport];
@@ -464,7 +481,7 @@ export async function loadOthers(userId: string, from: string): Promise<OtherAct
 export async function loadHistorySummary(userId: string, today: string): Promise<HistorySummary> {
   const rows = await select<{ id: string; source: string; external_id: string; date: string; sport: Sport; minutes: number; distance_km: number | string | null; name: string | null }>('activities', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -730)}` }, { select: 'id,source,external_id,date,sport,minutes,distance_km,name', order: 'date.desc', limit: 4000 });
   const acts = dedupeActivities(
-    allowedForAI(applyOverrides(rows.map((r) => ({ id: r.id, source: r.source as SourceActivity['source'], externalId: r.external_id, date: r.date, sport: r.sport, minutes: r.minutes, distanceKm: r.distance_km == null ? null : Number(r.distance_km), name: r.name })), await loadOverrides(userId))),
+    allowedForAI(applyOverrides(rows.map((r) => ({ id: r.id, source: r.source as SourceActivity['source'], externalId: r.external_id, date: r.date, sport: r.sport, minutes: r.minutes, distanceKm: r.distance_km == null ? null : Number(r.distance_km), name: r.name })), await loadOverrides(userId)), await sourcesPresent(userId)),
   );
   const ev = await select<{ activity_id: string | null; answers: { tip_neplanificat?: string | null } }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara' }, { select: 'activity_id,answers', limit: 2000 }).catch(() => []);
   return historySummary(today, acts, ev.filter((e) => e.answers?.tip_neplanificat === 'cursa' && e.activity_id).map((e) => e.activity_id!));

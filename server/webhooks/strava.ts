@@ -12,7 +12,8 @@ import type { StravaWebhookEvent } from '../../src/collector/providers/strava.js
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     if (req.method === 'GET') {
-      if (q(req, 'hub.verify_token') !== (process.env.STRAVA_VERIFY_TOKEN ?? '')) {
+      // Auditul v93, A94: fără token configurat nu se validează nimic (un token gol nu mai e acceptat).
+      if (!process.env.STRAVA_VERIFY_TOKEN || q(req, 'hub.verify_token') !== process.env.STRAVA_VERIFY_TOKEN) {
         json(res, 403, { error: 'verify token greșit' });
         return;
       }
