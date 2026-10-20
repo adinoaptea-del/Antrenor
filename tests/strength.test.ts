@@ -146,7 +146,8 @@ describe('3–4 serii de lucru pe exercițiu, în orice bloc și orice ședinț�
                 const tag = `${id} ${block} ${recovery} ${place} v${variant} ${minutes}: ${p.items.map((r) => `${r.ex.id}×${r.sets}`).join(' ')}`;
                 assert.ok(p.items.length > 0 && p.items.every((r) => r.sets >= 3 && r.sets <= 4), tag);
                 assert.ok(p.minutes >= 45, tag);
-                assert.ok(!(p.items.some((r) => r.ex.region === 'legs') && p.items.some((r) => r.ex.region === 'upper')), `picioare + sus: ${tag}`);
+                // Tot corpul (o ședință pe săptămână) e excepția decisă pe 20.10.2026 (A50); restul nu combină niciodată.
+                if (!SESSIONS[id].fullBody) assert.ok(!(p.items.some((r) => r.ex.region === 'legs') && p.items.some((r) => r.ex.region === 'upper')), `picioare + sus: ${tag}`);
                 assert.equal(p.warmup.min, 10);
                 // Durata = încălzire + exerciții + cardio de final (diferența de rotunjire sub 5 min intră în pauze).
                 const work = Math.ceil(estimateMinutes(p.items));

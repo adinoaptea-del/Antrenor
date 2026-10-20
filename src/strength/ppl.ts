@@ -42,12 +42,12 @@ export interface Exercise {
   mistakes?: string;
 }
 
-export type FitnessSessionId = 'f1' | 'f2' | 'a3' | 'b3' | 'c3' | 'l1' | 'l2' | 'l3' | 'u1' | 'u2' | 'fa' | 'fb' | 'fc' | 'fd';
+export type FitnessSessionId = 'f1' | 'f2' | 'a3' | 'b3' | 'c3' | 'l1' | 'l2' | 'l3' | 'u1' | 'u2' | 'fa' | 'fb' | 'fc' | 'fd' | 'ft';
 /** Bărbații (anduranță): Push / Pull / Picioare cu exerciții care se schimbă de la o ședință la alta. */
 export type SplitSessionId = 'push' | 'pull' | 'legs';
 /** Modulele scurte de întreținere ale fizioterapeutului (A: picior și șold; B: umăr și trunchi), separate de sală. */
 export type MaintenanceSessionId = 'intA' | 'intB';
-export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | SplitSessionId | FitnessSessionId | MaintenanceSessionId;
+export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | 'full' | SplitSessionId | FitnessSessionId | MaintenanceSessionId;
 
 export interface StrengthSession {
   id: SessionId;
@@ -80,6 +80,12 @@ export interface StrengthSession {
    * nu se ridică la 45 de minute și la 3 serii (regula 20 guvernează ședințele de forță, nu modulul de întreținere).
    */
   maintenance?: boolean;
+  /**
+   * Tot corpul (o singură ședință pe săptămână): picioarele ȘI partea de sus în aceeași ședință. EXCEPȚIA decisă de
+   * proprietar pe 20.10.2026 (auditul v93, A50) de la regula „picioarele nu se combină cu partea de sus”: la o ședință pe
+   * săptămână, altfel o grupă ar fi lucrată o dată la 2–3 săptămâni. La 2+ ședințe regula rămâne (sus / jos, PPL).
+   */
+  fullBody?: boolean;
 }
 
 const E = (x: Exercise): Exercise => x;
@@ -328,8 +334,8 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
   pushB: { id: 'pushB', name: 'Push B', focus: 'piept, umeri, triceps', exercises: ['push-db-incline', 'push-machine-shoulder', 'push-pushup', 'push-db-lateral', 'push-overhead-cable'], completions: [] },
   pullB: { id: 'pullB', name: 'Pull B', focus: 'spate, umăr posterior, biceps', exercises: ['pull-assisted-pullup', 'pull-cable-row-1arm', 'pull-rev-fly-cable', 'pull-cable-curl', 'pull-suitcase'], completions: [] },
   legsB: { id: 'legsB', name: 'Legs B', focus: 'picioare, trunchi', exercises: ['legs-goblet', 'legs-hip-thrust', 'legs-lying-curl', 'legs-seated-calf', 'legs-pallof'], completions: [], legSwap: 'legs-step-up' },
-  // Bărbații (anduranță): Push / Pull / Picioare în rotație, indiferent de numărul de ședințe pe săptămână; fiecare
-  // poziție are trei variante cu exerciții și aparate diferite, ca ședințele să nu fie identice.
+  // Bărbații: Push / Pull / Picioare în rotație de la 3 ședințe pe săptămână (sub 3: tot corpul sau sus / jos, A50);
+  // fiecare poziție are trei variante cu exerciții și aparate diferite, ca ședințele să nu fie identice.
   push: split('push', 'Push', 'piept, umeri (fața și lateral), triceps, abdomen', [
     ['push-bb-bench', 'push-db-bench', 'push-machine-chest'],
     ['push-db-incline', 'push-smith-incline', 'push-bb-incline'],
@@ -361,6 +367,9 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
     ['legs-standing-calf', 'legs-seated-calf', 'legs-press-calf'],
     [...ABS.slice(1), ABS[0]!],
   ]),
+  // O singură ședință pe săptămână: tot corpul (excepția din 20.10.2026, A50 — vezi `fullBody`). Câte o mișcare
+  // principală pe tipar: genuflexiune, împins, tras orizontal, aplecare din șold, tras vertical; gambe și trunchi la final.
+  full: { id: 'full', name: 'Tot corpul', fullBody: true, focus: 'picioare, piept, spate, umeri, trunchi', exercises: ['legs-goblet', 'push-db-bench', 'pull-chest-row', 'legs-db-rdl', 'pull-lat-neutral', 'legs-standing-calf', 'legs-pallof'], completions: [] },
   // Cu două ședințe pe săptămână: o zi de picioare și una pentru partea de sus, alternativ. Picioarele nu se combină
   // niciodată cu partea de sus în aceeași ședință (regula proprietarului, 19.10.2026); abdomenul merge cu oricare.
   fullA: { id: 'fullA', name: 'Picioare și trunchi', aliases: ['Tot corpul A'], focus: 'cvadriceps, femurali, fesieri, gambe, abdomen', exercises: ['legs-press', 'legs-db-rdl', 'legs-split-squat', 'legs-lying-curl', 'legs-standing-calf', 'legs-dead-bug'], completions: [] },
@@ -494,6 +503,17 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
     ['fit-triceps-kickback', 3, '30', 60, 'C'],
     ['fit-triceps-floor', 3, '50, greutate mică', 60, 'C'],
   ]),
+  // Fitness cu o singură zi pe săptămână: tot corpul (excepția din 20.10.2026, A50), aceleași exerciții de bază ale
+  // programului, 3 serii, ca fiecare tipar (fesieri, coapse, spate, piept) să fie lucrat în fiecare săptămână.
+  ft: { ...coach('ft', 'Tot corpul (o zi pe săptămână)', [], 'fesieri, coapse, spate, piept, trunchi', '10 min mers rapid pe bandă sau eliptică, apoi 20 de genuflexiuni fără greutate și rotiri de umeri', WALK, [
+    ['fit-hip-thrust', 3, '10–12', 105],
+    ['fit-leg-press', 3, '10–12', 105],
+    ['fit-lat', 3, '10–12', 90],
+    ['fit-chest-press', 3, '10–12', 90],
+    ['fit-row', 3, '10–12', 90],
+    ['fit-rdl', 3, '10–12', 105],
+    ['fit-pallof', 3, '8–12/parte', 50],
+  ]), fullBody: true },
   // Ședințele vechi (planuri salvate înainte de 19.10.2026, combinau picioarele cu partea de sus): se citesc din plan,
   // dar prescripția lor e cea a ședinței noi echivalente (LEGACY_FIT); planul se rescrie la deschidere.
   f1: fit('f1', 'F1 Tot corpul', 'fesieri, coapse, împins, tras, trunchi', { 'fit-hip-thrust': 3 }),
@@ -606,8 +626,11 @@ export const FITNESS_ROTATION: Record<2 | 3 | 4, FitnessSessionId[]> = { 2: ['l1
 export const LEGACY_FIT: Partial<Record<FitnessSessionId, FitnessSessionId>> = { f1: 'l1', f2: 'u1', a3: 'l1', b3: 'u1', c3: 'l2' };
 const FIT_LOWER: FitnessSessionId[] = ['l1', 'l2', 'l3'];
 const FIT_UPPER: FitnessSessionId[] = ['u1', 'u2'];
-/** Tiparul săptămânii: 2 zile = picioare, sus; 3 = picioare, sus, picioare; 4 = picioare, sus, picioare, sus. */
-export const FIT_PATTERN: Record<number, ('L' | 'U')[]> = { 1: ['L'], 2: ['L', 'U'], 3: ['L', 'U', 'L'], 4: ['L', 'U', 'L', 'U'] };
+/**
+ * Tiparul săptămânii, după frecvență (auditul v93, A50; decizia proprietarului, 20.10.2026): 1 zi = tot corpul;
+ * 2 zile = picioare, sus; 3 = picioare, sus, picioare; 4 = picioare, sus, picioare, sus.
+ */
+export const FIT_PATTERN: Record<number, ('L' | 'U' | 'F')[]> = { 1: ['F'], 2: ['L', 'U'], 3: ['L', 'U', 'L'], 4: ['L', 'U', 'L', 'U'] };
 /**
  * Rotația de fitness pe tot programul (nu doar în săptămână): zilele de picioare trec prin A → B → C, cele de sus prin
  * spate+biceps → piept+umeri+triceps, ca toate ședințele să apară și să nu se repete aceeași zi de la o săptămână la alta.
@@ -616,7 +639,8 @@ export class FitnessRotator {
   private l = 0;
   private u = 0;
   private v: Record<string, number> = {};
-  next(kind: 'L' | 'U'): { session: FitnessSessionId; variant?: number } {
+  next(kind: 'L' | 'U' | 'F'): { session: FitnessSessionId; variant?: number } {
+    if (kind === 'F') return { session: 'ft' };
     const session = kind === 'L' ? FIT_LOWER[this.l++ % FIT_LOWER.length]! : FIT_UPPER[this.u++ % FIT_UPPER.length]!;
     if (!SESSIONS[session].variants) return { session };
     const variant = (this.v[session] ?? 0) % SESSIONS[session].variants!.length;
@@ -628,7 +652,7 @@ export class FitnessRotator {
   }
 }
 export const FITNESS_ROTATION_WIDE: FitnessSessionId[] = ['fa', 'fb', 'fc', 'fd'];
-export const isFitnessSession = (id: SessionId): id is FitnessSessionId => ['f1', 'f2', 'a3', 'b3', 'c3', 'l1', 'l2', 'l3', 'u1', 'u2', 'fa', 'fb', 'fc', 'fd'].includes(id);
+export const isFitnessSession = (id: SessionId): id is FitnessSessionId => ['f1', 'f2', 'a3', 'b3', 'c3', 'l1', 'l2', 'l3', 'u1', 'u2', 'fa', 'fb', 'fc', 'fd', 'ft'].includes(id);
 
 export const PPL_ROTATION: SessionId[] = ['pushA', 'pullA', 'legsA', 'pushB', 'pullB', 'legsB'];
 export const FULL_ROTATION: SessionId[] = ['fullA', 'fullB'];
@@ -638,27 +662,51 @@ export const isLegsSession = (id: SessionId) => id === 'legsA' || id === 'legsB'
 export interface SplitState {
   i: number;
   deferred: boolean;
+  /** Câte ședințe au trecut de când picioarele au fost amânate. */
+  waits?: number;
   counts: Record<SplitSessionId, number>;
 }
-export const newSplitState = (): SplitState => ({ i: 0, deferred: false, counts: { push: 0, pull: 0, legs: 0 } });
+export const newSplitState = (): SplitState => ({ i: 0, deferred: false, waits: 0, counts: { push: 0, pull: 0, legs: 0 } });
 
 /**
  * Următoarea ședință din rotația Push → Pull → Picioare. Picioarele nu cad în ajunul unei ședințe-cheie (trec la
  * următoarea zi de sală) și deloc în ultimele 10 zile dinaintea cursei. Varianta = a câta ședință de acel tip e.
+ * Amânarea nu poate deveni dispariție (auditul v93, A50): după o ședință în plus de așteptare, picioarele vin oricum,
+ * ca ședință de picioare ușoară (`light`: greutăți mai mici), nu se mai amână.
  */
-export function nextSplit(st: SplitState, legsBlocked: boolean, nearRace: boolean): { session: SplitSessionId; variant: number } {
-  let session: SplitSessionId;
-  if (st.deferred && !legsBlocked && !nearRace) {
-    session = 'legs';
+export function nextSplit(st: SplitState, legsBlocked: boolean, nearRace: boolean): { session: SplitSessionId; variant: number; light?: boolean } {
+  if (st.deferred && !nearRace && (!legsBlocked || (st.waits ?? 0) >= 1)) {
     st.deferred = false;
-  } else {
-    session = SPLIT_ROTATION[st.i++ % 3]!;
-    if (session === 'legs' && (legsBlocked || nearRace)) {
-      if (!nearRace) st.deferred = true;
-      session = SPLIT_ROTATION[st.i++ % 3]!;
+    st.waits = 0;
+    return { session: 'legs', variant: st.counts.legs++, ...(legsBlocked ? { light: true } : {}) };
+  }
+  if (st.deferred && !nearRace) st.waits = (st.waits ?? 0) + 1;
+  let session = SPLIT_ROTATION[st.i++ % 3]!;
+  if (session === 'legs' && (legsBlocked || nearRace)) {
+    if (!nearRace && !st.deferred) {
+      st.deferred = true;
+      st.waits = 0;
     }
+    session = SPLIT_ROTATION[st.i++ % 3]!;
   }
   return { session, variant: st.counts[session]++ };
+}
+
+/**
+ * Structura forței după frecvența REALĂ a săptămânii (auditul v93, A50; decizia proprietarului, 20.10.2026), nu după
+ * sex: 1 ședință = tot corpul (excepția „fullBody”); 2 = picioare / partea de sus (fiecare tipar o dată pe săptămână);
+ * 3+ = Push / Pull / Picioare la bărbați (regula 20), structura antrenoarei / PPL A–B la celelalte.
+ */
+export type SplitFamily = 'full' | 'upper-lower' | 'ppl';
+export const splitFamily = (perWeek: number): SplitFamily => (perWeek <= 1 ? 'full' : perWeek === 2 ? 'upper-lower' : 'ppl');
+
+/**
+ * Ordinea sus / jos într-o săptămână cu 2 ședințe: picioarele în ziua care nu e în ajunul unei ședințe-cheie; dacă
+ * ambele sunt, picioarele rămân, dar ușoare (nu dispar).
+ */
+export function upperLowerWeek(beforeKey: boolean[]): { session: 'fullA' | 'fullB'; legs: LegsMode }[] {
+  const legsAt = beforeKey[0] && !beforeKey[1] ? 1 : 0;
+  return beforeKey.map((bk, i) => (i === legsAt ? { session: 'fullA' as const, legs: bk ? ('usor' as const) : ('normal' as const) } : { session: 'fullB' as const, legs: 'normal' as const }));
 }
 
 // ——— Blocurile ———
@@ -1292,7 +1340,7 @@ export function sessionName(structure: string | null | undefined): string | null
 }
 
 export const STRENGTH_RULES: { t: string; d: string }[] = [
-  { t: 'Structura', d: 'Picioarele nu se combină niciodată cu partea de sus în aceeași ședință. Bărbați: Push (piept, umeri, triceps), Pull (spate, biceps), Picioare, pe rând.' },
+  { t: 'Structura', d: 'După câte ședințe ai pe săptămână: una = tot corpul; două = o zi de picioare și una pentru partea de sus; trei sau mai multe = Push (piept, umeri, triceps), Pull (spate, biceps), Picioare, pe rând. În afară de ziua de tot corpul, picioarele nu se combină cu partea de sus.' },
   { t: 'Durata', d: 'Cel puțin 45 de minute cu tot cu încălzirea. Încălzire: 10 minute de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără). Excepții: după febră, la recuperare slabă sau durere, înainte de cursă și când spui că ai mai puțin timp — atunci varianta scurtă, cu cel puțin 2 serii pe exercițiu.' },
   { t: 'Serii', d: '3 sau 4 serii de lucru la fiecare exercițiu, mereu. În săptămânile ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
   { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune în tine (la început 3–4). Nu mergi până nu mai poți ridica deloc.' },

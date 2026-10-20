@@ -5,7 +5,7 @@
 import type { FreeBlock, PlannedWorkout } from '../types.js';
 import { addDays, weekStart } from '../util/dates.js';
 import { fitnessPlanWeeks, type FitnessProfile } from '../strength/fitness.js';
-import { FitnessRotator, MIN_STRENGTH_MINUTES, newSplitState, nextSplit, prescribe, strengthStructure, type SessionId, type StrengthSpec } from '../strength/ppl.js';
+import { FitnessRotator, MIN_STRENGTH_MINUTES, newSplitState, nextSplit, prescribe, splitFamily, strengthStructure, upperLowerWeek, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import type { GenerateResult, WeekPlan } from './generate.js';
 
 /** Zilele preferate din program, când ferestrele permit: 2 → luni/joi, 3 → luni/miercuri/vineri, 4 → luni/marți/joi/sâmbătă. */
@@ -59,8 +59,10 @@ export function pickFitnessDays(blocks: FreeBlock[], n: number, minutes: number)
 }
 
 /**
- * Femeile: picioare și partea de sus alternativ (niciodată în aceeași ședință), prin toate cele cinci ședințe
- * (FitnessRotator). Bărbații: Push → Pull → Picioare, cu exerciții care se schimbă. Varianta amplă A–D rămâne pe tiparul ei.
+ * Structura după frecvența reală a săptămânii (auditul v93, A50; decizia proprietarului, 20.10.2026): o zi = tot
+ * corpul (excepția „fullBody”); două = picioare / partea de sus; trei sau mai multe = la bărbați Push → Pull →
+ * Picioare cu exerciții care se schimbă, la femei structura antrenoarei (FitnessRotator). Varianta amplă A–D rămâne pe
+ * tiparul ei.
  */
 export function generateFitnessPlan(input: { startDate: string; raceDate: string; freeBlocks: FreeBlock[]; fitness: FitnessProfile; male?: boolean }): GenerateResult {
   const f = input.fitness;
@@ -82,8 +84,13 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
     const days = fw.days >= daysAll.length ? daysAll : pickFitnessDays(input.freeBlocks.filter((b) => daysAll.includes(b.day)), fw.days, f.minutes);
     const notes: string[] = [];
     if (days.length < fw.days) notes.push(`programul are ${fw.days} zile în săptămâna asta, dar ai ferestre libere doar în ${days.length}`);
-    const order: { session: SessionId; variant?: number }[] = input.male
-      ? days.map(() => nextSplit(split, false, false))
+    const family = splitFamily(days.length);
+    const order: { session: SessionId; variant?: number; legs?: LegsMode }[] = input.male
+      ? family === 'full'
+        ? [{ session: 'full' }]
+        : family === 'upper-lower'
+          ? upperLowerWeek(days.map(() => false))
+          : days.map(() => nextSplit(split, false, false))
       : fw.variant === 'ampla'
         ? days.map((_, i) => ({ session: fw.rotation[i % fw.rotation.length]! }))
         : rot.week(days.length);

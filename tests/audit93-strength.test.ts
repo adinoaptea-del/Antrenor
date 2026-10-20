@@ -2,11 +2,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { adapt } from '../src/calendar/adapt.js';
+import { generateFitnessPlan } from '../src/calendar/fitness-plan.js';
 import { assignStrengthDays, type WeekPlan } from '../src/calendar/generate.js';
 import { shortenWorkout } from '../src/calendar/validate.js';
 import { MIN_STRENGTH_MINUTES, parseStrength, prescribe, prescribeFull, strengthStructure, type StrengthSpec } from '../src/strength/ppl.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
-import type { PlannedWorkout } from '../src/types.js';
+import type { FreeBlock, PlannedWorkout } from '../src/types.js';
 
 const gym = (id: string, date: string, spec: StrengthSpec, minutes = 60): PlannedWorkout => ({ id, date, sport: 'forta', type: 'forta', plannedMinutes: minutes, targetZones: [], key: false, status: 'planificat', structure: strengthStructure(spec) });
 const L1: StrengthSpec = { session: 'l1', block: 'construire', week: 2, len: 4 };
@@ -106,5 +107,73 @@ describe('A91: modulul de întreținere al fizioterapeutului nu devine 45 de min
       const back = parseStrength(strengthStructure(spec))!;
       assert.equal(prescribeFull(back).items.length, 4);
     }
+  });
+});
+
+describe('A50 / T32: structura după frecvență (1 = tot corpul, 2 = sus / jos, 3+ = PPL), nu după sex', () => {
+  const DAYS = ['2026-11-02', '2026-11-04', '2026-11-06', '2026-11-07'];
+  const plusDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  const weeksOf = (n: number, keyAfterEach = false): WeekPlan[] =>
+    [0, 1, 2, 3, 4, 5].map((k) => {
+      const gyms: PlannedWorkout[] = DAYS.slice(0, n).map((d, i) => ({ id: `f${k}-${i}`, date: plusDays(d, 7 * k), sport: 'forta', type: 'forta', plannedMinutes: 60, targetZones: [], key: false, status: 'planificat' }));
+      // Cheie a doua zi după fiecare zi de sală: picioarele ar fi mereu „blocate”.
+      const keys: PlannedWorkout[] = keyAfterEach ? gyms.map((g) => ({ ...g, id: `k${g.id}`, date: plusDays(g.date, 1), sport: 'alergare', type: 'calitate', key: true })) : [];
+      return { weekStart: plusDays('2026-11-02', 7 * k), phase: 'baza1' as const, recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: [...gyms, ...keys] };
+    });
+  const exposure = (ws: WeekPlan[]) =>
+    ws.map((w) => {
+      const items = w.workouts.filter((x) => x.type === 'forta').flatMap((x) => prescribe(parseStrength(x.structure)!, x.plannedMinutes).items);
+      return { legs: items.some((r) => r.ex.region === 'legs'), push: items.some((r) => /piept/.test(r.ex.group)), pull: items.some((r) => /spate/.test(r.ex.group)) };
+    });
+
+  for (const n of [1, 2, 3, 4]) {
+    it(`${n} ședință(e) pe săptămână: picioarele, împinsul și trasul apar în fiecare săptămână, la bărbat și la femeie`, () => {
+      for (const split of ['ppl', undefined] as const) {
+        const ws = weeksOf(n);
+        assignStrengthDays(ws, undefined, split);
+        const sessions = ws.flatMap((w) => w.workouts.filter((x) => x.type === 'forta').map((x) => parseStrength(x.structure)!.session));
+        if (n === 1) assert.ok(sessions.every((s) => s === 'full'), sessions.join(','));
+        if (n === 2) assert.ok(sessions.every((s) => s === 'fullA' || s === 'fullB'), sessions.join(','));
+        exposure(ws).forEach((e, i) => assert.deepEqual(e, { legs: true, push: true, pull: true }, `${split ?? 'femeie'} ${n}/săpt., săpt. ${i + 1}: ${sessions.join(',')}`));
+      }
+    });
+  }
+
+  it('la 1–2 ședințe pe săptămână, sexul nu schimbă structura (aceeași doză pe tipar)', () => {
+    for (const n of [1, 2]) {
+      const m = weeksOf(n);
+      const f = weeksOf(n);
+      assignStrengthDays(m, undefined, 'ppl');
+      assignStrengthDays(f);
+      assert.deepEqual(m.flatMap((w) => w.workouts.map((x) => x.structure)), f.flatMap((w) => w.workouts.map((x) => x.structure)));
+    }
+  });
+
+  it('PPL cu picioarele mereu „în ajunul cheii”: picioarele nu dispar, vin ușoare cel puțin o dată la 2 săptămâni', () => {
+    const ws = weeksOf(3, true);
+    assignStrengthDays(ws, undefined, 'ppl');
+    const legs = ws.map((w) => w.workouts.filter((x) => x.type === 'forta').map((x) => parseStrength(x.structure)!).filter((s) => s.session === 'legs'));
+    assert.ok(legs.flat().length >= 3, `picioare în 6 săptămâni: ${legs.flat().length}`);
+    for (let i = 0; i + 1 < legs.length; i++) assert.ok(legs[i]!.length + legs[i + 1]!.length >= 1, `săpt. ${i + 1}–${i + 2} fără picioare`);
+    assert.ok(legs.flat().every((s) => s.legs === 'usor'), 'în ajunul cheii: picioare ușoare (greutăți mai mici)');
+  });
+
+  it('fitness: o zi pe săptămână = tot corpul (femeie și bărbat); bărbatul cu 2 zile = sus / jos, nu PPL', () => {
+    const one: FreeBlock[] = [{ day: 0, startMin: 17 * 60, endMin: 19 * 60 }];
+    const two: FreeBlock[] = [{ day: 0, startMin: 17 * 60, endMin: 19 * 60 }, { day: 3, startMin: 17 * 60, endMin: 19 * 60 }];
+    const gen = (blocks: FreeBlock[], male: boolean) => generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: blocks, fitness: { goal: 'fit-tonifiere', days: 2, minutes: 60, beginner: true }, male });
+    for (const male of [false, true]) {
+      const r = gen(one, male);
+      assert.ok(r.ok);
+      if (!r.ok) return;
+      for (const w of r.weeks.slice(0, 4)) {
+        const items = w.workouts.flatMap((x) => prescribe(parseStrength(x.structure)!, x.plannedMinutes).items);
+        assert.ok(items.some((i) => i.ex.region === 'legs') && items.some((i) => i.ex.region === 'upper'), `${male ? 'bărbat' : 'femeie'}: ${w.workouts.map((x) => x.structure).join(' | ')}`);
+      }
+    }
+    const m2 = gen(two, true);
+    assert.ok(m2.ok);
+    if (!m2.ok) return;
+    assert.deepEqual(m2.weeks.slice(0, 3).map((w) => w.workouts.map((x) => parseStrength(x.structure)!.session).join('+')), ['fullA+fullB', 'fullA+fullB', 'fullA+fullB']);
   });
 });
