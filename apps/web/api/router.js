@@ -2498,13 +2498,14 @@ function longestContinuousSwim(laps) {
       cur = { m: 0, sec: 0 };
       continue;
     }
-    if (l.elapsed_time - l.moving_time > 10) {
+    if (l.elapsed_time - l.moving_time > 3) {
       cur = { m: 0, sec: 0 };
       continue;
     }
     cur = { m: cur.m + l.distance, sec: cur.sec + t };
     if (cur.m > best.m) best = { ...cur };
   }
+  if (laps.length === 1) return null;
   return { m: Math.round(best.m), pace100: swimPace100(best.sec, best.m) };
 }
 function stepsFromCadence(spm, minPerKm) {
@@ -5275,6 +5276,12 @@ function fitStructure(w) {
   if (n2 === 0) {
     return { ...w, type: w.type === "calitate" ? "z2" : w.type, key: w.type === "calitate" ? false : w.key, intervals: void 0, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min u\u0219or (prea scurt pentru repet\u0103ri)` };
   }
+  if (n2 === 1 && count >= 2) {
+    const r2 = Math.floor((w.plannedMinutes - 10 - rest) / 2);
+    if (r2 >= Math.ceil(reps / 2)) return { ...w, structure: w.structure.replace(m[0], `2 \xD7 ${r2} min`), intervals: w.intervals ? { ...w.intervals, count: 2, minutes: r2 } : void 0 };
+    const text = w.structure.replace(m[0], `${reps} min continuu`).replace(/,?\s*\d+\s*min ușor între/, "");
+    return { ...w, structure: text, intervals: w.intervals ? { ...w.intervals, count: 1 } : void 0 };
+  }
   return { ...w, structure: w.structure.replace(m[0], `${n2} \xD7 ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n2 } : void 0 };
 }
 function isHard(w) {
@@ -5672,7 +5679,8 @@ function bikeQuality(phase, weekInPhase, opts = {}) {
   if (phase === "peak") {
     if (w % 2 === 0 && !opts.capZ4 && opts.experienced) {
       const reps = w === 0 ? 10 : 12;
-      return { structure: `3 serii \xD7 ${reps} \xD7 (30 s tare / 15 s u\u0219or), 3 min u\u0219or \xEEntre serii \u2014 intervale scurte 30/15`, zones: [4, 5], minutes: total(3 * reps * 0.75, 6) };
+      const series = w === 0 ? 2 : 3;
+      return { structure: `${series} serii \xD7 ${reps} \xD7 (30 s tare / 15 s u\u0219or), 3 min u\u0219or \xEEntre serii \u2014 intervale scurte 30/15`, zones: [4, 5], minutes: total(series * reps * 0.75, 3 * (series - 1)) };
     }
     return { structure: `3 \xD7 15 min la ritmul pe care-l \u021Bii \xEEn ${opts.raceKm ? `tura de ${opts.raceKm} km` : "curs\u0103"}, 5 min u\u0219or \xEEntre`, zones: [3, 4], minutes: total(45, 10), intervals: { count: 3, minutes: 15, zone: 3 } };
   }
@@ -7628,7 +7636,7 @@ function applyProgression(plan, executions, today) {
       continue;
     }
     const i = out.indexOf(w);
-    out[i] = { ...w, structure: "3 \xD7 15 min la ritmul pe care-l \u021Bii \xEEn curs\u0103, 5 min u\u0219or \xEEntre", targetZones: [3, 4], intervals: { count: 3, minutes: 15, zone: 3 }, note: `30/15 am\xE2nat: doar ${okN} din 2 \u0219edin\u021Be de prag tolerate necesare (un test nu ajunge)` };
+    out[i] = { ...w, structure: "2 \xD7 12 min la prag (Z4, 95\u2013100% FTP), 5 min u\u0219or \xEEntre", targetZones: [4], intervals: { count: 2, minutes: 12, zone: 4 }, note: `30/15 am\xE2nat: doar ${okN} din 2 \u0219edin\u021Be de prag tolerate necesare (un test nu ajunge)` };
     decisions.push({ family: "30/15", decision: "regress", step: 0, stepName: "ritm de obiectiv", evidence: `doar ${okN} \u0219edin\u021Be de prag / over-under bine tolerate \xEEn ultimele 6 s\u0103pt\u0103m\xE2ni (trebuie 2); testul calibreaz\u0103, nu deblocheaz\u0103`, workoutId: w.id, from: "30/15" });
   }
   return { plan: out, decisions };
@@ -7861,7 +7869,7 @@ function adapt(plan, event, ctx) {
   const out = next.map((w) => {
     const orig = byId.get(w.id);
     if (orig && (w.date < ctx.today || done.has(w.id))) return orig;
-    return orig && orig.plannedMinutes !== w.plannedMinutes ? normalizeWorkout(fitStructure(w)) : w;
+    return orig && (orig.plannedMinutes !== w.plannedMinutes || orig.structure !== w.structure || JSON.stringify(orig.intervals ?? null) !== JSON.stringify(w.intervals ?? null)) ? normalizeWorkout(fitStructure(w)) : w;
   });
   const kept = changes.filter((c2) => !plan.some((w) => (w.date < ctx.today || done.has(w.id)) && c2.startsWith(`${w.id}:`)));
   return { plan: out, changes: kept };
@@ -7893,9 +7901,10 @@ function applyScore(plan, ev, ctx, changes) {
       if (!isActiveWorkout(x)) continue;
       if (diffDays(nextMonday, x.date) < 0 || diffDays(x.date, nextSunday) < 0) continue;
       if (!x.key) {
+        const before = x.plannedMinutes;
         x.plannedMinutes = Math.round(x.plannedMinutes * 0.8 / 5) * 5;
+        if (x.plannedMinutes !== before) x.note = [x.note, "s\u0103pt\u0103m\xE2n\u0103 \u221220%, progresie oprit\u0103"].filter(Boolean).join("; ");
       }
-      x.note = [x.note, "s\u0103pt\u0103m\xE2n\u0103 \u221220%, progresie oprit\u0103"].filter(Boolean).join("; ");
     }
     changes.push(`s\u0103pt\u0103m\xE2na din ${nextMonday}: volum \u221220%, progresia oprit\u0103 (${bad} antrenamente-cheie slabe \xEEn 14 zile)`);
   }
@@ -10266,7 +10275,10 @@ function fallbackMessage(p, decision, specialists) {
   if (c2?.stare === "partial" && (decision === "verde" || decision === "galben")) {
     const o = c2.optiuni.find((x) => x.id === c2.implicit);
     if (o) lines.push(`Ai f\u0103cut azi ${c2.facut} din ${c2.planificat} TRIMP planificat (${c2.procent}%). Pentru restul zilei: ${o.text}.`);
-  } else if (c2?.stare === "acoperit") lines.push(`Ai f\u0103cut azi ${c2.facut} TRIMP, peste cele ${c2.planificat} planificate. Ce mai e azi \xEEn plan r\u0103m\xE2ne; \u021Bi-am propus o variant\u0103 u\u0219oar\u0103, alegi tu. M\xE2ine diminea\u021B\u0103 decid recuperarea \u0219i durerile.`);
+  } else if (c2?.stare === "acoperit") {
+    const rest = p.plan_azi ? " Ce mai e azi \xEEn plan r\u0103m\xE2ne, cu o variant\u0103 u\u0219oar\u0103 de ales; alegi tu." : "";
+    lines.push(`Ai f\u0103cut azi ${c2.facut} TRIMP, peste cele ${c2.planificat} planificate.${rest} M\xE2ine diminea\u021B\u0103 decid recuperarea \u0219i durerile.`);
+  }
   for (const s of specialists) for (const item of s.ce) if (item.stare === "acceptat") lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join("\n");
 }

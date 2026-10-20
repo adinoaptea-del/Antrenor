@@ -36,6 +36,26 @@ export interface DetailContext {
   swimRecentMaxM?: number | null;
   /** Timpul declarat pe 400 m (s), din chestionar: ritm de referință fără test CSS. */
   swimDeclared400Sec?: number | null;
+  /** FTP din test (W). Fără el, procentele de FTP nu se afișează (auditul v93, A39). */
+  ftp?: number | null;
+}
+
+/**
+ * Auditul v93, A40: o singură regulă de alimentare în efort, în toate textele. Până la 75 min: apă. 75–150 min:
+ * 30–60 g carbohidrați pe oră, începând din primele 30–45 min. Peste 150 min (sau brick lung): 60–90 g pe oră, cu
+ * ce ai exersat (ghidul ACSM/ISSN pentru eforturi lungi; plafonul de sus doar dacă stomacul îl tolerează).
+ */
+export function fuelingFor(minutes: number): string | null {
+  if (minutes <= 75) return null;
+  if (minutes <= 150) return 'apă și 30–60 g carbohidrați pe oră, începând din primele 30–45 min';
+  return 'apă și 60–90 g carbohidrați pe oră (cât ai exersat și tolerezi), începând din primele 30–45 min';
+}
+
+/** A39: fără FTP măsurat, „88–94% FTP” nu are sens pentru sportiv: rămân efortul și pulsul; cu FTP, wații. */
+export function ftpText(text: string, ftp: number | null | undefined): string {
+  const pct = /(\d+)(?:\s*[–-]\s*(\d+))?\s*%\s*FTP/g;
+  if (ftp && ftp > 0) return text.replace(pct, (_m, a: string, b?: string) => (b ? `${Math.round((ftp * Number(a)) / 100)}–${Math.round((ftp * Number(b)) / 100)} W` : `${Math.round((ftp * Number(a)) / 100)} W`));
+  return text.replace(/,\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*%\s*FTP/g, '').replace(/\s*\(?(\d+)(?:\s*[–-]\s*(\d+))?\s*%\s*FTP\)?/g, '');
 }
 
 interface Hr {
@@ -85,6 +105,12 @@ function hrNote(hr: Hr | null): Step | null {
 
 /** Pașii detaliați ai ședinței. `ctx` vine din profil (vârstă) și din teste (zone, FCmax, CSS). */
 export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
+  const steps = detailStepsRaw(w, ctx);
+  if (w.sport !== 'bicicleta' && w.type !== 'brick') return steps;
+  return steps.map((x) => ({ ...x, text: ftpText(x.text, ctx.ftp) }));
+}
+
+function detailStepsRaw(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
   const m = Math.max(0, w.plannedMinutes);
   // Mersul pe jos: aceeași structură ca pagina de mers (src/walking/plan.ts walkSpec), fără puls, zone sau pedalat.
   if (w.sport === 'mers' && w.type !== 'odihna') {
@@ -173,7 +199,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
     const { bike, run: runMin, transition } = brickSplit(w.structure, m);
     const hrRun = hrFor('alergare', ctx);
     return withNote([
-      { label: 'Bicicletă', text: `${bike} min în ${zoneText(hrFor('bicicleta', ctx), 2)}, constant; bei și mănânci ca în cursă (după prima oră, 60–90 g carbohidrați pe oră)` },
+      { label: 'Bicicletă', text: `${bike} min în ${zoneText(hrFor('bicicleta', ctx), 2)}, constant; bei și mănânci ca în cursă (${fuelingFor(m) ?? 'apă'})` },
       { label: 'Tranziție', text: `${transition} min (incluse în durată): exersezi ce faci la cursă, în aceeași ordine: bicicleta la loc, casca jos ULTIMA, pantofii de alergare, numărul; fără pauză lungă. Echipamentul și mâncarea de azi sunt cele de cursă: nimic nou în ziua cursei.` },
       { label: 'Alergare', text: `${runMin} min în ${zoneText(hrRun, 2)}; primele 5 min mai ușor, pași scurți și cadență mare, până se „așază” picioarele` },
       { label: 'Plafon', text: hrRun ? `alergarea sub ${hrRun.up[1]} bpm.` : 'alergarea să rămână conversațională.' },
@@ -222,7 +248,7 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   const run = w.sport === 'alergare';
   return withNote([
     { label: 'Încălzire', text: run ? `${warm} min alergare foarte ușoară în ${z(1)}${strides ? ' (primele 2–3 min pot fi mobilitate dinamică, în aceleași minute)' : ''}` : `${warm} min pedalat ușor în ${z(1)}, cadență 85–95` },
-    { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? (m > 75 ? ', constant; apă și 30–60 g carbohidrați pe oră, din prima jumătate de oră' : ', constant') : ''}${talk}` },
+    { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? (fuelingFor(m) ? `, constant; ${fuelingFor(m)}` : ', constant') : ''}${talk}` },
     ...(finalMin ? [{ label: 'Final', text: `${finalMin} min crescând progresiv până în ${z(top)} (efort de cursă), fără sprint la sfârșit` }] : []),
     ...(planned && !strides ? [{ label: 'Accelerări', text: 'azi fără: ședința e prea scurtă ca să încapă și partea ușoară; le faci data viitoare.' }] : []),
     ...(strides && sMin ? [{ label: 'Accelerări', text: `${strides.n} × ${strides.sec} s rapid dar relaxat (nu sprint), pe teren drept, cu ~1 min mers sau trap între ele (${sMin} min)${planned && planned.n !== strides.n ? `; azi ${strides.n}, nu ${planned.n}: ședința e scurtă și partea ușoară are prioritate` : ''}` }] : []),

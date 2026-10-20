@@ -298,7 +298,8 @@ function Shell() {
 
   const level = dayLevel(me);
   const quiet = labsGate || dayOf(me)?.level === 'stop';
-  const cheerNow = me.intakeComplete && !local && !countdown && !tour && !isForm && !quiet && pendingCheer(me);
+  // Regula 26 / auditul v93 A92: zi roșie = fără felicitare (nu doar stop).
+  const cheerNow = me.intakeComplete && !local && !countdown && !tour && !isForm && !quiet && dayOf(me)?.level !== 'rosu' && pendingCheer(me);
   // O singură scenă: dacă la deschidere există o felicitare, ea are prioritate; o întâmpinare deja pornită nu e
   // întreruptă de o felicitare apărută între timp (sincronizare) — felicitarea așteaptă să se termine întâmpinarea.
   const showWelcome = memento && !countdown && !quiet && me.intakeComplete && (welcomeLive.current || !cheerNow);

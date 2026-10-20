@@ -67,6 +67,10 @@ describe('înot fără oprire', () => {
   it('o tură cu pauză în interior nu contează ca înot continuu și nu se leagă de vecine', () => {
     assert.equal(longestContinuousSwim([L(50, 60), L(100, 120, 40), L(50, 60)])?.m, 50);
     // 500 m cu 5 minute oprit în interior nu devin 500 m fără oprire
-    assert.equal(longestContinuousSwim([L(500, 600, 300)])?.m, 0);
+    // Auditul v93, A41: o singură tură pe toată activitatea = necunoscut (null), nu 0 și nu 500.
+    assert.equal(longestContinuousSwim([L(500, 600, 300)]), null);
+    assert.equal(longestContinuousSwim([L(1000, 1200)]), null);
+    // 20 × 50 m cu 8 s stat în fiecare tură nu sunt 1.000 m continuu.
+    assert.equal(longestContinuousSwim(Array.from({ length: 20 }, () => L(50, 60, 8)))?.m, 0);
   });
 });

@@ -267,12 +267,19 @@ export function adapt(plan: PlannedWorkout[], event: AdaptEvent, ctx: AdaptConte
   const out = next.map((w) => {
     const orig = byId.get(w.id);
     if (orig && (w.date < ctx.today || done.has(w.id))) return orig;
-    return orig && orig.plannedMinutes !== w.plannedMinutes ? normalizeWorkout(fitStructure(w)) : w;
+    // A67: și când s-a schimbat treapta (structura / intervalele), nu doar minutele, ședința se reîncadrează.
+    return orig && (orig.plannedMinutes !== w.plannedMinutes || orig.structure !== w.structure || JSON.stringify(orig.intervals ?? null) !== JSON.stringify(w.intervals ?? null)) ? normalizeWorkout(fitStructure(w)) : w;
   });
   const kept = changes.filter((c) => !plan.some((w) => (w.date < ctx.today || done.has(w.id)) && c.startsWith(`${w.id}:`)));
   return { plan: out, changes: kept };
 }
 
+/**
+ * Auditul v93, A61: evenimentul „scor” NU e emis de server (doar de simulatorul longitudinal). Calea e păstrată pentru
+ * decizia proprietarului: activarea ei ar reduce automat volumul după antrenamente-cheie slabe, ceea ce trebuie
+ * cântărit față de regula „nu tăia, sugerează” (29). Până atunci, progresia pe execuții merge prin „trepte”
+ * (decideFamily) și prin A30/A62.
+ */
 function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'scor' }>, ctx: AdaptContext, changes: string[]): void {
   const w = plan.find((x) => x.id === ev.workoutId);
   if (!w || !w.key) return;
@@ -306,10 +313,12 @@ function applyScore(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'sco
     for (const x of plan) {
       if (!isActiveWorkout(x)) continue;
       if (diffDays(nextMonday, x.date) < 0 || diffDays(x.date, nextSunday) < 0) continue;
+      // Auditul v93, A68: nota se scrie doar unde doza s-a schimbat (cheile nu sunt reduse, deci nu primesc notă).
       if (!x.key) {
+        const before = x.plannedMinutes;
         x.plannedMinutes = Math.round((x.plannedMinutes * 0.8) / 5) * 5;
+        if (x.plannedMinutes !== before) x.note = [x.note, 'săptămână −20%, progresie oprită'].filter(Boolean).join('; ');
       }
-      x.note = [x.note, 'săptămână −20%, progresie oprită'].filter(Boolean).join('; ');
     }
     changes.push(`săptămâna din ${nextMonday}: volum −20%, progresia oprită (${bad} antrenamente-cheie slabe în 14 zile)`);
   }

@@ -85,8 +85,9 @@ describe('20 · blocuri libere suprapuse', () => {
 describe('21 / T21 · durata și repetările din aceleași cifre', () => {
   it('30 min cu „3 × 10 min tempo, 3 min ușor între” → câte repetări încap', () => {
     const w = fitStructure(P({ type: 'calitate', plannedMinutes: 30, targetZones: [3, 4], structure: '3 × 10 min tempo (Z3–Z4), 3 min ușor între', intervals: { count: 3, minutes: 10, zone: 4 } }));
-    assert.match(w.structure ?? '', /^1 × 10 min/);
-    assert.equal(w.intervals?.count, 1);
+    // Auditul v93, A67: nu „1 × 10 min … 3 min ușor între”, ci două repetări mai scurte care încap.
+    assert.match(w.structure ?? '', /^2 × 8 min/);
+    assert.equal(w.intervals?.count, 2);
   });
   it('10 min de calitate → ședință ușoară, fără repetări', () => {
     const w = fitStructure(P({ type: 'calitate', plannedMinutes: 10, targetZones: [4], structure: '2 × 15 min la prag (Z4), 5 min ușor între' }));

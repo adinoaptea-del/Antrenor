@@ -209,7 +209,8 @@ export function applyProgression(plan: PlannedWorkout[], executions: Execution[]
       continue;
     }
     const i = out.indexOf(w);
-    out[i] = { ...w, structure: '3 × 15 min la ritmul pe care-l ții în cursă, 5 min ușor între', targetZones: [3, 4], intervals: { count: 3, minutes: 15, zone: 3 }, note: `30/15 amânat: doar ${okN} din 2 ședințe de prag tolerate necesare (un test nu ajunge)` };
+    // Auditul v93, A38: înlocuirea are doză comparabilă (24 min la prag), nu 45 min la ritm de cursă.
+    out[i] = { ...w, structure: '2 × 12 min la prag (Z4, 95–100% FTP), 5 min ușor între', targetZones: [4], intervals: { count: 2, minutes: 12, zone: 4 }, note: `30/15 amânat: doar ${okN} din 2 ședințe de prag tolerate necesare (un test nu ajunge)` };
     decisions.push({ family: '30/15', decision: 'regress', step: 0, stepName: 'ritm de obiectiv', evidence: `doar ${okN} ședințe de prag / over-under bine tolerate în ultimele 6 săptămâni (trebuie 2); testul calibrează, nu deblochează`, workoutId: w.id, from: '30/15' });
   }
   return { plan: out, decisions };

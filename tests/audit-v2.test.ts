@@ -126,7 +126,8 @@ test('Test FTP fără istoric relevant: nu deblochează singur 30/15', () => {
   // Chiar dacă planul l-ar avea, fără două ședințe de prag tolerate devine ritm de obiectiv.
   const plan = [W({ id: 'x', sport: 'bicicleta', type: 'calitate', date: '2026-11-06', structure: bikeQuality('peak', 0, { experienced: true })!.structure })];
   const g = applyProgression(plan, [], '2026-11-05');
-  assert.match(g.plan[0]!.structure!, /ritmul pe care-l ții în cursă/);
+  // Auditul v93, A38: înlocuirea are doză comparabilă (2 × 12 min la prag), nu 3 × 15 la ritmul de cursă.
+  assert.match(g.plan[0]!.structure!, /2 × 12 min la prag/);
 });
 
 test('800 m la înot: rotunjirea și procentul se potrivesc (875 m, nu 900); ținta nu devine realizare', () => {

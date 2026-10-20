@@ -96,6 +96,14 @@ export function fitStructure(w: PlannedWorkout): PlannedWorkout {
   if (n === 0) {
     return { ...w, type: w.type === 'calitate' ? 'z2' : w.type, key: w.type === 'calitate' ? false : w.key, intervals: undefined, targetZones: w.targetZones.filter((z) => z <= 2).length ? w.targetZones.filter((z) => z <= 2) : [2], structure: `${w.plannedMinutes} min ușor (prea scurt pentru repetări)` };
   }
+  // Auditul v93, A67: o singură repetare („1 × 10 min … 3 min ușor între”) e o formă degenerată. Întâi două repetări
+  // mai scurte (cel puțin jumătate din cea prescrisă); altfel un singur bloc continuu, scris ca atare.
+  if (n === 1 && count >= 2) {
+    const r2 = Math.floor((w.plannedMinutes - 10 - rest) / 2);
+    if (r2 >= Math.ceil(reps / 2)) return { ...w, structure: w.structure!.replace(m[0], `2 × ${r2} min`), intervals: w.intervals ? { ...w.intervals, count: 2, minutes: r2 } : undefined };
+    const text = w.structure!.replace(m[0], `${reps} min continuu`).replace(/,?\s*\d+\s*min ușor între/, '');
+    return { ...w, structure: text, intervals: w.intervals ? { ...w.intervals, count: 1 } : undefined };
+  }
   return { ...w, structure: w.structure!.replace(m[0], `${n} × ${reps} min`), intervals: w.intervals ? { ...w.intervals, count: n } : undefined };
 }
 

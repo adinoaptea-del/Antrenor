@@ -255,7 +255,11 @@ export function fallbackMessage(p: Packet, decision: HeadResponse['decizie'], sp
   if (c?.stare === 'partial' && (decision === 'verde' || decision === 'galben')) {
     const o = c.optiuni.find((x) => x.id === c.implicit);
     if (o) lines.push(`Ai făcut azi ${c.facut} din ${c.planificat} TRIMP planificat (${c.procent}%). Pentru restul zilei: ${o.text}.`);
-  } else if (c?.stare === 'acoperit') lines.push(`Ai făcut azi ${c.facut} TRIMP, peste cele ${c.planificat} planificate. Ce mai e azi în plan rămâne; ți-am propus o variantă ușoară, alegi tu. Mâine dimineață decid recuperarea și durerile.`);
+  } else if (c?.stare === 'acoperit') {
+    // Auditul v93, A106: „ți-am propus o variantă ușoară” doar când mai e o ședință azi în plan.
+    const rest = p.plan_azi ? ' Ce mai e azi în plan rămâne, cu o variantă ușoară de ales; alegi tu.' : '';
+    lines.push(`Ai făcut azi ${c.facut} TRIMP, peste cele ${c.planificat} planificate.${rest} Mâine dimineață decid recuperarea și durerile.`);
+  }
   for (const s of specialists) for (const item of s.ce) if (item.stare === 'acceptat') lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join('\n');
 }

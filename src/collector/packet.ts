@@ -266,7 +266,7 @@ export interface MergedDaily {
   disagreements: string[];
 }
 
-// Apple dă HRV ca SDNN (alt calcul decât rMSSD-ul Whoop/Oura/Garmin): ultima opțiune pentru HRV.
+// Apple dă HRV ca SDNN (alt calcul decât rMSSD-ul Whoop/Oura/Garmin): exclus de la HRV (HRV_EXCLUDED).
 const PRIORITY: Record<string, number> = { whoop: 0, oura: 1, garmin: 2, athletedata: 3, android: 3.5, apple: 4, manual: 5, strava: 9 };
 
 function mean(xs: number[]): number | null {
@@ -290,7 +290,8 @@ export function garminHrvOffset(rows: SourceDaily[]): number | null {
 }
 
 type Metric = 'hrv' | 'rhr';
-// Pentru HRV, Apple dă SDNN (alt calcul): nu intră în medie decât dacă e singura sursă.
+// Pentru HRV, Apple dă SDNN (alt calcul decât rMSSD): NU intră deloc în HRV, nici ca singură sursă (auditul v93,
+// A10 — comentariul vechi spunea altceva decât codul). Pulsul de repaus de la Apple intră.
 const HRV_EXCLUDED = new Set(['apple', 'manual', 'strava']);
 const RHR_EXCLUDED = new Set(['manual', 'strava']);
 const HRV_EXCLUDED_FOR = (k: 'hrv' | 'rhr') => (k === 'hrv' ? HRV_EXCLUDED : RHR_EXCLUDED);

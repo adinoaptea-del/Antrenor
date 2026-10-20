@@ -20,7 +20,8 @@ test('bicicleta: build alternează pragul cu over-under; peak are 30/15 doar pen
   assert.match(p.structure, /30 s tare \/ 15 s ușor/);
   const steps = shortIntervalSteps(p.structure, p.minutes)!;
   assert.equal(steps.length, 3);
-  assert.match(steps[1]!.text, /3 serii × 10 repetări/);
+  // Auditul v93, A38: prima expunere are 2 serii.
+  assert.match(steps[1]!.text, /2 serii × 10 repetări/);
 });
 
 test('înot: setul CSS crește din săptămână în săptămână, iar pașii urmează exact setul din plan', () => {

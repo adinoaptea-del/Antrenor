@@ -223,3 +223,11 @@ test('T27 / A42: tehnica la 75 m fără oprire nu depășește plafonul de volum
   const rounds = Number(/^(\d+) runde/.exec(tech)?.[1] ?? 1);
   assert.ok(rounds * 200 <= 300, `${rounds} runde`);
 });
+
+test('T26 / A39: fără FTP procentele dispar; cu FTP devin wați', async () => {
+  const { ftpText } = await import('../src/calendar/session-detail.js');
+  const t = '3 × 10 min sweet spot (Z3, „greu dar stabil”, 88–94% FTP), 5 min ușor între';
+  assert.doesNotMatch(ftpText(t, null), /FTP/);
+  assert.match(ftpText(t, 250), /220–235 W/);
+  assert.doesNotMatch(ftpText('2 × 12 min la prag (Z4, 95–100% FTP), 5 min ușor între', null), /%/);
+});

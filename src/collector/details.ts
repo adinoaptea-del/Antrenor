@@ -86,13 +86,16 @@ export function longestContinuousSwim(laps: { distance: number; moving_time: num
     }
     // O tură cu pauză în interior (timp scurs cu peste 10 s peste timpul în mișcare): nu știm cât din ea a fost fără
     // oprire, deci nu contează ca înot continuu și rupe legătura cu vecinele.
-    if (l.elapsed_time - l.moving_time > 10) {
+    // Auditul v93, A41: toleranța e 3 s pe tură (o întoarcere), nu 10 s: 20 × 50 m cu 8 s de stat nu sunt 1.000 m continuu.
+    if (l.elapsed_time - l.moving_time > 3) {
       cur = { m: 0, sec: 0 };
       continue;
     }
     cur = { m: cur.m + l.distance, sec: cur.sec + t };
     if (cur.m > best.m) best = { ...cur };
   }
+  // O singură tură pentru toată activitatea (sumar fără ture reale): nu dovedește înot fără oprire → necunoscut.
+  if (laps.length === 1) return null;
   return { m: Math.round(best.m), pace100: swimPace100(best.sec, best.m) };
 }
 

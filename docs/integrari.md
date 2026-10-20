@@ -26,12 +26,25 @@ Cât timp aplicația n-are OAuth, pachetul lui Cuza se poate construi din Claude
 4. **AthleteData** — un e-mail: „Oferiți API/OAuth pentru aplicații terțe care vor să citească datele agregate ale propriilor utilizatori?” Dacă da, înlocuiește tot de mai sus cu o singură conexiune, inclusiv Garmin.
 5. **Supabase (UE) + Vercel** — conturile; fără ele n-are unde să ajungă token-urile.
 
+## Matricea surselor (verificată în cod la 20.10.2026, auditul v93 A96)
+
+| Sursă | Cale | Ce aduce | Fereastra la sincronizare | Ștergeri | La AI |
+| --- | --- | --- | --- | --- | --- |
+| WHOOP | OAuth + webhook (HMAC, 5 min) | somn (episoadele din aceeași zi adunate), HRV rMSSD, puls de repaus, recovery, antrenamente | 3 zile (cron 15 min, webhook) | nu se aplică (doar upsert) | da |
+| Strava (Garmin prin Strava) | OAuth + webhook (fără semnătură; token de verificare obligatoriu) | activități: durată, distanță, FC, cadență, putere, ture | 42 de zile | **da** din v105: `delete` scoate activitatea | **da, până apar date Apple Health / Health Connect** (regula 15, risc asumat de proprietar) |
+| Oura | OAuth | noaptea principală, HRV, puls, readiness, temperatura pielii | 3 zile | nu | da |
+| Apple Health (Health Auto Export) | webhook cu token personal (antet `x-airon-token` sau `?t=`) | zile (puls, somn; HRV SDNN exclus), antrenamente | ce trimite exportul | nu | da |
+| Health Connect (Android) | webhook cu același token | zile, antrenamente | ce trimite exportul | nu | da |
+| Formularele AIRON | aplicația | dimineața, seara, nefăcut, teste, analize, intrare | — | — | da (textele tăiate la 300 de caractere, tratate ca date) |
+
+Ce NU există: Garmin direct (programul închis), latența garantată pe sursă, starea de completitudine pe interval (A20, parțial), ștergerile WHOOP/Oura/Apple.
+
 ## Ce face codul (gata, testat)
 
 | Fișier | Rol |
 | --- | --- |
 | `src/collector/types.ts` | formele normalizate: `SourceDaily` (o noapte / o zi de la o sursă), `SourceActivity`, formularele, zonele, analizele |
-| `src/collector/packet.ts` | pachetul agenților: arbitraj între surse (somn = media, HRV/puls = Whoop > Oura > Garmin cu offset), dedupe Garmin+Strava, media7 / baseline60 / sd60, ACWR total și pe sport, ore pe sport în 7 zile, ultima ședință + chestionarul ei, planul zilei și al săptămânii |
+| `src/collector/packet.ts` | pachetul agenților: arbitraj între surse (o singură sursă pe metrică — cea cu cele mai multe zile, fără medie între brățări; HRV Apple/SDNN exclus), dedupe Garmin+Strava, media7 / baseline60 / sd60, ACWR total și pe sport, ore pe sport în 7 zile, ultima ședință + chestionarul ei, planul zilei și al săptămânii |
 | `src/collector/providers/oauth.ts` | OAuth 2.0 comun: URL de autorizare, schimb de cod, refresh, ora locală din ISO + offset |
 | `src/collector/providers/whoop.ts` | WHOOP v2: scope-uri, endpoint-uri cu paginare, normalizarea nopții (ziua trezirii, culcarea, minutele dormite, HRV, puls, recovery) și a antrenamentului |
 | `src/collector/providers/strava.ts` | Strava: activități → sport, minute, km, FC, cadență (×2 la alergare), putere |

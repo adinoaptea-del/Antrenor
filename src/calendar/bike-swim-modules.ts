@@ -49,8 +49,10 @@ export function bikeQuality(phase: Phase, weekInPhase: number, opts: { raceKm?: 
     // istoric de antrenament consistent (≥ 6 h/săpt. sau test de bicicletă făcut) și fără plafon Z4 (vârstă, restricție).
     // Altfel, ritmul de obiectiv, care e specific distanței.
     if (w % 2 === 0 && !opts.capZ4 && opts.experienced) {
+      // Auditul v93, A38: prima expunere are 2 serii (cum spune comentariul de sus), apoi 3.
       const reps = w === 0 ? 10 : 12;
-      return { structure: `3 serii × ${reps} × (30 s tare / 15 s ușor), 3 min ușor între serii — intervale scurte 30/15`, zones: [4, 5], minutes: total(3 * reps * 0.75, 6) };
+      const series = w === 0 ? 2 : 3;
+      return { structure: `${series} serii × ${reps} × (30 s tare / 15 s ușor), 3 min ușor între serii — intervale scurte 30/15`, zones: [4, 5], minutes: total(series * reps * 0.75, 3 * (series - 1)) };
     }
     return { structure: `3 × 15 min la ritmul pe care-l ții în ${opts.raceKm ? `tura de ${opts.raceKm} km` : 'cursă'}, 5 min ușor între`, zones: [3, 4], minutes: total(45, 10), intervals: { count: 3, minutes: 15, zone: 3 } };
   }
