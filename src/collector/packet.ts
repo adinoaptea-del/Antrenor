@@ -8,10 +8,12 @@ import { mergeDetails } from './details.js';
 // Regula de aur se aplică și aici: un câmp pe care nu-l putem calcula e null, nu estimat.
 
 import { isActiveWorkout, type Activity, type PlannedWorkout, type Sport } from '../types.js';
-import { scoreWorkout, zoneDirection } from '../scoring/score.js';
+import { scoreMatches } from '../scoring/score.js';
 import { matchActivities } from '../scoring/match.js';
 import { balanceCheck, type Balance } from '../calendar/balance.js';
 import { raceReady, type RaceReady } from '../bar/race-ready.js';
+import { readyView } from '../bar/ready-view.js';
+import { METRICS } from '../bar/metrics.js';
 import { extraOn, overYesterday, type DayCoverage } from '../calendar/load.js';
 import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -36,6 +38,10 @@ export interface Execution {
   eficienta: number | null;
   culoare: string;
   motive: string[];
+  /** Făcut / conform scopului / bine tolerat, separat de culoare; null = fără execuție (auditul v93, A72). */
+  evaluare?: { facut: boolean; conform_scop: boolean | null; conform_varianta: boolean; tolerat: boolean | null; partial: boolean; lipsa: string[] } | null;
+  /** „salvat” = citit din tabelul `scores` (același ca pe ecrane); „calculat” = încă nesalvat, aceeași funcție. */
+  sursa_scor?: 'salvat' | 'calculat';
 }
 
 export interface Packet {
@@ -159,7 +165,12 @@ export interface Packet {
    * Cât din fiecare probă a cursei a DEMONSTRAT sportivul în ultimele 6 săptămâni (cod, nu estimare).
    * Înotul = cea mai lungă porțiune fără oprire. Ședințele pornesc de aici, nu de la nivelul presupus.
    */
-  pregatire_proba: { proba: string; procent: number | null; demonstrat: string[] }[];
+  pregatire_proba: { metric_id: 'pregatire_proba'; proba: string; procent: number | null; demonstrat: string[] }[];
+  /**
+   * Indicele de pregătire pentru cursă, EXACT cel de pe Acasă/Progres (registrul src/bar/metrics.ts, același id și
+   * aceeași valoare; auditul v93, T51). Indice intern 0–100, nu probabilitate; null = fără date.
+   */
+  pregatire_cursa: { metric_id: 'pregatire_cursa'; nume: string; versiune: string; indice: number | null; partial: boolean; probe_cu_date: number; probe_total: number; fara_date: string[]; verigi: { nume: string; indice: number | null; masurat: string | null }[]; explicatie: string } | null;
   alte_activitati: { recuperare_7z_min: number; activ_extra_7z_min: number; lista: { data: string; ora: string | null; tip: 'recuperare' | 'activ'; nume: string; minute: number; fc_medie: number | null }[] };
   aderenta_14z: { planificate: number; facute: number; sarite: { data: string; sport: Sport; cheie: boolean }[] } | null;
   /** Pus de runner după ce Fiziologul a răspuns; antrenorii și nutriționistul îl citesc. */
@@ -635,19 +646,18 @@ export function buildPacket(input: CollectorInput): Packet {
   const evening = lastAct ? (input.evenings.find((e) => e.activityId === lastAct.externalId) ?? input.evenings.find((e) => e.date === lastAct.date) ?? null) : null;
   const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && w.date === lastAct.date && w.status !== 'sters') : false;
 
-  // Ședința propusă de care se leagă o activitate: același sport, ACEEAȘI zi (regula 28, ca src/scoring/match.ts).
-  const plannedFor = (a: SourceActivity): PlannedWorkout | null =>
-    input.plan.find((w) => w.sport === a.sport && w.date === a.date && w.status !== 'sters' && w.status !== 'anulat_sistem') ?? null;
-  const execution = (a: SourceActivity, ev: EveningForm | null): Execution | null => {
-    const w = plannedFor(a);
-    if (!w) return null;
-    const sameDay = acts
-      .filter((o) => o !== a && o.date === a.date)
-      .map((o) => {
-        const ow = plannedFor(o);
-        return { sport: o.sport, directie: ow ? zoneDirection(ow, o as unknown as Activity) : null };
-      });
-    const r = scoreWorkout({ planned: w, activity: a as unknown as Activity, questionnaire: ev ? { rpe: ev.rpe, painScore: ev.durere.scor } : null, today, sameDay });
+  // Ședința propusă de care se leagă o activitate și scorul ei: aceeași potrivire (regula 28, src/scoring/match.ts) și
+  // aceeași funcție de scor ca tabelul `scores` (scoreMatches: formularul de seară cu motivul scurtării). Când scorul e
+  // deja salvat pentru aceeași activitate, pachetul îl citește pe acela: o ședință, o culoare (auditul v93, T51).
+  const recentPlan = input.plan.filter((w) => w.status !== 'sters' && diffDays(w.date, today) >= 0 && diffDays(w.date, today) <= 14);
+  const scoredRecent = scoreMatches(matchActivities(recentPlan, acts as unknown as Activity[], today).matches, input.evenings, today);
+  const execution = (a: SourceActivity): Execution | null => {
+    const m = scoredRecent.find((x) => x.activity?.id === a.id || x.extraActivity?.id === a.id);
+    if (!m) return null;
+    const w = m.planned;
+    const stored = input.storedScores?.[w.id];
+    const useStored = !!stored && stored.activityId === m.activity?.id;
+    const r = useStored ? { color: stored!.color, reasons: stored!.reasons, metrics: stored!.metrics, evaluare: stored!.evaluare } : m.result;
     return {
       tip_planificat: w.type,
       durata_planificata: w.plannedMinutes,
@@ -660,6 +670,8 @@ export function buildPacket(input: CollectorInput): Packet {
       eficienta: r.metrics.eficienta ?? null,
       culoare: r.color,
       motive: r.reasons,
+      evaluare: r.evaluare ? { facut: r.evaluare.facut, conform_scop: r.evaluare.conformScop, conform_varianta: r.evaluare.conformVarianta ?? false, tolerat: r.evaluare.tolerat, partial: r.evaluare.partial, lipsa: r.evaluare.lipsa } : null,
+      sursa_scor: useStored ? 'salvat' : 'calculat',
     };
   };
 
@@ -797,7 +809,7 @@ export function buildPacket(input: CollectorInput): Packet {
           comentariu: evening?.comentariu ?? null,
           in_plan: inPlan,
           tip_neplanificat: inPlan ? null : (evening?.tip_neplanificat ?? null),
-          fata_de_plan: execution(lastAct, evening),
+          fata_de_plan: execution(lastAct),
         }
       : null,
     sedinte_48h: lastAct
@@ -811,7 +823,7 @@ export function buildPacket(input: CollectorInput): Packet {
             durata: a.minutes,
             fc_medie: a.avgHr ?? null,
             z4_z5_min: a.timeInZonesMin ? (a.timeInZonesMin[4] ?? 0) + (a.timeInZonesMin[5] ?? 0) : null,
-            fata_de_plan: execution(a, input.evenings.find((e) => e.activityId === a.externalId) ?? null),
+            fata_de_plan: execution(a),
           }))
       : [],
     plan_azi: planToday
@@ -826,7 +838,14 @@ export function buildPacket(input: CollectorInput): Packet {
     plan_saptamana: { interval: `${monday} – ${addDays(monday, 6)}${input.athlete.weekLabel ? `, ${input.athlete.weekLabel}` : ''}`, zile },
     vreme: input.weather ?? null,
     progres: progresStatus(input, acwrTotal, acwrBySport, aderenta),
-    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today, { swimContinuousM: input.athlete.declaredSwimM ?? null }).map((r) => ({ proba: r.leg, procent: r.value, demonstrat: r.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
+    pregatire_proba: input.athlete.goal ? sportReadiness(input.athlete.goal, dedupeActivities(input.activities), today, { swimContinuousM: input.athlete.declaredSwimM ?? null }).map((r) => ({ metric_id: 'pregatire_proba' as const, proba: r.leg, procent: r.value, demonstrat: r.parts.map((p) => `${p.label}: ${p.have} din ${p.target}`) })) : [],
+    pregatire_cursa: gataDeCursa
+      ? (() => {
+          const rv = readyView(gataDeCursa);
+          const def = METRICS[rv.metricId];
+          return { metric_id: 'pregatire_cursa' as const, nume: def.name, versiune: def.version, indice: rv.pct, partial: rv.partial, probe_cu_date: rv.withData, probe_total: rv.total, fara_date: rv.missing, verigi: gataDeCursa.links.map((l) => ({ nume: l.name, indice: l.pct, masurat: l.measured })), explicatie: def.explanation };
+        })()
+      : null,
     alte_activitati: (() => {
       const recent = (input.others ?? []).filter((o) => diffDays(o.date, today) >= 0 && diffDays(o.date, today) <= 7);
       return {

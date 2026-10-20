@@ -43,7 +43,9 @@ export function executionOf(me: Me, w: PlannedWorkout): { ratio: number | null; 
     }
   }
   if (!act || !w.plannedMinutes) return { ratio: null, minutes: null, km: null };
-  return { ratio: act.minutes / w.plannedMinutes, minutes: act.minutes, km: act.distanceKm ?? null };
+  // Aceeași durată ca scorul (src/scoring/score.ts: totală față de plan, aceeași convenție la orice furnizor), când e salvat.
+  const pct = me.scores[w.id]?.durationPct;
+  return { ratio: pct != null ? pct / 100 : act.minutes / w.plannedMinutes, minutes: act.minutes, km: act.distanceKm ?? null };
 }
 
 function nextCheer(me: Me, seen: string[]) {
@@ -73,6 +75,8 @@ function nextCheer(me: Me, seen: string[]) {
       nSwimTotal: me.activities.filter((a) => a.sport === 'inot').length,
       improving,
       seed: w.id,
+      // Durerea raportată seara: peste plan cu durere ≥ 3 nu se felicită (src/cheers.ts).
+      pain: me.scores[w.id]?.pain ?? me.forms.evening[act?.id ?? `plan-${w.id}`]?.durere?.scor ?? null,
     });
     if (c) return { w, c };
   }

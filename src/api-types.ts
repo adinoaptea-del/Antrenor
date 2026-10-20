@@ -133,7 +133,11 @@ export interface Me {
   /** Prima zi a planului activ (luni). */
   planStart?: string | null;
   plan: PlannedWorkout[];
-  scores: Record<string, { color: Color; reasons: string[]; final: boolean }>;
+  /**
+   * Scorul salvat al fiecărei ședințe (tabelul `scores`). durationPct/pain/evaluare: aceleași valori ca în pachetul AI
+   * (auditul v93, T51); evaluare = făcut / conform scopului / bine tolerat, cu „parțial” când lipsește un criteriu.
+   */
+  scores: Record<string, { color: Color; reasons: string[]; final: boolean; durationPct?: number | null; pain?: number | null; evaluare?: import('./scoring/score.js').Evaluation | null }>;
   activities: MeActivity[];
   wellnessToday: { hrv: number | null; rhr: number | null; sleepMin: number | null; bedtime: string | null; sleepScore: number | null; recoveryScore: number | null; /** Abaterea temperaturii pielii (°C), Oura. */ tempDevC?: number | null; source: string | null } | null;
   /** Starea de azi din datele de sănătate (inimă, respirație, recuperare, somn) și cum te simți; dă culoarea marginilor. */

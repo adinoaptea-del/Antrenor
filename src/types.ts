@@ -89,6 +89,20 @@ export interface Activity {
   lastThirdOutput?: number | null;
   /** Minute de la finalul unei activități de bicicletă în aceeași zi (pentru brick). */
   afterBikeMinutes?: number | null;
+  /**
+   * Telemetria aliniată pe blocurile ședinței (din stream-ul de puls sau din ture, src/scoring/score.ts blocksFromStream):
+   * încălzire, lucru, pauze, revenire, fiecare cu minutele în zone (latența pulsului deja exclusă). null = fără aliniere.
+   */
+  blocks?: ActivityBlock[] | null;
+}
+
+export type BlockKind = 'incalzire' | 'lucru' | 'pauza' | 'revenire';
+
+export interface ActivityBlock {
+  kind: BlockKind;
+  minutes: number;
+  /** Minute în fiecare zonă în blocul ăsta; null = bloc fără puls. */
+  zonesMin: Partial<Record<Zone, number>> | null;
 }
 
 export interface EveningQuestionnaire {

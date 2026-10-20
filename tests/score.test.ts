@@ -83,10 +83,16 @@ describe('scoreWorkout', () => {
     assert.equal(scoreWorkout({ planned, activity: activity(), today: '2026-11-05' }).final, true);
   });
 
-  it('fără date de zone, criteriul de zonă nu se aplică și verde rămâne posibil', () => {
+  // Auditul v93, A72: culoarea rămâne verde (decizia proprietarului pe culori), dar evaluarea e marcată parțială:
+  // „parțial — intensitate necunoscută” în motive (printre primele două, cât arată ecranele) și conform scopului = necunoscut.
+  it('fără date de zone, criteriul de zonă nu se aplică: verde posibil, dar „parțial — intensitate necunoscută”', () => {
     const r = scoreWorkout({ planned, activity: activity({ timeInZonesMin: null }), questionnaire: { rpe: 4 }, today: '2026-11-03' });
     assert.equal(r.color, 'verde');
     assert.equal(r.flags.noZoneData, true);
+    assert.equal(r.flags.intensityUnknown, true);
+    assert.ok(r.reasons.slice(0, 2).some((x) => x.startsWith('parțial — intensitate necunoscută')), r.reasons.join(' | '));
+    assert.equal(r.evaluare?.conformScop, null);
+    assert.equal(r.evaluare?.partial, true);
   });
 
   it('ședință de calitate: intervalele în țintă decid zona; set abandonat = portocaliu', () => {
