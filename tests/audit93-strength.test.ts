@@ -9,6 +9,8 @@ import { CATALOG, MIN_STRENGTH_MINUTES, estimateMinutes, parseStrength, prescrib
 import { FITNESS_WEEK_ACTION, fitnessProfile, unlockDecision } from '../src/strength/fitness.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
 import type { FreeBlock, PlannedWorkout } from '../src/types.js';
+import { STRENGTH_LOG_CONFLICT, cleanEntry, isMeasured, parseKgInput, strengthLogRow, suggest, type StrengthLogEntry } from '../src/strength/log.js';
+import { readFileSync } from 'node:fs';
 
 const gym = (id: string, date: string, spec: StrengthSpec, minutes = 60): PlannedWorkout => ({ id, date, sport: 'forta', type: 'forta', plannedMinutes: minutes, targetZones: [], key: false, status: 'planificat', structure: strengthStructure(spec) });
 const L1: StrengthSpec = { session: 'l1', block: 'construire', week: 2, len: 4 };
@@ -228,5 +230,71 @@ describe('A52 / T33 / T88: durata seriilor și totalul săptămânii', () => {
     }
     // Nicio promisiune falsă de „volum distribuit fără creștere” în textele pentru sportivă.
     assert.ok(!/distribuie (volumul|doza)[^.]*(nu (îl|o) (crește|adaugă)|fără serii în plus)/.test(FITNESS_WEEK_ACTION[9]! + unlockDecision({ days: 3, beginner: true }, Array(4).fill({ planned: 2, done: 2, feedback: 2 })).why));
+  });
+});
+
+describe('A54: piramida crește greutatea doar după două ședințe în țintă, cu rezervă', () => {
+  const PYR = '20 / 15 / 12 / 8 — crești greutatea la fiecare serie';
+  const e = (date: string, reps: number[], opts: { rir?: number | null; source?: StrengthLogEntry['source']; kg?: number[] } = {}): StrengthLogEntry => ({ date, exercise: 'fit-squat', sets: reps.map((n, i) => ({ kg: (opts.kg ?? [20, 25, 30, 35])[i] ?? null, reps: n })), rir: opts.rir === undefined ? 2 : opts.rir, source: opts.source ?? 'ajustat' });
+  it('o singură piramidă reușită nu crește greutatea; a doua la rând, cu rezervă, da', () => {
+    assert.equal(suggest('fit-squat', PYR, '2–3', [e('2026-11-02', [20, 15, 12, 8])]).kind, 'ramai');
+    assert.equal(suggest('fit-squat', PYR, '2–3', [e('2026-11-02', [20, 15, 12, 8]), e('2026-11-09', [20, 15, 12, 8])]).kind, 'creste');
+  });
+  it('o serie ratată nu declanșează creșterea, nici după o piramidă reușită', () => {
+    assert.equal(suggest('fit-squat', PYR, '2–3', [e('2026-11-02', [20, 15, 12, 8]), e('2026-11-09', [20, 15, 12, 6])]).kind, 'ramai');
+  });
+  it('fără rezervă (RIR 0) nu se crește; nici cu greutăți diferite între cele două ședințe', () => {
+    assert.equal(suggest('fit-squat', PYR, '2–3', [e('2026-11-02', [20, 15, 12, 8]), e('2026-11-09', [20, 15, 12, 8], { rir: 0 })]).kind, 'ramai');
+    assert.equal(suggest('fit-squat', PYR, '2–3', [e('2026-11-02', [20, 15, 12, 8], { kg: [15, 20, 25, 30] }), e('2026-11-09', [20, 15, 12, 8])]).kind, 'ramai');
+  });
+  it('nota din prescripție nu mai cere creșterea necondiționată la fiecare serie', () => {
+    const p = prescribeFull({ session: 'l1', block: 'construire', week: 2, len: 4 });
+    const note = p.notes.find((n) => /20 \/ 15 \/ 12 \/ 8/.test(n))!;
+    assert.match(note, /doar dacă seria de dinainte a ieșit curat/);
+  });
+});
+
+describe('A57 / T34: jurnalul păstrează fiecare serie, pe ședință și pe apariție', () => {
+  it('patru serii cu greutăți diferite și rezerva pe serie se păstrează separat', () => {
+    const x = cleanEntry({ exercise: 'fit-squat', workoutId: '2026-11-02-1', instance: 2, source: 'ajustat', rir: 2, sets: parseKgInput('20/22,5/25/27,5', 4).map((kg, i) => ({ kg, reps: [20, 15, 12, 8][i], rir: 3 - (i > 2 ? 1 : 0) })) }, '2026-11-02')!;
+    assert.deepEqual(x.sets.map((s) => s.kg), [20, 22.5, 25, 27.5]);
+    assert.deepEqual(x.sets.map((s) => s.reps), [20, 15, 12, 8]);
+    assert.deepEqual(x.sets.map((s) => s.rir), [3, 3, 3, 2]);
+    assert.equal(x.workoutId, '2026-11-02-1');
+    assert.equal(x.instance, 2);
+    assert.equal(x.unit, 'kg');
+  });
+  it('două ședințe în aceeași zi (sau același exercițiu de două ori) au chei diferite; rândul vechi rămâne valabil', () => {
+    const a = cleanEntry({ exercise: 'fit-squat', workoutId: 'w1', instance: 0, source: 'ajustat', sets: [{ kg: 20, reps: 10 }] }, '2026-11-02')!;
+    const b = cleanEntry({ exercise: 'fit-squat', workoutId: 'w2', instance: 0, source: 'ajustat', sets: [{ kg: 30, reps: 8 }] }, '2026-11-02')!;
+    const c = cleanEntry({ exercise: 'fit-squat', workoutId: 'w2', instance: 4, source: 'ajustat', sets: [{ kg: 25, reps: 8 }] }, '2026-11-02')!;
+    const keys = [a, b, c].map((x) => STRENGTH_LOG_CONFLICT.split(',').map((k) => (strengthLogRow('u', x) as Record<string, unknown>)[k]).join('|'));
+    assert.equal(new Set(keys).size, 3, keys.join(' ; '));
+    // Un client vechi (fără ședință): cheia veche, ziua + exercițiul.
+    const old = cleanEntry({ exercise: 'fit-squat', source: 'ajustat', sets: [{ kg: 20, reps: 10 }] }, '2026-11-02')!;
+    assert.deepEqual([strengthLogRow('u', old).workout_id, strengthLogRow('u', old).instance], ['', 0]);
+    // Migrarea nouă există, e separată de cele vechi și schimbă cheia.
+    const sql = readFileSync(new URL('../supabase/migrations/0003_strength_log_sets.sql', import.meta.url), 'utf8');
+    assert.match(sql, /primary key \(user_id, date, exercise, workout_id, instance\)/);
+    assert.match(sql, /declarat_conform/);
+  });
+});
+
+describe('A58 / T35: „am făcut cum scrie” e declarat conform, nu măsurătoare', () => {
+  it('confirmarea nu primește rezerva minimă ca valoare măsurată (nici de la un client vechi)', () => {
+    const x = cleanEntry({ exercise: 'fit-hip-thrust', source: 'confirmat', rir: 2, sets: [{ kg: 40, reps: 12, rir: 2 }] }, '2026-11-02')!;
+    assert.equal(x.source, 'declarat_conform');
+    assert.equal(x.rir, null);
+    assert.equal(x.sets[0]!.rir, undefined);
+    assert.equal(isMeasured(x), false);
+    assert.equal(cleanEntry({ exercise: 'fit-hip-thrust', source: 'ajustat', rir: 2, sets: [{ kg: 40, reps: 12 }] }, '2026-11-02')!.rir, 2);
+  });
+  it('două confirmări „cum scrie” nu cresc greutatea; o ședință cu valori scrise de sportiv, da', () => {
+    const mk = (date: string, source: StrengthLogEntry['source']): StrengthLogEntry => ({ date, exercise: 'fit-lat', sets: [{ kg: 30, reps: 15 }, { kg: 30, reps: 15 }, { kg: 30, reps: 15 }], rir: null, source });
+    assert.notEqual(suggest('fit-lat', '15', '2–3', [mk('2026-11-02', 'declarat_conform'), mk('2026-11-09', 'declarat_conform')]).kind, 'creste');
+    assert.equal(suggest('fit-lat', '15', '2–3', [mk('2026-11-02', 'declarat_conform'), mk('2026-11-09', 'ajustat')]).kind, 'creste');
+    const pyr = (date: string, source: StrengthLogEntry['source']): StrengthLogEntry => ({ date, exercise: 'fit-squat', sets: [20, 15, 12, 8].map((n, i) => ({ kg: 20 + 5 * i, reps: n })), rir: null, source });
+    assert.equal(suggest('fit-squat', '20 / 15 / 12 / 8', '2–3', [pyr('2026-11-02', 'declarat_conform'), pyr('2026-11-09', 'declarat_conform')]).kind, 'ramai');
+    assert.match(suggest('fit-squat', '20 / 15 / 12 / 8', '2–3', [pyr('2026-11-02', 'declarat_conform')]).last ?? '', /cum scria/);
   });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Prescription, Rx } from '@core/strength/ppl.js';
-import { minRir, nextSuggestion, parseRepsInput, repRange, repTargets, type StrengthLogEntry } from '@core/strength/log.js';
+import { isMeasured, nextSuggestion, parseKgInput, parseRepsInput, repRange, repTargets, suggest, type StrengthLogEntry } from '@core/strength/log.js';
 import { addDays } from '@core/util/dates.js';
 import type { Me } from '@core/api-types.js';
 import { useData, useMe } from '../data/store';
@@ -25,45 +25,58 @@ export function recentPain(me: Me): boolean {
   return Object.values(me.forms.evening ?? {}).some((e) => !!e && e.date >= from && (e.durere?.scor ?? 0) >= 3);
 }
 
-const lastKg = (log: StrengthLogEntry[], ex: string) => {
+/** Greutățile pe serie de data trecută (piramida are greutăți diferite); null pe serie = necunoscut. */
+const lastKgs = (log: StrengthLogEntry[], ex: string, n: number): (number | null)[] => {
   const e = [...log].filter((x) => x.exercise === ex).sort((a, b) => (a.date < b.date ? -1 : 1)).at(-1);
-  const kg = e ? Math.max(...e.sets.map((s) => s.kg ?? -1)) : -1;
-  return kg >= 0 ? kg : null;
+  if (!e) return Array(n).fill(null);
+  return Array.from({ length: n }, (_, i) => e.sets[Math.min(i, e.sets.length - 1)]?.kg ?? null);
 };
+const kgText = (kgs: (number | null)[]) => (kgs.every((k) => k == null) ? '' : new Set(kgs).size === 1 ? String(kgs[0] ?? '') : kgs.map((k) => (k == null ? '' : String(k))).join('/'));
 
 /**
- * Notarea după ședință: „Am făcut cum scrie” preia valorile propuse (repetările de jos ale intervalului și greutatea
- * de data trecută, dacă există — altfel fără kilograme); „Ajustez” cere valorile reale pe fiecare exercițiu.
+ * Notarea după ședință (auditul v93, A57/A58):
+ *  - „Am făcut cum scrie” = declarat conform: repetările sunt ținta (nu o măsurătoare), rezerva rămâne nescrisă, iar
+ *    greutatea pe serie e cea de data trecută doar când sugestia de azi era „aceleași greutăți” (altfel necunoscută);
+ *  - „Ajustez” cere valorile reale, cu greutatea pe fiecare serie („20/22,5/25” la piramidă).
+ * Fiecare exercițiu se notează pe ședință (workoutId) și pe poziția lui în prescripție.
  */
 export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription }) {
   const me = useMe();
   const { submitForm, local } = useData();
   const log = me.strengthLog ?? [];
-  const saved = log.filter((x) => x.date === w.date && rx.items.some((r) => r.ex.id === x.exercise));
+  const saved = log.filter((x) => x.date === w.date && (x.workoutId == null || x.workoutId === '' || x.workoutId === w.id) && rx.items.some((r) => r.ex.id === x.exercise));
   const [mode, setMode] = useState<'idle' | 'edit'>('idle');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const items = rx.items.filter((r) => repRange(r.reps));
+  const items = rx.items.map((r, instance) => ({ r, instance })).filter(({ r }) => repRange(r.reps));
+  const key = (instance: number) => String(instance);
   const [vals, setVals] = useState<Record<string, { kg: string; reps: string; rir: string }>>(() =>
     Object.fromEntries(
-      items.map((r) => {
-        const prev = saved.find((x) => x.exercise === r.ex.id);
-        const kg = prev ? Math.max(...prev.sets.map((s) => s.kg ?? -1)) : lastKg(log, r.ex.id) ?? -1;
-        return [r.ex.id, { kg: kg >= 0 ? String(kg) : '', reps: prev ? prev.sets.map((x) => x.reps ?? '').join('/') : repTargets(r.reps, r.sets).join('/'), rir: String(prev?.rir ?? minRir(r.rir)) }];
+      items.map(({ r, instance }) => {
+        const prev = saved.find((x) => x.exercise === r.ex.id && (x.instance ?? instance) === instance);
+        const kgs = prev ? prev.sets.map((s) => s.kg) : lastKgs(log, r.ex.id, r.sets);
+        // Rezerva nu se precompletează cu ținta: rămâne goală până o scrie sportivul.
+        return [key(instance), { kg: kgText(kgs), reps: prev ? prev.sets.map((x) => x.reps ?? '').join('/') : repTargets(r.reps, r.sets).join('/'), rir: prev?.rir != null && isMeasured(prev) ? String(prev.rir) : '' }];
       }),
     ),
   );
   if (!items.length) return null;
 
-  const send = async (source: 'confirmat' | 'ajustat') => {
+  const send = async (source: 'declarat_conform' | 'ajustat') => {
     setBusy(true);
     setErr(null);
     try {
-      const body = items.map((r) => {
-        const v = vals[r.ex.id]!;
-        const kg = source === 'confirmat' ? lastKg(log, r.ex.id) : v.kg.trim() === '' ? null : Number(v.kg.replace(',', '.'));
-        const reps = source === 'confirmat' ? repTargets(r.reps, r.sets) : parseRepsInput(v.reps, r.sets);
-        return { exercise: r.ex.id, sets: reps.map((n) => ({ kg: kg != null && Number.isFinite(kg) ? kg : null, reps: n })), rir: source === 'confirmat' ? minRir(r.rir) : Number(v.rir), source };
+      const body = items.map(({ r, instance }) => {
+        const v = vals[key(instance)]!;
+        let kgs: (number | null)[];
+        if (source === 'declarat_conform') {
+          // „Cum scrie” = aceleași greutăți doar dacă asta cerea sugestia; la „crește” greutatea nouă nu e cunoscută.
+          const s = suggest(r.ex.id, r.reps, r.rir, log, { pain: recentPain(me) });
+          kgs = s.kind === 'creste' ? Array(r.sets).fill(null) : lastKgs(log, r.ex.id, r.sets);
+        } else kgs = parseKgInput(v.kg, r.sets);
+        const reps = source === 'declarat_conform' ? repTargets(r.reps, r.sets) : parseRepsInput(v.reps, r.sets);
+        const rir = source === 'ajustat' && v.rir.trim() !== '' && Number.isFinite(Number(v.rir)) ? Number(v.rir) : null;
+        return { exercise: r.ex.id, workoutId: w.id, instance, sets: reps.map((n, i) => ({ kg: kgs[i] ?? null, reps: n })), rir, source };
       });
       await submitForm('forta-jurnal', { date: w.date, items: body });
       setMode('idle');
@@ -77,10 +90,10 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
   return (
     <div className="str-log">
       <div className="sheet-k">Ce ai făcut</div>
-      {saved.length > 0 && mode === 'idle' && <p className="muted tiny">Notat: {saved.length} exerciții{saved.some((x) => x.source === 'ajustat') ? ' (cu valorile tale)' : ' (cum scria)'}. Data viitoare pornești de aici.</p>}
+      {saved.length > 0 && mode === 'idle' && <p className="muted tiny">Notat: {saved.length} exerciții{saved.some(isMeasured) ? ' (cu valorile tale)' : ' (confirmat „cum scria”, fără valori măsurate)'}. Data viitoare pornești de aici.</p>}
       {mode === 'idle' ? (
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <button className="pill on" disabled={busy} onClick={() => void send('confirmat')}>
+          <button className="pill on" disabled={busy} onClick={() => void send('declarat_conform')}>
             Am făcut cum scrie
           </button>
           <button className="pill" disabled={busy} onClick={() => setMode('edit')}>
@@ -89,25 +102,25 @@ export function StrengthLogForm({ w, rx }: { w: PlannedWorkout; rx: Prescription
         </div>
       ) : (
         <div className="str-log-edit">
-          {items.map((r) => {
-            const v = vals[r.ex.id]!;
-            const set = (k: 'kg' | 'reps' | 'rir', x: string) => setVals({ ...vals, [r.ex.id]: { ...v, [k]: x } });
+          {items.map(({ r, instance }) => {
+            const v = vals[key(instance)]!;
+            const set = (k: 'kg' | 'reps' | 'rir', x: string) => setVals({ ...vals, [key(instance)]: { ...v, [k]: x } });
             return (
-              <div key={r.ex.id} className="str-log-row">
+              <div key={key(instance)} className="str-log-row">
                 <b>{r.ex.name}</b>
                 <label>
-                  kg <input inputMode="decimal" value={v.kg} placeholder="—" onChange={(e) => set('kg', e.target.value)} aria-label={`${r.ex.name}: kilograme`} />
+                  kg <input inputMode="text" value={v.kg} placeholder="—" onChange={(e) => set('kg', e.target.value)} aria-label={`${r.ex.name}: kilograme pe fiecare serie, despărțite prin /`} />
                 </label>
                 <label>
                   rep. <input inputMode="text" value={v.reps} placeholder="12/11/10" onChange={(e) => set('reps', e.target.value)} aria-label={`${r.ex.name}: repetări pe fiecare serie, despărțite prin /`} />
                 </label>
                 <label>
-                  mai puteai <input inputMode="numeric" value={v.rir} onChange={(e) => set('rir', e.target.value)} aria-label={`${r.ex.name}: câte repetări mai puteai face`} />
+                  mai puteai <input inputMode="numeric" value={v.rir} placeholder="—" onChange={(e) => set('rir', e.target.value)} aria-label={`${r.ex.name}: câte repetări mai puteai face`} />
                 </label>
               </div>
             );
           })}
-          <p className="muted tiny">Repetările pe fiecare serie, despărțite prin „/” (ex. 12/11/10); la exercițiile pe o parte, pe fiecare parte. Kilogramele le lași goale dacă nu știi (aparat fără cifre, greutatea corpului): nu ghicim noi în locul tău. Rezerva e pentru ultima serie, nu efortul întregii ședințe.</p>
+          <p className="muted tiny">Repetările și kilogramele pe fiecare serie, despărțite prin „/” (ex. 12/11/10 și 20/22,5/25 la piramidă; o singură cifră = aceeași la toate seriile); la exercițiile pe o parte, pe fiecare parte. Kilogramele le lași goale dacă nu știi (aparat fără cifre, greutatea corpului): nu ghicim noi în locul tău. „Mai puteai” e pentru ultima serie; dacă nu știi, lasă gol.</p>
           <div className="row" style={{ gap: 8 }}>
             <button className="pill on" disabled={busy} onClick={() => void send('ajustat')}>
               Salvează

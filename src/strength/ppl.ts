@@ -1287,7 +1287,7 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
     notes.push('revizuire: oboseala sau performanța în scădere cer greutăți mai mici și oprit mai departe de limită, temporar (seriile rămân 3)');
   }
   if (items.some((r) => r.ss)) notes.push('superserie: exercițiile cu aceeași literă le faci unul după altul, fără pauză între ele; pauza (1–2 min) vine după ultimul din grup');
-  if (items.some((r) => /crești greutatea/.test(r.reps))) notes.push('la seriile cu repetări din ce în ce mai puține (20 / 15 / 12 / 8) crești greutatea la fiecare serie; pauza 1–2 min, nu mai mult');
+  if (items.some((r) => /crești greutatea/.test(r.reps))) notes.push('la seriile cu repetări din ce în ce mai puține (20 / 15 / 12 / 8) crești greutatea de la o serie la alta doar dacă seria de dinainte a ieșit curat și mai aveai cel puțin o repetare; altfel păstrezi greutatea (sau o scazi). Pauza 1–2 min, nu mai mult');
   if (spec.block !== 'acomodare' && spec.block !== 'mentinere') notes.push('cum crești: când faci numărul maxim de repetări la toate seriile, de două ori la rând, pui greutatea imediat următoare');
   clampSets(items);
   const dropped: string[] = [];
@@ -1426,7 +1426,7 @@ export const STRENGTH_RULES: { t: string; d: string }[] = [
   { t: 'Serii', d: '3 sau 4 serii de lucru la fiecare exercițiu, mereu. În săptămânile ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
   { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune în tine (la început 3–4). Nu mergi până nu mai poți ridica deloc.' },
   { t: 'Pauze', d: 'Cam 2–3 minute la primele exerciții (cele grele) și 1–2 minute la restul. Dacă încă gâfâi, mai stai puțin.' },
-  { t: 'Cum crești', d: 'Notezi greutatea și repetările. Data viitoare încerci o repetare în plus. Când faci numărul maxim de repetări la toate seriile, pui greutatea imediat următoare.' },
+  { t: 'Cum crești', d: 'Notezi greutatea și repetările. Data viitoare încerci o repetare în plus. Când faci numărul maxim de repetări la toate seriile, de două ori la rând, pui greutatea imediat următoare. „Am făcut cum scrie” confirmă ședința, dar pentru creștere scrii măcar o dată valorile reale.' },
   { t: 'Exerciții diferite', d: 'Push, Pull și Picioare au de fiecare dată alte exerciții sau alte aparate. Fiecare exercițiu revine cam la a treia ședință de același tip; kilogramele de la un aparat nu se transferă la altul.' },
   { t: 'Durere', d: 'Durere nouă sau ascuțită: oprești exercițiul și spui în formularul de seară. Durere în piept, amețeală sau lipsă de aer neobișnuită: te oprești și mergi la medic.' },
 ];

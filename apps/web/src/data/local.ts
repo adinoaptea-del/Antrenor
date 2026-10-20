@@ -185,7 +185,8 @@ export const localServer = {
       const b = body as { date?: string; items?: unknown[] };
       const date = b.date ?? new Date().toISOString().slice(0, 10);
       const items = (b.items ?? []).map((e) => cleanEntry(e, date)).filter((e): e is StrengthLogEntry => !!e);
-      const keep = (state.strengthLog ?? []).filter((x) => !(x.date === date && items.some((n) => n.exercise === x.exercise)));
+      // Aceeași cheie ca serverul (A57): ziua + exercițiul + ședința + apariția în ședință.
+      const keep = (state.strengthLog ?? []).filter((x) => !(x.date === date && items.some((n) => n.exercise === x.exercise && (n.workoutId ?? '') === (x.workoutId ?? '') && (n.instance ?? 0) === (x.instance ?? 0))));
       state = { ...state, strengthLog: [...keep, ...items] };
     } else if (kind === 'aviz') {
       const aviz = (body as { aviz: 'da' | 'nu' }).aviz;
