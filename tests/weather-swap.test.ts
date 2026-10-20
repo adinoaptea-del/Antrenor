@@ -43,6 +43,16 @@ describe('inversarea', () => {
     assert.equal(r.changed.find((x) => x.id === 'bike')!.date, '2026-10-22');
     assert.equal(r.changed.find((x) => x.id === 'swim')!.date, '2026-10-21');
   });
+  it('și peste o zi: azi plouă (alergare), poimâine frumos (sală) → se inversează dacă regulile permit', () => {
+    const p = [w('run', '2026-10-20', 'alergare', 'z2', 50), w('gym', '2026-10-22', 'forta', 'forta', 50, [])];
+    const r = weatherSwap(p, { date: '2026-10-20', w: RAIN }, { date: '2026-10-22', w: SUN }, TODAY, AT)!;
+    assert.equal(r.changed.find((x) => x.id === 'run')!.date, '2026-10-22');
+    assert.equal(r.changed.find((x) => x.id === 'gym')!.date, '2026-10-20');
+    assert.match(r.text, /^Poimâine e vreme frumoasă/);
+  });
+  it('zile ploioase la rând: nu se schimbă nimic', () => {
+    assert.equal(weatherSwap(plan(), { date: '2026-10-21', w: RAIN }, { date: '2026-10-22', w: RAIN }, TODAY, AT), null);
+  });
   it('nimic de făcut: ambele zile bune, vreme neutră, fără prognoză', () => {
     assert.equal(weatherSwap(plan(), { date: '2026-10-21', w: SUN }, { date: '2026-10-22', w: SUN }, TODAY, AT), null);
     assert.equal(weatherSwap(plan(), { date: '2026-10-21', w: SUN }, { date: '2026-10-22', w: MEH }, TODAY, AT), null);

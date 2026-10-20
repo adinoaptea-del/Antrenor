@@ -7287,7 +7287,7 @@ async function geocode(city) {
 async function forecast(city, lat, lon, tz) {
   const q4 = "temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max";
   try {
-    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q4}&timezone=${encodeURIComponent(tz)}&forecast_days=3`);
+    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q4}&timezone=${encodeURIComponent(tz)}&forecast_days=5`);
     if (!r2.ok) return null;
     const d = await r2.json();
     const day2 = (i) => ({
@@ -7298,7 +7298,7 @@ async function forecast(city, lat, lon, tz) {
       vant_kmh: d.daily?.wind_speed_10m_max?.[i] ?? null,
       prob_ploaie: d.daily?.precipitation_probability_max?.[i] ?? null
     });
-    return d.daily ? { oras: city, azi: day2(0), maine: day2(1), poimaine: (d.daily.temperature_2m_max?.length ?? 0) > 2 ? day2(2) : null } : null;
+    return d.daily ? { oras: city, azi: day2(0), maine: day2(1), poimaine: (d.daily.temperature_2m_max?.length ?? 0) > 2 ? day2(2) : null, zile: (d.daily.time ?? []).map((date, i) => ({ date, w: day2(i) })) } : null;
   } catch {
     return null;
   }
@@ -11832,35 +11832,44 @@ init_collect();
 init_db();
 init_prefs();
 init_weather();
-async function weatherSwapFor(userId, today, first2) {
+async function weatherSwapFor(userId, today, from) {
   const u = await loadUser(userId);
-  if (u.lat == null || u.lon == null || !u.city) return null;
-  const a = first2 === "azi" ? today : addDays(today, 1);
-  const b = addDays(a, 1);
-  const key3 = `vreme:${a}:${b}`;
+  if (u.lat == null || u.lon == null || !u.city) return [];
   const fc = await forecast(u.city, u.lat, u.lon, u.tz || "Europe/Bucharest");
-  if (!fc) return null;
-  const wa = first2 === "azi" ? fc.azi : fc.maine;
-  const wb = first2 === "azi" ? fc.maine : fc.poimaine ?? null;
-  const { planId, workouts } = await loadPlan(userId, addDays(today, -3), addDays(today, 7));
-  if (!planId) return null;
+  const start = from === "azi" ? today : addDays(today, 1);
+  const days = (fc?.zile ?? []).filter((d) => d.date >= start && d.date <= addDays(today, 4));
+  if (days.length < 2) return [];
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -3), addDays(today, 10));
+  if (!planId) return [];
   const [done, forms, prefs] = await Promise.all([executedIds(userId, today, workouts), loadForms(userId, today), loadPrefs(userId)]);
   const intake = forms.intake;
-  const at = (/* @__PURE__ */ new Date()).toISOString();
-  const r2 = weatherSwap(workouts, { date: a, w: wa }, { date: b, w: wb }, today, at, {
+  const ctx = {
     done,
     fixed: prefs.fixe,
     away: currentAway(prefs, today),
     freeBlocks: Array.isArray(intake?.program) ? intake.program : void 0,
     swimOutdoors: prefs.mediuInot === "ape",
     noOutdoorBike: intake?.bicicleta?.tip === "nu_am"
-  });
-  if (!r2) return null;
-  const fresh = await insertIgnore("agent_events", { user_id: userId, event_key: key3 }, "user_id,event_key");
-  if (!fresh.length) return null;
-  await upsert("workouts_planned", r2.changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
-  await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${r2.text}` }).catch(() => void 0);
-  return r2.text;
+  };
+  const pairs = [];
+  for (const gap of [1, 2, 3]) for (let i = 0; i + gap < days.length; i++) pairs.push([i, i + gap]);
+  let plan = workouts;
+  const texts = [];
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const [i, j] of pairs) {
+    const a = days[i];
+    const b = days[j];
+    if (diffDays(a.date, b.date) > 3) continue;
+    const r2 = weatherSwap(plan, a, b, today, at, ctx);
+    if (!r2) continue;
+    const fresh = await insertIgnore("agent_events", { user_id: userId, event_key: `vreme:${a.date}:${b.date}` }, "user_id,event_key");
+    if (!fresh.length) continue;
+    await upsert("workouts_planned", r2.changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+    await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${r2.text}` }).catch(() => void 0);
+    plan = plan.map((w) => r2.changed.find((c2) => c2.id === w.id) ?? w);
+    texts.push(r2.text);
+  }
+  return texts;
 }
 
 // server/cron/evening.ts

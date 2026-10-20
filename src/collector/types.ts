@@ -196,6 +196,8 @@ export interface WeatherInput {
   maine: WeatherDay;
   /** Poimâine (pentru inversarea după vreme, src/calendar/weather-swap.ts). */
   poimaine?: WeatherDay | null;
+  /** Toate zilele prognozei (azi + 4), cu data: pentru inversarea după vreme. */
+  zile?: { date: string; w: WeatherDay }[];
 }
 
 export type Zones5 = Partial<Record<Zone, number>>;
