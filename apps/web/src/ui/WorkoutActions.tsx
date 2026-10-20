@@ -88,11 +88,20 @@ export function Actions({ w }: { w: PlannedWorkout }) {
     }
   };
   if (local) return null;
+  // Răzgândirea: ședința mutată de tine se poate pune înapoi în ziua din plan, cât timp ziua aceea n-a trecut.
+  const movedByYou = !!w.original && (w.note ?? '').startsWith('mutată de tine') && w.original.date >= me.today && w.original.date !== w.date;
   // A65: aceleași verificări ca serverul (programul liber și plecările).
   const program = (me.forms.intake as { program?: { day: number; startMin: number; endMin: number }[] } | null)?.program;
   const opts = mode === 'muta' ? moveOptions(me.plan, w.id, me.today, [], { freeBlocks: Array.isArray(program) ? program : undefined, away: me.prefs?.plecari ?? [] }) : [];
   return (
     <div className="wk-act">
+      {mode === null && movedByYou && (
+        <div className="wk-btns">
+          <button className="pill on" disabled={busy} onClick={() => void run('actiune', { workoutId: w.id, op: 'inapoi' }, w.original!.date === me.today ? 'Gata: ședința e din nou azi.' : `Gata: ședința e din nou ${DAY_NAMES[weekday(w.original!.date)]}.`)}>
+            {Icons.move} Pune-o înapoi {w.original!.date === me.today ? 'azi' : DAY_NAMES[weekday(w.original!.date)]}
+          </button>
+        </div>
+      )}
       {mode === null && (
         <div className="wk-btns">
           <button className="pill" disabled={busy} onClick={() => setMode('muta')}>

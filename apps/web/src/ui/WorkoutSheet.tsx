@@ -301,11 +301,30 @@ function Missed({ w, done }: { w: PlannedWorkout; done: boolean }) {
       setBusy(false);
     }
   };
+  // Răzgândirea (cererea lui Cuza, 20.10.2026): „nu am făcut-o” se retrage în aceeași zi; ședința redevine de făcut.
+  const undo = async () => {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await submitForm('nefacut', { workoutId: w.id, anuleaza: true });
+      setMsg(String(r.data?.mesaj ?? 'Gata: ședința e din nou în planul de azi.'));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const label = saved ? `${saved.status === 'ratat' ? 'Nefăcută' : `Făcută parțial${saved.minutes ? ` (${saved.minutes} min)` : ''}`}: ${MOTIVE.find((m) => m[0] === saved.motiv)?.[1] ?? saved.motiv}` : done ? null : 'Fără date: nu e nicio activitate legată și nimic declarat.';
   return (
     <div className="missed">
       {label && <div className="small muted">{label}</div>}
       {msg && <div className="wk-note" role="status">{msg}</div>}
+      {saved && saved.status === 'ratat' && w.date === me.today && !open && (
+        <button className="pill on" style={{ marginTop: 6 }} disabled={busy} onClick={() => void undo()}>
+          M-am răzgândit: o fac azi
+        </button>
+      )}
       {!open ? (
         <button className="pill" style={{ marginTop: 6 }} onClick={() => setOpen(true)}>
           {saved ? 'Schimbă ce ai declarat' : done ? 'Am făcut doar o parte' : 'Nu am făcut-o / am făcut doar o parte'}

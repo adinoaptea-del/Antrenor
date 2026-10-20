@@ -343,6 +343,34 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // { workoutId, status: 'ratat' | 'partial', motiv, minute?, nota? }: declarată de sportiv, cu motiv; separată de
       // „anulată” (sistem / plecare) și de „fără date”. Retransmiterea suprascrie aceeași declarație, nu o dublează.
       const id = String(body.workoutId ?? '');
+      // Răzgândirea (cererea lui Cuza, 20.10.2026): „nu am făcut-o” declarat azi se poate retrage tot azi — programul
+      // s-a schimbat și ședința se mai face. Declarația dispare, ședința redevine de făcut, iar o ușurare pusă de
+      // declarația asta revine la plan. Semnalele de sănătate (febră, durere) declarate rămân: siguranța nu se retrage.
+      if (body.anuleaza === true) {
+        const row0 = await one<{ id: string; date: string }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: 'id,date' });
+        if (!row0) throw new HttpError(404, 'ședință inexistentă');
+        if (row0.date !== today) throw new HttpError(409, 'se poate retrage doar în ziua ședinței');
+        const prevOut = await one<{ status: string; motiv: string; reported_at: string }>('workout_outcomes', { user_id: `eq.${u.id}`, workout_id: `eq.${id}` });
+        if (!prevOut) throw new HttpError(409, 'nu e nimic declarat pentru ședința asta');
+        await remove('workout_outcomes', { user_id: `eq.${u.id}`, workout_id: `eq.${id}` });
+        const left = await select<{ workout_id: string; date: string; status: 'ratat' | 'partial'; motiv: OutcomeMotiv }>('workout_outcomes', { user_id: `eq.${u.id}`, date: `gte.${addDays(today, -7)}` }, { limit: 50 }).catch(() => []);
+        const stillTired = left.filter((o) => o.motiv === 'oboseala' || o.motiv === 'durere' || o.motiv === 'boala').length >= 2;
+        let restored = 0;
+        if (!stillTired) {
+          const { planId, workouts } = await loadPlan(u.id, today, addDays(today, 8));
+          const at = new Date().toISOString();
+          const back = workouts
+            .filter((w) => w.original && (w.note ?? '').startsWith('ușurată:') && (w.changedAt ?? '') >= prevOut.reported_at.slice(0, 10) && w.date >= today)
+            .map((w) => ({ ...w, sport: w.original!.sport ?? w.sport, type: w.original!.type, plannedMinutes: w.original!.plannedMinutes, targetZones: [...w.original!.targetZones], structure: w.original!.structure ?? undefined, key: w.original!.key, intervals: w.original!.intervals ?? undefined, note: undefined, original: null, changedAt: at }));
+          if (planId && back.length) await upsert('workouts_planned', back.map((w) => toWorkoutRow(w, u.id, planId)), 'id');
+          restored = back.length;
+        }
+        await insert('journal', { user_id: u.id, date: today, entry: `declarat de sportiv: a retras „nefăcută” pentru ${id}; ședința redevine de făcut azi${restored ? `, ${restored} ședințe ușurate revin la plan` : ''}` }).catch(() => undefined);
+        await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
+        const health = prevOut.motiv === 'durere' || prevOut.motiv === 'boala';
+        json(res, 200, { ok: true, mesaj: `Gata: ședința e din nou în planul de azi.${restored ? ' Ce se ușurase din cauza ei a revenit la plan.' : ''}${health ? ' Ce ai spus despre durere sau boală rămâne valabil: dacă azi e zi galbenă sau roșie, ea decide.' : ''}` });
+        return;
+      }
       const status = body.status === 'partial' ? 'partial' : body.status === 'ratat' ? 'ratat' : null;
       const motiv = ['timp', 'oboseala', 'durere', 'boala', 'altul'].includes(String(body.motiv)) ? (String(body.motiv) as OutcomeMotiv) : null;
       if (!status || !motiv) throw new HttpError(400, 'alege ce s-a întâmplat și motivul');
@@ -384,7 +412,14 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const at = new Date().toISOString();
       let next;
       try {
-        if (op === 'muta') {
+        if (op === 'inapoi') {
+          // Răzgândirea la „Mută”: ședința amânată de tine revine în ziua din plan, dacă ziua aceea e azi sau mai târziu.
+          const o = w.original;
+          if (!o || !(w.note ?? '').startsWith('mutată de tine')) throw new HttpError(409, 'ședința n-a fost mutată de tine');
+          if (o.date < today) throw new HttpError(409, 'ziua inițială a trecut');
+          const onlyDate = w.type === o.type && w.plannedMinutes === o.plannedMinutes && (w.sport === (o.sport ?? w.sport));
+          next = onlyDate ? { ...w, date: o.date, note: undefined, original: null, changedAt: at } : { ...w, date: o.date, note: 'pusă înapoi în ziua din plan', changedAt: at };
+        } else if (op === 'muta') {
           // A65: mutarea se validează și pe programul liber și pe plecările anunțate.
           const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
           const program = (forms.intake as { program?: { day: number; startMin: number; endMin: number }[] } | null)?.program;

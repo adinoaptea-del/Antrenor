@@ -245,6 +245,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
 
       <div className="stack">
 
+        <MovedAway />
+
         {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
           <button className="row-card" onClick={() => onOpen('saptamanal')}>
             <span>
@@ -310,5 +312,46 @@ function PainClear({ reason }: { reason: string }) {
       <button className="pill" disabled={busy} onClick={() => void send(0)}>Durerea a trecut</button>
       <button className="pill" disabled={busy} onClick={() => void send(2)}>Mai e puțin (1–2)</button>
     </div>
+  );
+}
+
+/**
+ * Răzgândirea pe Acasă (cererea lui Cuza, 20.10.2026): ședințele de azi pe care le-ai mutat pe altă zi apar aici, cu
+ * „Pune-o înapoi azi” — programul s-a schimbat și antrenamentul se mai poate face azi.
+ */
+function MovedAway() {
+  const me = useMe();
+  const { submitForm, local } = useData();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (local) return null;
+  const moved = me.plan.filter((w) => w.original?.date === me.today && w.date > me.today && (w.note ?? '').startsWith('mutată de tine') && (w.status === 'planificat' || w.status === 'mutat'));
+  if (!moved.length && !msg) return null;
+  return (
+    <>
+      {moved.map((w) => (
+        <div key={w.id} className="row-card">
+          <span>
+            <b>{SPORT_LABEL[w.sport]} mutată pe {(DAY_NAMES[weekday(w.date)] ?? '').toLowerCase()}</b>
+            <small>Dacă poți totuși azi, o pui înapoi.</small>
+          </span>
+          <button
+            className="pill on"
+            disabled={busy === w.id}
+            onClick={() => {
+              setBusy(w.id);
+              setMsg(null);
+              submitForm('actiune', { workoutId: w.id, op: 'inapoi' })
+                .then(() => setMsg(`${SPORT_LABEL[w.sport]}: din nou azi.`))
+                .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
+                .finally(() => setBusy(null));
+            }}
+          >
+            Pune-o înapoi azi
+          </button>
+        </div>
+      ))}
+      {msg && <div className="small muted" role="status">{msg}</div>}
+    </>
   );
 }

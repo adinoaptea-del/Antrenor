@@ -13562,6 +13562,29 @@ async function handler10(req, res) {
     }
     if (kind === "nefacut") {
       const id = String(body.workoutId ?? "");
+      if (body.anuleaza === true) {
+        const row0 = await one("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: "id,date" });
+        if (!row0) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
+        if (row0.date !== today) throw new HttpError(409, "se poate retrage doar \xEEn ziua \u0219edin\u021Bei");
+        const prevOut = await one("workout_outcomes", { user_id: `eq.${u.id}`, workout_id: `eq.${id}` });
+        if (!prevOut) throw new HttpError(409, "nu e nimic declarat pentru \u0219edin\u021Ba asta");
+        await remove("workout_outcomes", { user_id: `eq.${u.id}`, workout_id: `eq.${id}` });
+        const left = await select("workout_outcomes", { user_id: `eq.${u.id}`, date: `gte.${addDays(today, -7)}` }, { limit: 50 }).catch(() => []);
+        const stillTired = left.filter((o) => o.motiv === "oboseala" || o.motiv === "durere" || o.motiv === "boala").length >= 2;
+        let restored = 0;
+        if (!stillTired) {
+          const { planId: planId2, workouts: workouts2 } = await loadPlan(u.id, today, addDays(today, 8));
+          const at = (/* @__PURE__ */ new Date()).toISOString();
+          const back = workouts2.filter((w) => w.original && (w.note ?? "").startsWith("u\u0219urat\u0103:") && (w.changedAt ?? "") >= prevOut.reported_at.slice(0, 10) && w.date >= today).map((w) => ({ ...w, sport: w.original.sport ?? w.sport, type: w.original.type, plannedMinutes: w.original.plannedMinutes, targetZones: [...w.original.targetZones], structure: w.original.structure ?? void 0, key: w.original.key, intervals: w.original.intervals ?? void 0, note: void 0, original: null, changedAt: at }));
+          if (planId2 && back.length) await upsert("workouts_planned", back.map((w) => toWorkoutRow(w, u.id, planId2)), "id");
+          restored = back.length;
+        }
+        await insert("journal", { user_id: u.id, date: today, entry: `declarat de sportiv: a retras \u201Enef\u0103cut\u0103\u201D pentru ${id}; \u0219edin\u021Ba redevine de f\u0103cut azi${restored ? `, ${restored} \u0219edin\u021Be u\u0219urate revin la plan` : ""}` }).catch(() => void 0);
+        await rescore(u.id, today, user.goal ?? "70.3").catch(() => void 0);
+        const health = prevOut.motiv === "durere" || prevOut.motiv === "boala";
+        json(res, 200, { ok: true, mesaj: `Gata: \u0219edin\u021Ba e din nou \xEEn planul de azi.${restored ? " Ce se u\u0219urase din cauza ei a revenit la plan." : ""}${health ? " Ce ai spus despre durere sau boal\u0103 r\u0103m\xE2ne valabil: dac\u0103 azi e zi galben\u0103 sau ro\u0219ie, ea decide." : ""}` });
+        return;
+      }
       const status = body.status === "partial" ? "partial" : body.status === "ratat" ? "ratat" : null;
       const motiv = ["timp", "oboseala", "durere", "boala", "altul"].includes(String(body.motiv)) ? String(body.motiv) : null;
       if (!status || !motiv) throw new HttpError(400, "alege ce s-a \xEEnt\xE2mplat \u0219i motivul");
@@ -13600,7 +13623,13 @@ async function handler10(req, res) {
       const at = (/* @__PURE__ */ new Date()).toISOString();
       let next;
       try {
-        if (op === "muta") {
+        if (op === "inapoi") {
+          const o = w.original;
+          if (!o || !(w.note ?? "").startsWith("mutat\u0103 de tine")) throw new HttpError(409, "\u0219edin\u021Ba n-a fost mutat\u0103 de tine");
+          if (o.date < today) throw new HttpError(409, "ziua ini\u021Bial\u0103 a trecut");
+          const onlyDate = w.type === o.type && w.plannedMinutes === o.plannedMinutes && w.sport === (o.sport ?? w.sport);
+          next = onlyDate ? { ...w, date: o.date, note: void 0, original: null, changedAt: at } : { ...w, date: o.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan", changedAt: at };
+        } else if (op === "muta") {
           const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
           const program = forms.intake?.program;
           next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done, { freeBlocks: Array.isArray(program) ? program : void 0, away: currentAway(prefsM, today) });
