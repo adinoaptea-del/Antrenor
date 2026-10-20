@@ -11674,7 +11674,7 @@ init_env();
 init_tokens();
 
 // src/schema-version.ts
-var SCHEMA_VERSION = 11;
+var SCHEMA_VERSION = 12;
 
 // server/config.ts
 async function handler4(_req, res) {
@@ -13713,11 +13713,11 @@ async function handler10(req, res) {
       const prefs = await loadPrefs(u.id);
       const cur = prefs.nutritie;
       const SLOTS = ["mic_dejun", "pranz", "cina", "gustare"];
-      const isDate2 = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d));
+      const isDate3 = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d));
       const keepLog = (l) => pruneLog(l, addDays(today, -LOG_KEEP_DAYS));
       if (body.jurnal) {
         const j = body.jurnal;
-        if (!isDate2(j.date) || !Array.isArray(j.meals)) throw new HttpError(400, "jurnal gre\u0219it");
+        if (!isDate3(j.date) || !Array.isArray(j.meals)) throw new HttpError(400, "jurnal gre\u0219it");
         if (String(j.date) !== today) throw new HttpError(400, "jurnalul se scrie doar pentru azi");
         const meals2 = j.meals.filter((m) => SLOTS.includes(String(m.slot)) && RECIPE[String(m.recipeId)]).slice(0, 8).map((m) => ({ slot: String(m.slot), recipeId: String(m.recipeId) }));
         await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordSuggested(cur.log ?? {}, today, meals2, today)) } });
@@ -13726,7 +13726,7 @@ async function handler10(req, res) {
       }
       if (body.consumat) {
         const c2 = body.consumat;
-        if (!isDate2(c2.date) || !SLOTS.includes(String(c2.slot))) throw new HttpError(400, "consumat gre\u0219it");
+        if (!isDate3(c2.date) || !SLOTS.includes(String(c2.slot))) throw new HttpError(400, "consumat gre\u0219it");
         if (String(c2.date) > today || String(c2.date) < addDays(today, -7)) throw new HttpError(400, "doar ultimele 7 zile");
         await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c2.date), String(c2.slot), c2.da === true ? true : c2.da === false ? false : null)) } });
         json(res, 200, { ok: true });
@@ -13734,7 +13734,7 @@ async function handler10(req, res) {
       }
       if (body.alegere) {
         const a = body.alegere;
-        if (!isDate2(a.date) || !SLOTS.includes(String(a.slot))) throw new HttpError(400, "alegere gre\u0219it\u0103");
+        if (!isDate3(a.date) || !SLOTS.includes(String(a.slot))) throw new HttpError(400, "alegere gre\u0219it\u0103");
         if (a.recipeId != null && !RECIPE[String(a.recipeId)]) throw new HttpError(400, "re\u021Bet\u0103 necunoscut\u0103");
         const choices = Object.fromEntries(Object.entries(cur.choices ?? {}).filter(([d]) => d >= addDays(today, -28)));
         const day2 = { ...choices[String(a.date)] ?? {} };
@@ -13997,6 +13997,9 @@ var upgrade_default = "-- Actualiz\u0103ri idempotente: ruleaz\u0103 la fiecare 
 
 // supabase/migrations/0003_strength_log_sets.sql
 var strength_log_sets_default = "-- Jurnalul de for\u021B\u0103 pe serie \u0219i pe \u0219edin\u021B\u0103 (auditul v93, A57/A58; schema 11). Idempotent: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D,\n-- dup\u0103 0002_upgrade.sql. R\xE2ndurile vechi r\u0103m\xE2n valabile: workout_id = '' \u0219i instance = 0 (ziua + exerci\u021Biul, ca \xEEnainte).\n--  - workout_id + instance: dou\u0103 \u0219edin\u021Be \xEEn aceea\u0219i zi (sau acela\u0219i exerci\u021Biu de dou\u0103 ori \xEEntr-o \u0219edin\u021B\u0103) nu se mai\n--    suprascriu; instance = pozi\u021Bia exerci\u021Biului \xEEn prescrip\u021Bie.\n--  - sets (jsonb) p\u0103streaz\u0103 greutatea \u0219i repet\u0103rile fiec\u0103rei serii (piramida 20/15/12/8 cu greut\u0103\u021Bi diferite) \u0219i,\n--    op\u021Bional, rezerva pe serie.\n--  - source: \u201Edeclarat_conform\u201D = confirmarea prescrip\u021Biei (nu e m\u0103sur\u0103toare); \u201Eajustat\u201D = valorile scrise de sportiv;\n--    \u201Econfirmat\u201D r\u0103m\xE2ne doar pentru r\xE2ndurile vechi.\n--  - unit / load_convention: cum se citesc kilogramele (total, pe m\xE2n\u0103, treapta aparatului); necunoscut = null.\nalter table public.strength_log add column if not exists workout_id text not null default '';\nalter table public.strength_log add column if not exists instance smallint not null default 0;\nalter table public.strength_log add column if not exists unit text not null default 'kg';\nalter table public.strength_log add column if not exists load_convention text;\n\nalter table public.strength_log drop constraint if exists strength_log_source_check;\nalter table public.strength_log add constraint strength_log_source_check\n  check (source in ('confirmat', 'declarat_conform', 'ajustat'));\nalter table public.strength_log drop constraint if exists strength_log_unit_check;\nalter table public.strength_log add constraint strength_log_unit_check check (unit in ('kg'));\nalter table public.strength_log drop constraint if exists strength_log_load_convention_check;\nalter table public.strength_log add constraint strength_log_load_convention_check\n  check (load_convention is null or load_convention in ('total', 'per_mana', 'aparat_treapta'));\n\ndo $$\nbegin\n  if not exists (\n    select 1 from pg_constraint\n     where conrelid = 'public.strength_log'::regclass and contype = 'p' and array_length(conkey, 1) = 5\n  ) then\n    alter table public.strength_log drop constraint if exists strength_log_pkey;\n    alter table public.strength_log add constraint strength_log_pkey primary key (user_id, date, exercise, workout_id, instance);\n  end if;\nend $$;\n\ninsert into public.schema_meta (key, value) values ('version', 11)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n";
+
+// supabase/migrations/0004_app_usage.sql
+var app_usage_default = "-- Folosirea aplica\u021Biei (cererea proprietarului, 20.10.2026: \u201Ec\xE2nd a fost ultima dat\u0103 pe aplica\u021Bie, tendin\u021Ba de a c\u0103uta\n-- informa\u021Bii, c\xE2t le place\u201D). Schema 12. Idempotent: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D, dup\u0103 0003.\n--  - app_usage_daily: UN r\xE2nd pe sportiv \u0219i zi, doar num\u0103r\u0103tori (sesiuni, secunde \xEEn fa\u021B\u0103, ecrane deschise, detalii\n--    deschise). F\u0103r\u0103 con\u021Binut, f\u0103r\u0103 texte, f\u0103r\u0103 date de s\u0103n\u0103tate: ce ecran, nu ce scria pe el.\n--  - app_feedback: nota 1\u20135 (\u201EC\xE2t de mult \xEE\u021Bi place AIRON?\u201D), cel mult o dat\u0103 pe zi; nota scris\u0103 e op\u021Bional\u0103.\ncreate table if not exists public.app_usage_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  sessions int not null default 0,\n  seconds int not null default 0,\n  details int not null default 0,\n  screens jsonb not null default '{}'::jsonb,\n  last_at timestamptz not null default now(),\n  primary key (user_id, date)\n);\nalter table public.app_usage_daily enable row level security;\n\ncreate table if not exists public.app_feedback (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  score smallint not null check (score between 1 and 5),\n  note text,\n  created_at timestamptz not null default now(),\n  primary key (user_id, date)\n);\nalter table public.app_feedback enable row level security;\n\n-- Adunarea atomic\u0103 (dou\u0103 trimiteri simultane nu se suprascriu): num\u0103r\u0103torile se adun\u0103, ecranele se adun\u0103 pe cheie.\ncreate or replace function public.track_usage(p_user uuid, p_date date, p_sessions int, p_seconds int, p_details int, p_screens jsonb)\nreturns void language plpgsql as $$\nbegin\n  insert into public.app_usage_daily (user_id, date, sessions, seconds, details, screens, last_at)\n  values (p_user, p_date, greatest(0, p_sessions), greatest(0, p_seconds), greatest(0, p_details), coalesce(p_screens, '{}'::jsonb), now())\n  on conflict (user_id, date) do update set\n    sessions = public.app_usage_daily.sessions + excluded.sessions,\n    seconds = public.app_usage_daily.seconds + excluded.seconds,\n    details = public.app_usage_daily.details + excluded.details,\n    screens = (\n      select coalesce(jsonb_object_agg(k, n), '{}'::jsonb) from (\n        select k, sum(v)::int as n from (\n          select key as k, value::text::int as v from jsonb_each(public.app_usage_daily.screens)\n          union all\n          select key, value::text::int from jsonb_each(excluded.screens)\n        ) s group by k\n      ) t\n    ),\n    last_at = now();\nend $$;\nrevoke execute on function public.track_usage(uuid, date, int, int, int, jsonb) from public, anon, authenticated;\ngrant execute on function public.track_usage(uuid, date, int, int, int, jsonb) to service_role;\n\ninsert into public.schema_meta (key, value) values ('version', 12)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n";
 
 // server/_lib/setup.ts
 init_env();
@@ -14270,6 +14273,7 @@ ${init_default}
 commit;`);
     await step("actualiz\u0103ri", upgrade_default);
     await step("jurnal de for\u021B\u0103 pe serii", strength_log_sets_default);
+    await step("folosirea aplica\u021Biei", app_usage_default);
     await step("drepturi", GRANTS, true);
     try {
       const r2 = await c2.query(VERIFY_GRANTS);
@@ -14339,6 +14343,79 @@ init_env();
 import { randomBytes as randomBytes5 } from "node:crypto";
 init_usage();
 init_plan2();
+
+// src/usage.ts
+var USAGE_AREAS = {
+  plan: { label: "Plan \u0219i \u0219edin\u021Be", keys: ["calendar", "antrenament", "obiectiv", "det:sedinta", "det:sport"] },
+  mese: { label: "Mese", keys: ["mese", "det:reteta"] },
+  progres: { label: "Progres", keys: ["progres", "insigne", "corp", "mers", "analize", "teste"] },
+  recuperare: { label: "Recuperare", keys: ["recuperare"] },
+  antrenor: { label: "Antrenor", keys: ["antrenor"] },
+  jurnal: { label: "Jurnale completate", keys: ["dimineata", "seara", "saptamanal"] }
+};
+var USAGE_KEYS = ["acasa", "profil", "intake", ...Object.values(USAGE_AREAS).flatMap((a) => a.keys)];
+var INFO_AREAS = ["plan", "mese", "progres", "recuperare", "antrenor"];
+var areaOf = (key3) => Object.keys(USAGE_AREAS).find((a) => USAGE_AREAS[a].keys.includes(key3)) ?? null;
+var isDate2 = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+var int = (x, max) => typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.min(max, Math.round(x))) : 0;
+function cleanPing(body, todayUtc) {
+  if (!body || typeof body !== "object") return null;
+  const b = body;
+  if (!isDate2(b.date)) return null;
+  const d = (s) => Date.parse(`${s}T00:00:00Z`);
+  if (Math.abs(d(b.date) - d(todayUtc)) > 864e5) return null;
+  const screens = {};
+  if (b.screens && typeof b.screens === "object") {
+    for (const [k, v] of Object.entries(b.screens)) {
+      if (!USAGE_KEYS.includes(k)) continue;
+      const n2 = int(v, 200);
+      if (n2 > 0) screens[k] = n2;
+    }
+  }
+  const ping = { date: b.date, sessions: int(b.sessions, 20), seconds: int(b.seconds, 6 * 3600), details: int(b.details, 300), screens };
+  return ping.sessions + ping.seconds + ping.details + Object.keys(screens).length > 0 ? ping : null;
+}
+var DAY4 = 864e5;
+var daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY4);
+function summarizeUsage(rows, feedback, today, since = null) {
+  const ago = (r2) => daysBetween(r2.date, today);
+  const active6 = rows.filter((r2) => r2.sessions > 0 || r2.seconds > 0 || Object.keys(r2.screens ?? {}).length > 0);
+  const lastSeen = rows.reduce((m, r2) => m == null || r2.last_at > m ? r2.last_at : m, null);
+  const within = (lo, hi) => active6.filter((r2) => ago(r2) >= lo && ago(r2) < hi);
+  const infoOf = (r2) => Object.entries(r2.screens ?? {}).reduce((s, [k, n2]) => INFO_AREAS.includes(areaOf(k)) ? s + n2 : s, 0);
+  const weeks = [3, 2, 1, 0].map((w) => {
+    const rs = within(w * 7, w * 7 + 7);
+    return { activeDays: rs.length, minutes: Math.round(rs.reduce((s, r2) => s + r2.seconds, 0) / 60), info: rs.reduce((s, r2) => s + infoOf(r2), 0) };
+  });
+  const last28 = within(0, 28);
+  const byArea = /* @__PURE__ */ new Map();
+  for (const r2 of last28) for (const [k, n2] of Object.entries(r2.screens ?? {})) {
+    const a = areaOf(k);
+    if (a) byArea.set(a, (byArea.get(a) ?? 0) + n2);
+  }
+  const totalArea = [...byArea.values()].reduce((s, n2) => s + n2, 0);
+  const areas = [...byArea.entries()].map(([area, n2]) => ({ area, label: USAGE_AREAS[area].label, n: n2, pct: totalArea ? Math.round(n2 / totalArea * 100) : 0 })).sort((a, b) => b.n - a.n);
+  const sessions28 = last28.reduce((s, r2) => s + r2.sessions, 0);
+  const info28 = last28.reduce((s, r2) => s + infoOf(r2), 0);
+  const recent = within(0, 14).length;
+  const before = within(14, 28).length;
+  const young = since != null && daysBetween(since, today) < 14;
+  const trend = active6.length === 0 || recent === 0 && before === 0 ? "inactiv" : young || before === 0 ? "nou" : recent >= before + 2 ? "creste" : recent <= before - 2 ? "scade" : "stabil";
+  const fb = [...feedback].sort((a, b) => a.date < b.date ? 1 : -1);
+  const rating = fb[0] ? { last: fb[0].score, lastDate: fb[0].date, avg: Math.round(fb.reduce((s, f) => s + f.score, 0) / fb.length * 10) / 10, n: fb.length, note: fb.find((f) => f.note)?.note ?? null } : null;
+  return {
+    lastSeen,
+    activeDays7: within(0, 7).length,
+    activeDays28: last28.length,
+    weeks,
+    areas,
+    infoPerSession: sessions28 ? Math.round(info28 / sessions28 * 10) / 10 : null,
+    trend,
+    rating
+  };
+}
+
+// server/admin.ts
 async function handler16(req, res) {
   try {
     const u = await requireUser(req);
@@ -14346,7 +14423,8 @@ async function handler16(req, res) {
     if (me?.role !== "admin") throw new HttpError(403, "doar adminul");
     if (req.method === "GET") {
       const monthStart = `${todayIn("Europe/Bucharest").slice(0, 7)}-01`;
-      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights, rides] = await Promise.all([
+      const since28 = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+      const [users, tokens, logs, intakes, plans, msgs, usage, acts, weights, rides, appUse, lastUse, feedback] = await Promise.all([
         select("users", {}, { select: "*", order: "created_at.asc" }),
         select("oauth_tokens", {}, { select: "user_id,provider" }),
         select("sync_log", {}, { order: "ran_at.desc", limit: 300 }),
@@ -14357,7 +14435,11 @@ async function handler16(req, res) {
         select("activities", {}, { select: "user_id,date,sport,source,name,minutes,distance_km", order: "date.desc", limit: 400 }),
         select("wellness_daily", { source: "eq.manual", weight_kg: "not.is.null" }, { select: "user_id" }).catch(() => []),
         // Bicicleta pe 6 săptămâni (ce intră în „pregătirea pe probe”), ca să vezi de unde vine o tură nefăcută.
-        select("activities", { sport: "eq.bicicleta", date: `gte.${new Date(Date.now() - 42 * 864e5).toISOString().slice(0, 10)}` }, { select: "id,user_id,date,source,name,minutes,distance_km", order: "date.desc", limit: 500 }).catch(() => [])
+        select("activities", { sport: "eq.bicicleta", date: `gte.${new Date(Date.now() - 42 * 864e5).toISOString().slice(0, 10)}` }, { select: "id,user_id,date,source,name,minutes,distance_km", order: "date.desc", limit: 500 }).catch(() => []),
+        // Folosirea aplicației (schema 12; pe o bază veche: liste goale). Ultimele 28 de zile + ultima intrare, oricât de veche.
+        select("app_usage_daily", { date: `gte.${since28}` }, { select: "user_id,date,sessions,seconds,details,screens,last_at", limit: 5e3 }).catch(() => null),
+        select("app_usage_daily", {}, { select: "user_id,last_at", order: "last_at.desc", limit: 1e3 }).catch(() => []),
+        select("app_feedback", {}, { select: "user_id,date,score,note", order: "date.desc", limit: 1e3 }).catch(() => [])
       ]);
       const today = todayIn("Europe/Bucharest");
       const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0), 0) * 100) / 100;
@@ -14366,6 +14448,7 @@ async function handler16(req, res) {
         costMonth: cost(usage),
         costToday: cost(usage.filter((r2) => r2.created_at.slice(0, 10) === today)),
         tracking: usage.length > 0,
+        usageReady: appUse != null,
         users: users.map((x) => {
           const last = logs.filter((l) => l.user_id === x.id);
           const pushed = [...new Set(last.filter((l) => l.provider === "apple" || l.provider === "android").map((l) => l.provider))];
@@ -14388,6 +14471,10 @@ async function handler16(req, res) {
             // Datele Strava nu se arată altor utilizatori (nici adminului): doar câte ture sunt de acolo.
             rides42: rides.filter((r2) => r2.user_id === x.id && r2.source !== "strava").map((r2) => ({ date: r2.date, source: r2.source, name: r2.name, minutes: r2.minutes, km: r2.distance_km == null ? null : Number(r2.distance_km) })),
             rides42Strava: rides.some((r2) => r2.user_id === x.id && r2.source === "strava"),
+            usage: (() => {
+              const sum = summarizeUsage((appUse ?? []).filter((r2) => r2.user_id === x.id), feedback.filter((f) => f.user_id === x.id), today, x.created_at.slice(0, 10));
+              return { ...sum, lastSeen: sum.lastSeen ?? lastUse.find((r2) => r2.user_id === x.id)?.last_at ?? null };
+            })(),
             recent: acts.filter((r2) => r2.user_id === x.id && r2.source !== "strava").slice(0, 8).map((r2) => ({ date: r2.date, sport: r2.sport, source: r2.source, name: r2.name, minutes: r2.minutes, km: r2.distance_km }))
           };
         })
@@ -14409,8 +14496,8 @@ async function handler16(req, res) {
       const plan = await one("plans", { user_id: `eq.${target.id}`, active: "eq.true" });
       const ws = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: `gte.${today}` }, { order: "date.asc", limit: 40 }) : [];
       const hist = await historyHours(target.id, today);
-      const DAY4 = ["L", "Ma", "Mi", "J", "V", "S", "D"];
-      const prog = Array.isArray(a.program) ? a.program.map((b) => `${DAY4[b.day]} ${Math.floor(b.startMin / 60)}\u2013${Math.ceil(b.endMin / 60)}`).join(", ") : "\u2013";
+      const DAY5 = ["L", "Ma", "Mi", "J", "V", "S", "D"];
+      const prog = Array.isArray(a.program) ? a.program.map((b) => `${DAY5[b.day]} ${Math.floor(b.startMin / 60)}\u2013${Math.ceil(b.endMin / 60)}`).join(", ") : "\u2013";
       const al = a.alergare ?? {};
       const lines = [
         `Obiectiv: ${a.obiectiv ?? "\u2013"} \xB7 data ${a.dataCursa ?? "\u2013"} \xB7 ramura ${al.ramura ?? (al.tinta ? "timp" : "\u2013")}${al.tinta ? ` \xB7 \u021Binta ${al.tinta.valoare} (${al.tinta.mod})` : ""}`,
@@ -14472,10 +14559,46 @@ async function handler17(req, res) {
   }
 }
 
-// server/webhooks/strava.ts
+// server/track.ts
 init_auth();
 init_db();
 async function handler18(req, res) {
+  try {
+    if (req.method !== "POST") throw new HttpError(405, "POST");
+    const u = await requireUser(req);
+    const body = await readJson(req);
+    const todayUtc = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    if (body.nota != null) {
+      const score2 = Number(body.nota);
+      const date = typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date) && Math.abs(Date.parse(body.date) - Date.parse(todayUtc)) <= 864e5 ? body.date : todayUtc;
+      if (!Number.isInteger(score2) || score2 < 1 || score2 > 5) throw new HttpError(400, "nota e \xEEntre 1 \u0219i 5");
+      const note = typeof body.text === "string" && body.text.trim() ? body.text.trim().slice(0, 500) : null;
+      await upsert("app_feedback", { user_id: u.id, date, score: score2, note }, "user_id,date");
+      json(res, 200, { ok: true });
+      return;
+    }
+    const p = cleanPing(body, todayUtc);
+    if (!p) {
+      json(res, 200, { ok: true, skipped: true });
+      return;
+    }
+    try {
+      await rpc("track_usage", { p_user: u.id, p_date: p.date, p_sessions: p.sessions, p_seconds: p.seconds, p_details: p.details, p_screens: p.screens });
+    } catch (e) {
+      console.error("track_usage", e instanceof Error ? e.message : e);
+      json(res, 200, { ok: false });
+      return;
+    }
+    json(res, 200, { ok: true });
+  } catch (e) {
+    fail(res, e);
+  }
+}
+
+// server/webhooks/strava.ts
+init_auth();
+init_db();
+async function handler19(req, res) {
   try {
     if (req.method === "GET") {
       if (!process.env.STRAVA_VERIFY_TOKEN || q(req, "hub.verify_token") !== process.env.STRAVA_VERIFY_TOKEN) {
@@ -14506,7 +14629,7 @@ async function handler18(req, res) {
 init_auth();
 init_db();
 import { createHmac as createHmac4, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
-async function handler19(req, res) {
+async function handler20(req, res) {
   try {
     const chunks = [];
     for await (const c2 of req) chunks.push(typeof c2 === "string" ? Buffer.from(c2) : c2);
@@ -14556,8 +14679,9 @@ var STATIC = {
   setup: handler15,
   admin: handler16,
   sync: handler17,
-  "webhooks/strava": handler18,
-  "webhooks/whoop": handler19,
+  track: handler18,
+  "webhooks/strava": handler19,
+  "webhooks/whoop": handler20,
   "webhooks/apple": handler8,
   "webhooks/android": handler9
 };
@@ -14570,7 +14694,7 @@ function resolve(path) {
   if (m) return { handler: m[2] === "start" ? handler13 : handler12, params: { provider: m[1] } };
   return null;
 }
-async function handler20(req, res) {
+async function handler21(req, res) {
   const raw = req.query.__p;
   const fromQuery = Array.isArray(raw) ? raw.join("/") : raw;
   const path = fromQuery ?? new URL(req.url ?? "/", "http://x").pathname;
@@ -14592,6 +14716,6 @@ async function handler20(req, res) {
   await r2.handler(req, res);
 }
 export {
-  handler20 as default,
+  handler21 as default,
   resolve
 };

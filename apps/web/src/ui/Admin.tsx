@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CircleBtn, Icons, Label, LiveTitle } from './common';
-import { server, type AdminUser } from '../data/api';
+import { server, type AdminUser, type UsageSummary } from '../data/api';
 import { fmtTime } from './sync';
 
 const NAME: Record<string, string> = { whoop: 'Whoop', strava: 'Strava', oura: 'Oura', apple: 'Apple Health', android: 'Samsung Health' };
@@ -10,6 +10,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cost, setCost] = useState<{ month: number; today: number; tracking: boolean } | null>(null);
+  const [usageReady, setUsageReady] = useState(true);
   const [out, setOut] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<string | null>(null);
@@ -20,6 +21,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
         setUsers(r.users);
         setCost({ month: r.costMonth ?? 0, today: r.costToday ?? 0, tracking: !!r.tracking });
         setInvite(r.inviteUrl ?? null);
+        setUsageReady(r.usageReady !== false);
       },
       (e: Error) => setErr(e.message),
     );
@@ -102,12 +104,14 @@ export function Admin({ onBack }: { onBack: () => void }) {
             </div>
           </Card>
         )}
+        {users && <UsageOverview users={users} ready={usageReady} />}
         {err && <Card tight><div className="small" style={{ color: 'var(--c-rosu)' }}>{err}</div></Card>}
         {!users && !err && <Card tight><div className="small muted">Citesc…</div></Card>}
         {users?.map((u) => (
           <Card key={u.id}>
             <div style={{ fontWeight: 700 }}>{u.name || u.email}</div>
             <div className="tiny muted">{u.email} · din {u.since.split('-').reverse().join('.')}{u.costMonth != null ? ` · ${usd(u.costMonth)} luna asta` : ''}</div>
+            {u.usage && <UsageBlock u={u.usage} />}
             {(u.rides42?.length || u.rides42Strava) && (
               <details style={{ marginTop: 8 }}>
                 <summary className="tiny muted">Bicicletă în ultimele 6 săptămâni (ce intră la pregătire)</summary>
@@ -178,4 +182,96 @@ export function Admin({ onBack }: { onBack: () => void }) {
 
 function usd(x: number): string {
   return `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+}
+
+const TREND: Record<UsageSummary['trend'], string> = { creste: 'revine mai des ↑', scade: 'revine mai rar ↓', stabil: 'la fel de des', nou: 'cont nou', inactiv: 'nu mai intră' };
+
+/** „acum 3 h”, „ieri 21:40”, „acum 5 zile” — cât de recent a fost pe aplicație. */
+function ago(iso: string | null): string {
+  if (!iso) return 'niciodată (de când se numără)';
+  const ms = Date.now() - Date.parse(iso);
+  const min = Math.round(ms / 60_000);
+  if (min < 2) return 'acum';
+  if (min < 60) return `acum ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `acum ${h} h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? `ieri, ${fmtTime(iso)}` : `acum ${d} zile`;
+}
+
+/** Sus: cine a intrat în ultimele 7 zile și nota medie, pe toți prietenii. */
+function UsageOverview({ users, ready }: { users: AdminUser[]; ready: boolean }) {
+  if (!ready)
+    return (
+      <Card tight>
+        <Label>Folosirea aplicației</Label>
+        <div className="small muted">Baza se actualizează (schema 12) la următoarea deschidere a aplicației; de atunci încep să se numere intrările.</div>
+      </Card>
+    );
+  const withU = users.filter((u) => u.usage);
+  const active7 = withU.filter((u) => (u.usage?.activeDays7 ?? 0) > 0).length;
+  const rated = withU.filter((u) => u.usage?.rating);
+  const avg = rated.length ? Math.round((rated.reduce((s, u) => s + (u.usage!.rating!.last), 0) / rated.length) * 10) / 10 : null;
+  const sorted = [...withU].sort((a, b) => ((b.usage?.lastSeen ?? '') > (a.usage?.lastSeen ?? '') ? 1 : -1));
+  return (
+    <Card tight>
+      <Label>Folosirea aplicației</Label>
+      <div className="grid-2">
+        <div>
+          <span className="num md">{active7} / {withU.length}</span>
+          <div className="tiny muted">au intrat în ultimele 7 zile</div>
+        </div>
+        <div>
+          <span className="num md">{avg != null ? `${avg.toLocaleString('ro-RO')} / 5` : '–'}</span>
+          <div className="tiny muted">{rated.length ? `cât le place (ultima notă, ${rated.length} ${rated.length === 1 ? 'om' : 'oameni'})` : 'încă nicio notă'}</div>
+        </div>
+      </div>
+      <div className="kv" style={{ marginTop: 8 }}>
+        {sorted.map((u) => (
+          <div key={u.id} style={{ display: 'contents' }}>
+            <div className="k">{(u.name || u.email).split(' ')[0]}</div>
+            <div className="tiny" style={{ textAlign: 'right' }}>{ago(u.usage!.lastSeen)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>Se numără din 20.10.2026: intrări, minute, ce ecrane deschid. Nu și ce scrie pe ele.</div>
+    </Card>
+  );
+}
+
+/** Pe fiecare prieten: ultima intrare, cât de des revine, ce caută și nota lui. */
+function UsageBlock({ u }: { u: UsageSummary }) {
+  const maxInfo = Math.max(1, ...u.weeks.map((w) => w.info));
+  return (
+    <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+      <div className="kv">
+        <div className="k">Ultima dată în aplicație</div>
+        <div className="tiny" style={{ textAlign: 'right', fontWeight: 700 }}>{ago(u.lastSeen)}</div>
+        <div className="k">Zile cu aplicația</div>
+        <div className="tiny" style={{ textAlign: 'right' }}>{u.activeDays7}/7 · {u.activeDays28}/28 · {TREND[u.trend]}</div>
+        <div className="k">Cât îi place</div>
+        <div className="tiny" style={{ textAlign: 'right' }}>
+          {u.rating ? `${u.rating.last}/5 (${u.rating.lastDate.slice(5).split('-').reverse().join('.')})${u.rating.n > 1 ? ` · media ${u.rating.avg.toLocaleString('ro-RO')} din ${u.rating.n}` : ''}` : 'încă n-a dat notă'}
+          {u.rating?.note && <div className="tiny muted">„{u.rating.note}”</div>}
+        </div>
+        <div className="k">Caută informații</div>
+        <div className="tiny" style={{ textAlign: 'right' }}>{u.infoPerSession != null ? `${u.infoPerSession.toLocaleString('ro-RO')} deschideri / intrare` : '–'}</div>
+      </div>
+      <div className="tiny muted">Pe săptămâni (cea mai recentă în dreapta): informații căutate · zile · minute</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, alignItems: 'end' }} aria-label="Tendința pe 4 săptămâni">
+        {u.weeks.map((w, i) => (
+          <div key={i} style={{ display: 'grid', gap: 3, justifyItems: 'center' }}>
+            <div style={{ width: '70%', height: 4 + (w.info / maxInfo) * 36, borderRadius: 4, background: i === 3 ? 'var(--accent)' : 'var(--accent-soft)' }} />
+            <div className="tiny">{w.info} · {w.activeDays}z · {w.minutes}m</div>
+          </div>
+        ))}
+      </div>
+      {u.areas.length > 0 && (
+        <div className="tiny">
+          <span className="muted">Ce deschide (28 de zile): </span>
+          {u.areas.map((a) => `${a.label} ${a.pct}%`).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
 }

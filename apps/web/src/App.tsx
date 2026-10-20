@@ -1,3 +1,4 @@
+import { startUsage, trackScreen } from './data/usage';
 import { Cheer, pendingCheer } from './ui/Cheer';
 import { WalkPage } from './ui/Walking';
 import { BadgesScreen } from './ui/Badges';
@@ -244,6 +245,14 @@ function Shell() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  // Folosirea aplicației (Admin → Prieteni): numărători pe zi, doar pentru conturile reale (nu demo).
+  const usageOn = !!me && !local;
+  useEffect(() => {
+    if (!usageOn) return;
+    startUsage();
+    trackScreen(screenRef.current);
+  }, [usageOn]);
+
   // Previzualizarea întâmpinării (Administrare): o arată acum, fără pragul de 30 de minute.
   useEffect(() => {
     const on = () => setMemento(true);
@@ -322,6 +331,7 @@ function Shell() {
       }
     }
     setScreen(t);
+    if (t !== screen) trackScreen(t);
     try {
       const deepNow = history.state?.airon === 'deep';
       if (t !== 'acasa') {

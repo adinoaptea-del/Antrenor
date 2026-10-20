@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { trackDetail } from '../data/usage';
 import { createPortal } from 'react-dom';
 import type { PlannedWorkout } from '@core/types.js';
 import type { Me } from '@core/api-types.js';
@@ -75,6 +76,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
 
   // Varianta scurtă a teleportării: fereastra se deschide din punctul atins (o singură dată, la deschidere).
   const tap = useOpenOrigin(box);
+  useEffect(() => trackDetail('sedinta'), []);
   const rx = w.type === 'forta' ? strengthOf(me, w) : null;
   const fitness = goalKind(me.user.goal) === 'fitness';
   const day = w.date === me.today ? dayOf(me) : null;

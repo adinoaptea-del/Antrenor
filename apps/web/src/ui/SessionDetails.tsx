@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { trackDetail } from '../data/usage';
 import type { Sport } from '@core/types.js';
 import type { MeActivity } from '@core/api-types.js';
 import { diffDays, weekday } from '@core/util/dates.js';
@@ -89,6 +90,9 @@ export function SessionDetails({ sport }: { sport: Sport }) {
   const me = useMe();
   const sessions = me.activities.filter((a) => a.sport === sport).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 10);
   const [selId, setSelId] = useState<string | null>(null);
+  useEffect(() => {
+    if (selId) trackDetail('sport');
+  }, [selId]);
   const [metricK, setMetricK] = useState<string | null>(null);
   const ftpMatch = me.zones?.bike?.match(/FTP\s+(\d+)/);
   const ftp = ftpMatch ? Number(ftpMatch[1]) : null;

@@ -18,6 +18,7 @@ import { useMetOnce, walkOrb } from './Walking';
 import { readyLabel, readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
+import { FeedbackCard } from './Feedback';
 import { fmtTime } from '@core/goals/run-target.js';
 
 
@@ -246,6 +247,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       <div className="stack">
 
         <MovedAway />
+
+        <FeedbackCard />
 
         {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
           <button className="row-card" onClick={() => onOpen('saptamanal')}>

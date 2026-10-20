@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { trackDetail } from '../data/usage';
 import { BurstAtTap, useOpenOrigin } from './OpenFrom';
 import { ALL_ALLERGENS, ALLERGEN_LABEL, type Allergen } from '@core/nutrition/foods.js';
 import { NUTRITION_DISCLAIMER, alternatives, nutritionDay, type AltPreview, type Diet, type Meal } from '@core/nutrition/engine.js';
@@ -413,6 +414,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
 function MealOpen({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const tap = useOpenOrigin(ref);
+  useEffect(() => trackDetail('reteta'), []);
   return (
     <div className="meal-body" ref={ref}>
       <BurstAtTap tap={tap} />

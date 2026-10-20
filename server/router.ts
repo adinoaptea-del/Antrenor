@@ -18,6 +18,7 @@ import plan_generate from './plan/generate.js';
 import setup from './setup.js';
 import admin from './admin.js';
 import sync from './sync.js';
+import track from './track.js';
 import webhooks_strava from './webhooks/strava.js';
 import webhooks_whoop from './webhooks/whoop.js';
 import webhooks_apple from './webhooks/apple.js';
@@ -38,6 +39,7 @@ const STATIC: Record<string, Handler> = {
   setup,
   admin,
   sync,
+  track,
   'webhooks/strava': webhooks_strava,
   'webhooks/whoop': webhooks_whoop,
   'webhooks/apple': webhooks_apple,
