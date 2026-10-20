@@ -4829,7 +4829,7 @@ function withOriginal(prev, next, at) {
   if (sameShape(original, after2)) return { ...next, original: null, changedAt: at };
   return { ...next, original, changedAt: at };
 }
-function moveOptions(plan, id, today, doneIds = []) {
+function moveOptions(plan, id, today, doneIds = [], ctx = {}) {
   const w = plan.find((x) => x.id === id);
   if (!w || !active(w) || w.date < today || doneIds.includes(id)) return [];
   const ws = weekStart(w.date);
@@ -4849,14 +4849,23 @@ function moveOptions(plan, id, today, doneIds = []) {
     else if (isHard(w) && hardOn(d)) reason = "are deja o \u0219edin\u021B\u0103 grea";
     else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = "e l\xE2ng\u0103 o zi grea (zi tare, zi u\u0219oar\u0103)";
     else if (w.sport === "alergare" && w.type === "calitate" && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === "alergare" && x.type === "lung")) reason = "e l\xE2ng\u0103 alergarea lung\u0103";
+    if (!reason) {
+      const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
+      if (aw) reason = `e\u0219ti plecat (${AWAY_LABEL[aw.ce]})`;
+    }
+    if (!reason && ctx.freeBlocks?.length) {
+      const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
+      if (longest === 0) reason = "nu ai timp liber \xEEn ziua asta (programul t\u0103u)";
+      else if (longest < w.plannedMinutes) reason = `fereastra liber\u0103 are ${longest} min, \u0219edin\u021Ba ${w.plannedMinutes}`;
+    }
     out.push(reason ? { date: d, ok: false, reason } : { date: d, ok: true });
   }
   return out;
 }
-function moveWorkout(plan, id, date, today, at, doneIds = []) {
+function moveWorkout(plan, id, date, today, at, doneIds = [], ctx = {}) {
   const w = plan.find((x) => x.id === id);
   if (!w) throw new Error("\u0219edin\u021B\u0103 inexistent\u0103");
-  const opt = moveOptions(plan, id, today, doneIds).find((o) => o.date === date);
+  const opt = moveOptions(plan, id, today, doneIds, ctx).find((o) => o.date === date);
   if (!opt) throw new Error("se poate muta doar o \u0219edin\u021B\u0103 care urmeaz\u0103, pe alt\u0103 zi din aceea\u0219i s\u0103pt\u0103m\xE2n\u0103");
   if (!opt.ok) throw new Error(`ziua aleas\u0103 ${opt.reason}`);
   return withOriginal(w, { ...w, date, note: `mutat\u0103 de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}` }, at);
@@ -4916,17 +4925,23 @@ function changeSport(w, sport, at, pain) {
   };
   return withOriginal(w, fitStructure(next), at);
 }
-function applyAway(plan, away, today, at, doneIds = []) {
+function applyAway(plan, away, today, at, doneIds = [], blocked = []) {
   const from = away.dela < today ? today : away.dela;
   const changed = [];
   const byDay = /* @__PURE__ */ new Map();
   for (const w of plan) if (active(w) && w.date >= from && w.date <= away.panala && !doneIds.includes(w.id)) byDay.set(w.date, [...byDay.get(w.date) ?? [], w]);
-  for (const [, ws] of byDay) {
+  const subDays = /* @__PURE__ */ new Set();
+  const subsPerWeek = /* @__PURE__ */ new Map();
+  for (const [day2, ws] of [...byDay].sort(([a], [b]) => a < b ? -1 : 1)) {
     let hasRun = ws.some((w) => w.sport === "alergare" && keeps(w, away.ce));
     for (const w of ws) {
       if (keeps(w, away.ce)) continue;
       const label = `${AWAY_NOTE} (${AWAY_LABEL[away.ce]})`;
-      if (away.ce !== "nimic" && !hasRun && w.sport !== "forta") {
+      const wk = weekStart(day2);
+      const nearRun = subDays.has(addDays(day2, -1)) || subDays.has(addDays(day2, 1));
+      if (away.ce !== "nimic" && !hasRun && w.sport !== "forta" && !blocked.includes("alergare") && !nearRun && (subsPerWeek.get(wk) ?? 0) < 2) {
+        subsPerWeek.set(wk, (subsPerWeek.get(wk) ?? 0) + 1);
+        subDays.add(day2);
         const minutes = Math.min(w.plannedMinutes, w.sport === "bicicleta" ? 45 : 40);
         hasRun = true;
         changed.push(withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD2[w.sport]}` }, at));
@@ -5679,11 +5694,19 @@ function advanceRunProgression(prog, pw, goal) {
     return;
   }
   prog.runExposures = (prog.runExposures ?? 0) + 1;
+  let grew = false;
   if (prog.runExposures >= 2 && prog.longRun < cap2) {
     prog.longRun += Math.min(10, Math.max(5, Math.round(prog.longRun * 0.1 / 5) * 5));
     prog.runExposures = 0;
+    grew = true;
   }
-  if (prog.walkStep != null && prog.runExposures === 0) prog.walkStep += 1;
+  if (prog.walkStep != null) {
+    prog.walkExposures = (prog.walkExposures ?? 0) + 1;
+    if (prog.walkExposures >= 2 && !grew) {
+      prog.walkStep += 1;
+      prog.walkExposures = 0;
+    }
+  }
   prog.longRun = Math.min(prog.longRun, cap2);
 }
 function advanceSwimProgression(prog, pw, goal) {
@@ -5759,6 +5782,10 @@ function runWeekTemplate(pw, input, prog) {
     if (pw.weekInPhase % 2 === 1) s.push({ sport: "alergare", type: "calitate", minutes: 45, zones: [2, 3], key: true, priority: 3, structure: "progresiv: primele dou\u0103 treimi u\u0219or (RPE 2\u20133), apoi cre\u0219ti treptat p\xE2n\u0103 la moderat (RPE 4\u20135) \xEEn ultimele 10\u201315 min; nu termini \xEEn sprint" });
     else s.push({ sport: "alergare", type: "z2", minutes: 40, zones: [2], key: false, priority: 5, structure: "u\u0219or + 6 acceler\u0103ri relaxate de 15\u201320 s, recuperare ampl\u0103" });
   } else if (!fourRuns || beginner) {
+    if (!fourRuns) {
+      const m = early ? 30 : 35;
+      s.push({ sport: "alergare", type: "z2", minutes: m, zones: [1, 2], key: false, priority: 7.5, structure: (walk != null ? walkRunStructure(walk, m) : null) ?? "u\u0219or, RPE 2\u20133; mersul e permis" });
+    }
   } else {
     s.push({ sport: "alergare", type: "z2", minutes: early ? 40 : 45, zones: [2], key: false, priority: 5, structure: p === "evaluare" ? "u\u0219or + 6 acceler\u0103ri de 20 s" : "u\u0219or, constant" });
   }
@@ -10291,7 +10318,7 @@ function raceName(goal) {
 }
 async function labsGate(userId) {
   const rows = await select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 20 });
-  return labsGateFrom(rows, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+  return labsGateFrom(rows, await userToday(userId));
 }
 function labsGateFrom(rows, today) {
   if (!rows.length) return { valid: false, limitIntensity: false, why: null };
@@ -10667,10 +10694,19 @@ function labSnapshot(l) {
     alte: (l.other?.valori ?? []).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, ref_min: v.ref_min ?? null, ref_max: v.ref_max ?? null }))
   };
 }
+async function userToday(userId, now = /* @__PURE__ */ new Date()) {
+  const row = await one("users", { id: `eq.${userId}` }, { select: "tz" }).catch(() => null);
+  const tz = row?.tz || "Europe/Bucharest";
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Bucharest", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  }
+}
 async function loadLabs(userId) {
   const rows = await select("labs", { user_id: `eq.${userId}` }, { order: "drawn_at.desc", limit: 2 });
   const l = rows[0];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today = await userToday(userId);
   if (!l || labsExpired(l.drawn_at, today)) return null;
   const now = labSnapshot(l);
   const out = (l.other?.valori ?? []).filter((v) => v.in_afara).map((v) => ({ nume: v.nume, valoare: v.valoare, unitate: v.unitate, interval: v.ref_text, directie: v.in_afara }));
@@ -10809,7 +10845,7 @@ async function loadHistory(userId, today) {
 }
 async function loadTotals(userId, since, forAI2 = false) {
   const raw = [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today = await userToday(userId);
   for (let from = since; from <= today; from = addDays(from, 30)) {
     const rows = await select("activities", { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1e3 });
     raw.push(...rows.map(toSourceActivity));
@@ -11573,6 +11609,16 @@ async function handler7(req, res) {
   } catch (e) {
     fail(res, e);
   }
+}
+
+// src/goals/intake-check.ts
+init_run();
+function runResultValid(r2) {
+  return !!r2 && (r2.mod === "ritm" ? parsePace(r2.valoare ?? null) != null : parseDuration(r2.valoare ?? null) != null);
+}
+function runTargetProblem(a) {
+  if (!a || a.ramura !== "timp") return null;
+  return runResultValid(a.tinta) ? null : "ai ales \u201Epe timp\u201D: scrie \u021Binta (ritm, ex. 5:30, sau timp final, ex. 52:00), ori alege \u201Evreau s\u0103 termin\u201D";
 }
 
 // src/strength/log.ts
@@ -12568,6 +12614,12 @@ function outcomeFeedback(plan, outcomes, now, today, at) {
     const where = next ? ` (${DAY3[weekday(next.date)]} ${dm2(next.date)})` : "";
     nextLine = now.motiv === "timp" ? `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e: lipsa de timp nu \xEEnseamn\u0103 c\u0103 nu po\u021Bi.` : now.motiv === "altul" ? `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e.` : `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e: e prima din ultimele 7 zile; dac\u0103 se repet\u0103, se u\u0219ureaz\u0103.`;
   }
+  if (now.motiv === "timp") {
+    const timp = outcomes.filter((o) => o.motiv === "timp" && o.date <= today && diffDays(o.date, today) <= 21);
+    const sameDay = timp.filter((o) => weekday(o.date) === weekday(now.date));
+    if (sameDay.length >= 3) nextLine += ` E a ${sameDay.length}-a oar\u0103 \xEEn 3 s\u0103pt\u0103m\xE2ni c\xE2nd ${DAY3[weekday(now.date)]} nu ajunge timpul: propun s\u0103 mut\u0103m \u0219edin\u021Ba de ${DAY3[weekday(now.date)]} pe alt\u0103 zi sau s\u0103 scurt\u0103m fereastra din program (Profil \u2192 Program). Capacitatea ta nu se schimb\u0103.`;
+    else if (timp.length >= 3) nextLine += ` Ai ${timp.length} \u0219edin\u021Be nef\u0103cute din lips\u0103 de timp \xEEn 3 s\u0103pt\u0103m\xE2ni: propun s\u0103 revedem programul (zilele sau orele libere) ori s\u0103 sc\u0103dem cu o \u0219edin\u021B\u0103 pe s\u0103pt\u0103m\xE2n\u0103. Capacitatea ta nu se schimb\u0103.`;
+  }
   const extra = now.motiv === "durere" ? " Spune \u0219i c\xE2t de tare doare (formularul de sear\u0103), ca restric\u021Bia s\u0103 fie corect\u0103." : now.motiv === "boala" ? " Dac\u0103 ai febr\u0103, bifeaz-o diminea\u021Ba: atunci ziua e stop." : "";
   const goal = recent.length >= 2 ? "Despre obiectiv: neschimbat deocamdat\u0103; dac\u0103 oboseala continu\u0103, se reevalueaz\u0103 la bilan\u021Bul s\u0103pt\u0103m\xE2nal." : "Despre obiectiv: neschimbat; o \u0219edin\u021B\u0103 nu schimb\u0103 ce se poate.";
   return { changed, decision, message: `Am \xEEnregistrat: ${label}, ${what} (${MOTIV_LABEL[now.motiv]}). Nu o recuper\u0103m prin dublare. ${nextLine}${extra} ${goal}` };
@@ -12595,6 +12647,10 @@ async function handler10(req, res) {
       if (!intake.consimtamant) throw new HttpError(400, "f\u0103r\u0103 consim\u021B\u0103m\xE2nt nu se salveaz\u0103 date de s\u0103n\u0103tate");
       if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, "obiectiv indisponibil deocamdat\u0103: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), \xEEnot (1.500 / 1.900 / 3.800 m) sau biciclet\u0103 (50 / 100 / 160 km); fitness; mers pe jos");
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, "data cursei trebuie s\u0103 fie \xEEn viitor");
+      if (isRunGoal(String(intake.obiectiv))) {
+        const problem = runTargetProblem(intake.alergare);
+        if (problem) throw new HttpError(400, problem);
+      }
       if (intake.anNastere != null && Number(today.slice(0, 4)) - Number(intake.anNastere) < 18) throw new HttpError(400, "AIRON e pentru adul\u021Bi (18 ani sau mai mult): planurile \u0219i mesele sunt calculate pentru adul\u021Bi");
       await saveIntake(u.id, today, intake);
       const diet = intake.alimentatie;
@@ -12866,8 +12922,11 @@ async function handler10(req, res) {
       const at = (/* @__PURE__ */ new Date()).toISOString();
       let next;
       try {
-        if (op === "muta") next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done);
-        else if (op === "usor") next = easyWorkout(w, at);
+        if (op === "muta") {
+          const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
+          const program = forms.intake?.program;
+          next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done, { freeBlocks: Array.isArray(program) ? program : void 0, away: currentAway(prefsM, today) });
+        } else if (op === "usor") next = easyWorkout(w, at);
         else if (op === "sport") {
           const forms = await loadForms(u.id, today);
           const pain = activePain(withIncidents(forms.evenings, forms.incidents.evenings), today);
@@ -12910,7 +12969,10 @@ async function handler10(req, res) {
       if (prefs.plecari.some((a) => a.panala >= dela && a.dela <= panala)) throw new HttpError(409, "se suprapune cu o plecare deja anun\u021Bat\u0103; anuleaz-o \xEEnt\xE2i");
       const { planId, workouts } = await loadPlan(u.id, dela < today ? today : dela, panala);
       const done = planId ? await executedIds(u.id, today, workouts) : [];
-      const changed = planId ? applyAway(workouts, away, today, at, done) : [];
+      const formsA = planId ? await loadForms(u.id, today) : null;
+      const painA = formsA ? activePain(withIncidents(formsA.evenings, formsA.incidents.evenings), today) : null;
+      const blockedA = painA && painA.scor >= 3 ? sportsBlockedByPain(painA.loc) : [];
+      const changed = planId ? applyAway(workouts, away, today, at, done, blockedA) : [];
       if (changed.length) await upsert("workouts_planned", changed.map((x) => toWorkoutRow(x, u.id, planId)), "id");
       prefs.plecari = [...currentAway(prefs, today), away].sort((a, b) => a.dela < b.dela ? -1 : 1);
       await savePrefs(u.id, prefs);

@@ -1,3 +1,4 @@
+import { runTargetProblem, type RunTargetLike } from '../../src/goals/intake-check.js';
 import { cleanEntry } from '../../src/strength/log.js';
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
@@ -19,13 +20,13 @@ import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
 import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
-import { activePain, morningSafetyEvents, painSafetyEvents, urgentText, withIncidents, type MorningSafety } from '../../src/calendar/safety.js';
+import { activePain, sportsBlockedByPain, morningSafetyEvents, painSafetyEvents, urgentText, withIncidents, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { AWAY_LABEL, applyAway, changeSport, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs, walkProfileOf } from '../_lib/prefs.js';
 import { markBadgesSeen } from '../_lib/badges.js';
 import { MANUAL_TYPES } from '../../src/recovery/recovery.js';
-import { isGoal, isWalkGoal } from '../../src/calendar/phases.js';
+import { isGoal, isRunGoal, isWalkGoal } from '../../src/calendar/phases.js';
 import { walkForm } from '../_lib/walk-forms.js';
 import type { WalkProfile } from '../../src/walking/plan.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
@@ -62,6 +63,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // Același set de obiective în aplicație, server și bază; Ironman complet nu e încă disponibil.
       if (!isGoal(String(intake.obiectiv))) throw new HttpError(400, 'obiectiv indisponibil deocamdată: triatlon (sprint, olimpic, 70.3), alergare (5 km, 10 km, semimaraton, maraton), înot (1.500 / 1.900 / 3.800 m) sau bicicletă (50 / 100 / 160 km); fitness; mers pe jos');
       if (!isDate(intake.dataCursa) || intake.dataCursa <= today) throw new HttpError(400, 'data cursei trebuie să fie în viitor');
+      // Auditul v93, A101: ramura „timp” fără țintă citibilă nu trece; „finalizare” nu cere timp.
+      if (isRunGoal(String(intake.obiectiv))) {
+        const problem = runTargetProblem((intake as { alergare?: RunTargetLike }).alergare);
+        if (problem) throw new HttpError(400, problem);
+      }
       // Auditul v93, A56: aceeași regulă ca la profil și în aplicație — AIRON e pentru adulți (18+).
       if (intake.anNastere != null && Number(today.slice(0, 4)) - Number(intake.anNastere) < 18) throw new HttpError(400, 'AIRON e pentru adulți (18 ani sau mai mult): planurile și mesele sunt calculate pentru adulți');
       await saveIntake(u.id, today, intake);
@@ -367,7 +373,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const at = new Date().toISOString();
       let next;
       try {
-        if (op === 'muta') next = moveWorkout(workouts, id, String(body.date ?? ''), today, at, done);
+        if (op === 'muta') {
+          // A65: mutarea se validează și pe programul liber și pe plecările anunțate.
+          const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
+          const program = (forms.intake as { program?: { day: number; startMin: number; endMin: number }[] } | null)?.program;
+          next = moveWorkout(workouts, id, String(body.date ?? ''), today, at, done, { freeBlocks: Array.isArray(program) ? program : undefined, away: currentAway(prefsM, today) });
+        }
         else if (op === 'usor') next = easyWorkout(w, at);
         else if (op === 'sport') {
           const forms = await loadForms(u.id, today);
@@ -413,7 +424,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (prefs.plecari.some((a) => a.panala >= dela && a.dela <= panala)) throw new HttpError(409, 'se suprapune cu o plecare deja anunțată; anuleaz-o întâi');
       const { planId, workouts } = await loadPlan(u.id, dela < today ? today : dela, panala);
       const done = planId ? await executedIds(u.id, today, workouts) : [];
-      const changed = planId ? applyAway(workouts, away, today, at, done) : [];
+      const formsA = planId ? await loadForms(u.id, today) : null;
+      const painA = formsA ? activePain(withIncidents(formsA.evenings, formsA.incidents.evenings), today) : null;
+      const blockedA = (painA && painA.scor >= 3 ? sportsBlockedByPain(painA.loc) : []) as Sport[];
+      const changed = planId ? applyAway(workouts, away, today, at, done, blockedA) : [];
       if (changed.length) await upsert('workouts_planned', changed.map((x) => toWorkoutRow(x, u.id, planId!)), 'id');
       prefs.plecari = [...currentAway(prefs, today), away].sort((a, b) => (a.dela < b.dela ? -1 : 1));
       await savePrefs(u.id, prefs);

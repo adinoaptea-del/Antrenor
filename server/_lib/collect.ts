@@ -276,10 +276,21 @@ export function labSnapshot(l: LabRow): LabSnapshot {
   };
 }
 
+/** Auditul v93, A24: „azi” în fusul sportivului (users.tz), nu în UTC; implicit România. */
+export async function userToday(userId: string, now = new Date()): Promise<string> {
+  const row = await one<{ tz: string | null }>('users', { id: `eq.${userId}` }, { select: 'tz' }).catch(() => null);
+  const tz = row?.tz || 'Europe/Bucharest';
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  }
+}
+
 export async function loadLabs(userId: string): Promise<LabsInput | null> {
   const rows = await select<LabRow>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 });
   const l = rows[0];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await userToday(userId);
   // Mai vechi de 12 luni: nu mai sunt valabile, agenții lucrează ca și cum n-ar exista.
   if (!l || labsExpired(l.drawn_at, today)) return null;
   const now = labSnapshot(l);
@@ -432,7 +443,7 @@ export async function loadHistory(userId: string, today: string): Promise<{ gree
 export async function loadTotals(userId: string, since: string, forAI = false): Promise<NonNullable<CollectorInput['totals']>> {
   // Pe ferestre de 30 de zile: Supabase întoarce maximum 1000 de rânduri pe cerere.
   const raw: SourceActivity[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await userToday(userId);
   for (let from = since; from <= today; from = addDays(from, 30)) {
     const rows = await select<ActivityRow>('activities', { user_id: `eq.${userId}`, date: [`gte.${from}`, `lt.${addDays(from, 30)}`] }, { limit: 1000 });
     raw.push(...rows.map(toSourceActivity));

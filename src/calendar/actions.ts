@@ -58,7 +58,13 @@ export interface MoveOption {
 }
 
 /** Zilele în care poate fi mutată ședința: aceeași săptămână, de azi încolo, după regulile planului. */
-export function moveOptions(plan: PlannedWorkout[], id: string, today: string, doneIds: string[] = []): MoveOption[] {
+/** Auditul v93, A65: contextul validării unei mutări — programul liber și plecările anunțate. */
+export interface MoveCtx {
+  freeBlocks?: { day: number; startMin: number; endMin: number }[];
+  away?: Away[];
+}
+
+export function moveOptions(plan: PlannedWorkout[], id: string, today: string, doneIds: string[] = [], ctx: MoveCtx = {}): MoveOption[] {
   const w = plan.find((x) => x.id === id);
   if (!w || !active(w) || w.date < today || doneIds.includes(id)) return [];
   const ws = weekStart(w.date);
@@ -78,6 +84,15 @@ export function moveOptions(plan: PlannedWorkout[], id: string, today: string, d
     else if (isHard(w) && hardOn(d)) reason = 'are deja o ședință grea';
     else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = 'e lângă o zi grea (zi tare, zi ușoară)';
     else if (w.sport === 'alergare' && w.type === 'calitate' && (on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === 'alergare' && x.type === 'lung'))) reason = 'e lângă alergarea lungă';
+    if (!reason) {
+      const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
+      if (aw) reason = `ești plecat (${AWAY_LABEL[aw.ce]})`;
+    }
+    if (!reason && ctx.freeBlocks?.length) {
+      const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
+      if (longest === 0) reason = 'nu ai timp liber în ziua asta (programul tău)';
+      else if (longest < w.plannedMinutes) reason = `fereastra liberă are ${longest} min, ședința ${w.plannedMinutes}`;
+    }
     out.push(reason ? { date: d, ok: false, reason } : { date: d, ok: true });
   }
   return out;
@@ -85,10 +100,10 @@ export function moveOptions(plan: PlannedWorkout[], id: string, today: string, d
 
 const SPORT_WORD: Record<Sport, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță', mers: 'mers' };
 
-export function moveWorkout(plan: PlannedWorkout[], id: string, date: string, today: string, at: string, doneIds: string[] = []): PlannedWorkout {
+export function moveWorkout(plan: PlannedWorkout[], id: string, date: string, today: string, at: string, doneIds: string[] = [], ctx: MoveCtx = {}): PlannedWorkout {
   const w = plan.find((x) => x.id === id);
   if (!w) throw new Error('ședință inexistentă');
-  const opt = moveOptions(plan, id, today, doneIds).find((o) => o.date === date);
+  const opt = moveOptions(plan, id, today, doneIds, ctx).find((o) => o.date === date);
   if (!opt) throw new Error('se poate muta doar o ședință care urmează, pe altă zi din aceeași săptămână');
   if (!opt.ok) throw new Error(`ziua aleasă ${opt.reason}`);
   return withOriginal(w, { ...w, date, note: `mutată de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}` }, at);
@@ -180,17 +195,25 @@ export const AWAY_NOTE = 'plecat';
  * Zilele de deplasare: ce nu se poate face devine alergare ușoară (cel mult una pe zi) sau se anulează;
  * „nimic” anulează tot. Ședințele făcute deja și trecutul nu se ating.
  */
-export function applyAway(plan: PlannedWorkout[], away: Away, today: string, at: string, doneIds: string[] = []): PlannedWorkout[] {
+export function applyAway(plan: PlannedWorkout[], away: Away, today: string, at: string, doneIds: string[] = [], blocked: Sport[] = []): PlannedWorkout[] {
   const from = away.dela < today ? today : away.dela;
   const changed: PlannedWorkout[] = [];
   const byDay = new Map<string, PlannedWorkout[]>();
   for (const w of plan) if (active(w) && w.date >= from && w.date <= away.panala && !doneIds.includes(w.id)) byDay.set(w.date, [...(byDay.get(w.date) ?? []), w]);
-  for (const [, ws] of byDay) {
+  // Auditul v93, A65: alergările de înlocuire nu vin în zile la rând una după alta și nu înlocuiesc mai mult de 2
+  // ședințe pe săptămână; restul se anulează. Alergarea blocată (durere la picioare) = doar anulare.
+  const subDays = new Set<string>();
+  const subsPerWeek = new Map<string, number>();
+  for (const [day, ws] of [...byDay].sort(([a], [b]) => (a < b ? -1 : 1))) {
     let hasRun = ws.some((w) => w.sport === 'alergare' && keeps(w, away.ce));
     for (const w of ws) {
       if (keeps(w, away.ce)) continue;
       const label = `${AWAY_NOTE} (${AWAY_LABEL[away.ce]})`;
-      if (away.ce !== 'nimic' && !hasRun && w.sport !== 'forta') {
+      const wk = weekStart(day);
+      const nearRun = subDays.has(addDays(day, -1)) || subDays.has(addDays(day, 1));
+      if (away.ce !== 'nimic' && !hasRun && w.sport !== 'forta' && !blocked.includes('alergare') && !nearRun && (subsPerWeek.get(wk) ?? 0) < 2) {
+        subsPerWeek.set(wk, (subsPerWeek.get(wk) ?? 0) + 1);
+        subDays.add(day);
         const minutes = Math.min(w.plannedMinutes, w.sport === 'bicicleta' ? 45 : 40);
         hasRun = true;
         changed.push(withOriginal(w, { ...w, sport: 'alergare', type: 'z2', key: false, plannedMinutes: minutes, targetZones: [2], intervals: undefined, structure: `${minutes} min ușor, să poți vorbi`, note: `${label}: alergare ușoară în loc de ${SPORT_WORD[w.sport]}` }, at));

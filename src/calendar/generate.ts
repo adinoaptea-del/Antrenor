@@ -204,7 +204,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // Doar înot: ședința lungă pornește de la ce înoată acum fără oprire (≈ 2,5 min la 100 m la început), minimum 30 min.
   // Capacitate necunoscută: ședința lungă pornește de la minimul de timp (familiarizare), nu de la o distanță presupusă.
   const swimStart = input.swim?.continuousM == null ? MIN_SESSION_MIN.inot : Math.max(MIN_SESSION_MIN.inot, Math.min(60, Math.round((input.swim.continuousM / 100) * 2.5 * 1.25)));
-  const prog: { longRide: number; longRun: number; brickRun: number; longSwim: number; runExposures?: number; walkStep?: number; longRunFloor?: number } = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? (input.run?.beginner ? 30 : startLong) : triRun, brickRun: 15, longSwim: swimStart, walkStep: runGoal && input.run?.beginner ? 0 : undefined, ...(demLong ? { longRunFloor: demLong } : {}) };
+  const prog: { longRide: number; longRun: number; brickRun: number; longSwim: number; runExposures?: number; walkStep?: number; walkExposures?: number; longRunFloor?: number } = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? (input.run?.beginner ? 30 : startLong) : triRun, brickRun: 15, longSwim: swimStart, walkStep: runGoal && input.run?.beginner ? 0 : undefined, ...(demLong ? { longRunFloor: demLong } : {}) };
   // Podeaua ședințelor ușoare: ce face sportivul de obicei, nu minimul unui începător (corecția proprietarului, 20.10.2026).
   const dem = input.demonstrated;
   const easyOf = (x: { sport: Sport; type: WorkoutType; key: boolean }, light: boolean): number =>
@@ -472,7 +472,7 @@ function runStartLong(goal: RunGoal, canDoDistance: boolean | null, longestRunKm
 }
 
 /** Ieșirea lungă la alergare: crește după două expuneri comparabile (~10%, 5–10 min), plafon pe fază și pe distanță (la 5 și 10 km ieșirea e mai lungă decât cursa, dar nu dublă). */
-function advanceRunProgression(prog: { longRun: number; runExposures?: number; walkStep?: number }, pw: PhaseWeek, goal: RunGoal): void {
+function advanceRunProgression(prog: { longRun: number; runExposures?: number; walkStep?: number; walkExposures?: number }, pw: PhaseWeek, goal: RunGoal): void {
   if (pw.recovery) return;
   const caps: Record<RunGoal, Record<Phase, number>> = {
     '5k': { evaluare: 45, baza1: 55, baza2: 65, build: 75, peak: 75, taper: 40 },
@@ -487,12 +487,21 @@ function advanceRunProgression(prog: { longRun: number; runExposures?: number; w
   }
   // Două expuneri comparabile, apoi un singur element crește: ~10% (5–10 min), nu în fiecare săptămână.
   prog.runExposures = (prog.runExposures ?? 0) + 1;
+  let grew = false;
   if (prog.runExposures >= 2 && prog.longRun < cap) {
     prog.longRun += Math.min(10, Math.max(5, Math.round((prog.longRun * 0.1) / 5) * 5));
     prog.runExposures = 0;
+    grew = true;
   }
-  // Mers-alergare: treapta urcă la două săptămâni bine tolerate, până la alergare continuă.
-  if (prog.walkStep != null && prog.runExposures === 0) prog.walkStep += 1;
+  // Mers-alergare (auditul v93, A103): treapta are contorul ei — urcă după două săptămâni, și când lunga stă la
+  // plafonul fazei. Un singur element crește într-o săptămână: dacă a crescut durata, treapta așteaptă.
+  if (prog.walkStep != null) {
+    prog.walkExposures = (prog.walkExposures ?? 0) + 1;
+    if (prog.walkExposures >= 2 && !grew) {
+      prog.walkStep += 1;
+      prog.walkExposures = 0;
+    }
+  }
   prog.longRun = Math.min(prog.longRun, cap);
 }
 
@@ -591,7 +600,13 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
     if (pw.weekInPhase % 2 === 1) s.push({ sport: 'alergare', type: 'calitate', minutes: 45, zones: [2, 3], key: true, priority: 3, structure: 'progresiv: primele două treimi ușor (RPE 2–3), apoi crești treptat până la moderat (RPE 4–5) în ultimele 10–15 min; nu termini în sprint' });
     else s.push({ sport: 'alergare', type: 'z2', minutes: 40, zones: [2], key: false, priority: 5, structure: 'ușor + 6 accelerări relaxate de 15–20 s, recuperare amplă' });
   } else if (!fourRuns || beginner) {
-    // Fără calitate (debutant, finalizare): a treia ieșire e tot ușoară; prioritatea e regularitatea.
+    // Fără calitate (debutant, finalizare): a treia ieșire e tot ușoară; prioritatea e regularitatea. Auditul v93, A100:
+    // comentariul promitea 3 ieșiri, dar nu se adăuga nimic (rămâneau 2). Acum: a treia, scurtă și ușoară; la debutant
+    // în mers-alergare, pe aceeași treaptă. Podeaua demonstrată (regula 30) se aplică la templating, ca la celelalte.
+    if (!fourRuns) {
+      const m = early ? 30 : 35;
+      s.push({ sport: 'alergare', type: 'z2', minutes: m, zones: [1, 2], key: false, priority: 7.5, structure: (walk != null ? walkRunStructure(walk, m) : null) ?? 'ușor, RPE 2–3; mersul e permis' });
+    }
   } else {
     s.push({ sport: 'alergare', type: 'z2', minutes: early ? 40 : 45, zones: [2], key: false, priority: 5, structure: p === 'evaluare' ? 'ușor + 6 accelerări de 20 s' : 'ușor, constant' });
   }

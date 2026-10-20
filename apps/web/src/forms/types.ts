@@ -1,6 +1,7 @@
 // Formularele aplicației. Răspunsurile de dimineață/seară au exact forma cerută de colector (@core/collector/types),
 // ca să intre în pachet fără traducere.
 
+import { runTargetProblem } from '@core/goals/intake-check.js';
 import type { EveningForm, MorningForm } from '@core/collector/types.js';
 import type { FreeBlock } from '@core/types.js';
 import type { RunResult } from '@core/util/run.js';
@@ -101,7 +102,7 @@ export function intakeComplete(i: IntakeAnswers | undefined): boolean {
   const base = i.consimtamant && i.nume.trim().length > 0 && !!i.sex && !!i.anNastere && i.program.length > 0;
   if (isRunGoal(i.obiectiv)) {
     const a = i.alergare;
-    return base && runResultOk(a.tinta) && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual));
+    return base && runTargetProblem(a) == null && parsePace(a.ritmActual) != null && a.poateDistanta != null && (!a.poateDistanta || runResultOk(a.rezultatActual));
   }
   const kind = goalKind(i.obiectiv);
   if (kind === 'fitness') return base && !!i.fitness?.experienta && !!i.fitness?.zile && !!i.fitness?.minute;

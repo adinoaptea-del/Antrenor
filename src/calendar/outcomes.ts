@@ -69,6 +69,14 @@ export function outcomeFeedback(plan: PlannedWorkout[], outcomes: Outcome[], now
           ? `Următoarea ședință${where} rămâne cum e.`
           : `Următoarea ședință${where} rămâne cum e: e prima din ultimele 7 zile; dacă se repetă, se ușurează.`;
   }
+  // Auditul v93, A66: lipsa de timp repetată e o problemă de program, nu de capacitate. Doar propunere (planul și doza
+  // rămân): mută ziua, scurtează fereastra sau scade frecvența — alegi tu.
+  if (now.motiv === 'timp') {
+    const timp = outcomes.filter((o) => o.motiv === 'timp' && o.date <= today && diffDays(o.date, today) <= 21);
+    const sameDay = timp.filter((o) => weekday(o.date) === weekday(now.date));
+    if (sameDay.length >= 3) nextLine += ` E a ${sameDay.length}-a oară în 3 săptămâni când ${DAY[weekday(now.date)]} nu ajunge timpul: propun să mutăm ședința de ${DAY[weekday(now.date)]} pe altă zi sau să scurtăm fereastra din program (Profil → Program). Capacitatea ta nu se schimbă.`;
+    else if (timp.length >= 3) nextLine += ` Ai ${timp.length} ședințe nefăcute din lipsă de timp în 3 săptămâni: propun să revedem programul (zilele sau orele libere) ori să scădem cu o ședință pe săptămână. Capacitatea ta nu se schimbă.`;
+  }
   const extra = now.motiv === 'durere' ? ' Spune și cât de tare doare (formularul de seară), ca restricția să fie corectă.' : now.motiv === 'boala' ? ' Dacă ai febră, bifeaz-o dimineața: atunci ziua e stop.' : '';
   const goal = recent.length >= 2 ? 'Despre obiectiv: neschimbat deocamdată; dacă oboseala continuă, se reevaluează la bilanțul săptămânal.' : 'Despre obiectiv: neschimbat; o ședință nu schimbă ce se poate.';
   return { changed, decision, message: `Am înregistrat: ${label}, ${what} (${MOTIV_LABEL[now.motiv]}). Nu o recuperăm prin dublare. ${nextLine}${extra} ${goal}` };

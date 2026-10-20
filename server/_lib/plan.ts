@@ -2,7 +2,7 @@
 import { applyAway } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs } from './prefs.js';
 import { insert, one, remove, rpc, select, update, upsert } from './db.js';
-import { latestCssTest, loadActivities, loadForms, loadPlan, loadZones, toWorkoutRow } from './collect.js';
+import { latestCssTest, userToday, loadActivities, loadForms, loadPlan, loadZones, toWorkoutRow } from './collect.js';
 import { carryAdjustments, planSignature, weekTotals } from '../../src/calendar/regen-carry.js';
 import { loadSchedules } from './agents.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
@@ -140,7 +140,7 @@ export interface PlanOutcome {
  */
 export async function labsGate(userId: string): Promise<{ valid: boolean; limitIntensity: boolean; why: string | null }> {
   const rows = await select<{ drawn_at: string; feritina: number | string | null; hemoglobina: number | string | null; other: { valori?: { nume: string; in_afara?: 'sub' | 'peste' | null }[] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 20 });
-  return labsGateFrom(rows, new Date().toISOString().slice(0, 10));
+  return labsGateFrom(rows, await userToday(userId));
 }
 
 /**

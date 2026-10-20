@@ -88,7 +88,9 @@ export function Actions({ w }: { w: PlannedWorkout }) {
     }
   };
   if (local) return null;
-  const opts = mode === 'muta' ? moveOptions(me.plan, w.id, me.today) : [];
+  // A65: aceleași verificări ca serverul (programul liber și plecările).
+  const program = (me.forms.intake as { program?: { day: number; startMin: number; endMin: number }[] } | null)?.program;
+  const opts = mode === 'muta' ? moveOptions(me.plan, w.id, me.today, [], { freeBlocks: Array.isArray(program) ? program : undefined, away: me.prefs?.plecari ?? [] }) : [];
   return (
     <div className="wk-act">
       {mode === null && (
