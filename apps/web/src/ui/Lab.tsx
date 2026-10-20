@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, STORM_IN, STORM_OUT, STORM_OUT_MS, STORM_LABEL, type PhaseName, type StormPhase } from '@core/motion/teleport.js';
-import { WelcomeStorm, webglOk } from './WelcomeStorm';
+import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, type PhaseName } from '@core/motion/teleport.js';
+import { FIRE, FIRE_EXIT_MS, FIRE_LABEL, type FireState } from '@core/motion/fireStorm.js';
+import { WelcomeFire } from './WelcomeFire';
 import { cheerFor } from '@core/cheers.js';
 import { CosmicMessage, type CosmicClock } from './Cosmic';
 import { Orb } from './Orb';
@@ -25,7 +26,7 @@ const MODES: [Mode, string][] = [
 ];
 /** Pe cursor: 0–3400 ms scena deschisă (intrare ~2,5 s + repaus), apoi ieșirea „03” și dezvăluirea Acasă. */
 const OPEN_END = 5000;
-const TOTAL = OPEN_END + Math.max(EXIT_MS, STORM_OUT_MS);
+const TOTAL = OPEN_END + Math.max(EXIT_MS, FIRE_EXIT_MS);
 const mid = (r: readonly [number, number]) => Math.round((r[0] + r[1]) / 2);
 const JUMP: Record<PhaseName, number> = {
   liniste: mid(PHASES.liniste),
@@ -41,28 +42,23 @@ const JUMP: Record<PhaseName, number> = {
   ecou: OPEN_END + mid(EXIT.ecou),
   dezvaluire: OPEN_END + mid(EXIT.dezvaluire),
 };
-const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'stinge', 'vartej', 'recompunere', 'preluare', 'continut', 'interfata']);
-/** Întâmpinarea „furtună”: intrarea din praf și vârtejul care recompune bula de Acasă (aici, bula din laborator). */
-const JUMP_STORM: [StormPhase, number][] = [
-  ['praf', mid(STORM_IN.praf)],
-  ['adunare', 1800],
-  ['forma', mid(STORM_IN.forma)],
-  ['mesaj', mid(STORM_IN.mesaj)],
-  ['repaus', 4700],
-  ['stinge', OPEN_END + 350],
-  ['vartej', OPEN_END + 1500],
-  ['recompunere', OPEN_END + 2600],
-  ['preluare', OPEN_END + 3700],
-  ['continut', OPEN_END + mid(STORM_OUT.continut)],
-  ['interfata', OPEN_END + mid(STORM_OUT.interfata)],
+const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'BREAKUP', 'STORM', 'REFORM', 'HOME_IDLE']);
+/** Întâmpinarea „Fire → Furtună → Home”: formarea din fire, ruperea, furtuna și reconstrucția bulei (aici, bula din laborator). */
+const JUMP_FIRE: [FireState, number][] = [
+  ['LINE_BUILD', 1100],
+  ['WELCOME_IDLE', 3200],
+  ['BREAKUP', OPEN_END + 450],
+  ['STORM', OPEN_END + 1400],
+  ['REFORM', OPEN_END + 3000],
+  ['HOME_IDLE', OPEN_END + FIRE_EXIT_MS],
 ];
-type AnyPhase = PhaseName | StormPhase;
-const labelOf = (p: AnyPhase, welcome = false) => (welcome && p in STORM_LABEL ? STORM_LABEL[p as StormPhase] : (PHASE_LABEL[p as PhaseName] ?? STORM_LABEL[p as StormPhase]));
+type AnyPhase = PhaseName | FireState;
+const labelOf = (p: AnyPhase) => FIRE_LABEL[p] ?? PHASE_LABEL[p as PhaseName] ?? p;
 
 export function GraphicsLab({ name, onClose }: { name: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('intampinare');
   const [run, setRun] = useState(0);
-  const [phase, setPhase] = useState<AnyPhase>('liniste');
+  const [phase, setPhase] = useState<AnyPhase>('LINE_BUILD');
   const [ended, setEnded] = useState(false);
   const [compact, setCompact] = useState(false);
   const [ui, setUi] = useState({ playing: true, speed: 1, T: 0 });
@@ -111,7 +107,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   };
   const jumps: [AnyPhase, number][] =
     mode === 'intampinare'
-      ? JUMP_STORM
+      ? JUMP_FIRE
       : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
     tl.current.closeAt = v > OPEN_END ? OPEN_END : null;
@@ -121,7 +117,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   const closeNow = () => {
     if (tl.current.closeAt != null) return;
     const T = now();
-    if (T < ENTRY_MS) return;
+    if (T < (mode === 'intampinare' ? FIRE.ready : ENTRY_MS)) return;
     tl.current.closeAt = T;
     if (!tl.current.playing) setT(T, true);
   };
@@ -166,8 +162,8 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <small>trebuie să apară doar la final</small>
             </span>
           </div>
-          {!ended && mode === 'intampinare' && webglOk() && (
-            <WelcomeStorm
+          {!ended && mode === 'intampinare' && (
+            <WelcomeFire
               key={`${mode}-${run}`}
               inline
               kicker="Ziua 12 din 342"
@@ -193,7 +189,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
           )}
           <div className={`gfx-bar ${compact ? 'compact' : ''}`}>
             <div className="gfx-phase">
-              {labelOf(phase, mode === 'intampinare')} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
+              {labelOf(phase)} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
             </div>
             <input type="range" min={0} max={TOTAL} value={Math.round(ui.T)} onChange={(e) => scrub(Number(e.target.value))} aria-label="Momentul scenei" />
             <div className="wk-btns">
@@ -209,14 +205,14 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <button className="pill" onClick={slow}>
                 {ui.speed === 1 ? 'Încet' : 'Normal'}
               </button>
-              <button className="pill" onClick={closeNow} disabled={ui.T < ENTRY_MS}>
+              <button className="pill" onClick={closeNow} disabled={ui.T < (mode === 'intampinare' ? FIRE.ready : ENTRY_MS)}>
                 Continuă (ieșire)
               </button>
             </div>
             <div className="wk-btns gfx-jumps">
               {jumps.map(([p, at]) => (
                 <button key={p} className={`pill ${phase === p ? 'on' : ''}`} onClick={() => jump(p, at)}>
-                  {labelOf(p, mode === 'intampinare')}
+                  {labelOf(p)}
                 </button>
               ))}
             </div>

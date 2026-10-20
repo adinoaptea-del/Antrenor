@@ -73,7 +73,7 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
       const R = Math.min(W, H) * 0.37 * (1 + 0.06 * burst);
       // În transfer: volumul vine din materia ajunsă, iar particulele se desenează doar după ce au ajuns.
       const link = linked();
-      drawOrbBody(ctx, t, cx, cy, R, dpr, link ? orbLink.body : 1, W, H);
+      drawOrbBody(ctx, t, cx, cy, R, dpr, link ? orbLink.body : 1, W, H, link ? orbLink.reveal : 1);
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < visibleN; i++) {
         if (link && !orbLink.arrived?.[i]) continue;

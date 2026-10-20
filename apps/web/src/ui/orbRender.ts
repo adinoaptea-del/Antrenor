@@ -1,5 +1,5 @@
 /**
- * Sfera AIRON: modelul și desenul ei, comune bulei de pe Acasă (ui/Orb.tsx) și întâmpinării (ui/WelcomeSphere.tsx).
+ * Sfera AIRON: modelul și desenul ei, comune bulei de pe Acasă (ui/Orb.tsx) și întâmpinării (ui/WelcomeFire.tsx).
  * Aceeași sămânță = aceleași particule: particula i din întâmpinare este particula i din bula de Acasă (aceeași fază
  * orbitală, aceeași culoare, aceeași adâncime). Așa transferul nu are două sfere între care să facă crossfade: fiecare
  * particulă pleacă dintr-o sferă și ajunge exact unde o desenează cealaltă.
@@ -136,7 +136,7 @@ export function drawOrbParticle(ctx: CanvasRenderingContext2D, q: OrbParticle, a
  * Corpul sferei fără particule: haloul, membrana (contururi deformate) și firele interioare.
  * `body` 0..1 = cât din volum e prezent (întâmpinarea îl pierde, bula de Acasă îl capătă).
  */
-export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number, cy: number, R: number, unit: number, body: number, W: number, H: number) {
+export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number, cy: number, R: number, unit: number, body: number, W: number, H: number, reveal = 1) {
   if (body <= 0.005) return;
   const shellK = Math.pow(body, 1.6);
   const g = ctx.createRadialGradient(cx, cy, R * 0.5, cx, cy, R * 1.6);
@@ -169,6 +169,12 @@ export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number
     const c0 = orbColAt(Math.PI * 1.25, k / layers),
       c1 = orbColAt(0.75, k / layers);
     const strong = k === 0 ? 1 : k === 1 ? 0.7 : 0.45;
+    // Reconstrucția (întâmpinarea): firele se lungesc pe măsură ce se atașează praful; altfel, contur întreg.
+    if (reveal < 1) {
+      const len = 2 * Math.PI * R * sc * 1.1;
+      ctx.setLineDash([len * reveal, len]);
+      ctx.lineDashOffset = -len * ((k * 0.21) % 1);
+    }
     const stroke = (lw: number, al: number) => {
       const lg = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
       lg.addColorStop(0, `rgba(${c0[0]},${c0[1]},${c0[2]},${al * 0.8})`);
@@ -181,6 +187,7 @@ export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number
     stroke(10, 0.07 * strong);
     stroke(2.2, 0.16 * strong);
     stroke(0.8, 0.5 * strong);
+    if (reveal < 1) ctx.setLineDash([]);
   }
   // Fire interioare: arce scurte, slabe, care se rotesc încet — volum, nu orbite.
   for (let k = 0; k < 7; k++) {
@@ -199,7 +206,7 @@ export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number
       else ctx.lineTo(X, Y);
     }
     const c = orbColAt(st + len / 2, k / 7);
-    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.1)`;
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${(0.1 * reveal).toFixed(3)})`;
     ctx.lineWidth = 1.1 * unit;
     ctx.stroke();
   }
@@ -210,7 +217,7 @@ export function drawOrbBody(ctx: CanvasRenderingContext2D, t: number, cx: number
  * Legătura dintre întâmpinare și bula reală de Acasă pe durata transferului: ceasul comun (aceeași fază orbitală) și
  * ce particule au ajuns (bula le desenează pe acelea, întâmpinarea pe celelalte). Inactiv = bula se desenează normal.
  */
-export const orbLink: { active: boolean; el: HTMLElement | null; t: number; arrived: Uint8Array | null; body: number } = { active: false, el: null, t: 0, arrived: null, body: 1 };
+export const orbLink: { active: boolean; el: HTMLElement | null; t: number; arrived: Uint8Array | null; body: number; reveal: number } = { active: false, el: null, t: 0, arrived: null, body: 1, reveal: 1 };
 
 /** Bulele montate își înregistrează progresul (mersul), ca transferul să țintească exact particulele vizibile. */
 export const orbRegistry = new WeakMap<HTMLElement, { prog: () => number | null; time: () => number }>();

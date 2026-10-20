@@ -2,12 +2,11 @@ import { useState } from 'react';
 import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
-import { WelcomeSphere } from './WelcomeSphere';
-import { WelcomeStorm, webglOk } from './WelcomeStorm';
+import { WelcomeFire } from './WelcomeFire';
 
 /**
- * Întâmpinarea de la intrarea în aplicație: sfera vie (ui/WelcomeSphere.tsx), aceeași cu bula de Acasă, pe fundal
- * cosmic opac; la „Continuă” materia ei construiește bula de Acasă. Rămâne până la „Continuă” (sau „Sari peste”).
+ * Întâmpinarea de la intrarea în aplicație: „Fire → Furtună → Home” (ui/WelcomeFire.tsx), pe fundal cosmic opac; la
+ * „Continuă” firele se rup în praf, iar praful reconstruiește bula de Acasă. Rămâne până la „Continuă” (sau „Sari peste”).
  */
 const SHOWN_KEY = 'airon-welcome-at';
 /**
@@ -36,22 +35,9 @@ export function Memento({ onClose }: { onClose: () => void }) {
   const me = useMe();
   const [msg] = useState(randomMotivation);
   const d = dayIndex(me);
-  // Sute de mii de particule cer WebGL; fără el (sau cu „mișcare redusă”) rămâne sfera desenată 2D.
-  const [storm] = useState(() => webglOk() && !(typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches));
   const close = () => {
     markWelcome();
     onClose();
   };
-  const kicker = d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON');
-  if (storm) return <WelcomeStorm kicker={kicker} text={msg} onClose={close} />;
-  return (
-    <WelcomeSphere
-      kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')}
-      text={msg}
-      onClose={() => {
-        markWelcome();
-        onClose();
-      }}
-    />
-  );
+  return <WelcomeFire kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} onClose={close} />;
 }

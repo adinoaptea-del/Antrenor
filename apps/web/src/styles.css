@@ -1469,11 +1469,9 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .gfx-bar.compact input[type='range'], .gfx-bar.compact .gfx-jumps, .gfx-bar.compact .tiny { display: none; }
 .gfx-bar.compact { background: linear-gradient(to top, rgba(6, 10, 10, 0.8) 60%, transparent); }
 /* Întâmpinarea-sferă (ui/WelcomeSphere.tsx): mesajul în centrul sferei, „Continuă” sub text, tot în volum. */
-.welcome-sphere .ws-box { width: 200px; gap: 8px; }
-.welcome-sphere .ws-go { top: calc(100% + 18px); }
-.welcome-sphere .cosmic-t { text-shadow: 0 0 18px rgba(7, 16, 18, 0.9); }
 /* Întâmpinarea „furtună” (ui/WelcomeStorm.tsx): straturile de desen pe tot ecranul; „Continuă” sub sferă. */
-.ws-layer { position: fixed; left: 0; top: 0; pointer-events: none; }
-.welcome-storm .ws-box { gap: 6px; }
-.welcome-storm .cosmic-t { font-size: clamp(17px, 4.8vw, 21px); text-shadow: 0 0 16px rgba(7, 16, 18, 0.95); }
-.welcome-storm .storm-go { position: fixed; transform: translateX(-50%); }
+/* Întâmpinarea „Fire → Furtună → Home”: textul în centrul liber al sferei, „Continuă” sub ea, în afara volumului. */
+.welcome-fire .wf-box { gap: 8px; }
+.welcome-fire .cosmic-t { font-size: clamp(17px, 4.9vw, 22px); text-shadow: 0 0 16px rgba(7, 16, 18, 0.95); }
+.welcome-fire .wf-go { position: fixed; transform: translateX(-50%); }
+.welcome-fire.still .wf-go { position: fixed; transform: translateX(-50%); margin: 0; }
