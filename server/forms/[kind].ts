@@ -31,7 +31,8 @@ import type { WalkProfile } from '../../src/walking/plan.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
 import { ALL_ALLERGENS } from '../../src/nutrition/foods.js';
-import { RECIPE } from '../../src/nutrition/recipes.js';
+import { RECIPE, type Slot } from '../../src/nutrition/recipes.js';
+import { LOG_KEEP_DAYS, pruneLog, recordChoice, recordConsumed, recordSuggested, type MealLog } from '../../src/nutrition/log.js';
 
 /**
  * POST /api/forms/intrare   → salvează chestionarul, programul, avizul, consimțământul; generează planul.
@@ -444,20 +445,46 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'nutritie') {
-      // Preferințele de mese: { diet, exclude, allergiesConfirmed, budget, meals } sau o alegere „Schimbă”:
-      // { alegere: { date, slot, recipeId } } (recipeId null = revine la propunere). Alergiile nu se relaxează aici.
+      // Preferințele de mese: { diet, exclude, allergiesConfirmed, budget, meals, mealTimes, snacksOk, proteinPowder,
+      // indications } sau o alegere „Schimbă”: { alegere: { date, slot, recipeId, suggested } } (recipeId null = revine la
+      // propunere), sau jurnalul (auditul v93, A84): { jurnal: { date, meals: [{ slot, recipeId }] } } = ce s-a propus azi;
+      // { consumat: { date, slot, da } } = ce a mâncat. Alergiile nu se relaxează aici. Zilele trecute nu se rescriu.
       const prefs = await loadPrefs(u.id);
       const cur = prefs.nutritie!;
+      const SLOTS = ['mic_dejun', 'pranz', 'cina', 'gustare'];
+      const isDate = (d: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(d));
+      const keepLog = (l: MealLog) => pruneLog(l, addDays(today, -LOG_KEEP_DAYS));
+      if (body.jurnal) {
+        const j = body.jurnal as { date?: string; meals?: { slot?: string; recipeId?: string }[] };
+        if (!isDate(j.date) || !Array.isArray(j.meals)) throw new HttpError(400, 'jurnal greșit');
+        // Doar ziua de azi (în fusul sportivului): o zi trecută nu se mai rescrie.
+        if (String(j.date) !== today) throw new HttpError(400, 'jurnalul se scrie doar pentru azi');
+        const meals = j.meals.filter((m) => SLOTS.includes(String(m.slot)) && RECIPE[String(m.recipeId)]).slice(0, 8).map((m) => ({ slot: String(m.slot) as Slot, recipeId: String(m.recipeId) }));
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordSuggested(cur.log ?? {}, today, meals, today)) } });
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (body.consumat) {
+        const c = body.consumat as { date?: string; slot?: string; da?: boolean | null };
+        if (!isDate(c.date) || !SLOTS.includes(String(c.slot))) throw new HttpError(400, 'consumat greșit');
+        if (String(c.date) > today || String(c.date) < addDays(today, -7)) throw new HttpError(400, 'doar ultimele 7 zile');
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c.date), String(c.slot) as Slot, c.da === true ? true : c.da === false ? false : null)) } });
+        json(res, 200, { ok: true });
+        return;
+      }
       if (body.alegere) {
-        const a = body.alegere as { date?: string; slot?: string; recipeId?: string | null };
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.date)) || !['mic_dejun', 'pranz', 'cina', 'gustare'].includes(String(a.slot))) throw new HttpError(400, 'alegere greșită');
+        const a = body.alegere as { date?: string; slot?: string; recipeId?: string | null; suggested?: string | null };
+        if (!isDate(a.date) || !SLOTS.includes(String(a.slot))) throw new HttpError(400, 'alegere greșită');
         if (a.recipeId != null && !RECIPE[String(a.recipeId)]) throw new HttpError(400, 'rețetă necunoscută');
         const choices = Object.fromEntries(Object.entries(cur.choices ?? {}).filter(([d]) => d >= addDays(today, -28)));
         const day = { ...(choices[String(a.date)] ?? {}) } as Record<string, string>;
         if (a.recipeId == null) delete day[String(a.slot)];
         else day[String(a.slot)] = String(a.recipeId);
         choices[String(a.date)] = day;
-        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, choices } });
+        // Jurnalul: înlocuirea se scrie separat de propunere (propunerea rămâne cum a fost).
+        const sug = a.suggested != null && RECIPE[String(a.suggested)] ? String(a.suggested) : null;
+        const log = String(a.date) === today ? keepLog(recordChoice(cur.log ?? {}, today, String(a.slot) as Slot, a.recipeId == null ? null : String(a.recipeId), sug)) : cur.log;
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, choices, ...(log ? { log } : {}) } });
         json(res, 200, { ok: true });
         return;
       }
@@ -471,7 +498,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const meals = ([1, 2, 3, 4].includes(mn) ? mn : 4) as 1 | 2 | 3 | 4;
       const cm = Number(body.currentMeals);
       const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, snacksOk: body.snacksOk !== false } });
+      // Orele aproximative ale meselor (minute de la miezul nopții), doar pentru 1–2 mese (A81).
+      const mealTimes = Array.isArray(body.mealTimes) ? (body.mealTimes as unknown[]).map(Number).filter((t) => Number.isInteger(t) && t >= 0 && t < 24 * 60).slice(0, 2) : (cur.mealTimes ?? null);
+      const ind = (body.indications ?? cur.indications ?? {}) as { iron?: unknown; vitaminD?: unknown };
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, mealTimes: meals <= 2 ? mealTimes : null, snacksOk: body.snacksOk !== false, proteinPowder: body.proteinPowder === true, indications: { iron: ind.iron === true, vitaminD: ind.vitaminD === true } } });
       json(res, 200, { ok: true });
       return;
     }

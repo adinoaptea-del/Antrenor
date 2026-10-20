@@ -179,6 +179,14 @@ export interface Packet {
     efort: { sedinta: string; carbohidrati_g: number; interval_g_ora: [number, number] }[];
     cost: string;
     avertizari: string[];
+    /** Metoda și ipotezele energiei (Mifflin × 1,4 + MET; marjă de produs). */
+    metoda: string[];
+    /** Țintele de carbohidrați / grăsimi pe tipul zilei, cu sursa; null = nepersonalizat. */
+    macro: { carbohidrati_g: [number, number]; carbohidrati_g_kg: [number, number]; din_efort_g: number; grasimi_g: [number, number]; explicatie: string } | null;
+    efort_note: string[];
+    /** Validarea întregii zile (inclusiv după „Schimbă”): golul rămas, mesele, bugetul. */
+    verificare: { gol_kcal: number | null; gol_proteine_g: number | null; mese: string; buget: 'ok' | 'peste' | 'necunoscut' | null; buget_conflict: string | null };
+    suplimente: string[];
   } | null;
   semnale: { boala: boolean | null; febra: boolean | null; deplasare: boolean | null; simptom_cardiac: boolean | null };
   /** Restricția activă din cod (febră, simptom cardiac, boală, durere în ultimele 2 zile); null = niciuna. */
@@ -866,6 +874,27 @@ export function buildPacket(input: CollectorInput): Packet {
           efort: input.mealsToday.fuel.map((f) => ({ sedinta: f.sessionLabel, carbohidrati_g: f.plannedG, interval_g_ora: f.carbsPerHour })),
           cost: input.mealsToday.totals.costComplete ? `~${input.mealsToday.totals.costKnown.toFixed(2)} RON` : 'incomplet (lipsesc prețuri)',
           avertizari: input.mealsToday.warnings,
+          // Auditul v93 (A77, A78, A80, A82, A83, A86): metoda, țintele de macronutrienți, verificarea zilei și suplimentele,
+          // calculate în cod; AI-ul le explică, nu le recalculează.
+          metoda: input.mealsToday.energy?.method ?? [],
+          macro: input.mealsToday.macros
+            ? {
+                carbohidrati_g: [Math.round(input.mealsToday.macros.carbs.g[0]), Math.round(input.mealsToday.macros.carbs.g[1])] as [number, number],
+                carbohidrati_g_kg: input.mealsToday.macros.carbs.gPerKg,
+                din_efort_g: input.mealsToday.macros.carbs.fromFuel,
+                grasimi_g: [Math.round(input.mealsToday.macros.fat.g[0]), Math.round(input.mealsToday.macros.fat.g[1])] as [number, number],
+                explicatie: input.mealsToday.macros.explain,
+              }
+            : null,
+          efort_note: input.mealsToday.fuelNotes,
+          verificare: {
+            gol_kcal: input.mealsToday.check.energy?.gap ?? null,
+            gol_proteine_g: input.mealsToday.check.protein?.gap ?? null,
+            mese: `${input.mealsToday.check.meals.main} principale + ${input.mealsToday.check.meals.extra} în plus (alese: ${input.mealsToday.check.meals.promised})`,
+            buget: input.mealsToday.check.budget.status,
+            buget_conflict: input.mealsToday.check.budget.conflict,
+          },
+          suplimente: input.mealsToday.supplements.map((s) => s.text),
         }
       : null,
     nutritie_ieri: nutYesterday ? { kcal: nutYesterday.kcal, carbohidrati_g: nutYesterday.carbohidrati_g, proteine_g: nutYesterday.proteine_g, apa_l: nutYesterday.apa_l } : null,

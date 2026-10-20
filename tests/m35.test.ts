@@ -45,7 +45,7 @@ test('E02: 2 mese principale (prânz + cină) cu gustări acceptate; fără gust
   assert.ok(two.meals.some((m) => m.label === 'Gustare în jurul antrenamentului'));
   const noSnack = nutritionDay({ ...base, prefs: { ...DEFAULT_PREFS, meals: 2, snacksOk: false } });
   assert.ok(!noSnack.meals.some((m) => m.label.startsWith('Gustare în jurul')));
-  assert.ok(noSnack.warnings.some((w) => /nu încape în porții realiste: lipsesc ~\d+ kcal\. Nu tai din necesar/.test(w)));
+  assert.ok(noSnack.warnings.some((w) => /nu încape în porții realiste: lipsesc ~[\d.]+ kcal\. Nu tai din necesar/.test(w)));
   assert.equal(Math.round(noSnack.energy!.target), Math.round(two.energy!.target), 'numărul de mese nu scade necesarul');
   assert.equal(nutritionDay({ ...base, prefs: { ...DEFAULT_PREFS, meals: 1 } }).meals[0]!.slot, 'cina');
 });
