@@ -42,7 +42,9 @@ describe('obiective doar de alergare', () => {
     assert.ok(all.every((w) => w.sport === 'alergare' || w.sport === 'forta'));
     assert.ok(all.some((w) => (w.structure ?? '').includes('4:59/km')));
     const longest = Math.max(...all.filter((w) => w.type === 'lung').map((w) => w.plannedMinutes));
-    assert.ok(longest <= 180 && longest >= 150, `ieșirea lungă maximă ${longest}`);
+    // Auditul v93, A97: descărcarea se numără pe tot planul (3 + 1), deci într-un plan de 25 de săptămâni sunt mai multe
+    // săptămâni de descărcare decât cu numărătoarea pe faze; ieșirea lungă ajunge ceva mai jos, fără să treacă de 3 h.
+    assert.ok(longest <= 180 && longest >= 140, `ieșirea lungă maximă ${longest}`);
   });
 
   it('de la 40 de ani descărcarea vine la a treia săptămână din fază', () => {

@@ -154,8 +154,11 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const measured = input.historyHoursPerWeek.filter((h) => h > 0);
   const declaredUsed = !measured.length && (input.declaredRecentHours ?? 0) > 0;
   const history = declaredUsed ? [input.declaredRecentHours!] : measured;
-  const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
-  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : 0;
+  // Auditul v93, A25: săptămânile cu 0 intră în medie (o pauză e istoric real, nu lipsă de date); altfel 6, 0, 0, 6
+  // ar arăta ca 6 h constant și doza de start ar fi dublă.
+  const histWeeks = declaredUsed ? 1 : input.historyHoursPerWeek.length;
+  const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / histWeeks : 0;
+  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / input.historyHoursPerWeek.length : 0;
 
   // Obiectiv prea aproape: nu comprimăm mecanic luni de pregătire în câteva săptămâni (auditul T12). Pragurile sunt
   // decizii de produs AIRON (prudente, nu standarde): debutant = fără istoric de antrenament sau debutant declarat.
@@ -181,7 +184,10 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // A treia ședință de forță (PPL) doar când programul total o permite: un singur sport de la 5 h/săpt., triatlon de la 12 h.
   // 30/15: istoricul consistent e condiția de plan; un test de bicicletă calibrează intensitatea, nu deblochează singur
   // protocolul (auditul v2, V2-08). Toleranța la intervale se verifică înaintea fiecărei ședințe (progression.ts).
-  input = { ...input, experiencedBike: measuredAvg >= 6, strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
+  // A26: experiența pe bicicletă se judecă din bicicletă (ședințe măsurate în ultimele 6 săptămâni sau cea mai lungă tură
+  // declarată), nu din orele totale: 7 h de alergare nu fac pe cineva gata de 30/15.
+  const bikeSessions = input.demonstrated?.n.bicicleta ?? 0;
+  input = { ...input, experiencedBike: measuredAvg >= 6 && (bikeSessions >= 6 || (input.level?.longestRideH ?? 0) >= 2), strengthSlots: input.strengthSlots ?? ((kind === 'tri' ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === 'run';
   // La alergare, ieșirea lungă pornește de la ce poate sportivul acum (nu de la zero, nici peste).
   const startLong = runGoal ? runStartLong(input.goal as RunGoal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
@@ -209,6 +215,10 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const maxBlock = Math.max(0, ...budget.blocks.map((b) => b.endMin - b.startMin)) - CHANGE_MIN;
   let longCapNoted = false;
 
+  // A98: testul de evaluare (date lipsă, ex. CSS) care cade într-o săptămână de descărcare se mută în săptămâna
+  // următoare (nu dispare). Reluarea periodică de la începutul baza2/build nu se mută: vine la faza următoare, iar
+  // săptămâna următoare își păstrează calitatea (progresia pe familii are nevoie de expuneri).
+  weeks = weeks.map((w, i) => (i > 0 && weeks[i - 1]!.recovery && weeks[i - 1]!.phase === 'evaluare' && !w.recovery ? { ...w, testCarry: { phase: weeks[i - 1]!.phase, weekInPhase: weeks[i - 1]!.weekInPhase } } : w));
   for (const pw of weeks) {
     const ph = hours[pw.phase];
     let target: number;
@@ -249,6 +259,10 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     const plannedHours = round1(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
     // Distribuția explicată (auditul M35, V02): ședințe în toate cele 7 zile = minimul pe sport, scurte, nu timp umplut.
     const days = new Set(placed.workouts.map((w) => w.date)).size;
+    // A25: prima săptămână mult peste media reală → se spune, cu cifrele (nu se ascunde saltul).
+    if (out.length === 0 && avgHistory > 0 && plannedHours > avgHistory * 1.3) {
+      placed.notes.push(`Prima săptămână are ${plannedHours} h, peste media ta din ultimele săptămâni (${round1(avgHistory)} h, cu săptămânile fără antrenament incluse): minimul pe sport cere asta. Dacă e prea mult, spune și scurtăm ședințele ușoare.`);
+    }
     if (days >= 7 && out.length === 0) {
       const mins = Object.entries(minCount).map(([sp, n]) => `${n} × ${({ inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'forță' } as Record<string, string>)[sp]}`).join(', ');
       placed.notes.push(`De ce în fiecare zi: obiectivul cere cel puțin ${mins} pe săptămână; ședințele sunt scurte (${Math.min(...placed.workouts.map((w) => w.plannedMinutes))}–${Math.max(...placed.workouts.map((w) => w.plannedMinutes))} min) ca să construiască obișnuința, nu ca să umple timpul liber (${round1(plannedHours)} h din ${budget.hours} h). Dacă vrei o zi liberă, mută o ședință scurtă în aceeași zi cu alta.`);
@@ -595,7 +609,8 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
     });
   }
 
-  const tests = beginner ? [] : fieldTests(pw, input, ['alergare']);
+  // Săptămâna cu final la efort de cursă rămâne cu un singur stimul greu: testul nu intră în ea.
+  const tests = beginner || longFinish ? [] : fieldTests(pw, input, ['alergare']);
   for (const t of tests) {
     const easy = s.findIndex((x) => x.sport === 'alergare' && x.type === 'z2' && !x.key);
     if (easy >= 0) s.splice(easy, 1, t);
@@ -761,9 +776,11 @@ function weekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRide: num
     s.push(longRunOf(pw, prog.longRun, 'ușor'));
   }
 
-  // Testele înlocuiesc o ședință ușoară a aceluiași sport din săptămâna lor.
+  // Testele înlocuiesc calitatea aceluiași sport din săptămâna lor (testul e stimulul greu; A98: așa nu depășesc
+  // plafonul de 3 grele și nu ajung înmuiate); fără calitate, o ședință ușoară.
   for (const t of fieldTests(pw, input, ['inot', 'bicicleta', 'alergare'])) {
-    const easy = s.findIndex((x) => x.sport === t.sport && (x.type === 'z2' || x.type === 'tehnica') && !x.key);
+    const q = s.findIndex((x) => x.sport === t.sport && x.type === 'calitate');
+    const easy = q >= 0 ? q : s.findIndex((x) => x.sport === t.sport && (x.type === 'z2' || x.type === 'tehnica') && !x.key);
     if (easy >= 0) s.splice(easy, 1, t);
     else s.push(t);
   }
@@ -811,7 +828,10 @@ function qualitySession(allowed: IntensityAllowed, phase: Phase, age: number | n
     const prag: Session = { sport: 'alergare', type: 'calitate', minutes, zones: [4], key: true, priority: 3, structure: `5 × 6 min la prag (Z4), 2 min ușor între${CTRL}`, intervals: { count: 5, minutes: 6, zone: 4 } };
     // 4×4 norvegian (NTNU): VO2max, o dată pe săptămână, doar cu aviz și fără limită de vârstă pentru Z5.
     const fourByFour: Session = { sport: 'alergare', type: 'calitate', minutes: Math.max(minutes, 45), zones: [5], key: true, priority: 3, structure: `4 × 4 min la 90–95% din pulsul maxim (4×4 norvegian, Z5), 3 min ușor între${CTRL}`, intervals: { count: 4, minutes: 4, zone: 5 } };
-    if (capZ4) return prag;
+    // Auditul v93, A28: cu plafon Z4 (aviz sau vârstă), 4×4 se înlocuiește cu o doză COMPARABILĂ (4 × 4 min la prag,
+    // 16 min de lucru), nu cu 5 × 6 min (30 min) — „mai puțin intens” nu trebuie să însemne mai mult lucru.
+    const fourByFourZ4: Session = { ...fourByFour, minutes, zones: [4], structure: `4 × 4 min la prag (Z4), 3 min ușor între${CTRL}`, intervals: { count: 4, minutes: 4, zone: 4 } };
+    if (capZ4) return phase === 'build' && weekInPhase % 2 === 0 ? prag : fourByFourZ4;
     // Build: o săptămână prag, una 4×4; peak: 4×4.
     if (phase === 'build') return weekInPhase % 2 === 1 ? fourByFour : prag;
     return fourByFour;
@@ -826,8 +846,9 @@ function fieldTests(pw: PhaseWeek, input: GenerateInput, sports: Sport[]): Sessi
   if (pw.recovery || input.intensityAllowed !== 'toate' || (age != null && age >= 55)) return [];
   const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
   const out: Session[] = [];
-  const due = (sport: Sport, week: number) =>
-    (pw.phase === 'evaluare' && pw.weekInPhase === week && !have[sport as 'alergare' | 'bicicleta' | 'inot']) || ((pw.phase === 'baza2' || pw.phase === 'build') && pw.weekInPhase === 0);
+  const dueAt = (w: { phase: Phase; weekInPhase: number }, sport: Sport, week: number) =>
+    (w.phase === 'evaluare' && w.weekInPhase === week && !have[sport as 'alergare' | 'bicicleta' | 'inot']) || ((w.phase === 'baza2' || w.phase === 'build') && w.weekInPhase === 0);
+  const due = (sport: Sport, week: number) => dueAt(pw, sport, week) || (pw.testCarry != null && dueAt(pw.testCarry, sport, week));
   if (sports.includes('alergare') && due('alergare', 1)) out.push({ sport: 'alergare', type: 'calitate', minutes: 50, zones: [4, 5], key: true, priority: 2.5, structure: RUN_TEST(15, 30, 5) });
   if (sports.includes('bicicleta') && due('bicicleta', 1)) out.push({ sport: 'bicicleta', type: 'calitate', minutes: 55, zones: [4, 5], key: true, priority: 2.5, structure: BIKE_TEST(25, 10) });
   if (sports.includes('inot') && input.swimContinuous400 && due('inot', 2)) out.push({ sport: 'inot', type: 'calitate', minutes: 40, zones: [4, 5], key: true, priority: 2.5, structure: 'TEST CSS: încălzire, 400 m tare, 5 min pauză, 200 m tare; notează timpii' });

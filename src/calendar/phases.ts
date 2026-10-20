@@ -227,6 +227,8 @@ export interface PhaseWeek {
   weekInPhase: number;
   /** Săptămână de descărcare (a 4-a din fiecare fază, în afara taper-ului). */
   recovery: boolean;
+  /** Auditul v93, A98: săptămâna de descărcare de dinainte; testul de teren căzut în ea se mută aici. */
+  testCarry?: { phase: Phase; weekInPhase: number };
 }
 
 const ORDER: Phase[] = ['evaluare', 'baza1', 'baza2', 'build', 'peak', 'taper'];
@@ -293,15 +295,16 @@ export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 
   const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined);
   const weeks: PhaseWeek[] = [];
   let index = 0;
+  // Auditul v93, A97: descărcarea se numără pe tot planul (săptămâni încărcate de la ultima descărcare), nu de la zero
+  // în fiecare fază — altfel o evaluare de 3 săptămâni + baza1 pot face 6–7 săptămâni fără descărcare.
+  let loaded = 0;
   for (const phase of ORDER) {
     for (let w = 0; w < lengths[phase]; w++) {
-      weeks.push({
-        weekStart: addDays(first, index * 7),
-        index,
-        phase,
-        weekInPhase: w,
-        recovery: phase !== 'taper' && w % recoveryEvery === recoveryEvery - 1,
-      });
+      // Politica explicită: 3 încărcate + 1 descărcare (la 3 de la 40 de ani: 2 + 1), numărate pe tot planul; fără
+      // descărcare în peak și taper (taper-ul e deja reducerea dinaintea cursei).
+      const recovery = phase !== 'taper' && phase !== 'peak' && loaded >= recoveryEvery - 1;
+      weeks.push({ weekStart: addDays(first, index * 7), index, phase, weekInPhase: w, recovery });
+      loaded = recovery ? 0 : loaded + 1;
       index += 1;
     }
   }

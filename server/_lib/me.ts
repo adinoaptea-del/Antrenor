@@ -26,7 +26,7 @@ import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
-import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, toWorkoutRow, type UserRow } from './collect.js';
+import { latestCssTest, loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, toWorkoutRow, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
@@ -196,12 +196,13 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const balance = balanceCheck(today, planned, activities, user.goal && user.goal in GOAL_NAME ? GOAL_NAME[user.goal as Goal] : (user.goal ?? 'cursă'));
   for (const a of balance.avertismente) warnings.push({ title: a.titlu, text: a.text, fix: a.ce_faci });
 
-  const testRow = await one<{ results: TestsForm }>('tests', { user_id: `eq.${userId}` }, { order: 'tested_at.desc' });
+  const [testRow, cssTest] = await Promise.all([one<{ results: TestsForm }>('tests', { user_id: `eq.${userId}` }, { order: 'tested_at.desc' }), latestCssTest(userId)]);
   const bodyRow = await one<{ date: string; weight_kg: number | null; body_fat_pct: number | null }>('wellness_daily', { user_id: `eq.${userId}`, source: 'eq.manual', weight_kg: 'not.is.null' }, { order: 'date.desc' });
   const baseline: Me['baseline'] = {
     labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? undefined, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
     labsCompare: labsRow ? compareLabs(labSnapshot(labsRow), labsRows[1] ? labSnapshot(labsRows[1]) : null) : null,
     tests: testRow?.results ?? null,
+    cssTest,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
     cardiolog: avizState,
   };

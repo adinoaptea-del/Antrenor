@@ -2,7 +2,7 @@
 import { applyAway } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs } from './prefs.js';
 import { insert, one, remove, rpc, select, update, upsert } from './db.js';
-import { loadActivities, loadForms, loadPlan, loadZones, toWorkoutRow } from './collect.js';
+import { latestCssTest, loadActivities, loadForms, loadPlan, loadZones, toWorkoutRow } from './collect.js';
 import { carryAdjustments, planSignature, weekTotals } from '../../src/calendar/regen-carry.js';
 import { loadSchedules } from './agents.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
@@ -211,7 +211,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const prefs = await loadPrefs(userId);
   // Capacitatea la înot cu proveniență: măsurată (ceas) sau declarată; necunoscut rămâne null (V2-04).
   const recentActs = dedupeActivities(await loadActivities(userId, addDays(today, -56)).catch(() => []));
-  const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), activities: recentActs, today });
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), css: (await latestCssTest(userId))?.css ?? null, activities: recentActs, today });
+  const dem = demonstrated(recentActs, today);
   const result: GenerateResult = generatePlan({
     walk: walk ? { profile: prefs.mers!, demonstratedMin: await walkDemonstrated(userId, today) } : undefined,
     fixed: prefs.fixe,
@@ -229,7 +230,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },
-    demonstrated: demonstrated(recentActs, today),
+    demonstrated: dem,
     run: isRunGoal(intake.obiectiv)
       ? {
           // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
@@ -237,7 +238,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
           canDoDistance: intake.alergare?.poateDistanta ?? null,
           longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
           branch: runBranch(intake),
-          beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm),
+          beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm, dem.longest.alergare ?? null),
         }
       : undefined,
   });

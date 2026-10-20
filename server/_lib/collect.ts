@@ -240,6 +240,13 @@ export async function loadForms(userId: string, today: string): Promise<{ mornin
   return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null, incidents };
 }
 
+/** Auditul v93, A102: CSS-ul care contează la capacitatea de înot = ultimul test cu CSS (proveniență: test). */
+export async function latestCssTest(userId: string): Promise<{ css: number; data: string } | null> {
+  const row = await one<{ results: { css?: number | string | null } | null; tested_at: string }>('tests', { user_id: `eq.${userId}`, 'results->>css': 'not.is.null' }, { order: 'tested_at.desc' }).catch(() => null);
+  const css = Number(row?.results?.css);
+  return row && Number.isFinite(css) && css > 0 ? { css, data: row.tested_at } : null;
+}
+
 export async function loadZones(userId: string): Promise<ZonesInput | null> {
   const z = await one<{ run_hr_zones: number[] | null; run_threshold_pace_sec_km: number | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; hr_max_test: number | null; tested_at: string | null; source: string | null }>('zones', { user_id: `eq.${userId}` });
   if (!z || z.source === 'provizoriu') return null; // zonele provizorii nu intră în pachet: „estimările ceasului nu intră”

@@ -109,7 +109,7 @@ function soften(w: PlannedWorkout, why: string): PlannedWorkout {
   return { ...w, type: w.sport === 'inot' ? 'tehnica' : 'z2', key: false, targetZones: w.sport === 'inot' ? [1, 2] : [2], intervals: undefined, structure: w.sport === 'inot' ? 'tehnică și bucăți ușoare' : undefined, note: why };
 }
 /** Ce se înmoaie primul când sunt prea multe ședințe grele: înotul, apoi bicicleta, apoi restul (cheile la urmă). */
-const SOFTEN_ORDER = (w: PlannedWorkout) => (w.key ? 10 : 0) + (w.sport === 'inot' ? 0 : w.sport === 'bicicleta' ? 1 : 2) + ((w.structure ?? '').startsWith('TEST') ? 5 : 0);
+const SOFTEN_ORDER = (w: PlannedWorkout) => (w.key ? 10 : 0) + (w.sport === 'inot' ? 0 : w.sport === 'bicicleta' ? 1 : 2) + ((w.structure ?? '').startsWith('TEST') ? 50 : 0); // A98: testul de teren se înmoaie ultimul
 
 /**
  * Principiul Sang adaptat la triatlon (regulă de produs v1): cel mult 3 ședințe grele pe săptămână, adunate pe toate

@@ -97,6 +97,8 @@ export interface MeBaseline {
   /** Comparația ultimului buletin cu cel anterior (calculată pe server). */
   labsCompare?: LabsComparison | null;
   tests: TestsForm | null;
+  /** Auditul v93, A102: ultimul CSS dintr-un test (orice test, nu doar cel mai recent); aceeași sursă pe server și în aplicație. */
+  cssTest?: { css: number; data: string } | null;
   body: BodyForm | null;
   /** 'da' = aviz declarat de sportiv; 'nu' = medicul a limitat efortul; null = necunoscut (nu blochează). */
   cardiolog: 'da' | 'nu' | 'programat' | null;

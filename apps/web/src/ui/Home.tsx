@@ -9,7 +9,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
-import { swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
+import { cssOf, swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
@@ -154,7 +154,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
                 {done && <span className="orb-ok">{Icons.check}</span>}
                 {titleOf(w)}
               </b>
-              <small>{done ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}</small>
+              <small>{done ? 'făcut' : subOf(w, cssOf(me), swimCapOf(me), swimRecentMaxOf(me))}</small>
             </span>
           );
         })}
@@ -170,7 +170,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         {today.length > shown.length && <span className="orb-sub">+{today.length - shown.length} în listă</span>}
       </>
     );
-    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}`).join('; ')}. Deschide detaliile.`;
+    orbLabel = `Antrenamentele de azi: ${today.map((w) => `${titleOf(w)}, ${isDone(w) ? 'făcut' : subOf(w, cssOf(me), swimCapOf(me), swimRecentMaxOf(me))}`).join('; ')}. Deschide detaliile.`;
   }
 
   return (
@@ -206,7 +206,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
               <button key={w.id} className="row-card" data-wid={w.id} onClick={() => openSheet(w, today)}>
                 <span>
                   <b>{titleOf(w)}</b>
-                  <small>{isDone(w) ? 'făcut' : subOf(w, me.baseline.tests?.css ?? null, swimCapOf(me), swimRecentMaxOf(me))}</small>
+                  <small>{isDone(w) ? 'făcut' : subOf(w, cssOf(me), swimCapOf(me), swimRecentMaxOf(me))}</small>
                 </span>
                 {Icons.chevronRight}
               </button>

@@ -448,15 +448,12 @@ function phaseWeeks(startDate, raceDate, recoveryEvery = 4, goal) {
   const lengths = phaseLengths(total2, goal ? taperWeeksFor(goal) : void 0);
   const weeks = [];
   let index = 0;
+  let loaded = 0;
   for (const phase of ORDER) {
     for (let w = 0; w < lengths[phase]; w++) {
-      weeks.push({
-        weekStart: addDays(first2, index * 7),
-        index,
-        phase,
-        weekInPhase: w,
-        recovery: phase !== "taper" && w % recoveryEvery === recoveryEvery - 1
-      });
+      const recovery = phase !== "taper" && phase !== "peak" && loaded >= recoveryEvery - 1;
+      weeks.push({ weekStart: addDays(first2, index * 7), index, phase, weekInPhase: w, recovery });
+      loaded = recovery ? 0 : loaded + 1;
       index += 1;
     }
   }
@@ -2219,8 +2216,10 @@ function planTarget(goal, tinta, current, weeks) {
   }
   return { targetSec, planSec: null, paceSecKm: null, adjusted: true, verdict };
 }
-function isBeginnerRunner(longestRunKm) {
-  return longestRunKm != null && longestRunKm < 3;
+function isBeginnerRunner(longestRunKm, measuredLongestMin) {
+  if (longestRunKm != null) return longestRunKm < 3 && !((measuredLongestMin ?? 0) >= 20);
+  if (measuredLongestMin != null) return measuredLongestMin < 20;
+  return true;
 }
 var ELITE_SEC, STRONG_AMATEUR_SEC, GAIN_PER_MONTH, GAIN_CAP, fmtPace2;
 var init_run_target = __esm({
@@ -4312,7 +4311,7 @@ var init_validate = __esm({
     INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
     SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
     EASY_NOTE = "u\u0219or: l\xE2ng\u0103 alt\u0103 \u0219edin\u021B\u0103 grea (zi tare, zi u\u0219oar\u0103)";
-    SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 5 : 0);
+    SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 50 : 0);
   }
 });
 
@@ -4937,8 +4936,9 @@ function generatePlan(input) {
   const measured = input.historyHoursPerWeek.filter((h2) => h2 > 0);
   const declaredUsed = !measured.length && (input.declaredRecentHours ?? 0) > 0;
   const history = declaredUsed ? [input.declaredRecentHours] : measured;
-  const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
-  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : 0;
+  const histWeeks = declaredUsed ? 1 : input.historyHoursPerWeek.length;
+  const avgHistory = history.length ? history.reduce((a, b) => a + b, 0) / histWeeks : 0;
+  const measuredAvg = measured.length ? measured.reduce((a, b) => a + b, 0) / input.historyHoursPerWeek.length : 0;
   const beginner = !!input.run?.beginner || (isSwimGoal(input.goal) ? !input.swimContinuous400 : avgHistory === 0);
   const need = MIN_WEEKS2[input.goal];
   if (need && weeks.length < need[beginner ? 0 : 1]) {
@@ -4954,7 +4954,8 @@ function generatePlan(input) {
   const firstPhase = weeks[0].phase;
   let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
   const kind = goalKind(input.goal) ?? "tri";
-  input = { ...input, experiencedBike: measuredAvg >= 6, strengthSlots: input.strengthSlots ?? ((kind === "tri" ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
+  const bikeSessions = input.demonstrated?.n.bicicleta ?? 0;
+  input = { ...input, experiencedBike: measuredAvg >= 6 && (bikeSessions >= 6 || (input.level?.longestRideH ?? 0) >= 2), strengthSlots: input.strengthSlots ?? ((kind === "tri" ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === "run";
   const startLong = runGoal ? runStartLong(input.goal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
   const lvl = input.level ?? {};
@@ -4969,6 +4970,7 @@ function generatePlan(input) {
   const out = [];
   const maxBlock = Math.max(0, ...budget.blocks.map((b) => b.endMin - b.startMin)) - CHANGE_MIN;
   let longCapNoted = false;
+  weeks = weeks.map((w, i) => i > 0 && weeks[i - 1].recovery && weeks[i - 1].phase === "evaluare" && !w.recovery ? { ...w, testCarry: { phase: weeks[i - 1].phase, weekInPhase: weeks[i - 1].weekInPhase } } : w);
   for (const pw of weeks) {
     const ph = hours[pw.phase];
     let target;
@@ -5005,6 +5007,9 @@ function generatePlan(input) {
     if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round12(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
     const days = new Set(placed.workouts.map((w) => w.date)).size;
+    if (out.length === 0 && avgHistory > 0 && plannedHours > avgHistory * 1.3) {
+      placed.notes.push(`Prima s\u0103pt\u0103m\xE2n\u0103 are ${plannedHours} h, peste media ta din ultimele s\u0103pt\u0103m\xE2ni (${round12(avgHistory)} h, cu s\u0103pt\u0103m\xE2nile f\u0103r\u0103 antrenament incluse): minimul pe sport cere asta. Dac\u0103 e prea mult, spune \u0219i scurt\u0103m \u0219edin\u021Bele u\u0219oare.`);
+    }
     if (days >= 7 && out.length === 0) {
       const mins = Object.entries(minCount).map(([sp, n2]) => `${n2} \xD7 ${{ inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103" }[sp]}`).join(", ");
       placed.notes.push(`De ce \xEEn fiecare zi: obiectivul cere cel pu\u021Bin ${mins} pe s\u0103pt\u0103m\xE2n\u0103; \u0219edin\u021Bele sunt scurte (${Math.min(...placed.workouts.map((w) => w.plannedMinutes))}\u2013${Math.max(...placed.workouts.map((w) => w.plannedMinutes))} min) ca s\u0103 construiasc\u0103 obi\u0219nuin\u021Ba, nu ca s\u0103 umple timpul liber (${round12(plannedHours)} h din ${budget.hours} h). Dac\u0103 vrei o zi liber\u0103, mut\u0103 o \u0219edin\u021B\u0103 scurt\u0103 \xEEn aceea\u0219i zi cu alta.`);
@@ -5263,7 +5268,7 @@ function runWeekTemplate(pw, input, prog) {
       ...longFinish ? { minutes: prog.longRun, zones: [2, 3], key: true, priority: 1, structure: `u\u0219or, cu ultimele ${finish2} min la efort de curs\u0103 (RPE 5\u20136${pace ? `, orientativ ${fmtPace4(pace)}` : ""}); s\u0103pt\u0103m\xE2na asta e singura \u0219edin\u021B\u0103 solicitant\u0103; exersezi alimentarea` } : walk != null ? { minutes: prog.longRun, zones: [2], key: true, priority: 1, structure: walkRunStructure(walk, prog.longRun) ?? "u\u0219or" } : { ...longRunOf(pw, prog.longRun, short ? "u\u0219or, conversa\u021Bional; 4 acceler\u0103ri de 20 s la final" : race === "semimaraton" || race === "maraton" ? "u\u0219or, conversa\u021Bional; exersezi alimentarea de la 75 min" : "u\u0219or, conversa\u021Bional"), priority: 1 }
     });
   }
-  const tests = beginner ? [] : fieldTests(pw, input, ["alergare"]);
+  const tests = beginner || longFinish ? [] : fieldTests(pw, input, ["alergare"]);
   for (const t of tests) {
     const easy = s.findIndex((x) => x.sport === "alergare" && x.type === "z2" && !x.key);
     if (easy >= 0) s.splice(easy, 1, t);
@@ -5403,7 +5408,8 @@ function weekTemplate(pw, input, prog) {
     s.push(longRunOf(pw, prog.longRun, "u\u0219or"));
   }
   for (const t of fieldTests(pw, input, ["inot", "bicicleta", "alergare"])) {
-    const easy = s.findIndex((x) => x.sport === t.sport && (x.type === "z2" || x.type === "tehnica") && !x.key);
+    const q2 = s.findIndex((x) => x.sport === t.sport && x.type === "calitate");
+    const easy = q2 >= 0 ? q2 : s.findIndex((x) => x.sport === t.sport && (x.type === "z2" || x.type === "tehnica") && !x.key);
     if (easy >= 0) s.splice(easy, 1, t);
     else s.push(t);
   }
@@ -5438,7 +5444,8 @@ function qualitySession(allowed, phase, age = null, weekInPhase = 0) {
     if (phase === "baza2" || phase === "taper") return { sport: "alergare", type: "calitate", minutes, zones: [3, 4], key: true, priority: 3, structure: `3 \xD7 10 min tempo (Z3\u2013Z4), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 3, minutes: 10, zone: 4 } };
     const prag = { sport: "alergare", type: "calitate", minutes, zones: [4], key: true, priority: 3, structure: `5 \xD7 6 min la prag (Z4), 2 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 5, minutes: 6, zone: 4 } };
     const fourByFour = { sport: "alergare", type: "calitate", minutes: Math.max(minutes, 45), zones: [5], key: true, priority: 3, structure: `4 \xD7 4 min la 90\u201395% din pulsul maxim (4\xD74 norvegian, Z5), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 4, minutes: 4, zone: 5 } };
-    if (capZ4) return prag;
+    const fourByFourZ4 = { ...fourByFour, minutes, zones: [4], structure: `4 \xD7 4 min la prag (Z4), 3 min u\u0219or \xEEntre${CTRL}`, intervals: { count: 4, minutes: 4, zone: 4 } };
+    if (capZ4) return phase === "build" && weekInPhase % 2 === 0 ? prag : fourByFourZ4;
     if (phase === "build") return weekInPhase % 2 === 1 ? fourByFour : prag;
     return fourByFour;
   };
@@ -5448,7 +5455,8 @@ function fieldTests(pw, input, sports) {
   if (pw.recovery || input.intensityAllowed !== "toate" || age != null && age >= 55) return [];
   const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
   const out = [];
-  const due = (sport, week) => pw.phase === "evaluare" && pw.weekInPhase === week && !have[sport] || (pw.phase === "baza2" || pw.phase === "build") && pw.weekInPhase === 0;
+  const dueAt = (w, sport, week) => w.phase === "evaluare" && w.weekInPhase === week && !have[sport] || (w.phase === "baza2" || w.phase === "build") && w.weekInPhase === 0;
+  const due = (sport, week) => dueAt(pw, sport, week) || pw.testCarry != null && dueAt(pw.testCarry, sport, week);
   if (sports.includes("alergare") && due("alergare", 1)) out.push({ sport: "alergare", type: "calitate", minutes: 50, zones: [4, 5], key: true, priority: 2.5, structure: RUN_TEST(15, 30, 5) });
   if (sports.includes("bicicleta") && due("bicicleta", 1)) out.push({ sport: "bicicleta", type: "calitate", minutes: 55, zones: [4, 5], key: true, priority: 2.5, structure: BIKE_TEST(25, 10) });
   if (sports.includes("inot") && input.swimContinuous400 && due("inot", 2)) out.push({ sport: "inot", type: "calitate", minutes: 40, zones: [4, 5], key: true, priority: 2.5, structure: "TEST CSS: \xEEnc\u0103lzire, 400 m tare, 5 min pauz\u0103, 200 m tare; noteaz\u0103 timpii" });
@@ -8135,12 +8143,13 @@ async function buildMe(userId, today) {
   void doneSwim;
   const balance = balanceCheck(today, planned, activities, user.goal && user.goal in GOAL_NAME ? GOAL_NAME[user.goal] : user.goal ?? "curs\u0103");
   for (const a of balance.avertismente) warnings.push({ title: a.titlu, text: a.text, fix: a.ce_faci });
-  const testRow = await one("tests", { user_id: `eq.${userId}` }, { order: "tested_at.desc" });
+  const [testRow, cssTest] = await Promise.all([one("tests", { user_id: `eq.${userId}` }, { order: "tested_at.desc" }), latestCssTest(userId)]);
   const bodyRow = await one("wellness_daily", { user_id: `eq.${userId}`, source: "eq.manual", weight_kg: "not.is.null" }, { order: "date.desc" });
   const baseline = {
     labs: labsRow ? { data: labsRow.drawn_at, feritina: num(labsRow.feritina), vitamina_d: num(labsRow.vitamina_d), hemoglobina: num(labsRow.hemoglobina), ck: num(labsRow.ck), crp: num(labsRow.crp), alte: labsRow.other?.valori ?? void 0, laborator: labsRow.other?.laborator ?? null, expirat: labsExpired(labsRow.drawn_at, today) } : null,
     labsCompare: labsRow ? compareLabs(labSnapshot(labsRow), labsRows[1] ? labSnapshot(labsRows[1]) : null) : null,
     tests: testRow?.results ?? null,
+    cssTest,
     body: bodyRow ? { data: bodyRow.date, greutate: num(bodyRow.weight_kg), grasime_pct: num(bodyRow.body_fat_pct) } : null,
     cardiolog: avizState
   };
@@ -9536,7 +9545,8 @@ async function generateAndStore(userId, today, intake, opts = {}) {
   const labs = await labsGate(userId);
   const prefs = await loadPrefs(userId);
   const recentActs = dedupeActivities(await loadActivities(userId, addDays(today, -56)).catch(() => []));
-  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), activities: recentActs, today });
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), css: (await latestCssTest(userId))?.css ?? null, activities: recentActs, today });
+  const dem = demonstrated(recentActs, today);
   const result = generatePlan({
     walk: walk ? { profile: prefs.mers, demonstratedMin: await walkDemonstrated(userId, today) } : void 0,
     fixed: prefs.fixe,
@@ -9554,14 +9564,14 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },
-    demonstrated: demonstrated(recentActs, today),
+    demonstrated: dem,
     run: isRunGoal(intake.obiectiv) ? {
       // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
       goalPaceSecKm: runBranch(intake) === "finalizare" ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
       canDoDistance: intake.alergare?.poateDistanta ?? null,
       longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null,
       branch: runBranch(intake),
-      beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm)
+      beginner: isBeginnerRunner(intake.alergare?.ceaMaiLungaKm, dem.longest.alergare ?? null)
     } : void 0
   });
   if (!result.ok) return { ok: false, reason: result.reason, budgetHours: result.budgetHours, options: result.options };
@@ -9830,6 +9840,11 @@ async function loadForms(userId, today) {
   ]);
   const incidents = { evenings: painRows.map((r2) => ({ ...r2.answers, date: r2.answers.date ?? r2.for_date })), mornings: cardiacRows.map((r2) => ({ ...r2.answers, date: r2.for_date })) };
   return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null, incidents };
+}
+async function latestCssTest(userId) {
+  const row = await one("tests", { user_id: `eq.${userId}`, "results->>css": "not.is.null" }, { order: "tested_at.desc" }).catch(() => null);
+  const css = Number(row?.results?.css);
+  return row && Number.isFinite(css) && css > 0 ? { css, data: row.tested_at } : null;
 }
 async function loadZones(userId) {
   const z = await one("zones", { user_id: `eq.${userId}` });

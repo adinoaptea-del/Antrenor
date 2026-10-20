@@ -225,7 +225,13 @@ export function distanceFeasibility(goal: RunGoal, longestRunKm: number | null, 
   return { ok: true, message: null, suggest: null };
 }
 
-/** Debutant sau revenire: aproape fără alergare recentă (sub 3 km cea mai lungă) — mers-alergare la început, fără ședințe rapide în bază. */
-export function isBeginnerRunner(longestRunKm: number | null | undefined): boolean {
-  return longestRunKm != null && longestRunKm < 3;
+/**
+ * Debutant sau revenire: aproape fără alergare recentă (sub 3 km cea mai lungă) — mers-alergare la început, fără ședințe
+ * rapide în bază. Auditul v93, A26: necunoscut nu înseamnă experimentat. Fără declarație, decide ce s-a măsurat (cea mai
+ * lungă alergare din ultimele 6 săptămâni, minute); fără nimic, pornim prudent (debutant) până la prima dovadă.
+ */
+export function isBeginnerRunner(longestRunKm: number | null | undefined, measuredLongestMin?: number | null): boolean {
+  if (longestRunKm != null) return longestRunKm < 3 && !((measuredLongestMin ?? 0) >= 20);
+  if (measuredLongestMin != null) return measuredLongestMin < 20;
+  return true;
 }

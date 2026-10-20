@@ -296,7 +296,7 @@ export function ago(iso: string | null, today: string): string {
 
 /** Cât înoată fără oprire: măsurat (ceas, test CSS) sau declarat; null = necunoscut (nu o valoare implicită). */
 export function swimCapOf(me: Me): number | null {
-  return swimCapacity({ declaredM: swimDeclared(me.forms.intake as Record<string, unknown> | null), css: me.baseline.tests?.css ?? null, activities: me.activities as never, today: me.today }).meters;
+  return swimCapacity({ declaredM: swimDeclared(me.forms.intake as Record<string, unknown> | null), css: cssOf(me), activities: me.activities as never, today: me.today }).meters;
 }
 
 /** Cea mai mare ședință de înot măsurată în ultimele 4 săptămâni (metri), sau null. */
@@ -311,4 +311,11 @@ export function declared400(me: Me): number | null {
   const t = (me.forms.intake as { evaluare?: { inot400?: string | null } } | null)?.evaluare?.inot400 ?? null;
   const m = /^(\d{1,2}):(\d{2})$/.exec((t ?? '').trim());
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Auditul v93, A102: același CSS ca serverul (ultimul test cu CSS); în modul local, testul salvat. */
+export function cssOf(me: Me): number | null {
+  if (me.baseline.cssTest !== undefined) return me.baseline.cssTest?.css ?? null;
+  const c = Number(me.baseline.tests?.css);
+  return Number.isFinite(c) && c > 0 ? c : null;
 }
