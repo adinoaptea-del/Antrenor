@@ -8,7 +8,10 @@ import { rescore } from '../_lib/score.js';
 import { runAgents } from '../_lib/agents.js';
 import { labsReminder } from '../_lib/reminders.js';
 import { missedStrength, moduleProgression } from '../_lib/react.js';
+import { MIGRATIONS, runOnce } from '../_lib/migrations.js';
 import { ensureSplit } from '../_lib/split.js';
+import { loadPlan } from '../_lib/collect.js';
+import { addDays } from '../../src/util/dates.js';
 
 /** Dimineața (05:30 ora României): sincronizare, scor, apoi piramida pentru fiecare sportiv cu plan și consimțământ. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -23,7 +26,14 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         await syncUser(u.id, 3);
         await rescore(u.id, today, u.goal && u.goal !== 'full' ? u.goal : '70.3');
         await labsReminder(u.id, today).catch(() => false);
-        await ensureSplit(u.id, today).catch(() => undefined);
+        // Auditul v93, A23: o singură dată pe plan (aceeași migrare ca la deschiderea aplicației).
+        await (async () => {
+          const p = await loadPlan(u.id, addDays(today, -28), addDays(today, 400));
+          await runOnce(u.id, p.planId, today, MIGRATIONS.strengthSplit, p.workouts, async (plan) => {
+            const after = await ensureSplit(u.id, today, { planId: p.planId, workouts: plan });
+            return after.filter((w, i) => w !== plan[i]);
+          });
+        })().catch(() => undefined);
         // Fitness: sala ratată ieri → rotația continuă (fără dublare), înaintea mesajului de dimineață.
         if (u.goal && u.goal.startsWith('fit-')) await missedStrength(u.id, today).catch(() => []);
         // Treptele modulelor din execuții, nu din calendar (V2-05); și „rămâne” își scrie dovezile în jurnal.

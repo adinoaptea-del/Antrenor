@@ -140,7 +140,9 @@ export async function applyPlanEvents(userId: string, today: string, planId: str
   let plan = current;
   for (const ev of events) {
     const key = eventKey(ev);
-    const claimed = await claimEvent(userId, key);
+    // Auditul v93, A22: rezervare în doi pași — marcajul „gata” se scrie doar după ce planul e salvat; o rezervare
+    // rămasă neterminată (proces oprit) se poate relua după 10 minute, nu se pierde.
+    const claimed = await claimPlanEvent(userId, key);
     if (!claimed) continue;
     const before = new Map(plan.map((w) => [w.id, JSON.stringify(w)]));
     const r = adapt(plan, ev, ctx);
@@ -151,6 +153,7 @@ export async function applyPlanEvents(userId: string, today: string, planId: str
     r.plan = r.plan.map((w) => changedIds.get(w.id) ?? w);
     try {
       if (changed.length) await upsert('workouts_planned', changed.map((w) => toWorkoutRow(w, userId, planId)), 'id');
+      await insertIgnore('agent_events', { user_id: userId, event_key: `${key}:ok` }, 'user_id,event_key').catch(() => undefined);
     } catch (e) {
       await remove('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` }).catch(() => undefined);
       throw e;
@@ -162,13 +165,40 @@ export async function applyPlanEvents(userId: string, today: string, planId: str
   return changes;
 }
 
-/** true = evenimentul e nou și a fost rezervat; false = a fost deja aplicat. Fără tabelă (schemă veche): se aplică. */
+/** De când se scrie marcajul „gata” (v101). */
+const TWO_PHASE_SINCE = '2026-10-20T15:00:00Z';
+
+/** Tabela lipsește (schemă veche): atunci, și doar atunci, evenimentul se aplică fără registru. */
+const missingTable = (e: unknown) => /does not exist|relation .*agent_events|PGRST20[45]/i.test(e instanceof Error ? e.message : String(e));
+
+/**
+ * true = evenimentul e nou și a fost rezervat; false = a fost deja aplicat. Auditul v93, A22: o eroare de bază de date
+ * NU mai înseamnă „aplică” (ar dubla efectul); doar lipsa tabelei (schemă veche) se tratează ca înainte.
+ */
 export async function claimEvent(userId: string, key: string): Promise<boolean> {
   try {
     const rows = await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key');
     return rows.length > 0;
-  } catch {
-    return true;
+  } catch (e) {
+    return missingTable(e);
+  }
+}
+
+/** Rezervarea unui eveniment de plan: nouă → da; „gata” → nu; rezervată dar neterminată de peste 10 min → se reia. */
+export async function claimPlanEvent(userId: string, key: string): Promise<boolean> {
+  try {
+    if ((await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key')).length) return true;
+    if (await one('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}:ok` })) return false;
+    const old = await one<{ applied_at: string }>('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` });
+    // Rezervările de dinainte de registrul în doi pași (fără marcaj „gata”) s-au aplicat cu vechea regulă: rămân aplicate.
+    if (old && Date.parse(old.applied_at) < Date.parse(TWO_PHASE_SINCE)) return false;
+    if (old && Date.now() - Date.parse(old.applied_at) > 10 * 60 * 1000) {
+      await remove('agent_events', { user_id: `eq.${userId}`, event_key: `eq.${key}` });
+      return (await insertIgnore('agent_events', { user_id: userId, event_key: key }, 'user_id,event_key')).length > 0;
+    }
+    return false;
+  } catch (e) {
+    return missingTable(e);
   }
 }
 

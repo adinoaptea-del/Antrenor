@@ -36,4 +36,8 @@ describe('ce a demonstrat sportivul (corecția „30 min Z2 e doză de sedentar�
     const up = raiseToDemonstrated(plan, today, demonstrated(acts, today));
     assert.deepEqual(up.map((w) => [w.id, w.plannedMinutes]), [['a', 45]]);
   });
+  it('T17/A63: după 3 săptămâni fără alergare (dar cu înot), podeaua de alergare nu se mai aplică', () => {
+    const old = acts.filter((a) => a.date <= '2026-09-28');
+    assert.equal(demonstrated(old, today).easy.alergare, undefined);
+  });
 });

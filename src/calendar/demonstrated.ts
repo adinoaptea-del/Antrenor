@@ -31,6 +31,12 @@ export function demonstrated(acts: { date: string; sport: Sport; minutes: number
     const r = RANGE[sport]!;
     const all = recent.filter((a) => a.sport === sport && a.minutes > 0);
     if (all.length) out.longest[sport] = Math.max(...all.map((a) => a.minutes));
+    // Auditul v93, A63: după o pauză pe sportul ăsta (nimic în ultimele 14 zile) podeaua nu se aplică — prima ședință
+    // după pauză nu revine la doza de dinainte; o decide regula de revenire.
+    if (!all.some((a) => diffDays(a.date, today) <= 14)) {
+      out.n[sport] = 0;
+      continue;
+    }
     const xs = all.map((a) => a.minutes).filter((m) => m >= r.lo && m <= r.hi).sort((a, b) => a - b);
     out.n[sport] = xs.length;
     if (xs.length < MIN_SESSIONS) continue;
@@ -62,7 +68,8 @@ export function longRunStart(dem: Demonstrated | undefined): number | null {
 export function raiseToDemonstrated(plan: PlannedWorkout[], today: string, dem: Demonstrated): PlannedWorkout[] {
   const out: PlannedWorkout[] = [];
   for (const w of plan) {
-    if (w.date < today || (w.status !== 'planificat' && w.status !== 'mutat') || w.key) continue;
+    // Doar de mâine încolo: ședința de azi (poate deja făcută) nu se schimbă (auditul v93, A23).
+    if (w.date <= today || (w.status !== 'planificat' && w.status !== 'mutat') || w.key) continue;
     if (w.type !== 'z2' && w.type !== 'tehnica') continue;
     if (w.note || w.suggestion?.accepted === true) continue; // schimbată de reguli sau aleasă de sportiv
     const f = easyFloor(dem, w.sport);

@@ -2039,7 +2039,7 @@ var init_engine = __esm({
 async function loadPrefs(userId) {
   const row = await one("users", { id: `eq.${userId}` }, { select: "calendar_prefs" }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === "ape" ? "ape" : "bazin", apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d) => typeof d === "string").slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...p.nutritie ?? {} }, mers: walkProfileOf(p.mers) };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === "ape" ? "ape" : "bazin", apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d) => typeof d === "string").slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...p.nutritie ?? {} }, mers: walkProfileOf(p.mers), migrari: p.migrari && typeof p.migrari === "object" ? p.migrari : {} };
 }
 function walkProfileOf(x) {
   const d = DEFAULT_WALK_PROFILE;
@@ -4520,6 +4520,10 @@ function demonstrated(acts, today, days = DEMONSTRATED_WINDOW_DAYS) {
     const r2 = RANGE[sport];
     const all2 = recent.filter((a) => a.sport === sport && a.minutes > 0);
     if (all2.length) out.longest[sport] = Math.max(...all2.map((a) => a.minutes));
+    if (!all2.some((a) => diffDays(a.date, today) <= 14)) {
+      out.n[sport] = 0;
+      continue;
+    }
     const xs = all2.map((a) => a.minutes).filter((m) => m >= r2.lo && m <= r2.hi).sort((a, b) => a - b);
     out.n[sport] = xs.length;
     if (xs.length < MIN_SESSIONS) continue;
@@ -4541,7 +4545,7 @@ function longRunStart(dem) {
 function raiseToDemonstrated(plan, today, dem) {
   const out = [];
   for (const w of plan) {
-    if (w.date < today || w.status !== "planificat" && w.status !== "mutat" || w.key) continue;
+    if (w.date <= today || w.status !== "planificat" && w.status !== "mutat" || w.key) continue;
     if (w.type !== "z2" && w.type !== "tehnica") continue;
     if (w.note || w.suggestion?.accepted === true) continue;
     const f = easyFloor(dem, w.sport);
@@ -5833,7 +5837,7 @@ function dedupeActivities(acts) {
     }
     const chosen = pickRecording(dup, a);
     const other = chosen === dup ? a : dup;
-    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details), mergedSources: [.../* @__PURE__ */ new Set([...dup.mergedSources ?? [dup.source], a.source])] };
+    kept[kept.indexOf(dup)] = { ...chosen, details: mergeDetails(chosen.details, other.details), mergedSources: [.../* @__PURE__ */ new Set([...dup.mergedSources ?? [dup.source], a.source])], mergedIds: [.../* @__PURE__ */ new Set([...dup.mergedIds ?? [dup.id], a.id])] };
   }
   return kept;
 }
@@ -6532,6 +6536,37 @@ var init_split = __esm({
   }
 });
 
+// server/_lib/migrations.ts
+async function runOnce(userId, planId, today, name, plan, fn) {
+  if (!planId) return plan;
+  const prefs = await loadPrefs(userId);
+  const key2 = `${name}@${planId}`;
+  if (prefs.migrari?.[key2]) return plan;
+  const changed = await fn(plan);
+  if (changed.length) await upsert("workouts_planned", changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+  await savePrefs(userId, { ...prefs, migrari: { ...prefs.migrari ?? {}, [key2]: today } });
+  if (changed.length) await insert("journal", { user_id: userId, date: today, entry: `migrare ${name}: ${changed.length} \u0219edin\u021Be actualizate o singur\u0103 dat\u0103` }).catch(() => void 0);
+  const byId = new Map(changed.map((w) => [w.id, w]));
+  return plan.map((w) => byId.get(w.id) ?? w);
+}
+var MIGRATIONS;
+var init_migrations = __esm({
+  "server/_lib/migrations.ts"() {
+    "use strict";
+    init_db();
+    init_prefs();
+    init_collect();
+    MIGRATIONS = {
+      /** Ce a tăiat regula veche „efort în plus” revine în plan, cu sugestie (regula 29). */
+      restoreExtraCuts: "restaurare-taieri-v1",
+      /** Ședințele ușoare viitoare urcă la ce a demonstrat sportivul (regula 30). */
+      raiseDemonstrated: "podea-demonstrat-v1",
+      /** Forța: PPL la bărbați și regulile de 45 min / 3–4 serii (regula 20). */
+      strengthSplit: "forta-split-v1"
+    };
+  }
+});
+
 // src/calendar/progression.ts
 function decideFamily(f, past, plannedStep, nextDate) {
   const name = (i) => f.steps[i].split(" (")[0];
@@ -6755,6 +6790,10 @@ function eventKey(ev) {
   }
 }
 function activitySlot(a) {
+  const ids = [.../* @__PURE__ */ new Set([a.id, ...a.mergedIds ?? []])].sort();
+  return `${a.date}:${a.sport}:${ids[0]}`;
+}
+function legacySlot(a) {
   const m = /^(\d{1,2}):(\d{2})/.exec(a.startLocal ?? "");
   return m ? `${a.date}:${a.sport}:h${Math.floor((Number(m[1]) * 60 + Number(m[2])) / 120)}` : `${a.date}:${a.sport}:id-${a.id}`;
 }
@@ -7991,16 +8030,16 @@ async function buildMe(userId, today) {
   const acts = acts0;
   const outcomeRows = await select("workout_outcomes", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select("strength_log", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: "date,exercise,sets,rir,source", order: "date.asc", limit: 500 }).catch(() => []);
-  const workouts0 = await ensureSplit(userId, today, planLoad, user.sex ?? (forms.intake?.sex ?? null), user.goal ?? null).catch(() => planLoad.workouts);
-  const restored = restoreExtraCuts(workouts0, today);
-  if (restored.length && planLoad.planId) await upsert("workouts_planned", restored.map((w) => toWorkoutRow(w, userId, planLoad.planId)), "id").catch(() => void 0);
   const activities = dedupeActivities(acts);
-  const restoredById = new Map(restored.map((w) => [w.id, w]));
-  const workouts1 = workouts0.map((w) => restoredById.get(w.id) ?? w);
-  const raised = raiseToDemonstrated(workouts1, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)));
-  if (raised.length && planLoad.planId) await upsert("workouts_planned", raised.map((w) => toWorkoutRow(w, userId, planLoad.planId)), "id").catch(() => void 0);
-  const byId = new Map(raised.map((w) => [w.id, w]));
-  const workouts = workouts1.map((w) => byId.get(w.id) ?? w);
+  const pid = planLoad.planId;
+  const sexOf = user.sex ?? (forms.intake?.sex ?? null);
+  let workouts = planLoad.workouts;
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.strengthSplit, workouts, async (plan) => {
+    const after2 = await ensureSplit(userId, today, { planId: pid, workouts: plan }, sexOf, user.goal ?? null);
+    return after2.filter((w, i) => w !== plan[i]);
+  }).catch(() => workouts);
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.restoreExtraCuts, workouts, (plan) => restoreExtraCuts(plan, today)).catch(() => workouts);
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.raiseDemonstrated, workouts, (plan) => raiseToDemonstrated(plan, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)))).catch(() => workouts);
   const planned = workouts.filter((w) => w.status !== "sters");
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
@@ -8275,6 +8314,7 @@ var init_me = __esm({
     init_run_target();
     init_db();
     init_split();
+    init_migrations();
     init_adapt();
     init_demonstrated();
     init_validate();
@@ -9256,7 +9296,7 @@ async function applyPlanEvents(userId, today, planId, current, events, doneIds, 
   let plan = current;
   for (const ev of events) {
     const key2 = eventKey(ev);
-    const claimed = await claimEvent(userId, key2);
+    const claimed = await claimPlanEvent(userId, key2);
     if (!claimed) continue;
     const before = new Map(plan.map((w) => [w.id, JSON.stringify(w)]));
     const r2 = adapt(plan, ev, ctx);
@@ -9267,6 +9307,7 @@ async function applyPlanEvents(userId, today, planId, current, events, doneIds, 
     r2.plan = r2.plan.map((w) => changedIds.get(w.id) ?? w);
     try {
       if (changed.length) await upsert("workouts_planned", changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+      await insertIgnore("agent_events", { user_id: userId, event_key: `${key2}:ok` }, "user_id,event_key").catch(() => void 0);
     } catch (e) {
       await remove("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` }).catch(() => void 0);
       throw e;
@@ -9281,8 +9322,23 @@ async function claimEvent(userId, key2) {
   try {
     const rows = await insertIgnore("agent_events", { user_id: userId, event_key: key2 }, "user_id,event_key");
     return rows.length > 0;
-  } catch {
-    return true;
+  } catch (e) {
+    return missingTable(e);
+  }
+}
+async function claimPlanEvent(userId, key2) {
+  try {
+    if ((await insertIgnore("agent_events", { user_id: userId, event_key: key2 }, "user_id,event_key")).length) return true;
+    if (await one("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}:ok` })) return false;
+    const old = await one("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` });
+    if (old && Date.parse(old.applied_at) < Date.parse(TWO_PHASE_SINCE)) return false;
+    if (old && Date.now() - Date.parse(old.applied_at) > 10 * 60 * 1e3) {
+      await remove("agent_events", { user_id: `eq.${userId}`, event_key: `eq.${key2}` });
+      return (await insertIgnore("agent_events", { user_id: userId, event_key: key2 }, "user_id,event_key")).length > 0;
+    }
+    return false;
+  } catch (e) {
+    return missingTable(e);
   }
 }
 async function acquireLock(userId, key2, staleMs) {
@@ -9318,7 +9374,7 @@ async function realign(userId, today) {
   await runAgents(userId, today, "dimineata", true);
   return true;
 }
-var FILE_MAX_LINES;
+var FILE_MAX_LINES, TWO_PHASE_SINCE, missingTable;
 var init_agents = __esm({
   "server/_lib/agents.ts"() {
     "use strict";
@@ -9338,6 +9394,8 @@ var init_agents = __esm({
     init_adapt();
     init_dates();
     FILE_MAX_LINES = 30;
+    TWO_PHASE_SINCE = "2026-10-20T15:00:00Z";
+    missingTable = (e) => /does not exist|relation .*agent_events|PGRST20[45]/i.test(e instanceof Error ? e.message : String(e));
   }
 });
 
@@ -10749,7 +10807,7 @@ async function reactToActivities(userId, today) {
   const all2 = dedupeActivities(rawLong);
   const acts = all2.filter((a) => a.date >= from && a.date <= today);
   const todayIds = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => a.id);
-  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => activitySlot(a));
+  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => ({ key: activitySlot(a), legacy: legacySlot(a) }));
   if (!planId || !acts.length) return { changes: [], todayIds, todayKeys };
   const m = matchActivities(workouts.filter((w) => w.date >= addDays(today, -3) && w.date <= today), acts, today);
   const matchedIds = new Set(m.matches.flatMap((x) => [x.activity?.id, x.extraActivity?.id]).filter(Boolean));
@@ -10815,7 +10873,10 @@ async function moduleProgression(userId, today) {
 }
 
 // server/cron/morning.ts
+init_migrations();
 init_split();
+init_collect();
+init_dates();
 async function handler6(req, res) {
   try {
     requireCron(req);
@@ -10828,7 +10889,13 @@ async function handler6(req, res) {
         await syncUser(u.id, 3);
         await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
         await labsReminder(u.id, today).catch(() => false);
-        await ensureSplit(u.id, today).catch(() => void 0);
+        await (async () => {
+          const p = await loadPlan(u.id, addDays(today, -28), addDays(today, 400));
+          await runOnce(u.id, p.planId, today, MIGRATIONS.strengthSplit, p.workouts, async (plan) => {
+            const after2 = await ensureSplit(u.id, today, { planId: p.planId, workouts: plan });
+            return after2.filter((w, i) => w !== plan[i]);
+          });
+        })().catch(() => void 0);
         if (u.goal && u.goal.startsWith("fit-")) await missedStrength(u.id, today).catch(() => []);
         else await moduleProgression(u.id, today).catch(() => []);
         const r2 = await runAgents(u.id, today, "dimineata");
@@ -10904,7 +10971,10 @@ async function handler7(req, res) {
         if (reports.length) await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
         const r2 = await reactToActivities(u.id, today);
         let fresh = false;
-        for (const k of r2.todayKeys) if (await claimEvent(u.id, `analiza:${k}`)) fresh = true;
+        for (const k of r2.todayKeys) {
+          if (await one("agent_events", { user_id: `eq.${u.id}`, event_key: `eq.analiza:${k.legacy}` }).catch(() => null)) continue;
+          if (await claimEvent(u.id, `analiza:${k.key}`)) fresh = true;
+        }
         const agent = fresh ? await runAgents(u.id, today, "dupa_antrenament", true).catch((e) => ({ eroare: e.message })) : null;
         const realiniat = agent ? false : await realign(u.id, today).catch(() => false);
         let istoric = null;

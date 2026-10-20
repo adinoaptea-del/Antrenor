@@ -2,7 +2,7 @@ import type { Goal } from '../../src/calendar/phases.js';
 import { fail, json, requireCron, todayIn } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { consentActive } from '../_lib/consent.js';
-import { select } from '../_lib/db.js';
+import { one, select } from '../_lib/db.js';
 import { syncUser } from '../_lib/sync.js';
 import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
@@ -28,7 +28,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         const r = await reactToActivities(u.id, today);
         // Antrenorul scrie după fiecare activitate nouă de azi, o singură dată pe activitate.
         let fresh = false;
-        for (const k of r.todayKeys) if (await claimEvent(u.id, `analiza:${k}`)) fresh = true;
+        // Auditul v93, A21: cheia stabilă a ședinței; o analiză trimisă deja pe cheia veche nu se repetă.
+        for (const k of r.todayKeys) {
+          if (await one('agent_events', { user_id: `eq.${u.id}`, event_key: `eq.analiza:${k.legacy}` }).catch(() => null)) continue;
+          if (await claimEvent(u.id, `analiza:${k.key}`)) fresh = true;
+        }
         const agent = fresh ? await runAgents(u.id, today, 'dupa_antrenament', true).catch((e: Error) => ({ eroare: e.message })) : null;
         // Decizia s-a schimbat după mesajul de azi: antrenorul îl rescrie, ca să spună ce decide aplicația.
         const realiniat = agent ? false : await realign(u.id, today).catch(() => false);

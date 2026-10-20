@@ -165,7 +165,17 @@ export function eventKey(ev: AdaptEvent): string {
  * pornește la câteva minute distanță). Fără oră de start: id-ul înregistrării (prudent: nu contopește ședințe).
  * Limită: două ședințe reale din același sport începute în aceeași fereastră de 2 h sunt tratate ca una.
  */
-export function activitySlot(a: { date: string; sport: string; id: string; startLocal?: string | null }): string {
+/**
+ * Cheia evenimentului unei activități (auditul v93, A21): identitatea ședinței după unirea brățărilor — cel mai mic id
+ * dintre înregistrările unite —, nu o fereastră fixă de 2 ore (două ședințe reale în aceeași fereastră rămân două; aceeași
+ * ședință văzută la 07:58 și 08:02 rămâne una).
+ */
+export function activitySlot(a: { date: string; sport: string; id: string; mergedIds?: string[] | null }): string {
+  const ids = [...new Set([a.id, ...(a.mergedIds ?? [])])].sort();
+  return `${a.date}:${a.sport}:${ids[0]}`;
+}
+/** Cheia veche (fereastră de 2 ore), doar ca să nu se repete o analiză deja trimisă înainte de schimbare. */
+export function legacySlot(a: { date: string; sport: string; id: string; startLocal?: string | null }): string {
   const m = /^(\d{1,2}):(\d{2})/.exec(a.startLocal ?? '');
   return m ? `${a.date}:${a.sport}:h${Math.floor((Number(m[1]) * 60 + Number(m[2])) / 120)}` : `${a.date}:${a.sport}:id-${a.id}`;
 }

@@ -11,7 +11,7 @@ import { dedupeActivities } from '../../src/collector/packet.js';
 import type { Execution } from '../../src/calendar/progression.js';
 import type { Color } from '../../src/types.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import { activitySlot, type AdaptEvent } from '../../src/calendar/adapt.js';
+import { activitySlot, legacySlot, type AdaptEvent } from '../../src/calendar/adapt.js';
 import { detectReturn } from '../../src/calendar/pause.js';
 import { extraOn } from '../../src/calendar/load.js';
 import { loadActivities, loadForms, loadPlan, loadUser } from './collect.js';
@@ -24,7 +24,7 @@ export interface Reaction {
   /** Activitățile de azi (≥ 20 min) văzute acum: pentru mesajul antrenorului după antrenament. */
   todayIds: string[];
   /** Chei stabile (zi + sport) ale activităților de azi, pentru un singur mesaj pe activitate. */
-  todayKeys: string[];
+  todayKeys: { key: string; legacy: string }[];
 }
 
 export async function reactToActivities(userId: string, today: string): Promise<Reaction> {
@@ -33,7 +33,7 @@ export async function reactToActivities(userId: string, today: string): Promise<
   const all = dedupeActivities(rawLong);
   const acts = all.filter((a) => a.date >= from && a.date <= today);
   const todayIds = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => a.id);
-  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => activitySlot(a));
+  const todayKeys = acts.filter((a) => a.date === today && a.minutes >= 20).map((a) => ({ key: activitySlot(a), legacy: legacySlot(a) }));
   if (!planId || !acts.length) return { changes: [], todayIds, todayKeys };
 
   const m = matchActivities(workouts.filter((w) => w.date >= addDays(today, -3) && w.date <= today), acts, today);

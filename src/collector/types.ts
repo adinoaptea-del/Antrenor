@@ -40,6 +40,8 @@ export interface SourceActivity extends Activity {
   details?: ActivityDetails | null;
   /** După dedupe: toate sursele care au înregistrat aceeași ședință (proveniența rămâne la vedere). */
   mergedSources?: Source[];
+  /** Id-urile tuturor înregistrărilor unite în ședința asta (auditul v93, A21: identitate stabilă a ședinței). */
+  mergedIds?: string[];
 }
 
 export interface MorningForm {

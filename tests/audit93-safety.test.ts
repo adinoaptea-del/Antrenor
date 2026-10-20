@@ -83,3 +83,21 @@ describe('auditul v93 · aceeași protecție în toate sporturile', () => {
     assert.equal(k.suggestion?.sport, 'bicicleta');
   });
 });
+
+import { dedupeActivities } from '../src/collector/packet.js';
+import { activitySlot } from '../src/calendar/adapt.js';
+describe('auditul v93 · identitatea evenimentelor', () => {
+  const a = (id: string, source: string, startLocal: string, minutes: number) => ({ id, source, externalId: id, date: '2026-10-20', sport: 'alergare', minutes, startLocal }) as never;
+  it('T39/A21: două ședințe reale în aceeași fereastră de 2 ore au chei diferite', () => {
+    const acts = dedupeActivities([a('g1', 'garmin', '06:05', 15), a('g2', 'garmin', '07:10', 40)]);
+    const keys = acts.map((x) => activitySlot(x as never));
+    assert.equal(new Set(keys).size, 2);
+  });
+  it('T40/A21: aceeași ședință pe două brățări (07:58 și 08:02) are o singură cheie, oricare ar fi aleasă', () => {
+    const acts = dedupeActivities([a('w1', 'whoop', '07:58', 45), a('g1', 'garmin', '08:02', 44)]);
+    assert.equal(acts.length, 1);
+    assert.equal(activitySlot(acts[0] as never), '2026-10-20:alergare:g1');
+    const again = dedupeActivities([a('g1', 'garmin', '08:02', 44), a('w1', 'whoop', '07:58', 45)]);
+    assert.equal(activitySlot(again[0] as never), activitySlot(acts[0] as never));
+  });
+});

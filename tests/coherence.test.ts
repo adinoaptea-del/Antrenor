@@ -151,7 +151,10 @@ test('V2-03 două alergări într-o zi rămân două; aceeași alergare de pe do
   assert.equal(kept.length, 2);
   const k = (a: typeof morning | typeof evening | typeof sameFromWhoop) => eventKey({ kind: 'neplanificat', activity: a as never, tip: 'antrenament' });
   assert.notEqual(k(morning), k(evening));
-  assert.equal(k(morning), k(sameFromWhoop), 'retransmiterea aceleiași ședințe de pe altă brățară nu e un eveniment nou');
+  // Pe ședința unită (cum rulează serverul): aceeași cheie oricare brățară vine prima.
+  const m1 = kept.find((x) => x.startLocal !== '18:30')!;
+  const m2 = dedupeActivities([sameFromWhoop, evening, morning] as never).find((x) => x.startLocal !== '18:30')!;
+  assert.equal(k(m1 as never), k(m2 as never), 'retransmiterea aceleiași ședințe de pe altă brățară nu e un eveniment nou');
 });
 
 import { swimCapacity } from '../src/calendar/swim-capacity.js';

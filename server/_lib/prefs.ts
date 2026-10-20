@@ -15,12 +15,14 @@ export interface CalendarPrefs {
   nutritie?: NutritionPrefs;
   /** Mersul pe jos: ținta inițială, capacitatea declarată, mersul alert și jurnalul schimbărilor de țintă. */
   mers?: WalkProfile;
+  /** Migrările de plan aplicate o singură dată: „nume@planId” → data (auditul v93, A23). */
+  migrari?: Record<string, string>;
 }
 
 export async function loadPrefs(userId: string): Promise<CalendarPrefs> {
   const row = await one<{ calendar_prefs: Partial<CalendarPrefs> | null }>('users', { id: `eq.${userId}` }, { select: 'calendar_prefs' }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d: unknown) => typeof d === 'string').slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) }, mers: walkProfileOf(p.mers) };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === 'ape' ? 'ape' : 'bazin', apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d: unknown) => typeof d === 'string').slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...(p.nutritie ?? {}) }, mers: walkProfileOf(p.mers), migrari: p.migrari && typeof p.migrari === 'object' ? (p.migrari as Record<string, string>) : {} };
 }
 
 /** Profilul de mers, validat (valori lipsă = implicite, jurnalul păstrat întreg). */

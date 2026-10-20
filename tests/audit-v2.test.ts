@@ -40,7 +40,11 @@ test('Două alergări într-o zi: ambele rămân; retransmiterea nu dublează sa
   assert.equal(dedupeActivities([a1, a2, again] as never).length, 2);
   const k = (a: unknown) => eventKey({ kind: 'efort', activity: a as never, rpe: 7, planned: false });
   assert.notEqual(k(a1), k(a2));
-  assert.equal(k(a1), k(again));
+  // Cheia se calculează pe ședința unită (așa rulează serverul, auditul v93 A21): retransmiterea nu schimbă cheia.
+  const merged = dedupeActivities([a1, a2, again] as never).find((x) => x.startLocal !== '18:00')!;
+  const mergedOther = dedupeActivities([again, a2, a1] as never).find((x) => x.startLocal !== '18:00')!;
+  assert.equal(k(merged), k(mergedOther));
+  assert.equal(k(merged), k(dedupeActivities([a1] as never)[0]));
 });
 
 test('Două dispozitive: observațiile redundante nu capătă influență dublă; dezacordul rămâne vizibil', () => {

@@ -10,6 +10,7 @@ import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
 import { one, select, update, upsert } from './db.js';
 import { ensureSplit } from './split.js';
+import { MIGRATIONS, runOnce } from './migrations.js';
 import { restoreExtraCuts } from '../../src/calendar/adapt.js';
 import { demonstrated, raiseToDemonstrated } from '../../src/calendar/demonstrated.js';
 import { fitStructure } from '../../src/calendar/validate.js';
@@ -69,21 +70,18 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const outcomeRows = await select<{ workout_id: string; status: 'ratat' | 'partial'; motiv: 'timp' | 'oboseala' | 'durere' | 'boala' | 'altul'; minutes: number | null; reported_at: string }>('workout_outcomes', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -42)}` }, { limit: 200 }).catch(() => []);
   const strengthRows = await select<StrengthLogEntry>('strength_log', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -120)}` }, { select: 'date,exercise,sets,rir,source', order: 'date.asc', limit: 500 }).catch(() => [] as StrengthLogEntry[]);
 
-  // Bărbații: forța viitoare trece la Push / Pull / Picioare (și pe planurile vechi); se salvează, ca agenții,
-  // calendarul și ecranele să vadă aceeași ședință.
-  const workouts0 = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null), (user.goal as string | null) ?? null).catch(() => planLoad.workouts);
-  // Regula proprietarului (20.10.2026): ce a tăiat un efort în plus revine în plan, cu sugestia ușoară; se salvează o dată.
-  const restored = restoreExtraCuts(workouts0, today);
-  if (restored.length && planLoad.planId) await upsert('workouts_planned', restored.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
   const activities = dedupeActivities(acts);
-  // Corecția proprietarului (20.10.2026): ședințele ușoare viitoare nu stau sub ce face sportivul de obicei (ultimele 6
-  // săptămâni, src/calendar/demonstrated.ts); se ridică o dată și se salvează.
-  const restoredById = new Map(restored.map((w) => [w.id, w]));
-  const workouts1 = workouts0.map((w) => restoredById.get(w.id) ?? w);
-  const raised = raiseToDemonstrated(workouts1, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)));
-  if (raised.length && planLoad.planId) await upsert('workouts_planned', raised.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
-  const byId = new Map(raised.map((w) => [w.id, w]));
-  const workouts = workouts1.map((w) => byId.get(w.id) ?? w);
+  // Auditul v93, A23 (decizia proprietarului 20.10.2026): regulile noi se aplică planului activ O SINGURĂ DATĂ, ca
+  // migrări versionate și jurnalizate (server/_lib/migrations.ts); refresh-ul și login-ul nu mai rescriu ședințe.
+  const pid = planLoad.planId;
+  const sexOf = user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null);
+  let workouts = planLoad.workouts;
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.strengthSplit, workouts, async (plan) => {
+    const after = await ensureSplit(userId, today, { planId: pid, workouts: plan }, sexOf, (user.goal as string | null) ?? null);
+    return after.filter((w, i) => w !== plan[i]);
+  }).catch(() => workouts);
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.restoreExtraCuts, workouts, (plan) => restoreExtraCuts(plan, today)).catch(() => workouts);
+  workouts = await runOnce(userId, pid, today, MIGRATIONS.raiseDemonstrated, workouts, (plan) => raiseToDemonstrated(plan, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)))).catch(() => workouts);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
