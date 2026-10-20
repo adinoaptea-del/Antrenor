@@ -105,7 +105,7 @@ test('întâmpinarea-sferă: curbare și vibrație înainte de desprindere, text
   assert.ok(m.sphereLens(400) > 0.8 && m.sphereLens(E.desprindere[0] + 50) < 0.05, 'curbarea vine înaintea desprinderii');
   assert.ok(m.sphereWave(700) != null && m.sphereWave(1900) == null);
   const sh = Array.from({ length: 400 }, (_, i) => Math.abs(m.sphereShake(i * 10).x));
-  assert.ok(sh.filter((x) => x > 0).length > 0 && sh.findIndex((x) => x > 0) * 10 >= 600 && sh.findLastIndex((x) => x > 0) * 10 <= E.desprindere[0], 'o singură vibrație, înainte de desprindere');
+  assert.ok(sh.filter((x) => x > 0).length > 0 && sh.findIndex((x) => x > 0) * 10 >= 600 && (sh.length - 1 - [...sh].reverse().findIndex((x: number) => x > 0)) * 10 <= E.desprindere[0], 'o singură vibrație, înainte de desprindere');
   assert.equal(m.sphereTextAlpha(3000, 500), 1, 'textul rămâne lizibil în curbare');
   assert.equal(m.sphereTextAlpha(3000, E.estompare[1]), 0, 'și se stinge înainte de transfer');
   const tr = E.transfer[1] - E.transfer[0];
