@@ -320,6 +320,25 @@ alter table public.other_activities add column if not exists reconciled_with tex
 -- Oura (schema 10): abaterea temperaturii pielii în somn față de media sportivului (°C), cum o calculează Oura.
 alter table public.wellness_daily add column if not exists temp_dev_c numeric(4, 2);
 
+-- Auditul v93, A94: un upsert pe id nu poate muta un rând în alt cont (user_id nu se schimbă la update).
+create or replace function public.keep_user_id() returns trigger language plpgsql as $$
+begin
+  if new.user_id is distinct from old.user_id then
+    raise exception 'user_id nu se poate schimba (%)', tg_table_name;
+  end if;
+  return new;
+end $$;
+do $$
+declare t text;
+begin
+  foreach t in array array['activities', 'other_activities', 'workouts_planned', 'scores'] loop
+    if to_regclass('public.' || t) is not null then
+      execute format('drop trigger if exists keep_user_id on public.%I', t);
+      execute format('create trigger keep_user_id before update on public.%I for each row execute function public.keep_user_id()', t);
+    end if;
+  end loop;
+end $$;
+
 -- Versiunea schemei: aplicația o citește și cere singură actualizarea când e în urmă.
 create table if not exists public.schema_meta (
   key text primary key,

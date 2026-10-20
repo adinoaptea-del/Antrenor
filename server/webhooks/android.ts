@@ -1,5 +1,5 @@
 import { fail, HttpError, json, readJson } from '../_lib/auth.js';
-import { q, type Req, type Res } from '../_lib/http.js';
+import { q, webhookToken, type Req, type Res } from '../_lib/http.js';
 import { insert, one, upsert } from '../_lib/db.js';
 import { parseHealthConnect } from '../_lib/android.js';
 import { saveOthers } from '../_lib/sync.js';
@@ -15,7 +15,7 @@ import { wellnessGroups } from './apple.js';
 export default async function handler(req: Req, res: Res): Promise<void> {
   let userId: string | null = null;
   try {
-    const token = q(req, 't');
+    const token = webhookToken(req);
     if (!token || token.length < 20) throw new HttpError(401, 'lipsește tokenul');
     const user = await one<{ id: string; tz: string | null }>('users', { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, 'token necunoscut');

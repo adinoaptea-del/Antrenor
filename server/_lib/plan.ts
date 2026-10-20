@@ -294,7 +294,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     for (let i = 0; i < rows.length; i += 200) await insert('workouts_planned', rows.slice(i, i + 200));
     await rpc('activate_plan', { p_user: userId, p_plan: plan!.id, p_keep_before: nextMonday });
   } catch (e) {
-    await remove('plans', { id: `eq.${plan!.id}`, active: 'eq.false' }).catch(() => undefined);
+    await remove('plans', { id: `eq.${plan!.id}`, user_id: `eq.${userId}`, active: 'eq.false' }).catch(() => undefined);
     throw e;
   }
   // Avizul se consideră dat: și planurile refăcute (ex. din Admin) aduc intensitatea permisă în pachetul agenților.

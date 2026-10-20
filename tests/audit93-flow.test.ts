@@ -144,3 +144,14 @@ test('T36 / A62: ședința ușurată revine la plan după o execuție verde a ac
   assert.equal(back[0]!.type, 'calitate');
   assert.equal(back[0]!.original, null);
 });
+
+test('T81 / A109: poarta de progres verifică și forma (TSB), nu doar minutele', async () => {
+  const { progresStatus } = await import('../src/collector/packet.js');
+  const by = { inot: 1, bicicleta: 1, alergare: 1, forta: 1, mers: 1 } as never;
+  const base = { today: '2026-10-20', history: { greenStreak: 10, lastIncrease: null } } as never as Record<string, unknown>;
+  const ok = progresStatus({ ...base, load: { ctl: 60, atl: 70, tsb: -10 } } as never, 1.0, by, { planificate: 10, facute: 10 });
+  const tired = progresStatus({ ...base, load: { ctl: 60, atl: 95, tsb: -35 } } as never, 1.0, by, { planificate: 10, facute: 10 });
+  assert.equal(ok.eligibil, true);
+  assert.equal(tired.eligibil, false);
+  assert.match(tired.motiv, /TSB/);
+});

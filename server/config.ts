@@ -1,3 +1,4 @@
+import { encryptionEnabled } from './_lib/secretbox.js';
 import { fail, json } from './_lib/auth.js';
 import type { Req, Res } from './_lib/http.js';
 import { ENV, supabaseKeyHeaders } from './_lib/env.js';
@@ -55,6 +56,8 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
       signupOpen: ready && users < ENV.maxUsers(),
       firstUser: ready && users === 0,
       agents: !!process.env.ANTHROPIC_API_KEY,
+      // A94: dacă tokenurile OAuth se păstrează criptate (cheia TOKEN_ENC_KEY în Vercel); doar da/nu, niciodată cheia.
+      tokenEncryption: encryptionEnabled(),
       providers: Object.fromEntries(PROVIDERS.map((p) => [p, providerConfigured(p)])),
       // Versiunea publicată (commit), vizibilă în Profil: auditurile pot spune pe ce build au testat.
       build: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || null,

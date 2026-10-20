@@ -260,7 +260,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       let plan = null;
       if (intake) {
         const answers = { ...intake.answers, sanatate: { ...(intake.answers.sanatate ?? {}), avizCardiolog: v === 'necunoscut' ? null : v, limitareMedic: v === 'nu' } };
-        await update('questionnaires', { id: `eq.${intake.id}` }, { answers });
+        await update('questionnaires', { id: `eq.${intake.id}`, user_id: `eq.${u.id}` }, { answers });
         // Intensitatea permisă schimbă planul: îl refacem de la lunea următoare, păstrând restul răspunsurilor.
         plan = await generateAndStore(u.id, today, answers as unknown as IntakeLike);
       }
@@ -544,7 +544,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!Number.isFinite(ore) || ore < 2 || ore > 30) throw new HttpError(400, 'între 2 și 30 de ore pe săptămână');
       const row = await one<{ id: string; answers: Record<string, unknown> }>('questionnaires', { user_id: `eq.${u.id}`, kind: 'eq.intrare' }, { order: 'created_at.desc' });
       if (!row) throw new HttpError(400, 'fără chestionar de intrare');
-      await update('questionnaires', { id: `eq.${row.id}` }, { answers: { ...row.answers, oreSport: Math.round(ore * 2) / 2 } });
+      await update('questionnaires', { id: `eq.${row.id}`, user_id: `eq.${u.id}` }, { answers: { ...row.answers, oreSport: Math.round(ore * 2) / 2 } });
       json(res, 200, { ok: true });
       return;
     }

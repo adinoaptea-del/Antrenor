@@ -2,6 +2,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ENV } from './env.js';
 import { one, remove, select, upsert } from './db.js';
+import { seal, unseal } from './secretbox.js';
 import { refresh, type OAuthConfig, type TokenSet } from '../../src/collector/providers/oauth.js';
 import { whoopConfig } from '../../src/collector/providers/whoop.js';
 import { stravaConfig } from '../../src/collector/providers/strava.js';
@@ -44,8 +45,8 @@ export async function saveTokens(userId: string, provider: Provider, t: TokenSet
     {
       user_id: userId,
       provider,
-      access_token: t.accessToken,
-      refresh_token: t.refreshToken,
+      access_token: seal(t.accessToken),
+      refresh_token: seal(t.refreshToken ?? null),
       expires_at: new Date(t.expiresAt).toISOString(),
       scope: t.scope ?? null,
       external_user_id: t.externalUserId ?? null,
@@ -57,8 +58,9 @@ export async function saveTokens(userId: string, provider: Provider, t: TokenSet
 
 /** Token valid pentru o cerere: reîmprospătat dacă expiră în sub 5 minute. null = neconectat. */
 export async function accessToken(userId: string, provider: Provider): Promise<string | null> {
-  const row = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
-  if (!row) return null;
+  const enc = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+  if (!enc) return null;
+  const row = openRow(enc);
   const expiresAt = new Date(row.expires_at).getTime();
   if (expiresAt - Date.now() > 5 * 60_000) return row.access_token;
   if (!row.refresh_token) return row.access_token;
@@ -68,12 +70,17 @@ export async function accessToken(userId: string, provider: Provider): Promise<s
   } catch (e) {
     // Oura și WHOOP: tokenul de reîmprospătare e de unică folosință. Dacă o altă sincronizare (cron, buton) l-a folosit
     // între timp, perechea nouă e deja salvată: o folosim, în loc să declarăm conexiunea pierdută.
-    const again = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+    const againEnc = await one<TokenRow>('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+    const again = againEnc ? openRow(againEnc) : null;
     if (again && again.refresh_token !== row.refresh_token && new Date(again.expires_at).getTime() - Date.now() > 60_000) return again.access_token;
     throw e;
   }
   await saveTokens(userId, provider, { ...t, refreshToken: t.refreshToken ?? row.refresh_token, externalUserId: t.externalUserId ?? row.external_user_id ?? undefined });
   return t.accessToken;
+}
+
+function openRow(r: TokenRow): TokenRow {
+  return { ...r, access_token: unseal(r.access_token) ?? '', refresh_token: unseal(r.refresh_token) };
 }
 
 export async function connectedProviders(userId: string): Promise<TokenRow[]> {

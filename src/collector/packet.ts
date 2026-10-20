@@ -93,7 +93,9 @@ export interface Packet {
     hooper: { somn: number | null; oboseala: number | null; stres: number | null; dureri: number | null; suma: number | null; raspunse: number; istoric_14z: { data: string; suma: number | null; raspunse: number; boala: boolean | null }[]; media_14z: number | null };
   };
   incarcare: {
+    /** ACWR pe MINUTE (7 zile fără azi / media pe 28): 60 min ușor = 60 min intens. Nu e predictor de accidentare. */
     acwr: number | null;
+    acwr_metoda: string;
     acwr_sport: Record<Sport, number | null>;
     ctl: number | null;
     atl: number | null;
@@ -789,6 +791,7 @@ export function buildPacket(input: CollectorInput): Packet {
     },
     incarcare: {
       acwr: acwrTotal,
+      acwr_metoda: 'minute: 7 zile fără azi / media săptămânală pe 28 de zile (nu ține cont de intensitate; nu e predictor de accidentare)',
       acwr_sport: acwrBySport,
       ctl: input.load?.ctl ?? null,
       atl: input.load?.atl ?? null,
@@ -956,6 +959,10 @@ export function progresStatus(
   if (acwrTotal >= 1.3) return no('încărcare totală peste 1,3');
   const hot = (Object.entries(bySport) as [Sport, number | null][]).filter(([, v]) => v != null && v >= 1.3).map(([k]) => k);
   if (hot.length) return no(`încărcare peste 1,3 la ${hot.join(', ')}`);
+  // Auditul v93, A109: minutele nu văd intensitatea; forma (TSB, din TRIMP) intră și ea în poartă când există.
+  // Pragul −30 e o setare de produs prudentă (zona de oboseală mare din modelul PMC), nu un standard clinic.
+  const tsb = input.load?.tsb ?? null;
+  if (tsb != null && tsb < -30) return no(`formă (TSB) ${Math.round(tsb)}: oboseală acumulată mare`);
   if (!aderenta || aderenta.planificate === 0 || aderenta.facute / aderenta.planificate < 0.8) return no('aderență sub 80% în 14 zile');
   if (h.lastIncrease && diffDays(h.lastIncrease, input.today) < 13) return no(`creștere deja pe ${h.lastIncrease}`);
   return { ...base, eligibil: true, motiv: '7 zile verzi, încărcare sub 1,3, aderență bună' };

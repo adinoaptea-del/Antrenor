@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { fail, HttpError, json, readJson } from '../_lib/auth.js';
-import { q, type Req, type Res } from '../_lib/http.js';
+import { q, webhookToken, type Req, type Res } from '../_lib/http.js';
 import { insert, one, upsert } from '../_lib/db.js';
 import { parseHealthExport, parseHealthOther, parseHealthWorkouts } from '../_lib/apple.js';
 import { saveOthers } from '../_lib/sync.js';
@@ -12,7 +12,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   let userId: string | null = null;
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'POST');
-    const token = q(req, 't');
+    const token = webhookToken(req);
     if (!token || token.length < 20) throw new HttpError(401, 'lipsește tokenul');
     const user = await one<{ id: string }>('users', { apple_token: `eq.${token}` });
     if (!user) throw new HttpError(401, 'token necunoscut');
