@@ -400,3 +400,43 @@ describe('A59 / T36: ratarea repetată a ultimei zile de sală nu elimină aceea
     for (let i = 0; i + 1 < executed.length; i++) assert.ok([...executed[i]!, ...executed[i + 1]!].includes('legs'), `săpt. ${i + 1}–${i + 2}: ${executed[i]!.join(',')} | ${executed[i + 1]!.join(',')}`);
   });
 });
+
+describe('A105 / T77: sarcina / postpartum ajunge în încălzire și în exerciții', () => {
+  const FREE: FreeBlock[] = [0, 2, 4].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+  const check = (workouts: PlannedWorkout[], tag: string) => {
+    assert.ok(workouts.length > 0, tag);
+    for (const w of workouts) {
+      assert.doesNotMatch(w.structure ?? '', /cardio înclinat la început/, `${tag}: ${w.structure}`);
+      const p = prescribe(parseStrength(w.structure)!, w.plannedMinutes);
+      assert.ok(p.spec.pregnancy, `${tag}: contextul e în ședință`);
+      assert.ok(p.warmup.min <= 10 && !/înclinat|înclinație \d/.test(p.warmup.text), `${tag}: ${p.warmup.text}`);
+      assert.ok(p.items.length > 0 && p.items.every((r) => !r.ex.lying), `${tag}: ${p.items.filter((r) => r.ex.lying).map((r) => r.ex.id).join(',')}`);
+      assert.ok(p.notes.some((n) => /sarcină sau primul an după naștere/.test(n)));
+    }
+  };
+  it('slăbire + sarcină declarată la fitness sau la întrebarea generală: fără cardio înclinat, fără exerciții culcat', () => {
+    for (const [f, ctx] of [[{ sarcina: 'da' as const, zile: 3 as const, minute: 60 }, {}], [{ zile: 3 as const, minute: 60 }, { sarcina: 'da' }]] as const) {
+      const fitness = fitnessProfile('fit-slabire', f, ctx);
+      assert.equal(fitness.postpartum, true);
+      for (const place of ['sala', 'acasa'] as const) {
+        const r = generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: FREE, fitness: { ...fitness, place } });
+        assert.ok(r.ok);
+        if (!r.ok) return;
+        check(r.weeks.slice(0, 8).flatMap((w) => w.workouts), `${place} ${JSON.stringify(ctx)}`);
+      }
+    }
+  });
+  it('obiectivul de slăbire salvat ÎNAINTE de context: la deschidere (upgradeStrengthRules) eticheta și cardio-ul înclinat dispar', () => {
+    const r = generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: FREE, fitness: fitnessProfile('fit-slabire', { zile: 2, minute: 60 }) });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const plan = r.weeks.slice(0, 4).flatMap((w) => w.workouts);
+    assert.ok(plan.every((w) => /cardio înclinat la început/.test(w.structure ?? '')), 'înainte: slăbire cu cardio înclinat');
+    const up = upgradeStrengthRules(plan, '2026-11-01', 'fit-slabire', { pregnancy: true });
+    const merged = plan.map((w) => up.find((u) => u.id === w.id) ?? w);
+    check(merged, 'după context');
+    assert.deepEqual(upgradeStrengthRules(merged, '2026-11-01', 'fit-slabire', { pregnancy: true }), [], 'a doua oară nu mai schimbă nimic');
+    // Fără context, regula 25 rămâne: slăbirea începe cu mers înclinat.
+    assert.ok(prescribe(parseStrength(plan[1]!.structure)!, plan[1]!.plannedMinutes).warmup.min > 10 || prescribe(parseStrength(plan[0]!.structure)!, plan[0]!.plannedMinutes).warmup.min > 10);
+  });
+});

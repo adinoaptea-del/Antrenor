@@ -28,7 +28,11 @@ export async function ensureSplit(userId: string, today: string, loaded?: { plan
   }
   // Regulile de forță (19.10.2026): minimum 45 de minute, 3–4 serii, fără picioare + partea de sus în aceeași ședință.
   const g = goal !== undefined ? goal : ((await one<{ goal: string | null }>('users', { id: `eq.${userId}` }, { select: 'goal' }).catch(() => null))?.goal ?? null);
-  for (const w of upgradeStrengthRules(workouts, today, g)) changed.set(w.id, w);
+  // Sarcina / postpartum (auditul v93, A105): din chestionarul de intrare, la fitness sau la întrebarea generală. Dacă
+  // chestionarul nu se poate citi, contextul rămâne necunoscut (nu se schimbă nimic din cauza lui).
+  const intake = await one<{ answers: { sarcina?: string | null; fitness?: { sarcina?: string | null } } }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.intrare' }, { order: 'created_at.desc' }).catch(() => null);
+  const pregnancy = intake ? intake.answers?.fitness?.sarcina === 'da' || intake.answers?.sarcina === 'da' : undefined;
+  for (const w of upgradeStrengthRules(workouts, today, g, pregnancy === undefined ? {} : { pregnancy })) changed.set(w.id, w);
   if (!changed.size) return p.workouts;
   await upsert('workouts_planned', [...changed.values()].map((w) => toWorkoutRow(w, userId, p.planId!)), 'id');
   return p.workouts.map((w) => changed.get(w.id) ?? w);

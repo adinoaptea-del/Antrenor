@@ -36,6 +36,8 @@ export interface Exercise {
   equip?: Equip[];
   /** Pauza dintre seturi (s), când exercițiul are pauza lui în program (fitness); altfel după rol. */
   rest?: number;
+  /** Poziția culcat (pe spate / pe burtă): exclusă în contextul de sarcină / postpartum (auditul v93, A105). */
+  lying?: 'spate' | 'burta';
   /** Fișa exercițiului (fitness): ce lucrează, cum reglezi aparatul, greșelile frecvente. */
   purpose?: string;
   setup?: string;
@@ -310,6 +312,16 @@ const FIT_SHEETS: Record<string, [string, string, string]> = {
   'fit-carry': ['trunchi, prindere, postură', 'două gantere grele dar controlabile', 'te apleci; pași mari și grăbiți'],
 };
 for (const [id, [purpose, setup, mistakes]] of Object.entries(FIT_SHEETS)) Object.assign(CATALOG[id]!, { purpose, setup, mistakes });
+
+/** Exercițiile făcute culcat (metadată de catalog), pentru varianta prudentă la sarcină / postpartum. */
+const LYING: Record<string, 'spate' | 'burta'> = {
+  'fit-glute-bridge': 'spate', 'fit-glute-bridge-1': 'spate', 'fit-frog-pumps': 'spate', 'fit-dead-bug': 'spate', 'fit-hip-thrust': 'spate',
+  'fit-h-glute-bridge': 'spate', 'fit-h-floor-press': 'spate', 'fit-h-db-fly': 'spate', 'fit-triceps-floor': 'spate', 'fit-db-press': 'spate',
+  'fit-h-band-curl': 'burta', 'fit-reverse-hyper': 'burta', 'fit-straight-leg': 'burta', 'fit-hyperext': 'burta',
+  'pt-bridge': 'spate', 'legs-dead-bug': 'spate', 'legs-hip-thrust': 'spate', 'legs-lying-curl': 'burta',
+  'push-db-bench': 'spate', 'push-bb-bench': 'spate', 'push-db-fly': 'spate', 'push-skullcrusher': 'spate',
+};
+for (const [id, lying] of Object.entries(LYING)) CATALOG[id]!.lying = lying;
 
 /** Abdomenul de la finalul ședinței (opțional), altul la fiecare ședință. */
 const ABS = ['core-cable-crunch', 'core-hanging-knee', 'core-plank', 'core-ab-wheel', 'legs-dead-bug', 'legs-pallof'];
@@ -875,6 +887,13 @@ export interface StrengthSpec {
    * Motivul se scrie în textul ședinței, ca refacerea sau deschiderea aplicației să nu restaureze seriile tăiate.
    */
   reduced?: { why: ReducedReason; minutes: number };
+  /**
+   * Sarcină sau primul an după naștere (intake.fitness.sarcina === 'da' sau intake.sarcina === 'da'; auditul v93, A105):
+   * varianta prudentă, explicită — fără cardio înclinat de slăbire la început, fără exerciții culcat pe spate sau pe burtă
+   * (AIRON nu știe săptămâna sarcinii, deci nu se presupune că e sub 16), efort la care vorbești ușor. Nu e o
+   * prescripție medicală: recomandarea e coordonarea cu medicul sau moașa.
+   */
+  pregnancy?: boolean;
 }
 
 /** Motivele pentru care o ședință de forță poate coborî sub 45 de minute și 3 serii (decizia proprietarului, 20.10.2026). */
@@ -1102,6 +1121,7 @@ const legsDay = (id: SessionId) => sessionKind(id) !== 'U';
 const SLABIRE_FINISHER = { text: 'mers pe bandă înclinată, ritm la care poți vorbi (restul de cardio, după greutăți)', min: 10, max: 20 };
 /** Cardio-ul de la final: în zilele de sus la slăbire nu există (s-a făcut la început); în rest, al ședinței. */
 function finisherOf(spec: StrengthSpec, session: StrengthSession): StrengthSession['finisher'] {
+  if (spec.pregnancy) return session.finisher ? { text: 'mers ușor pe teren plat sau bicicletă staționară, ritm la care vorbești ușor', min: session.finisher.min, max: session.finisher.max } : undefined;
   if (spec.opener === 'slabire') return legsDay(spec.session) ? (session.finisher ?? SLABIRE_FINISHER) : undefined;
   return session.finisher;
 }
@@ -1135,6 +1155,8 @@ function warmupOf(spec: StrengthSpec, session: StrengthSession, ctx?: StrengthDa
   if (spec.reduced) return REDUCED_WARMUP;
   // Partea de după cardio din încălzirea ședinței (activare, serii ușoare); cardio-ul îl dă obiectivul.
   const tail = session.warmup && /^\d+ min [^,]*,/.test(session.warmup) ? session.warmup.replace(/^\d+ min [^,]*,\s*(apoi\s*)?/, '') : MOBILITY;
+  // Sarcină / postpartum: pornire pe teren plat, fără înclinație și fără gâfâit (A105).
+  if (spec.pregnancy) return { min: WARMUP_MIN, text: `10 min mers vioi pe teren plat sau bicicletă staționară, ritm la care vorbești ușor (fără înclinație); apoi ${tail}` };
   if (spec.opener === 'slabire') {
     const n = openerMin(spec, ctx);
     const where = spec.place === 'acasa' ? 'mers vioi în pantă sau pe scări (acasă nu ai bandă), ritm la care poți vorbi' : OPENER_INCLINE;
@@ -1153,9 +1175,28 @@ function baseSets(r: Rx, spec: StrengthSpec): number {
 }
 
 /** Prescripția întreagă pentru blocul și săptămâna date, fără limită de timp. */
-export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+export function prescribeFull(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+  // Sarcină / postpartum: fără cardio înclinat de slăbire la început, chiar dacă obiectivul salvat e slăbirea (A105).
+  const spec: StrengthSpec = spec0.pregnancy && spec0.opener ? (({ opener: _o, ...rest }) => rest)(spec0) : spec0;
   if (isMaintenanceSession(spec.session)) return prescribeMaintenance(spec, ctx);
-  if (isFitnessSession(spec.session)) return reduce(prescribeFitness(spec, ctx));
+  return reduce(pregnancySafe(isFitnessSession(spec.session) ? prescribeFitness(spec, ctx) : prescribeGym(spec, ctx), ctx));
+}
+
+/**
+ * Sarcină / postpartum (A105): exercițiile culcat pe spate sau pe burtă ies din ședință (varianta prudentă, fără să se
+ * presupună săptămâna sarcinii), iar ședința spune explicit regulile de oprire.
+ */
+function pregnancySafe(p: Prescription, ctx?: StrengthDayContext): Prescription {
+  if (!p.spec.pregnancy) return p;
+  const out = p.items.filter((r) => !r.ex.lying);
+  const gone = p.items.filter((r) => r.ex.lying).map((r) => r.ex.name.toLowerCase());
+  const notes = [...p.notes, `sarcină sau primul an după naștere: varianta prudentă — fără cardio înclinat la început, fără exerciții culcat pe spate sau pe burtă${gone.length ? ` (scoase azi: ${gone.join(', ')})` : ''}; greutăți cu care vorbești ușor, fără să-ți ții respirația; te oprești la durere, sângerare, amețeală sau presiune în bazin și întrebi medicul sau moașa`];
+  for (const r of out) if (r.ss && out.filter((x) => x.ss === r.ss).length < 2) delete r.ss;
+  return finish(p.spec, p.session, out, p.trimmed, notes, Infinity, ctx);
+}
+
+/** Ședințele de anduranță și Push / Pull / Picioare (catalogul de sală). */
+function prescribeGym(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
   const session = SESSIONS[spec.session];
   const rir = rirFor(spec);
   const notes: string[] = [];
@@ -1413,6 +1454,7 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
 // ——— Textul din plan (citit de oameni și de cod) ———
 
 const OPENER_TAG = 'cardio înclinat la început';
+const PREGNANCY_TAG = 'sarcină / postpartum';
 const LEGS_TEXT: Record<Exclude<LegsMode, 'normal'>, string> = { usor: 'picioare ușoare', fara: 'fără picioare' };
 
 /** „Push A · Bază, săpt. 2/4 · 2–3 repetări în rezervă · descărcare”. */
@@ -1424,6 +1466,7 @@ export function strengthStructure(spec: StrengthSpec): string {
   if (spec.place === 'acasa') parts.push('acasă');
   if (spec.opener === 'slabire') parts.push(OPENER_TAG);
   if (spec.reduced) parts.push(`variantă scurtă ${spec.reduced.minutes} min (${REDUCED_LABEL[spec.reduced.why]})`);
+  if (spec.pregnancy) parts.push(PREGNANCY_TAG);
   return parts.join(' · ');
 }
 
@@ -1446,7 +1489,7 @@ export function parseStrength(structure: string | null | undefined): StrengthSpe
   const legs: LegsMode = rest.includes(LEGS_TEXT.fara) ? 'fara' : rest.includes(LEGS_TEXT.usor) ? 'usor' : 'normal';
   const red = rest.map((x) => /^variantă scurtă (\d+) min \((.+)\)$/.exec(x)).find(Boolean);
   const why = red ? ((Object.entries(REDUCED_LABEL).find(([, l]) => l === red[2]) ?? [])[0] as ReducedReason | undefined) : undefined;
-  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}), ...(red && why ? { reduced: { why, minutes: Number(red[1]) } } : {}) };
+  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}), ...(red && why ? { reduced: { why, minutes: Number(red[1]) } } : {}), ...(rest.includes(PREGNANCY_TAG) ? { pregnancy: true } : {}) };
 }
 
 /** Numele ședinței din textul din plan (și pentru planurile vechi „Push 1 · …”). */

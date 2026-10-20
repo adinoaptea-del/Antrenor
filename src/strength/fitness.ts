@@ -293,8 +293,12 @@ export interface FitnessIntake {
   sarcina?: 'nu' | 'da' | 'nu_spun' | null;
 }
 
-/** Profilul de fitness din chestionar; valorile lipsă iau varianta prudentă (începătoare, 2 zile, 60 min, minimum 45). */
-export function fitnessProfile(goal: string, f: FitnessIntake | undefined): FitnessProfile {
+/**
+ * Profilul de fitness din chestionar; valorile lipsă iau varianta prudentă (începătoare, 2 zile, 60 min, minimum 45).
+ * Sarcina / postpartum vine din răspunsul de fitness SAU din întrebarea generală a chestionarului (`ctx.sarcina`), ca
+ * același context să ajungă în încălzire și exerciții oricum a fost întrebat (auditul v93, A105).
+ */
+export function fitnessProfile(goal: string, f: FitnessIntake | undefined, ctx: { sarcina?: string | null } = {}): FitnessProfile {
   return {
     goal: goal as FitnessProfile['goal'],
     days: f?.zile ?? 2,
@@ -302,7 +306,7 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined): Fitn
     minutes: Math.max(45, f?.minute ?? 60),
     beginner: f?.experienta !== 'stabila',
     activity: f?.miscare ?? null,
-    postpartum: f?.sarcina === 'da',
+    postpartum: f?.sarcina === 'da' || ctx.sarcina === 'da',
     place: f?.acces === 'acasa' ? 'acasa' : 'sala',
   };
 }
