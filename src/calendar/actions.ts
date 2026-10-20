@@ -64,35 +64,41 @@ export interface MoveCtx {
   away?: Away[];
 }
 
+/**
+ * De ce NU poate sta ședința `w` în ziua `d`, lângă celelalte ședințe active (`others`, fără ea): aceleași reguli ca
+ * planul (două pe zi, același sport, două lungi, zi tare/zi ușoară, plecări, programul liber). null = poate.
+ */
+export function dayBlock(others: PlannedWorkout[], w: PlannedWorkout, d: string, ctx: MoveCtx = {}): string | null {
+  const on = (x: string) => others.filter((o) => o.date === x && active(o));
+  const hardOn = (x: string) => on(x).some(isHard);
+  const day = on(d);
+  if (day.length >= 2) return 'are deja două ședințe';
+  if (w.sport !== 'forta' && day.some((x) => x.sport === w.sport)) return `are deja ${SPORT_WORD[w.sport]}`;
+  if ((w.type === 'lung' || w.type === 'brick') && day.some((x) => x.type === 'lung' || x.type === 'brick')) return 'are deja o ședință lungă';
+  if (isHard(w) && hardOn(d)) return 'are deja o ședință grea';
+  if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) return 'e lângă o zi grea (zi tare, zi ușoară)';
+  if (w.sport === 'alergare' && w.type === 'calitate' && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === 'alergare' && x.type === 'lung')) return 'e lângă alergarea lungă';
+  const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
+  if (aw) return `ești plecat (${AWAY_LABEL[aw.ce]})`;
+  if (ctx.freeBlocks?.length) {
+    const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
+    if (longest === 0) return 'nu ai timp liber în ziua asta (programul tău)';
+    if (longest < w.plannedMinutes) return `fereastra liberă are ${longest} min, ședința ${w.plannedMinutes}`;
+  }
+  return null;
+}
+
 export function moveOptions(plan: PlannedWorkout[], id: string, today: string, doneIds: string[] = [], ctx: MoveCtx = {}): MoveOption[] {
   const w = plan.find((x) => x.id === id);
   if (!w || !active(w) || w.date < today || doneIds.includes(id)) return [];
   const ws = weekStart(w.date);
   const others = plan.filter((x) => x.id !== id && active(x));
-  const on = (d: string) => others.filter((x) => x.date === d);
-  const hardOn = (d: string) => on(d).some(isHard);
   const out: MoveOption[] = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i);
     if (d === w.date) continue;
     if (d < today) continue;
-    const day = on(d);
-    let reason: string | undefined;
-    if (day.length >= 2) reason = 'are deja două ședințe';
-    else if (w.sport !== 'forta' && day.some((x) => x.sport === w.sport)) reason = `are deja ${SPORT_WORD[w.sport]}`;
-    else if ((w.type === 'lung' || w.type === 'brick') && day.some((x) => x.type === 'lung' || x.type === 'brick')) reason = 'are deja o ședință lungă';
-    else if (isHard(w) && hardOn(d)) reason = 'are deja o ședință grea';
-    else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = 'e lângă o zi grea (zi tare, zi ușoară)';
-    else if (w.sport === 'alergare' && w.type === 'calitate' && (on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === 'alergare' && x.type === 'lung'))) reason = 'e lângă alergarea lungă';
-    if (!reason) {
-      const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
-      if (aw) reason = `ești plecat (${AWAY_LABEL[aw.ce]})`;
-    }
-    if (!reason && ctx.freeBlocks?.length) {
-      const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
-      if (longest === 0) reason = 'nu ai timp liber în ziua asta (programul tău)';
-      else if (longest < w.plannedMinutes) reason = `fereastra liberă are ${longest} min, ședința ${w.plannedMinutes}`;
-    }
+    const reason = dayBlock(others, w, d, ctx);
     out.push(reason ? { date: d, ok: false, reason } : { date: d, ok: true });
   }
   return out;

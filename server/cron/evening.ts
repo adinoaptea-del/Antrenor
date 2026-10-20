@@ -5,6 +5,7 @@ import { one, select } from '../_lib/db.js';
 import { runAgents } from '../_lib/agents.js';
 import { reevaluateFitnessDays } from '../_lib/plan.js';
 import { weekday } from '../../src/util/dates.js';
+import { weatherSwapFor } from '../_lib/weather-swap.js';
 
 /** Seara (21:00): „după antrenament” pentru cine a avut o ședință azi; duminica, review-ul săptămânal. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -21,7 +22,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         const weekly = weekday(today) === 6 ? await runAgents(u.id, today, 'saptamanal') : null;
         // Fitness: zilele de sală urcă doar după prezență reală (3 săptămâni bune la rând); reevaluat duminica.
         const freq = weekday(today) === 6 ? await reevaluateFitnessDays(u.id, today).catch(() => null) : null;
-        out[u.id] = { frecventa: freq, seara: evening ? evening.decision : activity ? 'deja rulat' : 'fără ședință', saptamanal: weekly ? weekly.decision : weekday(today) === 6 ? 'deja rulat' : '-' };
+        // Vremea: mâine frumos și poimâine ploaie (sau invers) → afară în ziua bună, bazin/sală în ziua cu ploaie.
+        const vreme = await weatherSwapFor(u.id, today, 'maine').catch(() => null);
+        out[u.id] = { vreme, frecventa: freq, seara: evening ? evening.decision : activity ? 'deja rulat' : 'fără ședință', saptamanal: weekly ? weekly.decision : weekday(today) === 6 ? 'deja rulat' : '-' };
       } catch (e) {
         out[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
       }

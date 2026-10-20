@@ -10,9 +10,9 @@ export async function geocode(city: string): Promise<{ name: string; lat: number
 }
 
 export async function forecast(city: string, lat: number, lon: number, tz: string): Promise<WeatherInput | null> {
-  const q = 'temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,wind_speed_10m_max';
+  const q = 'temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max';
   try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q}&timezone=${encodeURIComponent(tz)}&forecast_days=2`);
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q}&timezone=${encodeURIComponent(tz)}&forecast_days=3`);
     if (!r.ok) return null;
     const d = (await r.json()) as { daily?: Record<string, (number | null)[]> };
     const day = (i: number): WeatherDay => ({
@@ -21,8 +21,9 @@ export async function forecast(city: string, lat: number, lon: number, tz: strin
       resimtita_max: d.daily?.apparent_temperature_max?.[i] ?? null,
       ploaie_mm: d.daily?.precipitation_sum?.[i] ?? null,
       vant_kmh: d.daily?.wind_speed_10m_max?.[i] ?? null,
+      prob_ploaie: d.daily?.precipitation_probability_max?.[i] ?? null,
     });
-    return d.daily ? { oras: city, azi: day(0), maine: day(1) } : null;
+    return d.daily ? { oras: city, azi: day(0), maine: day(1), poimaine: (d.daily.temperature_2m_max?.length ?? 0) > 2 ? day(2) : null } : null;
   } catch {
     return null;
   }

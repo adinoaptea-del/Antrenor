@@ -18,6 +18,7 @@ import { useMetOnce, walkOrb } from './Walking';
 import { readyLabel, readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
+import { WEATHER_NOTE, dayWord } from '@core/calendar/weather-swap.js';
 import { fmtTime } from '@core/goals/run-target.js';
 
 
@@ -245,6 +246,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
 
       <div className="stack">
 
+        <WeatherSwapped />
+
         <MovedAway />
 
         {weekday(me.today) === 6 && !me.forms.weeklyDone && me.intakeComplete && (
@@ -319,6 +322,57 @@ function PainClear({ reason }: { reason: string }) {
  * Răzgândirea pe Acasă (cererea lui Cuza, 20.10.2026): ședințele de azi pe care le-ai mutat pe altă zi apar aici, cu
  * „Pune-o înapoi azi” — programul s-a schimbat și antrenamentul se mai poate face azi.
  */
+/**
+ * Inversarea după vreme (src/calendar/weather-swap.ts): cardul o anunță pe Acasă cât timp ședințele urmează, cu
+ * „Lasă-le cum erau” (le pune pe amândouă în zilele din plan).
+ */
+function WeatherSwapped() {
+  const me = useMe();
+  const { submitForm, local } = useData();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (local) return null;
+  const swapped = me.plan.filter((w) => (w.note ?? '').startsWith(WEATHER_NOTE) && w.original && w.date >= me.today && (w.status === 'planificat' || w.status === 'mutat'));
+  // Perechea: ședința de afară (bicicletă/alergare) și cea de înăuntru care i-a luat locul.
+  const out = swapped.filter((w) => w.sport === 'bicicleta' || w.sport === 'alergare');
+  if (!out.length && !msg) return null;
+  const WHAT: Record<string, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'sala' };
+  return (
+    <>
+      {out.map((o) => {
+        const i = swapped.find((x) => x.id !== o.id && x.original?.date === o.date && x.date === o.original!.date);
+        const reason = (o.note ?? '').replace(/^vremea:\s*/, '').split(';')[0];
+        const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+        return (
+          <div key={o.id} className="row-card" role="status">
+            <span>
+              <b>Vremea: am inversat {i ? `${WHAT[i.sport]} cu ${WHAT[o.sport]}` : WHAT[o.sport]}</b>
+              <small>
+                {cap(WHAT[o.sport]!)} {dayWord(o.date, me.today)}{i ? `, ${WHAT[i.sport]} ${dayWord(i.date, me.today)}` : ''}, ca să prinzi vremea bună ({reason}).
+              </small>
+            </span>
+            <button
+              className="pill"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                setMsg(null);
+                submitForm('actiune', { workoutId: o.id, op: 'vreme-inapoi' })
+                  .then(() => setMsg('Gata: ședințele sunt în zilele din plan.'))
+                  .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Lasă-le cum erau
+            </button>
+          </div>
+        );
+      })}
+      {msg && <div className="small muted" role="status">{msg}</div>}
+    </>
+  );
+}
+
 function MovedAway() {
   const me = useMe();
   const { submitForm, local } = useData();

@@ -187,11 +187,15 @@ export interface WeatherDay {
   resimtita_max: number | null;
   ploaie_mm: number | null;
   vant_kmh: number | null;
+  /** Probabilitatea maximă de ploaie în zi (%), când prognoza o dă. */
+  prob_ploaie?: number | null;
 }
 export interface WeatherInput {
   oras: string;
   azi: WeatherDay;
   maine: WeatherDay;
+  /** Poimâine (pentru inversarea după vreme, src/calendar/weather-swap.ts). */
+  poimaine?: WeatherDay | null;
 }
 
 export type Zones5 = Partial<Record<Zone, number>>;

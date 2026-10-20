@@ -13,7 +13,8 @@ import { hasConsent } from '../_lib/consent.js';
 import { disconnect } from '../_lib/tokens.js';
 import { ENV } from '../_lib/env.js';
 import type { BodyForm, LabsForm, TestsForm } from '../../src/api-types.js';
-import type { Sport } from '../../src/types.js';
+import type { PlannedWorkout, Sport } from '../../src/types.js';
+import { undoWeatherSwap } from '../../src/calendar/weather-swap.js';
 import { loadUser } from '../_lib/collect.js';
 import { generateAndStore, reevaluateAfterImport, saveIntake, type IntakeLike } from '../_lib/plan.js';
 import { rescore } from '../_lib/score.js';
@@ -412,6 +413,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const at = new Date().toISOString();
       let next;
       try {
+        if (op === 'vreme-inapoi') {
+          // „Lasă-le cum erau”: inversarea după vreme se anulează pentru ambele ședințe.
+          let back: PlannedWorkout[];
+          try {
+            const all = (await loadPlan(u.id, addDays(today, -1), addDays(today, 10))).workouts;
+            back = undoWeatherSwap(all, id, today, at);
+          } catch (e) {
+            throw new HttpError(409, e instanceof Error ? e.message : String(e));
+          }
+          await upsert('workouts_planned', back.map((x) => toWorkoutRow(x, u.id, planId)), 'id');
+          await insert('journal', { user_id: u.id, date: today, entry: 'calendar (sportivul): a lăsat ședințele în zilele din plan, fără inversarea după vreme' }).catch(() => undefined);
+          await rescore(u.id, today, ((user.goal as string | null) ?? '70.3') as '70.3').catch(() => undefined);
+          json(res, 200, { ok: true, note: 'înapoi în zilele din plan' });
+          return;
+        }
         if (op === 'inapoi') {
           // Răzgândirea la „Mută”: ședința amânată de tine revine în ziua din plan, dacă ziua aceea e azi sau mai târziu.
           const o = w.original;

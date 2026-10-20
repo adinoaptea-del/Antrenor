@@ -2089,9 +2089,9 @@ function samesWalk(a, b) {
   return overlap > 0 && overlap >= 0.5 * Math.min(a.elapsedSec, b.elapsedSec) * 1e3;
 }
 function dedupeWalks(records) {
-  const live = records.filter((r2) => !r2.deleted && r2.elapsedSec > 0);
-  const byId = new Set(live.map((r2) => r2.id));
-  const sorted = [...live].sort((a, b) => (a.provenance === b.provenance ? 0 : a.provenance === "masurat" ? -1 : 1) || (a.movingSec != null ? 0 : 1) - (b.movingSec != null ? 0 : 1) || SOURCE_RANK[a.source] - SOURCE_RANK[b.source] || a.id.localeCompare(b.id));
+  const live2 = records.filter((r2) => !r2.deleted && r2.elapsedSec > 0);
+  const byId = new Set(live2.map((r2) => r2.id));
+  const sorted = [...live2].sort((a, b) => (a.provenance === b.provenance ? 0 : a.provenance === "masurat" ? -1 : 1) || (a.movingSec != null ? 0 : 1) - (b.movingSec != null ? 0 : 1) || SOURCE_RANK[a.source] - SOURCE_RANK[b.source] || a.id.localeCompare(b.id));
   const kept = [];
   const merged = [];
   for (const r2 of sorted) {
@@ -5426,35 +5426,36 @@ function withOriginal(prev, next, at) {
   if (sameShape(original, after2)) return { ...next, original: null, changedAt: at };
   return { ...next, original, changedAt: at };
 }
+function dayBlock(others, w, d, ctx = {}) {
+  const on = (x) => others.filter((o) => o.date === x && active(o));
+  const hardOn = (x) => on(x).some(isHard);
+  const day2 = on(d);
+  if (day2.length >= 2) return "are deja dou\u0103 \u0219edin\u021Be";
+  if (w.sport !== "forta" && day2.some((x) => x.sport === w.sport)) return `are deja ${SPORT_WORD3[w.sport]}`;
+  if ((w.type === "lung" || w.type === "brick") && day2.some((x) => x.type === "lung" || x.type === "brick")) return "are deja o \u0219edin\u021B\u0103 lung\u0103";
+  if (isHard(w) && hardOn(d)) return "are deja o \u0219edin\u021B\u0103 grea";
+  if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) return "e l\xE2ng\u0103 o zi grea (zi tare, zi u\u0219oar\u0103)";
+  if (w.sport === "alergare" && w.type === "calitate" && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === "alergare" && x.type === "lung")) return "e l\xE2ng\u0103 alergarea lung\u0103";
+  const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
+  if (aw) return `e\u0219ti plecat (${AWAY_LABEL[aw.ce]})`;
+  if (ctx.freeBlocks?.length) {
+    const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
+    if (longest === 0) return "nu ai timp liber \xEEn ziua asta (programul t\u0103u)";
+    if (longest < w.plannedMinutes) return `fereastra liber\u0103 are ${longest} min, \u0219edin\u021Ba ${w.plannedMinutes}`;
+  }
+  return null;
+}
 function moveOptions(plan, id, today, doneIds = [], ctx = {}) {
   const w = plan.find((x) => x.id === id);
   if (!w || !active(w) || w.date < today || doneIds.includes(id)) return [];
   const ws = weekStart(w.date);
   const others = plan.filter((x) => x.id !== id && active(x));
-  const on = (d) => others.filter((x) => x.date === d);
-  const hardOn = (d) => on(d).some(isHard);
   const out = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i);
     if (d === w.date) continue;
     if (d < today) continue;
-    const day2 = on(d);
-    let reason;
-    if (day2.length >= 2) reason = "are deja dou\u0103 \u0219edin\u021Be";
-    else if (w.sport !== "forta" && day2.some((x) => x.sport === w.sport)) reason = `are deja ${SPORT_WORD3[w.sport]}`;
-    else if ((w.type === "lung" || w.type === "brick") && day2.some((x) => x.type === "lung" || x.type === "brick")) reason = "are deja o \u0219edin\u021B\u0103 lung\u0103";
-    else if (isHard(w) && hardOn(d)) reason = "are deja o \u0219edin\u021B\u0103 grea";
-    else if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) reason = "e l\xE2ng\u0103 o zi grea (zi tare, zi u\u0219oar\u0103)";
-    else if (w.sport === "alergare" && w.type === "calitate" && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === "alergare" && x.type === "lung")) reason = "e l\xE2ng\u0103 alergarea lung\u0103";
-    if (!reason) {
-      const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
-      if (aw) reason = `e\u0219ti plecat (${AWAY_LABEL[aw.ce]})`;
-    }
-    if (!reason && ctx.freeBlocks?.length) {
-      const longest = Math.max(0, ...ctx.freeBlocks.filter((b) => b.day === weekday(d)).map((b) => b.endMin - b.startMin));
-      if (longest === 0) reason = "nu ai timp liber \xEEn ziua asta (programul t\u0103u)";
-      else if (longest < w.plannedMinutes) reason = `fereastra liber\u0103 are ${longest} min, \u0219edin\u021Ba ${w.plannedMinutes}`;
-    }
+    const reason = dayBlock(others, w, d, ctx);
     out.push(reason ? { date: d, ok: false, reason } : { date: d, ok: true });
   }
   return out;
@@ -7284,9 +7285,9 @@ async function geocode(city) {
   return g ? { name: `${g.name}${g.country ? `, ${g.country}` : ""}`, lat: g.latitude, lon: g.longitude } : null;
 }
 async function forecast(city, lat, lon, tz) {
-  const q4 = "temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,wind_speed_10m_max";
+  const q4 = "temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max";
   try {
-    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q4}&timezone=${encodeURIComponent(tz)}&forecast_days=2`);
+    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${q4}&timezone=${encodeURIComponent(tz)}&forecast_days=3`);
     if (!r2.ok) return null;
     const d = await r2.json();
     const day2 = (i) => ({
@@ -7294,9 +7295,10 @@ async function forecast(city, lat, lon, tz) {
       tmin: d.daily?.temperature_2m_min?.[i] ?? null,
       resimtita_max: d.daily?.apparent_temperature_max?.[i] ?? null,
       ploaie_mm: d.daily?.precipitation_sum?.[i] ?? null,
-      vant_kmh: d.daily?.wind_speed_10m_max?.[i] ?? null
+      vant_kmh: d.daily?.wind_speed_10m_max?.[i] ?? null,
+      prob_ploaie: d.daily?.precipitation_probability_max?.[i] ?? null
     });
-    return d.daily ? { oras: city, azi: day2(0), maine: day2(1) } : null;
+    return d.daily ? { oras: city, azi: day2(0), maine: day2(1), poimaine: (d.daily.temperature_2m_max?.length ?? 0) > 2 ? day2(2) : null } : null;
   } catch {
     return null;
   }
@@ -11750,6 +11752,118 @@ init_db();
 init_agents();
 init_plan2();
 init_dates();
+
+// server/_lib/weather-swap.ts
+init_dates();
+
+// src/calendar/weather-swap.ts
+init_dates();
+init_actions();
+function weatherVerdict(d) {
+  if (!d || d.ploaie_mm == null || d.tmax == null) return null;
+  const rain = d.ploaie_mm;
+  const prob = d.prob_ploaie ?? null;
+  const wind = d.vant_kmh ?? 0;
+  const feel = d.resimtita_max ?? d.tmax;
+  if (rain >= 3 || rain >= 1 && prob != null && prob >= 70 || wind >= 40 || d.tmax <= 2 || feel >= 34) return "rau";
+  if (rain < 1 && (prob == null || prob < 40) && wind < 30 && d.tmax >= 8 && d.tmax <= 30 && feel < 31) return "bun";
+  return "neutru";
+}
+var WEATHER_NOTE = "vremea";
+var DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
+var WHAT = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
+var live = (w) => w.status === "planificat" || w.status === "mutat";
+var touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !/^(mutată de tine|pusă înapoi|vremea)/.test(w.note ?? "") && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
+var outdoor = (w, ctx) => w.sport === "bicicleta" && !ctx.noOutdoorBike || w.sport === "alergare";
+var indoor = (w, ctx) => w.sport === "forta" || w.sport === "inot" && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? "");
+function dayWord(d, today) {
+  return d === today ? "azi" : d === addDays(today, 1) ? "m\xE2ine" : d === addDays(today, 2) ? "poim\xE2ine" : DAY3[weekday(d)];
+}
+var describe = (d, v) => {
+  const t = d.tmax != null ? `${Math.round(d.tmax)}\xB0` : "";
+  if (v === "bun") return `${t}, f\u0103r\u0103 ploaie`;
+  const bits = [d.ploaie_mm != null && d.ploaie_mm >= 1 ? `ploaie (${Math.round(d.ploaie_mm)} mm)` : null, d.vant_kmh != null && d.vant_kmh >= 40 ? `v\xE2nt puternic (${Math.round(d.vant_kmh)} km/h)` : null, d.tmax != null && d.tmax <= 2 ? `frig (${t})` : null, (d.resimtita_max ?? -99) >= 34 ? `canicul\u0103 (${Math.round(d.resimtita_max)}\xB0 resim\u021Bit)` : null].filter(Boolean);
+  return bits.join(" \u0219i ") || "vreme rea";
+};
+function weatherSwap(plan, a, b, today, at, ctx = {}) {
+  const va = weatherVerdict(a.w);
+  const vb = weatherVerdict(b.w);
+  if (!va || !vb) return null;
+  const bad = va === "rau" && vb === "bun" ? a : vb === "rau" && va === "bun" ? b : null;
+  const good = bad === a ? b : bad === b ? a : null;
+  if (!bad || !good || bad.date < today || good.date < today) return null;
+  const outs = plan.filter((w) => w.date === bad.date && touchable(w, ctx) && outdoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
+  const ins = plan.filter((w) => w.date === good.date && touchable(w, ctx) && indoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
+  for (const o of outs) {
+    for (const i of ins) {
+      const after2 = plan.map((w) => w.id === o.id ? { ...w, date: good.date } : w.id === i.id ? { ...w, date: bad.date } : w);
+      const oNew = after2.find((w) => w.id === o.id);
+      const iNew = after2.find((w) => w.id === i.id);
+      if (dayBlock(after2.filter((w) => w.id !== o.id), oNew, good.date, ctx)) continue;
+      if (dayBlock(after2.filter((w) => w.id !== i.id), iNew, bad.date, ctx)) continue;
+      const why = `${DAY3[weekday(good.date)]} frumos (${describe(good.w, "bun")}), ${DAY3[weekday(bad.date)]} ${describe(bad.w, "rau")}`;
+      const changed = [
+        withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[i.sport]}` }, at),
+        withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[o.sport]}` }, at)
+      ];
+      const G = dayWord(good.date, today);
+      const B = dayWord(bad.date, today);
+      const place2 = i.sport === "inot" ? "\xEEnotul din bazin" : "sala";
+      const text = `${G[0].toUpperCase()}${G.slice(1)} e vreme frumoas\u0103 (${describe(good.w, "bun")}), iar ${B} se anun\u021B\u0103 ${describe(bad.w, "rau")}: am inversat ${place2} cu ${WHAT[o.sport]}, ca s\u0103 te po\u021Bi bucura de vremea bun\u0103. ${WHAT[o.sport][0].toUpperCase()}${WHAT[o.sport].slice(1)} e ${G}, ${place2} ${B}.`;
+      return { changed, text };
+    }
+  }
+  return null;
+}
+function undoWeatherSwap(plan, id, today, at) {
+  const w = plan.find((x) => x.id === id);
+  if (!w || !(w.note ?? "").startsWith(WEATHER_NOTE) || !w.original) throw new Error("\u0219edin\u021Ba n-a fost mutat\u0103 de vreme");
+  const partner = plan.find((x) => x.id !== w.id && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === w.date && x.date === w.original.date);
+  const back = (x) => {
+    if (x.original.date < today) throw new Error("ziua ini\u021Bial\u0103 a trecut");
+    return withOriginal(x, { ...x, date: x.original.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan" }, at);
+  };
+  return partner ? [back(w), back(partner)] : [back(w)];
+}
+
+// server/_lib/weather-swap.ts
+init_agents();
+init_collect();
+init_db();
+init_prefs();
+init_weather();
+async function weatherSwapFor(userId, today, first2) {
+  const u = await loadUser(userId);
+  if (u.lat == null || u.lon == null || !u.city) return null;
+  const a = first2 === "azi" ? today : addDays(today, 1);
+  const b = addDays(a, 1);
+  const key3 = `vreme:${a}:${b}`;
+  const fc = await forecast(u.city, u.lat, u.lon, u.tz || "Europe/Bucharest");
+  if (!fc) return null;
+  const wa = first2 === "azi" ? fc.azi : fc.maine;
+  const wb = first2 === "azi" ? fc.maine : fc.poimaine ?? null;
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -3), addDays(today, 7));
+  if (!planId) return null;
+  const [done, forms, prefs] = await Promise.all([executedIds(userId, today, workouts), loadForms(userId, today), loadPrefs(userId)]);
+  const intake = forms.intake;
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  const r2 = weatherSwap(workouts, { date: a, w: wa }, { date: b, w: wb }, today, at, {
+    done,
+    fixed: prefs.fixe,
+    away: currentAway(prefs, today),
+    freeBlocks: Array.isArray(intake?.program) ? intake.program : void 0,
+    swimOutdoors: prefs.mediuInot === "ape",
+    noOutdoorBike: intake?.bicicleta?.tip === "nu_am"
+  });
+  if (!r2) return null;
+  const fresh = await insertIgnore("agent_events", { user_id: userId, event_key: key3 }, "user_id,event_key");
+  if (!fresh.length) return null;
+  await upsert("workouts_planned", r2.changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+  await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${r2.text}` }).catch(() => void 0);
+  return r2.text;
+}
+
+// server/cron/evening.ts
 async function handler5(req, res) {
   try {
     requireCron(req);
@@ -11763,7 +11877,8 @@ async function handler5(req, res) {
         const evening = activity ? await runAgents(u.id, today, "dupa_antrenament") : null;
         const weekly = weekday(today) === 6 ? await runAgents(u.id, today, "saptamanal") : null;
         const freq = weekday(today) === 6 ? await reevaluateFitnessDays(u.id, today).catch(() => null) : null;
-        out[u.id] = { frecventa: freq, seara: evening ? evening.decision : activity ? "deja rulat" : "f\u0103r\u0103 \u0219edin\u021B\u0103", saptamanal: weekly ? weekly.decision : weekday(today) === 6 ? "deja rulat" : "-" };
+        const vreme = await weatherSwapFor(u.id, today, "maine").catch(() => null);
+        out[u.id] = { vreme, frecventa: freq, seara: evening ? evening.decision : activity ? "deja rulat" : "f\u0103r\u0103 \u0219edin\u021B\u0103", saptamanal: weekly ? weekly.decision : weekday(today) === 6 ? "deja rulat" : "-" };
       } catch (e) {
         out[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
       }
@@ -12016,14 +12131,14 @@ init_actions();
 init_validate();
 var MOTIV_LABEL = { timp: "lips\u0103 de timp", oboseala: "oboseal\u0103", durere: "durere", boala: "boal\u0103", altul: "alt motiv" };
 var NOT_TOLERATED2 = ["oboseala", "durere", "boala"];
-var DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
+var DAY4 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
 var SPORT3 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103", mers: "mers" };
 var active5 = (w) => w.status === "planificat" || w.status === "mutat";
 var dm2 = (iso) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
 var hard2 = (w) => w.key || w.type === "calitate" || w.type === "brick" || w.targetZones.some((z) => z >= 3);
 function outcomeFeedback(plan, outcomes, now, today, at) {
   const w = plan.find((x) => x.id === now.workoutId);
-  const label = w ? `${SPORT3[w.sport]} de ${DAY3[weekday(w.date)]} ${dm2(w.date)}` : `\u0219edin\u021Ba din ${dm2(now.date)}`;
+  const label = w ? `${SPORT3[w.sport]} de ${DAY4[weekday(w.date)]} ${dm2(w.date)}` : `\u0219edin\u021Ba din ${dm2(now.date)}`;
   const what = now.status === "ratat" ? "nef\u0103cut\u0103" : `f\u0103cut\u0103 par\u021Bial${now.minutes ? ` (${now.minutes} min)` : ""}`;
   const recent = outcomes.filter((o) => NOT_TOLERATED2.includes(o.motiv) && diffDays(o.date, today) <= 7 && o.date <= today);
   const changed = [];
@@ -12046,17 +12161,17 @@ function outcomeFeedback(plan, outcomes, now, today, at) {
       });
       changed.push(withOriginal(target, easy, at));
       decision = "modificat";
-      nextLine = `Urm\u0103toarea \u0219edin\u021B\u0103 grea (${SPORT3[target.sport]}, ${DAY3[weekday(target.date)]} ${dm2(target.date)}) devine u\u0219oar\u0103, deoarece ai declarat ${recent.length} \u0219edin\u021Be nef\u0103cute din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join("/")} \xEEn ultimele 7 zile.`;
+      nextLine = `Urm\u0103toarea \u0219edin\u021B\u0103 grea (${SPORT3[target.sport]}, ${DAY4[weekday(target.date)]} ${dm2(target.date)}) devine u\u0219oar\u0103, deoarece ai declarat ${recent.length} \u0219edin\u021Be nef\u0103cute din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join("/")} \xEEn ultimele 7 zile.`;
     } else nextLine = `\xCEn urm\u0103toarele 7 zile nu ai nicio \u0219edin\u021B\u0103 grea: planul r\u0103m\xE2ne; ai declarat ${recent.length} \u0219edin\u021Be nef\u0103cute din oboseal\u0103/durere/boal\u0103, iar la bilan\u021Bul s\u0103pt\u0103m\xE2nal se reevalueaz\u0103 doza.`;
   } else {
     const next = w ? plan.filter((x) => active5(x) && x.date > now.date && x.date >= today && x.sport === w.sport).sort((a, b) => a.date < b.date ? -1 : 1)[0] : void 0;
-    const where = next ? ` (${DAY3[weekday(next.date)]} ${dm2(next.date)})` : "";
+    const where = next ? ` (${DAY4[weekday(next.date)]} ${dm2(next.date)})` : "";
     nextLine = now.motiv === "timp" ? `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e: lipsa de timp nu \xEEnseamn\u0103 c\u0103 nu po\u021Bi.` : now.motiv === "altul" ? `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e.` : `Urm\u0103toarea \u0219edin\u021B\u0103${where} r\u0103m\xE2ne cum e: e prima din ultimele 7 zile; dac\u0103 se repet\u0103, se u\u0219ureaz\u0103.`;
   }
   if (now.motiv === "timp") {
     const timp = outcomes.filter((o) => o.motiv === "timp" && o.date <= today && diffDays(o.date, today) <= 21);
     const sameDay = timp.filter((o) => weekday(o.date) === weekday(now.date));
-    if (sameDay.length >= 3) nextLine += ` E a ${sameDay.length}-a oar\u0103 \xEEn 3 s\u0103pt\u0103m\xE2ni c\xE2nd ${DAY3[weekday(now.date)]} nu ajunge timpul: propun s\u0103 mut\u0103m \u0219edin\u021Ba de ${DAY3[weekday(now.date)]} pe alt\u0103 zi sau s\u0103 scurt\u0103m fereastra din program (Profil \u2192 Program). Capacitatea ta nu se schimb\u0103.`;
+    if (sameDay.length >= 3) nextLine += ` E a ${sameDay.length}-a oar\u0103 \xEEn 3 s\u0103pt\u0103m\xE2ni c\xE2nd ${DAY4[weekday(now.date)]} nu ajunge timpul: propun s\u0103 mut\u0103m \u0219edin\u021Ba de ${DAY4[weekday(now.date)]} pe alt\u0103 zi sau s\u0103 scurt\u0103m fereastra din program (Profil \u2192 Program). Capacitatea ta nu se schimb\u0103.`;
     else if (timp.length >= 3) nextLine += ` Ai ${timp.length} \u0219edin\u021Be nef\u0103cute din lips\u0103 de timp \xEEn 3 s\u0103pt\u0103m\xE2ni: propun s\u0103 revedem programul (zilele sau orele libere) ori s\u0103 sc\u0103dem cu o \u0219edin\u021B\u0103 pe s\u0103pt\u0103m\xE2n\u0103. Capacitatea ta nu se schimb\u0103.`;
   }
   const extra = now.motiv === "durere" ? " Spune \u0219i c\xE2t de tare doare (formularul de sear\u0103), ca restric\u021Bia s\u0103 fie corect\u0103." : now.motiv === "boala" ? " Dac\u0103 ai febr\u0103, bifeaz-o diminea\u021Ba: atunci ziua e stop." : "";
@@ -12224,6 +12339,7 @@ async function handler6(req, res) {
         if (u.goal && u.goal.startsWith("fit-")) await missedStrength(u.id, today).catch(() => []);
         else await moduleProgression(u.id, today).catch(() => []);
         await bigEffortMorning(u.id, today).catch(() => []);
+        await weatherSwapFor(u.id, today, "azi").catch(() => null);
         const r2 = await runAgents(u.id, today, "dimineata");
         out[u.id] = r2 ? { decizie: r2.decision, rutati: r2.routed, respinse: r2.rejected, schimbari: r2.changes.length } : "deja rulat";
       } catch (e) {
@@ -13623,6 +13739,20 @@ async function handler10(req, res) {
       const at = (/* @__PURE__ */ new Date()).toISOString();
       let next;
       try {
+        if (op === "vreme-inapoi") {
+          let back;
+          try {
+            const all2 = (await loadPlan(u.id, addDays(today, -1), addDays(today, 10))).workouts;
+            back = undoWeatherSwap(all2, id, today, at);
+          } catch (e) {
+            throw new HttpError(409, e instanceof Error ? e.message : String(e));
+          }
+          await upsert("workouts_planned", back.map((x) => toWorkoutRow(x, u.id, planId)), "id");
+          await insert("journal", { user_id: u.id, date: today, entry: "calendar (sportivul): a l\u0103sat \u0219edin\u021Bele \xEEn zilele din plan, f\u0103r\u0103 inversarea dup\u0103 vreme" }).catch(() => void 0);
+          await rescore(u.id, today, user.goal ?? "70.3").catch(() => void 0);
+          json(res, 200, { ok: true, note: "\xEEnapoi \xEEn zilele din plan" });
+          return;
+        }
         if (op === "inapoi") {
           const o = w.original;
           if (!o || !(w.note ?? "").startsWith("mutat\u0103 de tine")) throw new HttpError(409, "\u0219edin\u021Ba n-a fost mutat\u0103 de tine");
@@ -14375,8 +14505,8 @@ function cleanPing(body, todayUtc) {
   const ping = { date: b.date, sessions: int(b.sessions, 20), seconds: int(b.seconds, 6 * 3600), details: int(b.details, 300), screens };
   return ping.sessions + ping.seconds + ping.details + Object.keys(screens).length > 0 ? ping : null;
 }
-var DAY4 = 864e5;
-var daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY4);
+var DAY5 = 864e5;
+var daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY5);
 function summarizeUsage(rows, feedback, today, since = null) {
   const ago = (r2) => daysBetween(r2.date, today);
   const active6 = rows.filter((r2) => r2.sessions > 0 || r2.seconds > 0 || Object.keys(r2.screens ?? {}).length > 0);
@@ -14496,8 +14626,8 @@ async function handler16(req, res) {
       const plan = await one("plans", { user_id: `eq.${target.id}`, active: "eq.true" });
       const ws = plan ? await select("workouts_planned", { plan_id: `eq.${plan.id}`, date: `gte.${today}` }, { order: "date.asc", limit: 40 }) : [];
       const hist = await historyHours(target.id, today);
-      const DAY5 = ["L", "Ma", "Mi", "J", "V", "S", "D"];
-      const prog = Array.isArray(a.program) ? a.program.map((b) => `${DAY5[b.day]} ${Math.floor(b.startMin / 60)}\u2013${Math.ceil(b.endMin / 60)}`).join(", ") : "\u2013";
+      const DAY6 = ["L", "Ma", "Mi", "J", "V", "S", "D"];
+      const prog = Array.isArray(a.program) ? a.program.map((b) => `${DAY6[b.day]} ${Math.floor(b.startMin / 60)}\u2013${Math.ceil(b.endMin / 60)}`).join(", ") : "\u2013";
       const al = a.alergare ?? {};
       const lines = [
         `Obiectiv: ${a.obiectiv ?? "\u2013"} \xB7 data ${a.dataCursa ?? "\u2013"} \xB7 ramura ${al.ramura ?? (al.tinta ? "timp" : "\u2013")}${al.tinta ? ` \xB7 \u021Binta ${al.tinta.valoare} (${al.tinta.mod})` : ""}`,

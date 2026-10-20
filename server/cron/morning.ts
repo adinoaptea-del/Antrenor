@@ -12,6 +12,7 @@ import { MIGRATIONS, runOnce } from '../_lib/migrations.js';
 import { ensureSplit } from '../_lib/split.js';
 import { loadPlan } from '../_lib/collect.js';
 import { addDays } from '../../src/util/dates.js';
+import { weatherSwapFor } from '../_lib/weather-swap.js';
 
 /** Dimineața (05:30 ora României): sincronizare, scor, apoi piramida pentru fiecare sportiv cu plan și consimțământ. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -40,6 +41,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         else await moduleProgression(u.id, today).catch(() => []);
         // A08: după un efort mare ieri, sugestie ușoară pe ședința de picioare de azi (planul rămâne).
         await bigEffortMorning(u.id, today).catch(() => []);
+        // Vremea: azi ↔ mâine, înaintea mesajului de dimineață (ca mesajul să vorbească de planul inversat).
+        await weatherSwapFor(u.id, today, 'azi').catch(() => null);
         const r = await runAgents(u.id, today, 'dimineata');
         out[u.id] = r ? { decizie: r.decision, rutati: r.routed, respinse: r.rejected, schimbari: r.changes.length } : 'deja rulat';
       } catch (e) {
