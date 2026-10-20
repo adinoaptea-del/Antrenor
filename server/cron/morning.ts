@@ -7,7 +7,7 @@ import { syncUser } from '../_lib/sync.js';
 import { rescore } from '../_lib/score.js';
 import { runAgents } from '../_lib/agents.js';
 import { labsReminder } from '../_lib/reminders.js';
-import { missedStrength, moduleProgression } from '../_lib/react.js';
+import { bigEffortMorning, missedStrength, moduleProgression } from '../_lib/react.js';
 import { MIGRATIONS, runOnce } from '../_lib/migrations.js';
 import { ensureSplit } from '../_lib/split.js';
 import { loadPlan } from '../_lib/collect.js';
@@ -38,6 +38,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         if (u.goal && u.goal.startsWith('fit-')) await missedStrength(u.id, today).catch(() => []);
         // Treptele modulelor din execuții, nu din calendar (V2-05); și „rămâne” își scrie dovezile în jurnal.
         else await moduleProgression(u.id, today).catch(() => []);
+        // A08: după un efort mare ieri, sugestie ușoară pe ședința de picioare de azi (planul rămâne).
+        await bigEffortMorning(u.id, today).catch(() => []);
         const r = await runAgents(u.id, today, 'dimineata');
         out[u.id] = r ? { decizie: r.decision, rutati: r.routed, respinse: r.rejected, schimbari: r.changes.length } : 'deja rulat';
       } catch (e) {

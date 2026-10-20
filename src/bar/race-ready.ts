@@ -167,7 +167,8 @@ export function raceReady(input: {
   const swimPace = contPace.length ? Math.min(...contPace) : sessPace.length ? Math.min(...sessPace) : null; // s/100 m
   const rides = of('bicicleta').filter((a) => a.minutes >= 90 && (a.distanceKm ?? 0) > 0);
   const bikeSpeed = rides.length ? Math.max(...rides.map((a) => (a.distanceKm ?? 0) / (a.minutes / 60))) : null; // km/h
-  const brickRuns = of('alergare').filter((a) => isBrickRun(a, recent) && (a.distanceKm ?? 0) >= 3);
+  // A46: ritmul de brick doar din alergări de brick reale (≥ 5 km sau ≥ 30 min), nu din 3 km după o tură oarecare.
+  const brickRuns = of('alergare').filter((a) => isBrickRun(a, recent) && (a.distanceKm ?? 0) >= 3 && ((a.distanceKm ?? 0) >= 5 || a.minutes >= 30));
   const longRuns = of('alergare').filter((a) => (a.distanceKm ?? 0) >= 10);
   const assumptions: string[] = [];
   let runPace: number | null = null; // min/km

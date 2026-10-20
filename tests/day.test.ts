@@ -21,7 +21,7 @@ describe('decizia zilei', () => {
     const d = decideDay({ state: { verdict: 'portocaliu', motiv: 'date obiective 48/100 (3 din 5 măsurate)' }, readiness: null, restriction: null, todayPlan: [w('planificat')] })!;
     assert.equal(d.level, 'galben');
     assert.equal(d.action, 'Azi mai ușor: faci varianta ușoară a ședinței.');
-    assert.equal(d.reason, 'Recuperarea măsurată de brățări: 48/100');
+    assert.equal(d.reason, 'Recuperarea măsurată de brățări: 48/100 (din 3 indicatori din 5)'); // A09: acoperirea rămâne în text
   });
   it('stopul bate tot; restricția e podea', () => {
     assert.equal(decideDay({ state: { verdict: 'verde' }, readiness: { verdict: 'stop', reason: 'febră' }, restriction: null, todayPlan: [] })!.level, 'stop');

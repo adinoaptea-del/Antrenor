@@ -98,6 +98,26 @@ export function suggestLighter(x: PlannedWorkout, reason: string, minutes?: numb
 }
 
 /**
+ * Auditul v93, A08 (fără a tăia, regula 29): dimineața de după un efort mare (≥ 90 min sau RPE ≥ 7), dacă sportivul
+ * n-a spus încă cum îi simte mușchii (Hooper „dureri”), ședința de azi cu impact pe picioare (alergare, brick, forță de
+ * picioare) primește o sugestie ușoară cu motivul scris; planul rămâne, alege sportivul. Cu durerile spuse: ≥ 5 face
+ * ziua galbenă (readiness), sub 5 nu se schimbă nimic.
+ */
+export function suggestAfterBigEffort(plan: PlannedWorkout[], today: string, effort: string | null, dureri: number | null | undefined): PlannedWorkout[] {
+  if (!effort || dureri != null) return [];
+  const out: PlannedWorkout[] = [];
+  for (const w of plan) {
+    if (w.date !== today || !isActiveWorkout(w) || w.suggestion?.accepted != null || w.suggestion) continue;
+    const sp = w.sport === 'forta' ? parseStrength(w.structure) : null;
+    const legs = w.sport === 'alergare' || w.type === 'brick' || (sp != null && sessionKind(sp.session) !== 'U');
+    if (!legs) continue;
+    const x = { ...w };
+    if (suggestLighter(x, `ieri: ${effort}. Pulsul și HRV-ul nu văd oboseala musculară; spune în formularul de dimineață cum îți simți picioarele. Alegi tu.`)) out.push(x);
+  }
+  return out;
+}
+
+/**
  * Ședințele de azi și din viitor anulate sau scurtate de regulile vechi „efort în plus” revin în plan, cu sugestia ușoară.
  * Întoarce doar ședințele schimbate.
  */

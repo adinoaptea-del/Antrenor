@@ -172,6 +172,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'teste') {
       const t = body as unknown as TestsForm;
       if (!isDate(t.data)) throw new HttpError(400, 'data testului');
+      // Auditul v93, A44: un CSS imposibil (sub 1:00 sau peste 4:00 pe 100 m) nu se salvează ca prag de înot.
+      if (t.css != null && (!Number.isFinite(Number(t.css)) || Number(t.css) < 60 || Number(t.css) > 240)) throw new HttpError(400, 'CSS-ul se scrie în secunde pe 100 m (între 60 și 240), din testul 400 m + 200 m');
       // Zonele: numere pozitive, în ordine crescătoare; altfel nu se salvează (nu stricăm zonele existente).
       const zones = (z: (number | null)[] | undefined) => (z && z.every((v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 260) && z.every((v, i) => i === 0 || (v as number) > (z[i - 1] as number)) ? z : null);
       await remove('tests', { user_id: `eq.${u.id}`, tested_at: `eq.${t.data}` });

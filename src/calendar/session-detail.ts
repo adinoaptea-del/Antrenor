@@ -43,19 +43,21 @@ interface Hr {
   up: number[];
   estimated: boolean;
   fcmax: number | null;
+  /** Auditul v93, A35: de unde vin limitele — test de zone, procente din FCmax măsurată, sau estimare din vârstă. */
+  method: 'test' | 'derived_from_measured_hrmax' | 'estimated_age';
 }
 
 const PCT = [0.7, 0.8, 0.87, 0.93, 1];
 
 export function hrFor(sport: string, ctx: DetailContext): Hr | null {
   const z = sport === 'alergare' ? ctx.zonesRun : sport === 'bicicleta' ? ctx.zonesBike : null;
-  if (z && z.slice(0, 4).every((v) => v != null)) return { up: z.map((v, i) => v ?? Math.round((ctx.fcmaxTest ?? z[3]! / 0.93) * PCT[i]!)) as number[], estimated: false, fcmax: ctx.fcmaxTest ?? null };
-  if (ctx.fcmaxTest) return { up: PCT.map((p) => Math.round(ctx.fcmaxTest! * p)), estimated: false, fcmax: ctx.fcmaxTest };
+  if (z && z.slice(0, 4).every((v) => v != null)) return { up: z.map((v, i) => v ?? Math.round((ctx.fcmaxTest ?? z[3]! / 0.93) * PCT[i]!)) as number[], estimated: false, fcmax: ctx.fcmaxTest ?? null, method: 'test' };
+  if (ctx.fcmaxTest) return { up: PCT.map((p) => Math.round(ctx.fcmaxTest! * p)), estimated: false, fcmax: ctx.fcmaxTest, method: 'derived_from_measured_hrmax' };
   if (ctx.age && ctx.age >= 14 && ctx.age <= 90) {
     const max = Math.round(208 - 0.7 * ctx.age);
     // Pe bicicletă pulsul la același efort e de obicei puțin mai mic decât la alergare.
     const adj = sport === 'bicicleta' ? 5 : 0;
-    return { up: PCT.map((p) => Math.round(max * p) - adj), estimated: true, fcmax: max };
+    return { up: PCT.map((p) => Math.round(max * p) - adj), estimated: true, fcmax: max, method: 'estimated_age' };
   }
   return null;
 }
@@ -76,6 +78,7 @@ const STRETCH = '5 min întinderi ușoare: gambe, coapse (față și spate), fle
 
 function hrNote(hr: Hr | null): Step | null {
   if (!hr) return { label: 'Puls', text: 'fără test și fără vârstă în profil: mergi după efort (scala 0–10) și testul vorbirii; zonele în bpm apar după test.' };
+  if (hr.method === 'derived_from_measured_hrmax') return { label: 'Puls', text: `zonele sunt calculate din pulsul tău maxim măsurat (${hr.fcmax} bpm) cu procente standard, nu dintr-un test de zone: un reper bun, dar pragul tău real poate fi cu câteva bătăi altfel. Dacă efortul spune altceva, crede efortul; testul de teren le face ale tale.` };
   if (hr.estimated) return { label: 'Puls', text: `zonele sunt ESTIMATE din vârstă (puls maxim ≈ ${hr.fcmax} bpm, ±10 bpm de la om la om): un reper de model, nu un prag de siguranță garantat pentru tine. Dacă efortul pare mult mai ușor sau mai greu decât spune pulsul, crede efortul; testul de teren le înlocuiește cu ale tale.` };
   return null;
 }

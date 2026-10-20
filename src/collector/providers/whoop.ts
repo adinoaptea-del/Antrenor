@@ -174,3 +174,21 @@ export interface WhoopWebhookEvent {
   type: 'recovery.updated' | 'recovery.deleted' | 'sleep.updated' | 'sleep.deleted' | 'workout.updated' | 'workout.deleted';
   trace_id: string;
 }
+
+/**
+ * Auditul v93, A11: două episoade de somn (fără siestă) cu trezirea în aceeași zi = o noapte fragmentată. Minutele se
+ * adună; ora de culcare e a primului episod, trezirea a ultimului; HRV, puls și recuperarea rămân ale episodului
+ * principal (cel mai lung), cum le dă WHOOP.
+ */
+export function mergeWhoopNights(rows: SourceDaily[]): SourceDaily[] {
+  const by = new Map<string, SourceDaily[]>();
+  for (const r of rows) by.set(r.date, [...(by.get(r.date) ?? []), r]);
+  return [...by.values()].map((xs) => {
+    if (xs.length === 1) return xs[0]!;
+    const main = [...xs].sort((a, b) => (b.sleepMin ?? 0) - (a.sleepMin ?? 0))[0]!;
+    // Ora în noapte: după-amiaza/seara (≥ 12:00) vine înaintea dimineții.
+    const night = (hm: string | null | undefined) => (hm ? (hm < '12:00' ? `1${hm}` : `0${hm}`) : '');
+    const sorted = [...xs].sort((a, b) => night(a.bedtime).localeCompare(night(b.bedtime)));
+    return { ...main, sleepMin: xs.reduce((n, x) => n + (x.sleepMin ?? 0), 0), bedtime: sorted[0]!.bedtime, wakeTime: sorted[sorted.length - 1]!.wakeTime };
+  });
+}

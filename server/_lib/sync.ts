@@ -4,7 +4,7 @@ import { hasConsent } from './consent.js';
 import { DETAILS_V, mergeDetails, stravaDetails, type ActivityDetails } from '../../src/collector/details.js';
 import { accessToken, connectedProviders, type Provider } from './tokens.js';
 import type { SourceActivity, SourceDaily } from '../../src/collector/types.js';
-import { normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
+import { mergeWhoopNights, normalizeWhoopNight, normalizeWhoopOther, normalizeWhoopWorkout, whoopApi } from '../../src/collector/providers/whoop.js';
 import { getActivity, listActivities, normalizeStravaActivity, normalizeStravaOther } from '../../src/collector/providers/strava.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { mainNights, normalizeOuraNight, normalizeOuraOther, normalizeOuraSession, normalizeOuraWorkout, ouraApi } from '../../src/collector/providers/oura.js';
@@ -30,6 +30,9 @@ export async function pullWhoop(userId: string, token: string, days: number): Pr
     const n = normalizeWhoopNight(s, rec);
     if (n) wellness.push(n);
   }
+  const merged = mergeWhoopNights(wellness);
+  wellness.length = 0;
+  wellness.push(...merged);
   const activities = workouts.map(normalizeWhoopWorkout).filter((a): a is SourceActivity => a != null);
   const others = workouts.map(normalizeWhoopOther).filter((a): a is OtherActivity => a != null);
   void userId;

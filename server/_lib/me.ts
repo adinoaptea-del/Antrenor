@@ -384,7 +384,10 @@ function softenRed(r: { verdict: 'verde' | 'galben' | 'rosu' | 'stop'; reason: s
   const tsb = n(r.tsb);
   const hrv = n(r.hrv);
   const base = n(r.hrv_baseline);
-  const really = (r.sleep_min != null && r.sleep_min < 270) || (acwr != null && acwr > 1.8) || (tsb != null && tsb < -40) || (r.hooper_sum ?? 0) >= 24 || (hrv != null && base != null && hrv < base * 0.8);
+  // A09: încărcarea (ACWR, TSB) nu schimbă culoarea zilei; roșul se păstrează doar din semnale de sănătate.
+  void acwr;
+  void tsb;
+  const really = (r.sleep_min != null && r.sleep_min < 270) || (r.hooper_sum ?? 0) >= 24 || (hrv != null && base != null && hrv < base * 0.8);
   return really ? { verdict: 'rosu', reason: r.reason } : { verdict: 'galben', reason: 'Încărcarea sau somnul sunt de urmărit, dar datele de sănătate sunt bune.' };
 }
 

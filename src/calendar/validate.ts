@@ -101,7 +101,8 @@ export function fitStructure(w: PlannedWorkout): PlannedWorkout {
 
 /** Ședință grea: intensitate (inclusiv teste) sau brick. Ieșirile lungi ușoare nu sunt „grele” aici. */
 export function isHard(w: PlannedWorkout): boolean {
-  return w.status !== 'anulat_sistem' && w.status !== 'sters' && (w.type === 'calitate' || w.type === 'brick');
+  // Auditul v93, A31: și lunga cu final la efort de cursă (zone ≥ 3) e o ședință grea.
+  return w.status !== 'anulat_sistem' && w.status !== 'sters' && (w.type === 'calitate' || w.type === 'brick' || (w.type === 'lung' && w.targetZones.some((z) => z >= 3)));
 }
 
 const EASY_NOTE = 'ușor: lângă altă ședință grea (zi tare, zi ușoară)';
@@ -129,7 +130,7 @@ export function enforceSpacing(workouts: PlannedWorkout[], maxHardPerWeek = 3): 
   const softened = new Map<string, PlannedWorkout>();
   for (const ws of weeks.values()) {
     const hard = ws.filter(isHard);
-    const softenable = hard.filter((w) => !(w.key && w.type === 'brick')).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
+    const softenable = hard.filter((w) => !(w.key && w.type === 'brick') && w.type !== 'lung').sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
     for (const w of softenable.slice(0, Math.max(0, hard.length - maxHardPerWeek))) {
       softened.set(w.id, soften(w, `ușor: deja ${maxHardPerWeek} ședințe grele săptămâna asta`));
       notes.push(`${w.id}: ${w.sport} ${w.type} devine ușor (peste ${maxHardPerWeek} ședințe grele pe săptămână)`);
@@ -143,7 +144,7 @@ export function enforceSpacing(workouts: PlannedWorkout[], maxHardPerWeek = 3): 
     const cur = days[i]!;
     if ((new Date(`${cur}T00:00:00Z`).getTime() - new Date(`${prev}T00:00:00Z`).getTime()) / 86_400_000 !== 1) continue;
     const both = out.filter((w) => isHard(w) && (w.date === prev || w.date === cur)).sort((a, b) => SOFTEN_ORDER(a) - SOFTEN_ORDER(b));
-    const victim = both.find((w) => !(w.key && w.type === 'brick') && !(w.structure ?? '').startsWith('TEST'));
+    const victim = both.find((w) => !(w.key && w.type === 'brick') && w.type !== 'lung' && !(w.structure ?? '').startsWith('TEST'));
     if (!victim || both.filter((w) => w.date === victim.date).length === 0) continue;
     // Întâi încercăm să o mutăm: schimbă ziua cu o ședință ușoară din aceeași săptămână, de cel puțin aceeași durată,
     // într-o zi fără ședință grea în jur. Cea ușoară ia locul ei (și durata ei, ca să încapă în fereastra de timp).

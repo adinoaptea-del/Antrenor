@@ -49,6 +49,25 @@ async function recentKeyScores(userId: string, today: string) {
   return rows.filter((r) => r.workouts_planned.is_key && r.workouts_planned.date >= addDays(today, -14)).map((r) => ({ date: r.workouts_planned.date, color: r.color }));
 }
 
+/**
+ * Auditul v93, A13: urma deciziei pe rulare, fără schemă nouă (în agent_outputs.output): modul, cine a fost rutat,
+ * decizia din cod și cea finală, evenimentele (cu propunerea și dovezile ei), ce a respins verificarea, eșecurile
+ * modelului și ce s-a schimbat efectiv în calendar.
+ */
+export function decisionRecord(result: RunResult, codeDecision: unknown, changes: string[]) {
+  return {
+    mod: result.mode ?? 'piramida',
+    rutati: result.routed,
+    decizie_cod: codeDecision,
+    decizie_finala: result.decision,
+    evenimente: result.events,
+    respinse: result.headWarnings,
+    esecuri_model: result.failures,
+    fallback: result.fallbackUsed,
+    schimbari_calendar: changes,
+  };
+}
+
 export interface AgentsOutcome {
   packetId: string;
   decision: RunResult['decision'];
@@ -109,7 +128,7 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
     'agent_outputs',
     result.specialists.map((s) => ({ packet_id: packetId, user_id: userId, agent: s.agent, verdict: s.verdict, output: s, rejected: s.ce.filter((i) => i.stare === 'respins').length, model: ENV.modelSpecialist() })),
   );
-  await insert('agent_outputs', { packet_id: packetId, user_id: userId, agent: 'head_coach', verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed }, rejected: result.headWarnings.length, model: ENV.modelHead() });
+  await insert('agent_outputs', { packet_id: packetId, user_id: userId, agent: 'head_coach', verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed, decision_record: decisionRecord(result, packet.decizia_aplicatiei ?? null, changes) }, rejected: result.headWarnings.length, model: ENV.modelHead() });
 
   // Fișierele agenților: „pentru_viitor” se adaugă, maximum 30 de rânduri (cele mai vechi cad).
   for (const s of result.specialists) {

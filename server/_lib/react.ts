@@ -11,7 +11,8 @@ import { dedupeActivities } from '../../src/collector/packet.js';
 import type { Execution } from '../../src/calendar/progression.js';
 import type { Color } from '../../src/types.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import { activitySlot, legacySlot, type AdaptEvent } from '../../src/calendar/adapt.js';
+import { activitySlot, legacySlot, suggestAfterBigEffort, type AdaptEvent } from '../../src/calendar/adapt.js';
+import { bigEffort } from '../../src/calendar/safety.js';
 import { detectReturn } from '../../src/calendar/pause.js';
 import { extraOn } from '../../src/calendar/load.js';
 import { loadActivities, loadForms, loadPlan, loadUser, toWorkoutRow } from './collect.js';
@@ -132,4 +133,17 @@ export async function moduleProgression(userId: string, today: string): Promise<
   }
   const restored = new Map([...back, ...held].map((x) => [x.id, x]));
   return [...back.map((x) => `${x.id}: revine la plan`), ...held.map((x) => `${x.id}: ${x.note}`), ...(await applyPlanEvents(userId, today, planId, workouts.map((w) => restored.get(w.id) ?? w), [{ kind: 'trepte', date: today }], undefined, executions))];
+}
+
+/** A08: dimineața după un efort mare, fără răspunsul despre dureri — sugestie ușoară pe ședința de picioare de azi. */
+export async function bigEffortMorning(userId: string, today: string): Promise<string[]> {
+  const y = addDays(today, -1);
+  const [{ planId, workouts }, raw, forms] = await Promise.all([loadPlan(userId, today, today), loadActivities(userId, addDays(today, -2)), loadForms(userId, today)]);
+  if (!planId) return [];
+  const acts = dedupeActivities(raw).filter((a) => a.date === y);
+  const rpeOf = (a: { id: string; externalId: string }) => forms.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.rpe ?? null;
+  const effort = bigEffort(acts.map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: rpeOf(a) })));
+  const changed = suggestAfterBigEffort(workouts, today, effort, forms.morning?.hooper?.dureri ?? null);
+  if (changed.length) await upsert('workouts_planned', changed.map((x) => toWorkoutRow(x, userId, planId)), 'id');
+  return changed.map((x) => `${x.id}: sugestie ușoară după efortul de ieri`);
 }

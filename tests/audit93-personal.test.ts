@@ -87,3 +87,13 @@ test('T13 / A28: la 55 de ani calitatea de alergare plafonată la Z4 nu are doz�
   const a54 = q(54), a55 = q(55);
   assert.ok(a55 <= a54 * 1.1, `54: ${a54} min de lucru pe ședință, 55: ${a55}`);
 });
+
+test('A29: doza din prima săptămână nu crește când orizontul e mai scurt', () => {
+  const first = (race: string) => {
+    const r = generatePlan({ startDate: '2026-10-26', raceDate: race, goal: 'olimpic', freeBlocks: blocks, historyHoursPerWeek: [3, 3, 3, 3], intensityAllowed: 'toate', swimContinuous400: true });
+    assert.ok(r.ok, r.ok ? '' : r.reason);
+    return r.ok ? r.weeks[0]!.targetHours : 0;
+  };
+  const short = first('2026-12-20'), long = first('2027-05-23');
+  assert.ok(short <= long + 0.05, `8 săpt.: ${short} h, 30 săpt.: ${long} h`);
+});

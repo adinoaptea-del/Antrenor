@@ -178,7 +178,10 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   // Doza de start: din ce a făcut sportivul (istoric canonic), nu din șablon. Cu istoric, prima săptămână pornește de la
   // media lui (+ cel mult 2 h, ca să încapă toate sporturile la minimum); fără istoric, de la 60% din ținta fazei.
   // Timpul liber e plafonul, nu doza.
-  let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * hours[firstPhase].target), avgHistory + 2) : 0.6 * hours[firstPhase].target;
+  // Auditul v93, A29: doza de start nu depinde de faza în care pornește planul (pe un orizont scurt prima fază e baza1,
+  // cu ținta mai mare decât evaluarea): reperul fără istoric e ținta evaluării, oricare ar fi prima fază.
+  const startRef = (hours.evaluare?.target ?? hours[firstPhase].target);
+  let prevLoaded = history.length ? Math.min(Math.max(avgHistory, 0.6 * startRef), avgHistory + 2) : 0.6 * startRef;
 
   const kind = goalKind(input.goal) ?? 'tri';
   // A treia ședință de forță (PPL) doar când programul total o permite: un singur sport de la 5 h/săpt., triatlon de la 12 h.
@@ -342,7 +345,7 @@ function shakeoutBeforeRace(workouts: PlannedWorkout[], raceDate: string): void 
   last.plannedMinutes = Math.min(last.plannedMinutes, 20);
   last.targetZones = [1, 2];
   last.key = false;
-  last.structure = 'dezmorțire înainte de cursă: 15–20 min foarte ușor + 3–4 accelerări de 20 s; apoi odihnă, mâncare cunoscută, somn';
+  last.structure = 'dezmorțire înainte de cursă: 15–20 min foarte ușor + 3 accelerări de 20 s; apoi odihnă, mâncare cunoscută, somn';
 }
 
 /**
@@ -575,7 +578,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   const fourRuns = !(short && branch === 'finalizare') && !(beginner && early);
   if (fourRuns) {
     const easyB = early ? 35 : p === 'taper' ? 25 : 45;
-    s.push({ sport: 'alergare', type: 'z2', minutes: easyB, zones: [1, 2], key: false, priority: 7, structure: beginner ? 'ușor, RPE 2–3' : 'ușor + 4–6 accelerări relaxate de 15–20 s (progresiv, nu sprint)' });
+    s.push({ sport: 'alergare', type: 'z2', minutes: easyB, zones: [1, 2], key: false, priority: 7, structure: beginner ? 'ușor, RPE 2–3' : 'ușor + 5 accelerări de 20 s, relaxate (progresiv, nu sprint)' });
   }
 
   // Ședința de calitate a săptămânii (sau nimic): un singur stimul greu, ales după ramură, nivel, fază și distanță.
@@ -609,7 +612,7 @@ function runWeekTemplate(pw: PhaseWeek, input: GenerateInput, prog: { longRun: n
   } else if (branch === 'timp' && p === 'baza1' && !beginner && input.intensityAllowed !== 'Z2') {
     // Baza pe ramura „timp”: o alergare progresivă la două săptămâni (moderat la final), altfel ușor cu accelerări.
     if (pw.weekInPhase % 2 === 1) s.push({ sport: 'alergare', type: 'calitate', minutes: 45, zones: [2, 3], key: true, priority: 3, structure: 'progresiv: primele două treimi ușor (RPE 2–3), apoi crești treptat până la moderat (RPE 4–5) în ultimele 10–15 min; nu termini în sprint' });
-    else s.push({ sport: 'alergare', type: 'z2', minutes: 40, zones: [2], key: false, priority: 5, structure: 'ușor + 6 accelerări relaxate de 15–20 s, recuperare amplă' });
+    else s.push({ sport: 'alergare', type: 'z2', minutes: 40, zones: [2], key: false, priority: 5, structure: 'ușor + 6 accelerări de 20 s, relaxate, recuperare amplă' });
   } else if (!fourRuns || beginner) {
     // Fără calitate (debutant, finalizare): a treia ieșire e tot ușoară; prioritatea e regularitatea. Auditul v93, A100:
     // comentariul promitea 3 ieșiri, dar nu se adăuga nimic (rămâneau 2). Acum: a treia, scurtă și ușoară; la debutant

@@ -94,7 +94,8 @@ export function isBrickRun(run: SourceActivity, all: SourceActivity[]): boolean 
   const start = hm(run.startLocal);
   if (run.sport !== 'alergare' || start == null) return false;
   return all.some((b) => {
-    if (b.sport !== 'bicicleta' || b.date !== run.date) return false;
+    // Auditul v93, A46: o deplasare pe bicicletă (sub 20 min) nu face din alergarea de după un brick.
+    if (b.sport !== 'bicicleta' || b.date !== run.date || b.minutes < 20) return false;
     const bs = hm(b.startLocal);
     if (bs == null) return false;
     const gap = start - (bs + b.minutes);

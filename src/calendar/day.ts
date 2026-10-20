@@ -126,7 +126,8 @@ function plain(m: string | null): string | null {
   if (!m) return null;
   // „date obiective 62/100 (3 din 5 măsurate)” → limbaj de sportiv.
   return m
-    .replace(/date obiective (\d+)\/100 \((\d) din 5 măsurate\)/, 'recuperarea măsurată de brățări: $1/100')
+    .replace(/date obiective (\d+)\/100 \((\d) din 5 măsurate\)/, 'recuperarea măsurată de brățări: $1/100 (din $2 indicatori din 5)')
+    .replace(/; un semnal mare \(inima\) plafonează la galben/, '; pulsul sau HRV-ul arată un semnal mare, așa că ziua nu e verde')
     .replace(/fără date obiective de la brățări: cel mult galben/, 'brățara n-a măsurat recuperarea din noaptea trecută (somnul nu s-a înregistrat), așa că ziua nu poate fi verde')
     .replace(/cum te simți \(Hooper (\d+)\) coboară la (\w+)/, 'cum te simți azi ($1/28) coboară ziua la $2');
 }

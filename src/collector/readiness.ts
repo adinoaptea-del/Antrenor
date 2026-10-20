@@ -66,9 +66,15 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   const recUsed = hrv == null && rhr == null ? rec : null;
   const parts = [hrv, rhr, resp, recUsed, sleep].filter((x): x is number => x != null);
   const scor = parts.length ? clamp(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  // Auditul v93, A09: media nu ascunde un semnal mare (HRV −33% sau puls +8 → componentă ≤ 20 plafonează ziua la
+  // galben). Acoperirea (câți indicatori din 5) se spune în motiv, nu schimbă culoarea: un sportiv doar cu somn
+  // măsurat nu rămâne pe galben permanent.
+  let verdict = verdictFromScore(scor);
+  const heart = [hrv, rhr].filter((x): x is number => x != null);
+  if (verdict === 'verde' && heart.some((x) => x <= 20)) verdict = 'galben';
   return {
     scor,
-    verdict: verdictFromScore(scor),
+    verdict,
     disponibile: parts.length,
     componente: {
       inima_hrv: { valoare: i.hrv, referinta: i.hrvBaseline, scor: hrv },
@@ -107,6 +113,7 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null, ct
   if (obj.verdict) {
     v = obj.verdict;
     motiv = `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)`;
+    if (obj.verdict !== verdictFromScore(obj.scor)) motiv += '; un semnal mare (inima) plafonează la galben';
   } else if (ctx.apt) {
     v = ctx.apt === 'da' ? 'verde' : ctx.apt === 'partial' ? 'galben' : 'rosu';
     motiv = `fără date de la brățări; ai spus că ${ctx.apt === 'da' ? 'ești odihnit și apt' : ctx.apt === 'partial' ? 'ești doar parțial odihnit' : 'nu ești apt azi'}`;

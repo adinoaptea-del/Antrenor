@@ -10,9 +10,12 @@ test('accelerările din structură devin pas cu minutele lor', () => {
 });
 
 test('înot tehnic de 30 min: metri, repetări, pauze și durată estimată, nu „30 min tehnică”', () => {
-  const r = swimSet({ type: 'tehnica', minutes: 30, css: null, date: '2026-10-19' });
+  const r = swimSet({ type: 'tehnica', minutes: 30, css: null, date: '2026-10-19', continuousM: 400 });
   assert.ok(r.meters >= 500 && r.meters <= 1000, String(r.meters));
   assert.ok(r.estMin <= 30 && r.estMin >= 20, String(r.estMin));
+  // Auditul v93, A42: capacitate necunoscută → tehnica e plafonată ca volum (nu umple timpul).
+  const unk = swimSet({ type: 'tehnica', minutes: 30, css: null, date: '2026-10-19' });
+  assert.ok(unk.meters <= 500, String(unk.meters));
   assert.ok(r.steps.some((s) => /4 × 25 m exercițiu/.test(s.text)));
   assert.match(r.steps.at(-1)!.text, /estimată/);
 });

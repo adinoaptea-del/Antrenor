@@ -35,7 +35,7 @@ export function brickSplit(structure: string | null | undefined, minutes: number
 export const brickText = (bike: number, run: number, transition = BRICK_TRANSITION_MIN) => `tură ${bike} min Z2 + tranziție ${transition} min + alergare ${run} min imediat după`;
 
 export const RUN_TEST = (warm: number, main: number, cool: number) =>
-  `TEST: ${warm} min ușor, ${main} min cât de tare poți constant (${main >= 30 ? 'pulsul mediu din ultimele 20 min ≈ pragul' : 'pulsul mediu × 0,95 ≈ pragul, estimare mai grosieră'}), ${cool} min ușor`;
+  `TEST: ${warm} min ușor, ${main} min cât de tare poți constant (${main >= 30 ? 'pulsul mediu din ultimele 20 min ≈ pragul' : 'pulsul mediu × 0,95 ≈ pragul — estimare grosieră: nu schimbă singură zonele, doar le verifică'}), ${cool} min ușor`;
 export const BIKE_TEST = (warm: number, cool: number) => `TEST: ${warm} min încălzire, 20 min cât de tare poți constant (FTP ≈ 95% din puterea medie, ESTIMARE; fără putere: pulsul mediu), ${cool} min ușor`;
 
 /** Minutele scrise în structura unui test: „15 min …, 30 min …, 5 min …”. */

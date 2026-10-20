@@ -177,3 +177,49 @@ test('T68 / A30: lunga nu crește după o lungă prost tolerată; fără date nu
   assert.match(h[0]!.note ?? '', /n-a fost bine tolerată/);
   assert.equal(h[0]!.original?.plannedMinutes, 100);
 });
+
+test('T85 / A09: media nu ascunde HRV −33%; acoperirea se spune', async () => {
+  const { objectiveReadiness, dayVerdict } = await import('../src/collector/readiness.js');
+  const masked = objectiveReadiness({ hrv: 30, hrvBaseline: 45, rhr: 50, rhrBaseline: 50, resp: 14, respBaseline: 14, sleepMin: 480, recovery: null } as never);
+  assert.equal(masked.verdict, 'galben', `scor ${masked.scor}`);
+  const one = objectiveReadiness({ hrv: null, hrvBaseline: null, rhr: null, rhrBaseline: null, resp: null, respBaseline: null, sleepMin: 430, recovery: null } as never);
+  assert.match(dayVerdict(one, null).motiv, /1 din 5/);
+});
+
+test('T78 / A08: după un efort mare, fără dureri raportate → sugestie ușoară pe alergarea de azi; planul rămâne', async () => {
+  const { suggestAfterBigEffort } = await import('../src/calendar/adapt.js');
+  const run = { id: 'r', date: '2026-10-21', sport: 'alergare', type: 'z2', plannedMinutes: 50, targetZones: [2], key: false, status: 'planificat' } as never;
+  const swim = { id: 's', date: '2026-10-21', sport: 'inot', type: 'z2', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat' } as never;
+  const ch = suggestAfterBigEffort([run, swim], '2026-10-21', 'alergare 2 h 40 min', null);
+  assert.equal(ch.length, 1);
+  assert.equal(ch[0]!.id, 'r');
+  assert.equal(ch[0]!.plannedMinutes, 50, 'planul rămâne');
+  assert.equal(ch[0]!.suggestion?.accepted, null);
+  assert.equal(suggestAfterBigEffort([run], '2026-10-21', 'alergare 2 h 40 min', 2).length, 0, 'dureri mici spuse');
+  assert.equal(suggestAfterBigEffort([run], '2026-10-21', null, null).length, 0, 'fără efort mare');
+});
+
+test('A11: două episoade de somn WHOOP în aceeași zi se adună (noapte fragmentată)', async () => {
+  const { mergeWhoopNights } = await import('../src/collector/providers/whoop.js');
+  const a = { date: '2026-10-20', source: 'whoop', sleepMin: 240, bedtime: '23:30', wakeTime: '03:30', hrv: 60, rhr: 50, recoveryScore: 70 } as never;
+  const b = { date: '2026-10-20', source: 'whoop', sleepMin: 150, bedtime: '04:30', wakeTime: '07:00', hrv: null, rhr: null, recoveryScore: null } as never;
+  const [m] = mergeWhoopNights([a, b]);
+  assert.equal(m!.sleepMin, 390);
+  assert.equal(m!.hrv, 60);
+  assert.equal(m!.wakeTime, '07:00');
+});
+
+test('A36: accelerările scrise cu intervale („4–6 accelerări relaxate de 15–20 s”) sunt recunoscute', async () => {
+  const { parseStrides } = await import('../src/calendar/session-steps.js');
+  assert.deepEqual(parseStrides('ușor + 4–6 accelerări relaxate de 15–20 s (progresiv, nu sprint)'), { n: 4, sec: 20 });
+  assert.deepEqual(parseStrides('ușor + 6 accelerări de 20 s'), { n: 6, sec: 20 });
+  assert.deepEqual(parseStrides('ușor + 6 accelerări relaxate de 15–20 s, recuperare amplă'), { n: 6, sec: 20 });
+});
+
+test('T27 / A42: tehnica la 75 m fără oprire nu depășește plafonul de volum (300 m în setul principal)', async () => {
+  const { swimSet } = await import('../src/calendar/session-steps.js');
+  const r = swimSet({ type: 'tehnica', minutes: 45, css: null, date: '2026-10-20', continuousM: 75 });
+  const tech = r.steps.find((x) => x.label === 'Tehnică')!.text;
+  const rounds = Number(/^(\d+) runde/.exec(tech)?.[1] ?? 1);
+  assert.ok(rounds * 200 <= 300, `${rounds} runde`);
+});

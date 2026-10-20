@@ -13,10 +13,13 @@ export interface Step {
 
 const fmtM = (m: number) => (m >= 1000 ? `${Math.floor(m / 1000)}.${String(m % 1000).padStart(3, '0')}` : String(m));
 
-/** „N accelerări de S s” din structură. */
+/**
+ * „N accelerări de S s” din structură; acceptă și intervale („4–6 accelerări relaxate de 15–20 s”, auditul v93 A36):
+ * se ia numărul mic de repetări și durata mare, ca timpul să nu fie subestimat și accelerările să nu dispară din pași.
+ */
 export function parseStrides(structure: string | null | undefined): { n: number; sec: number } | null {
-  const m = /(\d+)\s*accelerări de\s*(\d+)\s*s/.exec(structure ?? '');
-  return m ? { n: Number(m[1]), sec: Number(m[2]) } : null;
+  const m = /(\d+)(?:\s*[–-]\s*\d+)?\s*accelerări(?:\s+[a-zăâîșț]+)?\s+de\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*s\b/.exec(structure ?? '');
+  return m ? { n: Number(m[1]), sec: Number(m[3] ?? m[2]) } : null;
 }
 
 /** Minutele accelerărilor, cu ~1 min ușor după fiecare. */
@@ -149,7 +152,9 @@ export function swimSet(input: { type: string; minutes: number; css: number | nu
   } else if (input.type === 'tehnica') {
     // Blocuri de 4 × 25 m exercițiu + 4 × 25 m înot cu reperul, 20 s pauză.
     const block = 4 * repSec(25, 20, easy + 20) + 4 * repSec(25, 20);
-    const k = Math.max(1, Math.floor(left / block));
+    // Auditul v93, A42: și tehnica respectă plafonul de volum (o rundă = 200 m), ca la ședința ușoară.
+    const capT = swimMainCap(input.continuousM ?? (input.css ? 400 : null), input.recentMaxM);
+    const k = Math.max(1, Math.min(Math.floor(left / block), Math.floor(capT / 200)));
     used += k * block;
     meters += k * 200;
     steps.push({ label: 'Tehnică', text: `${k > 1 ? `${k} runde: ` : ''}4 × 25 m exercițiu de explorare (${swimCue(input.date)}), 20 s pauză, apoi 4 × 25 m înot normal păstrând senzația, 20 s pauză. Exercițiile se rotesc; nu corectează un defect anume până nu te vede cineva înotând.` });
