@@ -1,5 +1,7 @@
 // Potrivirea activităților sincronizate cu antrenamentele propuse.
-// Regula din protocol: același sport, aceeași zi sau ziua următoare, cea mai apropiată durată.
+// Regula (corecția proprietarului, 20.10.2026): același sport, ACEEAȘI zi, cea mai apropiată durată. O activitate de azi
+// nu se mai leagă de ședința ratată ieri: ieri rămâne nefăcută, iar activitatea apare azi (în afara planului, dacă azi
+// nu era nimic propus de acel sport). O ședință mutată pe altă zi se mută explicit (status „mutat”), nu prin potrivire.
 // Un brick planificat se potrivește cu o activitate de bicicletă + o alergare începută la ≤ 30 min după ea.
 
 import type { Activity, PlannedWorkout } from '../types.js';
@@ -18,7 +20,6 @@ export interface MatchResult {
   unplanned: Activity[];
 }
 
-const WINDOW_DAYS = 1;
 
 export function matchActivities(planned: PlannedWorkout[], activities: Activity[], today: string): MatchResult {
   const used = new Set<string>();
@@ -29,30 +30,27 @@ export function matchActivities(planned: PlannedWorkout[], activities: Activity[
     .filter((p) => p.status === 'planificat' || p.status === 'mutat')
     .sort((a, b) => diffDays(b.date, a.date));
 
-  // Două treceri: întâi fiecare ședință cu activitățile din ziua ei, abia apoi ce a rămas cu ziua următoare.
-  // Așa activitatea de azi nu e „furată” de ședința ratată ieri, iar o activitate acoperă o singură ședință.
-  for (const lag of [0, WINDOW_DAYS]) {
-    for (const p of ordered) {
-      if (found.get(p.id)?.activity) continue;
-      const inWindow = (a: Activity) => diffDays(p.date, a.date) === lag && !used.has(a.id);
+  // O activitate acoperă o singură ședință, din ziua ei.
+  for (const p of ordered) {
+    if (found.get(p.id)?.activity) continue;
+    const inWindow = (a: Activity) => a.date === p.date && !used.has(a.id);
 
-      if (p.type === 'brick') {
-        const split = brickSplit(p);
-        const bike = pickClosest(candidates.filter((a) => a.sport === 'bicicleta' && inWindow(a)), split.bike);
-        let run: Activity | null = null;
-        if (bike) {
-          run = pickClosest(candidates.filter((a) => a.sport === 'alergare' && a.date === bike.date && !used.has(a.id) && afterBike(a, bike) != null && afterBike(a, bike)! <= 30), split.run);
-          used.add(bike.id);
-          if (run) used.add(run.id);
-        }
-        if (bike || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: bike, extraActivity: run });
-        continue;
+    if (p.type === 'brick') {
+      const split = brickSplit(p);
+      const bike = pickClosest(candidates.filter((a) => a.sport === 'bicicleta' && inWindow(a)), split.bike);
+      let run: Activity | null = null;
+      if (bike) {
+        run = pickClosest(candidates.filter((a) => a.sport === 'alergare' && a.date === bike.date && !used.has(a.id) && afterBike(a, bike) != null && afterBike(a, bike)! <= 30), split.run);
+        used.add(bike.id);
+        if (run) used.add(run.id);
       }
-
-      const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
-      if (best) used.add(best.id);
-      if (best || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: best, extraActivity: null });
+      found.set(p.id, { planned: p, activity: bike, extraActivity: run });
+      continue;
     }
+
+    const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
+    if (best) used.add(best.id);
+    found.set(p.id, { planned: p, activity: best, extraActivity: null });
   }
 
   const matches = ordered.map((p) => found.get(p.id) ?? { planned: p, activity: null, extraActivity: null });

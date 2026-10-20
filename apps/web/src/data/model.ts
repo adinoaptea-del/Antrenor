@@ -60,9 +60,9 @@ export function lastDoneWorkout(me: Me): PlannedWorkout | null {
   );
 }
 
-/** Activitatea de care s-a legat un antrenament propus: aceeași zi (sau următoarea) și același sport. */
+/** Activitatea de care s-a legat un antrenament propus: aceeași zi și același sport (regula din src/scoring/match.ts). */
 export function activityFor(me: Me, w: PlannedWorkout): MeActivity | null {
-  return me.activities.find((a) => a.sport === w.sport && !a.unplanned && (a.date === w.date || a.date === addDays(w.date, 1))) ?? null;
+  return me.activities.find((a) => a.sport === w.sport && !a.unplanned && a.date === w.date) ?? null;
 }
 
 export function unplannedActivities(me: Me): MeActivity[] {

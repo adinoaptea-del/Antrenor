@@ -74,11 +74,13 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
   }
 
   if (!activity) {
-    const windowClosed = diffDays(addDays(planned.date, 1), today) > 0;
+    // Fereastra e ziua ședinței: de mâine, fără activitate în ziua ei, e nefăcută (o activitate sincronizată târziu,
+    // cu data zilei, o recolorează la următorul calcul).
+    const windowClosed = diffDays(planned.date, today) > 0;
     if (windowClosed) {
       return { color: 'rosu', reasons: ['nefăcut: nu se pune la progres (nu schimbă planul)'], metrics: empty, flags: { ...flags, missed: true }, final: true };
     }
-    return { color: 'asteptare', reasons: [`fereastra se închide la finalul zilei de ${addDays(planned.date, 1)}`], metrics: empty, flags, final: false };
+    return { color: 'asteptare', reasons: ['fereastra se închide la finalul zilei'], metrics: empty, flags, final: false };
   }
 
   const minutes = activity.minutes + (extraActivity?.minutes ?? 0);
@@ -217,7 +219,7 @@ export function zoneDirection(planned: PlannedWorkout, activity: Activity, extra
 /** Culoarea e definitivă după 24 h de la ziua antrenamentului, sau imediat dacă a venit chestionarul. */
 function isFinal(flags: ScoreResult['flags'], planned: PlannedWorkout, today: string): boolean {
   if (!flags.noQuestionnaire) return true;
-  return diffDays(addDays(planned.date, 1), today) > 0;
+  return diffDays(addDays(planned.date, 1), today) > 0; // chestionarul de seară poate veni până a doua zi
 }
 
 function computeZonePct(planned: PlannedWorkout, activity: Activity, extra: Activity | null): number | null {

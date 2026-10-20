@@ -69,8 +69,9 @@ describe('scoreWorkout', () => {
     assert.equal(scoreWorkout({ planned, activity: null, today: '2026-11-05' }).color, 'rosu');
   });
 
-  it('așteptare cât timp fereastra e deschisă; gri când e anulat de sistem', () => {
-    assert.equal(scoreWorkout({ planned, activity: null, today: '2026-11-04' }).color, 'asteptare');
+  it('așteptare doar în ziua ședinței; de a doua zi, fără activitate, e nefăcută; gri când e anulat de sistem', () => {
+    assert.equal(scoreWorkout({ planned, activity: null, today: '2026-11-03' }).color, 'asteptare');
+    assert.equal(scoreWorkout({ planned, activity: null, today: '2026-11-04' }).color, 'rosu');
     assert.equal(scoreWorkout({ planned, activity: null, systemCancelled: true, today: '2026-11-04' }).color, 'gri');
   });
 

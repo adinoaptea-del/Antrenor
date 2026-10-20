@@ -2366,11 +2366,11 @@ function scoreWorkout(input) {
     return { color: "gri", reasons: ["anulat de sistem"], metrics: empty, flags, final: true };
   }
   if (!activity) {
-    const windowClosed = diffDays(addDays(planned.date, 1), today) > 0;
+    const windowClosed = diffDays(planned.date, today) > 0;
     if (windowClosed) {
       return { color: "rosu", reasons: ["nef\u0103cut: nu se pune la progres (nu schimb\u0103 planul)"], metrics: empty, flags: { ...flags, missed: true }, final: true };
     }
-    return { color: "asteptare", reasons: [`fereastra se \xEEnchide la finalul zilei de ${addDays(planned.date, 1)}`], metrics: empty, flags, final: false };
+    return { color: "asteptare", reasons: ["fereastra se \xEEnchide la finalul zilei"], metrics: empty, flags, final: false };
   }
   const minutes = activity.minutes + (extraActivity?.minutes ?? 0);
   const durationPct = planned.plannedMinutes > 0 ? round1(minutes / planned.plannedMinutes * 100) : null;
@@ -2509,32 +2509,29 @@ function round1(n2) {
 }
 
 // src/scoring/match.ts
-var WINDOW_DAYS = 1;
 function matchActivities(planned, activities, today) {
   const used = /* @__PURE__ */ new Set();
   const candidates = activities.filter((a) => diffDays(a.date, today) >= 0);
   const found = /* @__PURE__ */ new Map();
   const ordered = [...planned].filter((p) => p.status === "planificat" || p.status === "mutat").sort((a, b) => diffDays(b.date, a.date));
-  for (const lag of [0, WINDOW_DAYS]) {
-    for (const p of ordered) {
-      if (found.get(p.id)?.activity) continue;
-      const inWindow = (a) => diffDays(p.date, a.date) === lag && !used.has(a.id);
-      if (p.type === "brick") {
-        const split2 = brickSplit(p);
-        const bike = pickClosest(candidates.filter((a) => a.sport === "bicicleta" && inWindow(a)), split2.bike);
-        let run = null;
-        if (bike) {
-          run = pickClosest(candidates.filter((a) => a.sport === "alergare" && a.date === bike.date && !used.has(a.id) && afterBike(a, bike) != null && afterBike(a, bike) <= 30), split2.run);
-          used.add(bike.id);
-          if (run) used.add(run.id);
-        }
-        if (bike || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: bike, extraActivity: run });
-        continue;
+  for (const p of ordered) {
+    if (found.get(p.id)?.activity) continue;
+    const inWindow = (a) => a.date === p.date && !used.has(a.id);
+    if (p.type === "brick") {
+      const split2 = brickSplit(p);
+      const bike = pickClosest(candidates.filter((a) => a.sport === "bicicleta" && inWindow(a)), split2.bike);
+      let run = null;
+      if (bike) {
+        run = pickClosest(candidates.filter((a) => a.sport === "alergare" && a.date === bike.date && !used.has(a.id) && afterBike(a, bike) != null && afterBike(a, bike) <= 30), split2.run);
+        used.add(bike.id);
+        if (run) used.add(run.id);
       }
-      const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
-      if (best) used.add(best.id);
-      if (best || lag === WINDOW_DAYS) found.set(p.id, { planned: p, activity: best, extraActivity: null });
+      found.set(p.id, { planned: p, activity: bike, extraActivity: run });
+      continue;
     }
+    const best = pickClosest(candidates.filter((a) => a.sport === p.sport && inWindow(a)), p.plannedMinutes);
+    if (best) used.add(best.id);
+    found.set(p.id, { planned: p, activity: best, extraActivity: null });
   }
   const matches = ordered.map((p) => found.get(p.id) ?? { planned: p, activity: null, extraActivity: null });
   const unplanned = candidates.filter((a) => !used.has(a.id));
@@ -9472,7 +9469,7 @@ function otherRows(userId, others, walkCols) {
 }
 
 // src/bar/bar.ts
-var WINDOW_DAYS2 = 42;
+var WINDOW_DAYS = 42;
 var CSS_TARGET_SEC = 150;
 var TARGETS = {
   "70.3": { swimM: 1900, rideKm: 90, runKm: 18, brickRunKm: 8 },
@@ -9500,7 +9497,7 @@ var TARGETS = {
 function computeBar(input) {
   const t = TARGETS[input.goal];
   const recent = input.activities.filter(
-    (a) => diffDays(a.date, input.today) >= 0 && diffDays(a.date, input.today) <= WINDOW_DAYS2 && (a.color === "verde" || a.color === "galben")
+    (a) => diffDays(a.date, input.today) >= 0 && diffDays(a.date, input.today) <= WINDOW_DAYS && (a.color === "verde" || a.color === "galben")
   );
   const components = [];
   const kind = goalKind(input.goal);

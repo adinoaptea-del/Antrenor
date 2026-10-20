@@ -394,7 +394,7 @@ function SamsungCard() {
 function FormsSection({ onOpen }: { onOpen: (screen: string, opts?: { activityId?: string }) => void }) {
   const me = useMe();
   const lastDone = lastDoneWorkout(me);
-  const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date >= lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
+  const lastDoneId = lastDone ? (me.activities.find((a) => a.sport === lastDone.sport && a.date === lastDone.date && !a.unplanned)?.id ?? `plan-${lastDone.id}`) : null;
   const morning = me.forms.morning as MorningForm | null;
   return (
     <Card>

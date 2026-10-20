@@ -50,9 +50,19 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const weeklyNote = weeklyDecision(me);
   const morning = me.forms.morning as MorningForm | null;
   const lastDone = lastDoneWorkout(me);
-  const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && (a.date === lastDone.date || a.date > lastDone.date) && !a.unplanned) : null;
-  const lastDoneId = lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null);
+  const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && a.date === lastDone.date && !a.unplanned) : null;
+  // Întrebarea „Cum a fost…?” merge la ultima ședință făcută cu adevărat: din plan sau în afara lui (azi/ieri).
+  const offPlan = me.activities
+    .filter((a) => a.unplanned && (a.date === me.today || a.date === addDays(me.today, -1)) && !eveningComplete(me.forms.evening[a.id]))
+    .sort((a, b) => (a.date + (a.startLocal ?? '')).localeCompare(b.date + (b.startLocal ?? '')))
+    .pop();
+  const askOff = !!offPlan && (!lastDone || offPlan.date >= lastDone.date);
+  const askSport = askOff ? offPlan!.sport : lastDone?.sport;
+  const askDate = askOff ? offPlan!.date : lastDone?.date;
+  const lastDoneId = askOff ? offPlan!.id : (lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null));
   const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
+  // Ședințele făcute azi în afara planului apar azi, în bulă (nu se lipesc de o ședință ratată ieri).
+  const todayOff = me.activities.filter((a) => a.unplanned && a.date === me.today && a.sport !== 'mers');
   const days = daysToRace(me);
   const fit = goalKind(me.user.goal) === 'fitness';
   const walkV = goalKind(me.user.goal) === 'walk' ? (me.walking ?? null) : null;
@@ -83,8 +93,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
       ? { label: 'Completează chestionarul', go: () => onOpen('intake'), kind: 'form' }
       : !morningComplete(morning ?? undefined) && hour >= 4 && hour < 14 && !day?.ask
         ? { label: 'Cum te simți azi? (30 s)', go: () => onOpen('dimineata'), kind: 'form' }
-        : lastDone && lastDoneId && !eveningComplete(evening)
-          ? { label: `Cum a fost ${SPORT_LABEL[lastDone.sport].toLowerCase()} ${dayLabel(lastDone.date)}?`, go: () => onOpen('seara', { activityId: lastDoneId }), kind: 'form' }
+        : askSport && askDate && lastDoneId && !eveningComplete(evening)
+          ? { label: `Cum a fost ${SPORT_LABEL[askSport].toLowerCase()} ${dayLabel(askDate)}?`, go: () => onOpen('seara', { activityId: lastDoneId }), kind: 'form' }
           : remaining.length && !paused
             ? { label: '', go: openToday, kind: 'other' }
             : null;
@@ -105,6 +115,23 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   } else if (!me.plan.length) {
     orbBody = <span className="orb-big">Planul e în pregătire</span>;
     orbLabel = 'Planul e în pregătire';
+  } else if (!today.length && todayOff.length) {
+    orbBody = (
+      <>
+        <span className="orb-k">Azi</span>
+        {todayOff.slice(0, 3).map((a) => (
+          <span key={a.id} className="orb-w done">
+            <b>
+              <span className="orb-ok">{Icons.check}</span>
+              {SPORT_LABEL[a.sport]}
+            </b>
+            <small>făcut · {fmtMinutes(a.minutes)} · în afara planului</small>
+          </span>
+        ))}
+        {next && <span className="orb-sub">Următoarea: {DAY_NAMES[weekday(next.date)]} · {titleOf(next)} {fmtMinutes(next.plannedMinutes)}</span>}
+      </>
+    );
+    orbLabel = `Azi ai făcut în afara planului: ${todayOff.map((a) => `${SPORT_LABEL[a.sport]}, ${fmtMinutes(a.minutes)}`).join('; ')}.`;
   } else if (!today.length) {
     orbBody = (
       <>
@@ -131,6 +158,15 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
             </span>
           );
         })}
+        {todayOff.slice(0, Math.max(0, 3 - shown.length)).map((a) => (
+          <span key={a.id} className="orb-w done">
+            <b>
+              <span className="orb-ok">{Icons.check}</span>
+              {SPORT_LABEL[a.sport]}
+            </b>
+            <small>făcut · în afara planului</small>
+          </span>
+        ))}
         {today.length > shown.length && <span className="orb-sub">+{today.length - shown.length} în listă</span>}
       </>
     );
