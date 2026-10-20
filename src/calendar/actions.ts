@@ -8,7 +8,8 @@
 import type { PlannedWorkout, Sport, WorkoutSnapshot } from '../types.js';
 import { sportsBlockedByPain } from './safety.js';
 import { addDays, weekStart, weekday } from '../util/dates.js';
-import { fitStructure, isHard } from './validate.js';
+import { fitStructure, isHard, legsHardEndurance } from './validate.js';
+import { legLoadOf } from '../strength/ppl.js';
 
 export function snapshot(w: PlannedWorkout): WorkoutSnapshot {
   return { date: w.date, sport: w.sport, type: w.type, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure ?? null, key: w.key, status: w.status, intervals: w.intervals ?? null };
@@ -78,6 +79,10 @@ export function dayBlock(others: PlannedWorkout[], w: PlannedWorkout, d: string,
   if (isHard(w) && hardOn(d)) return 'are deja o ședință grea';
   if (isHard(w) && (hardOn(addDays(d, -1)) || hardOn(addDays(d, 1)))) return 'e lângă o zi grea (zi tare, zi ușoară)';
   if (w.sport === 'alergare' && w.type === 'calitate' && on(addDays(d, -1)).concat(on(addDays(d, 1))).some((x) => x.sport === 'alergare' && x.type === 'lung')) return 'e lângă alergarea lungă';
+  // Solicitarea locală (Q05): picioarele la sală nu stau în aceeași zi sau lângă o alergare/bicicletă grea, și invers.
+  const around = [...on(addDays(d, -1)), ...day, ...on(addDays(d, 1))];
+  if (w.sport === 'forta' && legLoadOf(w.structure) === 'greu' && around.some(legsHardEndurance)) return 'e lângă o ședință grea de alergare sau bicicletă (picioarele ar fi obosite)';
+  if (legsHardEndurance(w) && around.some((x) => x.sport === 'forta' && legLoadOf(x.structure) === 'greu')) return 'e lângă ziua de picioare la sală';
   const aw = (ctx.away ?? []).find((a) => a.dela <= d && d <= a.panala && !keeps(w, a.ce));
   if (aw) return `ești plecat (${AWAY_LABEL[aw.ce]})`;
   if (ctx.freeBlocks?.length) {

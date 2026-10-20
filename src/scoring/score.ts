@@ -69,6 +69,8 @@ export interface ScoreMetrics {
   rpeDelta: number | null;
   pain: number | null;
   cardiacDriftPct: number | null;
+  /** Declarația și ceasul se contrazic (auditul de coaching, Q09): text scurt sau null. Nu decide cine are dreptate. */
+  discrepanta?: string | null;
   /** Minutele totale (cu opririle). */
   elapsedMin?: number | null;
   /** Minutele active (în mișcare), doar când sursa le dă separat; altfel null. */
@@ -183,6 +185,7 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
     rpeDelta,
     pain,
     cardiacDriftPct,
+    discrepanta: declaredVsWatch(directie, rpeDelta),
     directie,
     compensat,
     elapsedMin: elapsed,
@@ -255,6 +258,7 @@ export function scoreWorkout(input: ScoreInput): ScoreResult {
     if (zonePct < 75) bump(1, `timp în zona-țintă ${zonePct}%${zone.basis === 'blocuri' ? ' (blocul de lucru)' : ''}${dir}: făcut, dar diferit de plan${compensat ? ` (${compensat}; încărcarea zilei e de urmărit)` : ''}`);
   }
   if (zone.warmupNote) reasons.push(zone.warmupNote);
+  if (metrics.discrepanta) reasons.push(`declarația și ceasul nu se potrivesc: ${metrics.discrepanta}`);
 
   if (rpeDelta != null) {
     if (rpeDelta >= 3) bump(2, `RPE cu +${rpeDelta} peste așteptat`);
@@ -431,6 +435,18 @@ function computeZone(planned: PlannedWorkout, activity: Activity, extra: Activit
 }
 
 /** Direcția intensității: minutele peste zona-țintă față de cele sub ea (prag 15% din timp), pe aceeași bucată ca zona. */
+/**
+ * Declarația (RPE) față de ceas (zonele de puls), auditul de coaching Q09: nu presupunem că telemetria câștigă.
+ * Contrazicere = ceasul spune „mai ușor decât planul” și sportivul a simțit cu ≥ 2 trepte mai greu decât se aștepta
+ * (sau invers). Se semnalează ca observație de clarificat; scorul nu alege singur o variantă.
+ */
+export function declaredVsWatch(directie: Direction, rpeDelta: number | null): string | null {
+  if (rpeDelta == null || !directie) return null;
+  if (directie === 'mai_usor' && rpeDelta >= 2) return `ceasul arată mai ușor decât planul, dar ai simțit cu ${rpeDelta} peste așteptat: pulsul poate fi nefiabil (curea, frig) sau oboseala e reală — de clarificat, nu decide singur ceasul`;
+  if (directie === 'mai_tare' && rpeDelta <= -2) return `ceasul arată mai tare decât planul, dar ai simțit cu ${-rpeDelta} sub așteptat: zonele pot fi vechi sau pulsul umflat (căldură, cafea) — de clarificat`;
+  return null;
+}
+
 export function zoneDirection(planned: PlannedWorkout, activity: Activity, extra: Activity | null = null): Direction {
   if (!planned.targetZones.length) return null;
   const src = zoneSource(planned, [activity, extra].filter((a): a is Activity => !!a));

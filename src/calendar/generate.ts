@@ -1,6 +1,6 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
 import { PPL_ROTATION, isLegsSession, newSplitState, nextSplit, prescribe, splitFamily, strengthBlocks, strengthStructure, upperLowerWeek, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
-import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
+import { enforceLimits, enforceSpacing, fitStructure, legsHardEndurance } from './validate.js';
 import { BIKE_TEST, BRICK_TRANSITION_MIN, RUN_TEST, brickText, normalizeWorkout } from './coherence.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
 // Dacă orele nu ajung pentru cursă, răspunsul e `ok: false` cu variante — nu un plan comprimat.
@@ -404,7 +404,10 @@ function strengthSessions(p: Phase, slots: number): Session[] {
  */
 export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?: 'ppl'): void {
   const blocks = strengthBlocks(weeks.length);
-  const keyDates = new Set(weeks.flatMap((w) => w.workouts.filter((x) => x.key).map((x) => x.date)));
+  // Picioarele ușoare nu doar în ajunul unei chei (ca înainte), ci lângă ORICE alergare/bicicletă grea sau lungă, în
+  // ziua dinainte, aceeași zi sau a doua zi (conflictul de solicitare locală, Q05; detectat de localLoadConflicts).
+  const loadDates = new Set(weeks.flatMap((w) => w.workouts.filter((x) => x.key || legsHardEndurance(x)).map((x) => x.date)));
+  const nearLoad = (date: string) => loadDates.has(addDays(date, 1)) || loadDates.has(date) || loadDates.has(addDays(date, -1));
   let pplI = 0;
   let deferred: SessionId | null = null;
   const st = newSplitState();
@@ -412,9 +415,9 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?:
     const bw = blocks[wi] ?? { block: 'mentinere' as const, week: 1, len: 1 };
     const fs = w.workouts.filter((x) => x.type === 'forta').sort((a, b) => (a.date < b.date ? -1 : 1));
     const family = splitFamily(fs.length);
-    const ul = family === 'upper-lower' ? upperLowerWeek(fs.map((x) => keyDates.has(addDays(x.date, 1)))) : [];
+    const ul = family === 'upper-lower' ? upperLowerWeek(fs.map((x) => nearLoad(x.date))) : [];
     fs.forEach((x, k) => {
-      const beforeKey = keyDates.has(addDays(x.date, 1));
+      const beforeKey = nearLoad(x.date);
       const nearRace = raceDate ? diffDays(x.date, raceDate) <= 10 : w.phase === 'taper';
       let session: SessionId;
       let variant: number | undefined;

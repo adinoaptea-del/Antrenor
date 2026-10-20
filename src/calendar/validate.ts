@@ -1,6 +1,6 @@
 import { moduleStructure, parseModule } from './run-modules.js';
 import { normalizeWorkout } from './coherence.js';
-import { parseStrength, MIN_STRENGTH_MINUTES, prescribe, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
+import { legLoadOf, parseStrength, MIN_STRENGTH_MINUTES, prescribe, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -80,6 +80,11 @@ export function fitStructure(w: PlannedWorkout): PlannedWorkout {
   const mod = parseModule(w.structure);
   if (mod) {
     const b = moduleStructure(mod.id, w.plannedMinutes, mod.paceSecKm);
+    // Modulul nu încape nici în forma lui minimă (2 repetări, 8 + 5 min): nu lăsăm o structură mai lungă decât
+    // calendarul (auditul de coaching, Q14). Ședința devine ușoară în minutele cerute și spune ce stimul s-a pierdut.
+    if (b.minutes > w.plannedMinutes) {
+      return { ...w, type: 'z2', key: false, intervals: undefined, targetZones: [2], structure: `${w.plannedMinutes} min ușor (prea scurt pentru ${mod.id}: forma lui minimă are ${b.minutes} min)` };
+    }
     const tail = (w.structure ?? '').includes('deschidere, nu antrenament') ? ' · deschidere, nu antrenament' : '';
     return { ...w, structure: b.text + tail, intervals: w.intervals ? { ...w.intervals, count: b.count } : undefined };
   }
@@ -111,6 +116,34 @@ export function fitStructure(w: PlannedWorkout): PlannedWorkout {
 export function isHard(w: PlannedWorkout): boolean {
   // Auditul v93, A31: și lunga cu final la efort de cursă (zone ≥ 3) e o ședință grea.
   return w.status !== 'anulat_sistem' && w.status !== 'sters' && (w.type === 'calitate' || w.type === 'brick' || (w.type === 'lung' && w.targetZones.some((z) => z >= 3)));
+}
+
+/** Ședință de anduranță care încarcă picioarele: alergare grea sau lungă, bicicletă grea, brick. Înotul nu. */
+export function legsHardEndurance(w: PlannedWorkout): boolean {
+  if (w.status === 'anulat_sistem' || w.status === 'sters') return false;
+  if (w.sport === 'alergare') return w.type === 'calitate' || w.type === 'lung' || w.type === 'brick';
+  if (w.sport === 'bicicleta') return w.type === 'calitate' || w.type === 'brick' || (w.type === 'lung' && w.targetZones.some((z) => z >= 3));
+  return false;
+}
+
+/**
+ * Conflictul de solicitare locală (auditul de coaching, Q05): ziua de picioare la sală (greutăți obișnuite) în aceeași
+ * zi sau în ziua de dinainte/după o alergare grea sau lungă, o bicicletă grea sau un brick. Se verifică pe toată lista,
+ * deci și peste granița săptămânii. Mitigarea din plan e „picioare ușoare” (legs: 'usor'), care nu e conflict.
+ */
+export function localLoadConflicts(workouts: PlannedWorkout[]): { strengthId: string; enduranceId: string; gapDays: number; text: string }[] {
+  const out: { strengthId: string; enduranceId: string; gapDays: number; text: string }[] = [];
+  const live = workouts.filter((w) => w.status === 'planificat' || w.status === 'mutat');
+  const legs = live.filter((w) => w.sport === 'forta' && legLoadOf(w.structure) === 'greu');
+  const hard = live.filter(legsHardEndurance);
+  for (const s of legs) {
+    for (const e of hard) {
+      const gap = Math.round((Date.parse(`${e.date}T00:00:00Z`) - Date.parse(`${s.date}T00:00:00Z`)) / 86_400_000);
+      if (Math.abs(gap) > 1) continue;
+      out.push({ strengthId: s.id, enduranceId: e.id, gapDays: gap, text: `${s.id}: picioare la sală ${gap === 0 ? 'în aceeași zi cu' : gap > 0 ? 'în ajunul' : 'a doua zi după'} ${e.sport} ${e.type} (${e.id}, ${e.date})` });
+    }
+  }
+  return out;
 }
 
 const EASY_NOTE = 'ușor: lângă altă ședință grea (zi tare, zi ușoară)';
@@ -222,6 +255,13 @@ export function shortenWorkout(w: PlannedWorkout, minutes: number): PlannedWorko
       // Aceeași împărțire ca peste tot: alergarea nu crește, bicicleta ia restul.
       out = normalizeWorkout(out);
     }
+  } else if (w.sport === 'inot' && w.type === 'calitate') {
+    // Setul de înot („6 × 100 m, 20 s pauză”) se scurtează proporțional (cel puțin 2 repetări); sub 25 de minute sau
+    // sub 2 repetări rămâne tehnică (Q14: nicio structură mai lungă decât timpul cerut).
+    const reps = /(\d+) × (\d+) m([^,]*), (\d+) s pauză/.exec(w.structure ?? '');
+    const n2 = reps ? Math.floor((Number(reps[1]) * minutes) / before) : 0;
+    if (!reps || minutes < 25 || n2 < 2) out = { ...out, type: 'tehnica', key: false, targetZones: [1, 2], intervals: undefined, structure: `tehnică și bucăți ușoare, ${minutes} min (prea scurt pentru setul din plan)` };
+    else out = { ...out, structure: (w.structure ?? '').replace(reps[0], `${n2} × ${reps[2]} m${reps[3]}, ${reps[4]} s pauză`) };
   } else {
     out = resizeWorkout(out, minutes);
   }

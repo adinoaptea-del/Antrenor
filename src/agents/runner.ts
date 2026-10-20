@@ -535,6 +535,11 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   const pv = fallbackUsed ? null : validateProposal(head.propunere, p, decision);
   const proposalEvents: AdaptEvent[] = [];
   if (pv?.ok) proposalEvents.push({ kind: 'propunere', date: p.meta.data, workoutId: pv.workoutId, actiune: pv.actiune, minutes: pv.minutes, motiv: `${pv.motiv} (dovezi: ${pv.dovezi.join(', ')})` });
-  else if (pv && !pv.ok) head = { ...head, jurnal: [...head.jurnal, `propunere respinsă de validator: ${pv.reason}`] };
+  else if (pv && !pv.ok) {
+    // Rule 13 / auditul de coaching, ch. 09: o propunere respinsă nu e prezentată ca activă — dacă mesajul o anunță
+    // („îți propun…”), textul primește, determinist, rândul care spune că planul rămâne cum e.
+    const mentions = /propun|variant[aă] (mai )?u[șs]oar[aă]|scurt[aă]m|ușur[aă]m/i.test(head.mesaj);
+    head = { ...head, jurnal: [...head.jurnal, `propunere respinsă de validator: ${pv.reason}`], mesaj: mentions ? `${head.mesaj}\n(Propunerea de mai sus n-a trecut verificarea aplicației: planul de azi rămâne cum e.)` : head.mesaj };
+  }
   return { routed: mods, specialists: [], head, headWarnings, events: [...eventsFrom(p, decision), ...coverEvents, ...proposalEvents], decision, fallbackUsed, failures, mode: 'main' };
 }

@@ -144,6 +144,9 @@ export async function bigEffortMorning(userId: string, today: string): Promise<s
   const rpeOf = (a: { id: string; externalId: string }) => forms.evenings.find((e) => e.activityId === a.id || e.activityId === a.externalId)?.rpe ?? null;
   const effort = bigEffort(acts.map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: rpeOf(a) })));
   const changed = suggestAfterBigEffort(workouts, today, effort, forms.morning?.hooper?.dureri ?? null);
-  if (changed.length) await upsert('workouts_planned', changed.map((x) => toWorkoutRow(x, userId, planId)), 'id');
+  if (changed.length) {
+    await upsert('workouts_planned', changed.map((x) => toWorkoutRow(x, userId, planId)), 'id');
+    await insert('journal', { user_id: userId, date: today, entry: `calendar: sugestie ușoară după efortul mare de ieri pe ${changed.map((x) => `${x.sport} ${x.type} (${x.id})`).join(', ')}; planul rămâne, sportivul alege` }).catch(() => undefined);
+  }
   return changed.map((x) => `${x.id}: sugestie ușoară după efortul de ieri`);
 }

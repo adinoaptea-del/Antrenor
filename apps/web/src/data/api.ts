@@ -247,10 +247,19 @@ export class ApiError extends Error {
   }
 }
 
+/** Fusul orar al telefonului (IANA): serverul îl salvează pe cont, ca ziua sportivului să fie ziua lui, nu a serverului. */
+export function deviceTz(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Bucharest';
+  } catch {
+    return 'Europe/Bucharest';
+  }
+}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const s = await getSession();
   if (!s) throw new ApiError(401, 'neautentificat');
-  const res = await fetchWithTimeout(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, ...(init.headers ?? {}) } }, path.includes('-citire') || path.includes('/agents/') ? 280_000 : 30_000);
+  const res = await fetchWithTimeout(path, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${s.access_token}`, 'x-airon-tz': deviceTz(), ...(init.headers ?? {}) } }, path.includes('-citire') || path.includes('/agents/') ? 280_000 : 30_000);
   const text = await res.text();
   let body: unknown = null;
   try {

@@ -24,6 +24,9 @@ import { swimCapacity } from '../../src/calendar/swim-capacity.js';
 import { demonstrated } from '../../src/calendar/demonstrated.js';
 import { parsePace, type RunResult } from '../../src/util/run.js';
 import { decideReplan } from '../../src/calendar/reevaluate.js';
+import { coherenceIssues } from '../../src/calendar/coherence.js';
+import { detailSteps } from '../../src/calendar/session-detail.js';
+import { localLoadConflicts } from '../../src/calendar/validate.js';
 
 export interface IntakeLike {
   nume?: string;
@@ -114,6 +117,8 @@ export interface PlanOutcome {
   workouts?: number;
   options?: string[];
   preview?: boolean;
+  /** Problemele găsite de verificarea de coerență pe candidat (cel mult 10); lipsă = fără probleme. */
+  coherence?: string[];
   currentBudgetHours?: number | null;
   from?: string;
   firstWeekHours?: number;
@@ -267,6 +272,14 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const carried = carryAdjustments(future, old, nextMonday, today, at);
   future = carried.workouts;
   const signature = planSignature(future);
+  // Poarta de coerență (auditul de coaching, P0 „Coerență”): aceleași verificări ca în teste rulează și pe candidatul
+  // real — brick/test/accelerări/plafon/înot în pași vs rezumat, plus conflictul de solicitare locală. Problemele nu
+  // blochează activarea (ar lăsa sportivul fără plan), dar se scriu în jurnal și în nota răspunsului, ca să se vadă.
+  const athleteForSteps = await athleteInfo(userId, today);
+  const coherence = [
+    ...future.filter((w) => w.status === 'planificat' || w.status === 'mutat').flatMap((w) => coherenceIssues(w, detailSteps(w, { age: athleteForSteps.age, swimContinuousM: swimCap.meters }), swimCap.meters)),
+    ...localLoadConflicts(future).map((c) => c.text),
+  ];
   const first = weekTotals(future, nextMonday, addDays(weekStart(nextMonday), 7));
   const summary = {
     budgetHours: result.budgetHours,
@@ -307,6 +320,15 @@ export async function generateAndStore(userId: string, today: string, intake: In
     await remove('plans', { id: `eq.${plan!.id}`, user_id: `eq.${userId}`, active: 'eq.false' }).catch(() => undefined);
     throw e;
   }
+  // Jurnalul de decizie (auditul de coaching, ch. 24/29): orice activare are versiunea de dinainte și de după, amprenta
+  // candidatului și ce s-a păstrat/căzut din ajustările sportivului. Intrarea pleacă și la AI (prefixul „calendar”).
+  const sigOld = old.length ? planSignature(old) : null;
+  await insert('journal', {
+    user_id: userId,
+    date: today,
+    entry: `calendar (decizie): plan refăcut — versiunea ${prev[0]?.version ?? 0} → ${(prev[0]?.version ?? 0) + 1}, amprenta ${sigOld ?? 'fără plan'} → ${signature}, ${rows.length} ședințe de la ${nextMonday}, ajustări păstrate ${carried.kept.length}, căzute ${carried.dropped.length}, plecări aplicate ${awayApplied}, verificarea de coerență: ${coherence.length ? `${coherence.length} probleme (${coherence.slice(0, 3).join('; ')})` : 'fără probleme'}`,
+  }).catch(() => undefined);
+  if (coherence.length) console.error('coerență plan', userId, coherence.slice(0, 10));
   // Avizul se consideră dat: și planurile refăcute (ex. din Admin) aduc intensitatea permisă în pachetul agenților.
   await upsert('clearances', clearanceRow(userId, today, intake), 'user_id').catch(() => undefined);
   // Fitness: data de final e a programului (26 de săptămâni de la început), nu cea trimisă din chestionar.
@@ -317,6 +339,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     weeks: result.weeks.length,
     workouts: rows.length,
     withoutLabs: !labs.valid,
+    coherence: coherence.length ? coherence.slice(0, 10) : undefined,
     note: [labs.limitIntensity ? `Fără intensitate până discuți analizele cu medicul (${labs.why}). Asta nu înseamnă că efortul ușor a fost verificat medical: dacă apar oboseală neobișnuită, amețeli sau lipsă de aer, te oprești. Planul se reface când urci analize noi.` : null, startThisWeek ? 'Planul începe săptămâna asta, din zilele rămase.' : null].filter(Boolean).join(' ') || undefined,
     kept: carried.kept,
     dropped: carried.dropped,

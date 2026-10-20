@@ -63,3 +63,14 @@ export function localTimeUtc(date: string, minutes: number, tz: string): string 
   t = guess - offsetAt(t);
   return new Date(t).toISOString();
 }
+
+/** Un fus orar IANA valid (ex. „Europe/Bucharest”), verificat cu Intl; altfel null. Telefonul îl trimite la fiecare citire. */
+export function validTz(raw: unknown): string | null {
+  if (typeof raw !== 'string' || raw.length > 64 || !/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)+$/.test(raw)) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: raw });
+    return raw;
+  } catch {
+    return null;
+  }
+}

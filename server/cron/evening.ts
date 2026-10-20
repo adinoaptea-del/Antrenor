@@ -6,6 +6,7 @@ import { runAgents } from '../_lib/agents.js';
 import { reevaluateFitnessDays } from '../_lib/plan.js';
 import { weekday } from '../../src/util/dates.js';
 import { weatherSwapFor } from '../_lib/weather-swap.js';
+import { reassessGoal } from '../_lib/feasibility.js';
 
 /** Seara (21:00): „după antrenament” pentru cine a avut o ședință azi; duminica, review-ul săptămânal. */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -19,6 +20,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       try {
         const activity = await one('activities', { user_id: `eq.${u.id}`, date: `eq.${today}` });
         const evening = activity ? await runAgents(u.id, today, 'dupa_antrenament') : null;
+        // Duminica: fezabilitatea obiectivului, explicit, în jurnal, ÎNAINTEA bilanțului AI (ca să o poată cita).
+        if (weekday(today) === 6) await reassessGoal(u.id, today, 'bilant').catch(() => null);
         const weekly = weekday(today) === 6 ? await runAgents(u.id, today, 'saptamanal') : null;
         // Fitness: zilele de sală urcă doar după prezență reală (3 săptămâni bune la rând); reevaluat duminica.
         const freq = weekday(today) === 6 ? await reevaluateFitnessDays(u.id, today).catch(() => null) : null;

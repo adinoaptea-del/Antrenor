@@ -1,4 +1,6 @@
 import { runTargetProblem, type RunTargetLike } from '../../src/goals/intake-check.js';
+import { describeChange, thresholdChanges, type ThresholdSet } from '../../src/goals/thresholds.js';
+import { reassessGoal } from '../_lib/feasibility.js';
 import { STRENGTH_LOG_CONFLICT, cleanEntry, strengthLogRow, strengthLogRowLegacy } from '../../src/strength/log.js';
 import { fail, json, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js';
 import { q, type Req, type Res } from '../_lib/http.js';
@@ -192,9 +194,20 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       };
       const present = Object.fromEntries(Object.entries(measured).filter(([, v]) => v != null));
       if (Object.keys(present).length) {
+        // Q10: un prag care sare cu peste 15% față de cel salvat nu rescrie zonele fără confirmarea sportivului
+        // (vechi → nou, cu procentul); confirmarea vine cu `confirmat: true` din același formular.
+        const prevZ = await one<ThresholdSet>('zones', { user_id: `eq.${u.id}` }, { select: 'run_threshold_pace_sec_km,bike_ftp_w,swim_css_sec_100m,hr_max_test,run_hr_zones,bike_hr_zones' }).catch(() => null);
+        const changes = thresholdChanges(prevZ, present as ThresholdSet);
+        if (changes.length && (body as { confirmat?: unknown }).confirmat !== true) {
+          json(res, 200, { ok: false, confirmare: changes.map((c) => ({ camp: c.field, text: describeChange(c) })), mesaj: 'Pragurile noi diferă mult de cele salvate. Dacă testul e corect, confirmă; altfel verifică valorile.' });
+          return;
+        }
         await upsert('zones', { user_id: u.id, ...present, source: t.tip === 'altul' ? 'teren' : t.tip, tested_at: t.data, updated_at: new Date().toISOString() }, 'user_id');
+        await insert('journal', { user_id: u.id, date: today, entry: `calendar: praguri din testul din ${t.data} (${t.tip}): ${Object.keys(present).join(', ')}${changes.length ? `; schimbări mari confirmate de sportiv: ${changes.map(describeChange).join('; ')}` : ''}` }).catch(() => undefined);
       }
-      json(res, 200, { ok: true });
+      // Fezabilitatea obiectivului se rejudecă explicit la fiecare test (cum promite aplicația), nu doar la afișare.
+      const fez = await reassessGoal(u.id, today, 'test').catch(() => null);
+      json(res, 200, { ok: true, fezabilitate: fez });
       return;
     }
     if (kind === 'corp') {
@@ -246,6 +259,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       } else {
         await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }
+      await insert('journal', { user_id: u.id, date: today, entry: `calendar (sportivul): ${accept ? `a ales varianta ușoară pentru ${row.date} (${s.minutes} min „${s.structure.slice(0, 80)}”, în loc de ${row.planned_minutes} min)` : `rămâne pe planul din ${row.date} (${row.planned_minutes} min), nu pe varianta ușoară`}` }).catch(() => undefined);
       json(res, 200, { ok: true });
       return;
     }
@@ -331,12 +345,15 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!row) throw new HttpError(404, 'ședință inexistentă');
       if (row.status !== 'planificat' && row.status !== 'mutat') throw new HttpError(409, 'ședința nu mai e activă');
       if (row.date !== today) throw new HttpError(409, 'se poate scurta doar ședința de azi');
-      if (!Number.isInteger(minutes) || minutes < 15 || minutes >= row.planned_minutes) throw new HttpError(400, `alege între 15 și ${row.planned_minutes - 5} min`);
+      // Aceeași regulă ca în mesaj: între 15 și durata din plan − 5 (sub 15 nu e ședință; peste − 5 nu e scurtare).
+      if (!Number.isInteger(minutes) || minutes < 15 || minutes > row.planned_minutes - 5) throw new HttpError(400, `alege între 15 și ${row.planned_minutes - 5} min`);
       const { workouts } = await loadPlan(u.id, today, today);
       const w = workouts.find((x) => x.id === id);
       if (!w) throw new HttpError(404, 'ședință inexistentă');
       const shorter = shortenWorkout(w, minutes);
       await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: shorter.plannedMinutes, type: shorter.type, target_zones: shorter.targetZones, intervals: shorter.intervals ?? null, structure: shorter.structure ?? null, note: shorter.note ?? null, is_key: shorter.key });
+      // Jurnalul de decizie: înainte/după, ca orice altă schimbare a planului.
+      await insert('journal', { user_id: u.id, date: today, entry: `calendar (sportivul): timp scurt — ${w.sport} ${w.type} ${w.plannedMinutes} min „${(w.structure ?? '').slice(0, 80)}” → ${shorter.plannedMinutes} min ${shorter.type} „${(shorter.structure ?? '').slice(0, 80)}”` }).catch(() => undefined);
       json(res, 200, { ok: true, structura: shorter.structure ?? null });
       return;
     }
@@ -473,6 +490,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         if (back.length) await upsert('workouts_planned', back.map((x) => toWorkoutRow(x, u.id, planId!)), 'id');
         prefs.plecari.splice(i, 1);
         await savePrefs(u.id, prefs);
+        await insert('journal', { user_id: u.id, date: today, entry: `plecat ${away.dela}–${away.panala} anulat: ${back.length} ședințe revin la plan` }).catch(() => undefined);
         json(res, 200, { ok: true, inapoi: back.length });
         return;
       }

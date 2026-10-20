@@ -87,6 +87,21 @@ export function Tests({ onBack, onDone }: { onBack: () => void; onDone: () => vo
   const { submitForm, local } = useData();
   const [t, setT] = useState<TestsForm>(me.baseline.tests ?? { ...EMPTY_TESTS, data: me.today });
   const [busy, setBusy] = useState(false);
+  /** Praguri care sar mult față de cele salvate: serverul cere confirmarea (Q10). */
+  const [confirm, setConfirm] = useState<{ text: string }[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const save = (confirmat: boolean) => {
+    setBusy(true);
+    setErr(null);
+    submitForm('teste' as never, { ...t, ...(confirmat ? { confirmat: true } : {}) })
+      .then((r) => {
+        const d = r.data as { ok?: boolean; confirmare?: { text: string }[] } | undefined;
+        if (d && d.ok === false && d.confirmare?.length) setConfirm(d.confirmare);
+        else onDone();
+      })
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
   const setZ = (k: 'alergare_z' | 'bicicleta_z', i: number, v: number | null) => {
     const arr = [...t[k]] as TestsForm['alergare_z'];
     arr[i] = v;
@@ -142,18 +157,31 @@ export function Tests({ onBack, onDone }: { onBack: () => void; onDone: () => vo
           <Num value={t.css} onChange={(v) => setT({ ...t, css: v })} unit="s / 100 m" />
         </Q>
       </div>
+      {confirm && (
+        <div className="wizard">
+          <section className="card note-card">
+            <b>Pragurile noi diferă mult de cele salvate</b>
+            <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              {confirm.map((c) => (
+                <li key={c.text}>{c.text}</li>
+              ))}
+            </ul>
+            <p className="small muted">Dacă testul e corect, confirmă și zonele se schimbă. Dacă nu, corectează valorile de mai sus.</p>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="pill on" disabled={busy} onClick={() => save(true)}>
+                Da, testul e corect
+              </button>
+              <button className="pill" disabled={busy} onClick={() => setConfirm(null)}>
+                Verific valorile
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {err && <p className="small" style={{ color: 'var(--c-rosu)', padding: '0 16px' }}>{err}</p>}
       <div className="wizard-nav">
         <div className="small muted">{any ? 'Zonele intră în plan la următoarea regenerare' : 'Cel puțin o valoare'}</div>
-        <button
-          className="btn"
-          disabled={!any || !t.data || busy}
-          onClick={() => {
-            setBusy(true);
-            submitForm('teste' as never, t)
-              .then(() => onDone())
-              .finally(() => setBusy(false));
-          }}
-        >
+        <button className="btn" disabled={!any || !t.data || busy} onClick={() => save(false)}>
           {busy ? 'Salvez…' : 'Salvează'} {Icons.check}
         </button>
       </div>

@@ -91,6 +91,19 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
     const existing = await one<{ id: string }>('messages', { user_id: `eq.${userId}`, kind: `eq.${event}`, created_at: `gte.${dayStart}` });
     if (existing) return null;
   }
+  // Idempotență (auditul de coaching, Q13): două rulări simultane (cron + buton, retry) nu produc două mesaje și nu
+  // aplică de două ori evenimentele. Încuietoarea e atomică (insert ignorat la dublură) și expiră după 10 minute.
+  const lockKey = `run:${event}:${today}`;
+  if (!(await acquireLock(userId, lockKey, 10 * 60_000))) return null;
+  try {
+    return await runAgentsLocked(userId, today, event, force);
+  } finally {
+    await releaseLock(userId, lockKey);
+  }
+}
+
+async function runAgentsLocked(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force: boolean): Promise<AgentsOutcome | null> {
+  const user = await loadUser(userId);
   const { input, planId } = await collect(userId, today, event);
   // Scorurile salvate (aceleași ca pe ecrane): pachetul nu calculează altă culoare pentru aceeași ședință (auditul v93, T51).
   input.storedScores = await loadStoredScores(userId).catch(() => null);

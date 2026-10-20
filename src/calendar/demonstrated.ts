@@ -21,6 +21,8 @@ const RANGE: Partial<Record<Sport, { lo: number; hi: number; cap: number }>> = {
   inot: { lo: 20, hi: 90, cap: 60 },
 };
 export const DEMONSTRATED_WINDOW_DAYS = 42;
+/** Peste atâtea minute o singură activitate nu e luată ca dovadă de capacitate (setare de produs: ceas uitat pornit). */
+export const IMPLAUSIBLE_MIN: Partial<Record<Sport, number>> = { alergare: 360, bicicleta: 600, inot: 180 };
 const MIN_SESSIONS = 3;
 const r5 = (x: number) => Math.round(x / 5) * 5;
 
@@ -30,7 +32,11 @@ export function demonstrated(acts: { date: string; sport: Sport; minutes: number
   for (const sport of Object.keys(RANGE) as Sport[]) {
     const r = RANGE[sport]!;
     const all = recent.filter((a) => a.sport === sport && a.minutes > 0);
-    if (all.length) out.longest[sport] = Math.max(...all.map((a) => a.minutes));
+    // Cea mai lungă ședință: o înregistrare implauzibilă (ceas lăsat pornit, import greșit) nu rescrie singură
+    // capacitatea (auditul de coaching, Q10). O alergare lungă reală (ex. 229 min) rămâne: pragul e durata peste care
+    // o ședință de amator nu mai e plauzibilă, nu o comparație cu celelalte.
+    const plausible = all.filter((a) => a.minutes <= IMPLAUSIBLE_MIN[sport]!);
+    if (plausible.length) out.longest[sport] = Math.max(...plausible.map((a) => a.minutes));
     // Auditul v93, A63: după o pauză pe sportul ăsta (nimic în ultimele 14 zile) podeaua nu se aplică — prima ședință
     // după pauză nu revine la doza de dinainte; o decide regula de revenire.
     if (!all.some((a) => diffDays(a.date, today) <= 14)) {

@@ -6,6 +6,7 @@
 
 import type { Activity, PlannedWorkout } from '../types.js';
 import { diffDays } from '../util/dates.js';
+import { brickSplit as brickSplitShared } from '../calendar/coherence.js';
 
 export interface Match {
   planned: PlannedWorkout;
@@ -98,11 +99,13 @@ function afterBike(run: Activity, bike: Activity): number | null {
   return gap >= -5 ? Math.max(0, gap) : null;
 }
 
-/** Împărțirea bicicletă/alergare din prescripția brick-ului („tură 90 min Z2 + alergare 20 min”), altfel 75/25. */
+/**
+ * Împărțirea bicicletă/alergare a brick-ului: ACEEAȘI definiție ca în calendar și în pași (coherence.ts brickSplit:
+ * total = bicicletă + tranziție + alergare; regula 2). Fără text: 80% bicicletă din ce rămâne după tranziție.
+ */
 function brickSplit(p: PlannedWorkout): { bike: number; run: number } {
-  const m = /tură (\d+) min.*alergare (\d+) min/.exec(p.structure ?? '');
-  if (m) return { bike: Number(m[1]), run: Number(m[2]) };
-  return { bike: p.plannedMinutes * 0.75, run: p.plannedMinutes * 0.25 };
+  const s = brickSplitShared(p.structure, p.plannedMinutes);
+  return { bike: s.bike, run: s.run };
 }
 
 function pickClosest(list: Activity[], targetMinutes: number): Activity | null {

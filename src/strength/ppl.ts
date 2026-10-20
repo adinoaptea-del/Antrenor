@@ -800,6 +800,18 @@ export const PPL_ROTATION: SessionId[] = ['pushA', 'pullA', 'legsA', 'pushB', 'p
 export const FULL_ROTATION: SessionId[] = ['fullA', 'fullB'];
 export const SPLIT_ROTATION: SplitSessionId[] = ['push', 'pull', 'legs'];
 export const isLegsSession = (id: SessionId) => id === 'legsA' || id === 'legsB' || id === 'legs';
+/** Ședințele care încarcă picioarele (genuflexiuni, presă, fandări, fesieri): contează la „zi tare, zi ușoară” pe picioare. */
+export const LEG_LOAD_SESSIONS: ReadonlySet<SessionId> = new Set<SessionId>(['legs', 'legsA', 'legsB', 'full', 'fullA', 'l1', 'l2', 'l3', 'ft', 'f1', 'f2', 'a3', 'c3', 'fa', 'fc']);
+/**
+ * Cât încarcă picioarele o ședință de sală, din textul din plan: 'greu' (ziua de picioare obișnuită), 'usor' (picioare
+ * ușoare, greutăți mai mici — mitigarea lângă o ședință-cheie), null (partea de sus, întreținere, fără picioare).
+ */
+export function legLoadOf(structure: string | null | undefined): 'greu' | 'usor' | null {
+  const spec = parseStrength(structure);
+  if (!spec) return null;
+  if (!LEG_LOAD_SESSIONS.has(spec.session) || spec.legs === 'fara') return null;
+  return spec.legs === 'usor' || spec.reduced ? 'usor' : 'greu';
+}
 
 export interface SplitState {
   i: number;
