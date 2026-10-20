@@ -102,3 +102,13 @@ export function particleArrival(t: number, delay: number, speed: number): number
   const dur = (b - a) * (0.55 + 0.6 * (1 - speed)) + 120;
   return easeInOut(clamp01((t - start) / dur));
 }
+
+/**
+ * Vălul întâmpinării (cererea proprietarului, 20.10.2026): cât mesajul e pe ecran, Acasă abia se întrezărește
+ * (~7–8% vizibil); la tranziția spre Acasă vălul se ridică treptat, până la clar, odată cu reintegrarea.
+ */
+export const WELCOME_VEIL = 0.925;
+export function welcomeVeil(out: number | null): number {
+  if (out == null) return WELCOME_VEIL;
+  return WELCOME_VEIL * (1 - easeInOut(clamp01(out / DISSOLVE_MS)));
+}

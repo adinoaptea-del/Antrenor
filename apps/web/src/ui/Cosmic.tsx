@@ -15,6 +15,7 @@ import {
   shellPresence,
   span,
   textAlpha,
+  welcomeVeil,
   type PhaseName,
 } from '@core/motion/teleport.js';
 
@@ -112,6 +113,7 @@ export function CosmicMessage({
   const cv = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const go = useRef<HTMLButtonElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const reduce = reducedMotion();
   const [out, setOut] = useState(false);
   const t0 = useRef(performance.now());
@@ -318,12 +320,16 @@ export function CosmicMessage({
       const env = easeOut(span(tin, [0, 420])) * (out == null ? 1 : 1 - easeInOut(clamp01(out / DISSOLVE_MS)));
 
       // Scena din spate pierde puțin din energie: mai întunecat lângă nucleu, ușor peste tot.
-      const dim = ctx.createRadialGradient(cx * dpr, cy * dpr, R * 0.3 * dpr, cx * dpr, cy * dpr, Math.max(VW, VH) * dpr);
-      const base = variant === 'reusita' ? 0.42 : 0.3;
-      dim.addColorStop(0, `rgba(3,7,7,${(base + 0.25) * env})`);
-      dim.addColorStop(1, `rgba(3,7,7,${base * env})`);
-      ctx.fillStyle = dim;
-      ctx.fillRect(0, 0, W, H);
+      if (variant === 'intampinare') {
+        // Întâmpinarea: vălul (CSS pe fundal) lasă Acasă să se întrezărească doar ~7–8% și se ridică treptat la tranziție.
+        if (wrap.current) wrap.current.style.backgroundColor = `rgba(14,17,18,${welcomeVeil(out).toFixed(3)})`;
+      } else {
+        const dim = ctx.createRadialGradient(cx * dpr, cy * dpr, R * 0.3 * dpr, cx * dpr, cy * dpr, Math.max(VW, VH) * dpr);
+        dim.addColorStop(0, `rgba(3,7,7,${0.67 * env})`);
+        dim.addColorStop(1, `rgba(3,7,7,${0.42 * env})`);
+        ctx.fillStyle = dim;
+        ctx.fillRect(0, 0, W, H);
+      }
 
       // Lentila și impulsul (doar pe stratul decorativ): textura e trasă spre nucleu, apoi împinsă de o undă moale.
       const pull = out == null ? lensPull(tin) : 0;
@@ -652,7 +658,7 @@ export function CosmicMessage({
 
   const style = pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : { left: '50%', top: '44%' };
   return (
-    <div className={`cosmic cosmic-${variant} ${out ? 'out' : ''} ${reduce ? 'still' : ''}`} onClick={close} role={variant === 'reusita' ? 'dialog' : 'status'} aria-label={variant === 'reusita' ? 'Antrenament finalizat' : 'Mesajul zilei'}>
+    <div ref={wrap} className={`cosmic cosmic-${variant} ${out ? 'out' : ''} ${reduce ? 'still' : ''}`} onClick={close} role={variant === 'reusita' ? 'dialog' : 'status'} aria-label={variant === 'reusita' ? 'Antrenament finalizat' : 'Mesajul zilei'}>
       {!reduce && <canvas ref={cv} className="cosmic-cv" aria-hidden="true" />}
       <div className={`cosmic-box ${reduce ? 'glass' : ''}`} ref={box} style={{ ...style, opacity: reduce ? undefined : 0 }}>
         <div className="cosmic-k">{kicker}</div>

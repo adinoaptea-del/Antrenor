@@ -1401,6 +1401,9 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 /* Mesajul cosmic (ui/Cosmic.tsx): scena de teleportare. Fundalul îl întunecă scena din canvas; textul e DOM stabil. */
 .cosmic { position: fixed; inset: 0; z-index: 120; cursor: pointer; }
 .cosmic.out { pointer-events: none; }
+/* Întâmpinarea: Acasă abia se întrezărește (~7–8%) din primul cadru; vălul se ridică din JS la tranziție. */
+.cosmic-intampinare { background-color: rgba(14, 17, 18, 0.925); }
+.cosmic.still.cosmic-intampinare { background: rgba(14, 17, 18, 0.925); }
 .cosmic-cv { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
 .cosmic-box { position: fixed; transform: translate(-50%, -50%); width: min(calc(100vw - 26vw - 32px), 232px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; }
 .cosmic-k { font: 600 12px var(--font-ui); letter-spacing: 0.08em; color: var(--accent); }

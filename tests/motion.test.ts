@@ -60,3 +60,13 @@ test('tubul: fără date ≠ 0, 0 fără umplere, 100 închide complet, la proce
   assert.equal(meniscus(150, W, r)!.fillW, W);
   assert.equal(meniscus(-3, W, r)!.fillW, 0);
 });
+
+test('întâmpinarea: Acasă abia se întrezărește (7–8%) și devine clar treptat la tranziție', async () => {
+  const { welcomeVeil, WELCOME_VEIL, DISSOLVE_MS: D } = await import('../src/motion/teleport.js');
+  const visible = (o: number | null) => 1 - welcomeVeil(o);
+  assert.ok(visible(null) >= 0.07 && visible(null) <= 0.08);
+  assert.equal(welcomeVeil(null), WELCOME_VEIL);
+  const steps = [0, D * 0.25, D * 0.5, D * 0.75, D].map(visible);
+  for (let i = 1; i < steps.length; i++) assert.ok(steps[i]! > steps[i - 1]!, 'din ce în ce mai vizibil');
+  assert.equal(visible(D), 1);
+});
