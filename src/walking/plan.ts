@@ -245,6 +245,12 @@ export function walkToday(input: { today: string; plan: PlannedWorkout[]; restri
 }
 
 /** Restricția zilei, din decizia zilei (aceeași pentru toate ecranele). */
-export function restrictionOf(level: string | null | undefined): WalkRestriction {
-  return level === 'stop' ? 'stop' : level === 'rosu' ? 'short' : level === 'galben' || level === 'portocaliu' ? 'easy' : 'none';
+/**
+ * Auditul v93, A05: roșu din boală, febră, simptom cardiac sau durere la picioare / la mers înseamnă fără mers prescris,
+ * nu „plimbare scurtă”. Roșu doar din recuperare (somn, HRV) rămâne varianta scurtă, ușoară.
+ */
+export function restrictionOf(level: string | null | undefined, why?: string | null): WalkRestriction {
+  if (level === 'stop') return 'stop';
+  if (level === 'rosu') return /boal|febr|cardiac|piept|durere|doare|picio|genunch|gle[zș]n|tibi|[șs]old|mers/i.test(why ?? '') ? 'stop' : 'short';
+  return level === 'galben' || level === 'portocaliu' ? 'easy' : 'none';
 }

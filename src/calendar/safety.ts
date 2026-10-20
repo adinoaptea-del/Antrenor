@@ -54,6 +54,24 @@ export type Restriction = { verdict: 'stop' | 'rosu' | 'galben'; reason: string;
 /** Acțiunea afișată la stop, aceeași în formular, pe Home și în mesajul antrenorului (L-SIM-03). */
 export const CARDIAC_ACTION = 'Azi nu te antrenezi. Cere o evaluare medicală azi. Dacă ai durere în piept, leșin, lipsă de aer sau palpitații care nu trec, sună la 112.';
 export const FEVER_ACTION = 'Azi nu te antrenezi. Dacă febra nu scade sau apar dureri în piept ori lipsă de aer, mergi la medic.';
+/**
+ * Zona durerii (auditul v93, A07): alternativa se alege după zonă, nu doar după scor. Necunoscută = 'necunoscut'.
+ * jos = picior, genunchi, gleznă, tibie, șold, tendon; sus = umăr, braț, cot, încheietură, gât; spate = spate, lombar.
+ */
+export type PainRegion = 'jos' | 'sus' | 'spate' | 'necunoscut';
+export function painRegion(loc: string | null | undefined): PainRegion {
+  const l = (loc ?? '').toLowerCase();
+  if (/genunch|gle[zș]n|tibi|gamb|picio|[șs]old|tendon|ahil|talp|fasci|coaps|ischio|femur|cvadr|adduct|aductor|inghin/.test(l)) return 'jos';
+  if (/um[aă]r|bra[țt]|cot|[îi]ncheiet|g[aâ]t|ceaf|pect|piept(?!.*inim)/.test(l)) return 'sus';
+  if (/spate|lomb|coloan|sacr|fes/.test(l)) return 'spate';
+  return 'necunoscut';
+}
+/** Sporturile care NU se propun ca alternativă când doare zona asta (bicicleta la picioare e doar condiționată). */
+export function sportsBlockedByPain(loc: string | null | undefined): string[] {
+  const r = painRegion(loc);
+  return r === 'jos' ? ['alergare'] : r === 'sus' ? ['inot', 'forta'] : r === 'spate' ? ['forta'] : [];
+}
+
 export function stopAction(reason: string | null | undefined): string {
   if (/cardiac|piept|leșin|lesin|palpita|lipsă de aer|lipsa de aer|evaluare medical/i.test(reason ?? '')) return CARDIAC_ACTION;
   if (/febr/i.test(reason ?? '')) return FEVER_ACTION;
@@ -123,6 +141,13 @@ export function activeRestriction(input: {
   if (s.febra === true) add('stop', 'Febră raportată azi: fără antrenament.');
   if (input.savedVerdict === 'stop') add('stop', 'Stop pentru azi.');
   if (s.boala === true) add('rosu', 'Boală raportată azi: pauză.');
+  // Revenirea după febră e condiționată (auditul v93, A06): ultima raportare a fost febră și de atunci nu ai spus
+  // dimineața că nu mai ai → nu se reia antrenamentul doar pentru că au trecut zile.
+  const reports = [...(input.mornings ?? []), ...(input.morning?.date ? [{ date: input.morning.date, semnale: input.morning.semnale ?? null }] : [])]
+    .filter((m) => m.date && m.date <= input.today && m.semnale && Object.keys(m.semnale).length)
+    .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0));
+  const lastReport = reports[reports.length - 1];
+  if (s.febra !== true && lastReport && lastReport.date! < input.today && lastReport.semnale?.febra === true) add('rosu', `Ultima ta raportare (${lastReport.date}) a fost febră: reiei antrenamentul doar după ce spui dimineața că nu mai ai febră. Dacă nu scade sau apar dureri în piept ori lipsă de aer, mergi la medic.`);
   // Semnalele individuale înaintea sumei (auditul M35, E01): epuizare sau dureri musculare 6–7/7 nu sunt „în regulă”
   // doar pentru că celelalte note sunt bune. Oboseala nu e diagnostic; durerea musculară se separă de durerea focală.
   const hm = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;

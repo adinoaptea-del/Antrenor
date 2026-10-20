@@ -6,6 +6,7 @@
 //  - Întâlniri fixe (alergarea cu grupul): generatorul pune ședința potrivită în ziua aceea.
 
 import type { PlannedWorkout, Sport, WorkoutSnapshot } from '../types.js';
+import { sportsBlockedByPain } from './safety.js';
 import { addDays, weekStart, weekday } from '../util/dates.js';
 import { fitStructure, isHard } from './validate.js';
 
@@ -135,9 +136,12 @@ export function sportSwapBlock(w: PlannedWorkout): string | null {
  * lungă nu se transferă în alt sport (încărcarea nu e echivalentă), progresia sportului inițial așteaptă. Înapoi la
  * sportul din plan = ședința din plan, exact cum era.
  */
-export function changeSport(w: PlannedWorkout, sport: Sport, at: string): PlannedWorkout {
+export function changeSport(w: PlannedWorkout, sport: Sport, at: string, pain?: { loc: string | null; scor: number } | null): PlannedWorkout {
   const block = sportSwapBlock(w);
   if (block) throw new Error(block);
+  // Auditul v93, A07: o durere activă nu se ocolește schimbând sportul pe unul care încarcă aceeași zonă.
+  if (pain && pain.scor >= 3 && sportsBlockedByPain(pain.loc).includes(sport)) throw new Error(`ai o durere activă (${pain.scor}/10${pain.loc ? ` la ${pain.loc}` : ''}): ${SPORT_NAME[sport]} încarcă zona; alege alt sport sau o zi de pauză`);
+  if (pain && pain.scor >= 5) throw new Error(`ai o durere ${pain.scor}/10${pain.loc ? ` la ${pain.loc}` : ''}: până la reevaluare nu se înlocuiește ședința cu alt sport`);
   if (!SWAP_SPORTS.includes(sport)) throw new Error('sport necunoscut');
   if (sport === w.sport) throw new Error(`ședința e deja ${SPORT_NAME[sport]}`);
   const o = w.original;

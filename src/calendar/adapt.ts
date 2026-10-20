@@ -5,6 +5,7 @@ import { fitStructure, resizeWorkout, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
 import { applyProgression, type Execution } from './progression.js';
 import { MIN_STRENGTH_MINUTES, SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
+import { painRegion } from './safety.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
@@ -289,7 +290,12 @@ function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // Galben / portocaliu: planul rămâne; fiecare ședință primește o SUGESTIE mai ușoară, iar sportivul alege.
   if (ev.verdict === 'galben') {
     for (const x of today) {
-      if (x.type === 'forta' || x.type === 'odihna' || x.suggestion?.accepted != null) continue;
+      // Forța primește și ea varianta ușoară (aceleași serii, greutăți mai mici), nu rămâne neatinsă (auditul v93, A05).
+      if (x.type === 'forta') {
+        if (suggestLighter(x, ev.reason ?? 'recuperarea de azi e la jumătate')) changes.push(`${x.id}: sugestie forță ușoară (greutăți mai mici); sportivul alege`);
+        continue;
+      }
+      if (x.type === 'odihna' || x.suggestion?.accepted != null) continue;
       const hard = x.type === 'calitate' || x.type === 'lung' || x.type === 'brick';
       const minutes = Math.max(20, Math.round((x.plannedMinutes * (hard ? 0.75 : 0.8)) / 5) * 5);
       x.suggestion = {
@@ -345,8 +351,16 @@ function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'dure
   // 3–4: galben — planul nu se schimbă singur. Ședințele cu impact primesc o SUGESTIE fără impact, cu condiția scrisă
   // (încerci 5 min; dacă doare, te oprești); sportivul o confirmă sau nu.
   const until = addDays(ev.date, 5);
+  // Zona contează (auditul v93, A07): umăr → înotul și sala primesc varianta ușoară, alergarea rămâne; spate → sala;
+  // picioare / necunoscut → alergarea primește alternativa condiționată pe bicicletă.
+  const region = painRegion(ev.loc);
   for (const x of plan) {
     if (!isActiveWorkout(x) || done.has(x.id) || x.date < ev.date || x.date > until || x.suggestion?.accepted != null) continue;
+    if (region === 'sus' || region === 'spate') {
+      const hit = region === 'sus' ? x.sport === 'inot' || x.sport === 'forta' : x.sport === 'forta' || x.type === 'lung';
+      if (hit && suggestLighter(x, `durere ${ev.score}/10 la ${ev.loc}: doar dacă nu doare; dacă apare durerea, te oprești`)) changes.push(`${x.id}: sugestie ușoară (durere la ${ev.loc}), sportivul alege`);
+      continue;
+    }
     if (x.sport === 'alergare') {
       const minutes = Math.max(20, Math.round((x.plannedMinutes * 0.8) / 5) * 5);
       x.suggestion = {

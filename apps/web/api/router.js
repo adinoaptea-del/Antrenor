@@ -894,8 +894,10 @@ function walkToday(input) {
   if (weekday(input.today) === 6 && input.remainingSec > spec.totalMin * 60) note = [note, "Ce r\u0103m\xE2ne din s\u0103pt\u0103m\xE2n\u0103 nu se adaug\u0103 la \u0219edin\u021Ba de azi: s\u0103pt\u0103m\xE2na viitoare porne\u0219te cu \u021Binta ei, f\u0103r\u0103 datorie."].filter(Boolean).join(" ");
   return { spec, workoutId: w.id, note, stop: false };
 }
-function restrictionOf(level) {
-  return level === "stop" ? "stop" : level === "rosu" ? "short" : level === "galben" || level === "portocaliu" ? "easy" : "none";
+function restrictionOf(level, why) {
+  if (level === "stop") return "stop";
+  if (level === "rosu") return /boal|febr|cardiac|piept|durere|doare|picio|genunch|gle[zș]n|tibi|[șs]old|mers/i.test(why ?? "") ? "stop" : "short";
+  return level === "galben" || level === "portocaliu" ? "easy" : "none";
 }
 
 // src/walking/view.ts
@@ -909,7 +911,7 @@ function walkingView(input) {
     history.push({ weekStart: ws, targetMin: w.targetMin, doneSec: w.doneSec, briskSec: w.briskSec, met: w.met });
   }
   const dup = new Map(dedupeWalks(records).merged.map((m) => [m.dropped, m.kept]));
-  const today = walkToday({ today: input.today, plan: input.plan, restriction: restrictionOf(input.dayLevel), remainingSec: week.remainingSec, restrictionWhy: input.dayWhy ?? null });
+  const today = walkToday({ today: input.today, plan: input.plan, restriction: restrictionOf(input.dayLevel, input.dayWhy ?? null), remainingSec: week.remainingSec, restrictionWhy: input.dayWhy ?? null });
   return {
     week,
     history,
@@ -2233,6 +2235,17 @@ function painSafetyEvents(date, durere) {
 }
 var CARDIAC_ACTION = "Azi nu te antrenezi. Cere o evaluare medical\u0103 azi. Dac\u0103 ai durere \xEEn piept, le\u0219in, lips\u0103 de aer sau palpita\u021Bii care nu trec, sun\u0103 la 112.";
 var FEVER_ACTION = "Azi nu te antrenezi. Dac\u0103 febra nu scade sau apar dureri \xEEn piept ori lips\u0103 de aer, mergi la medic.";
+function painRegion(loc) {
+  const l = (loc ?? "").toLowerCase();
+  if (/genunch|gle[zș]n|tibi|gamb|picio|[șs]old|tendon|ahil|talp|fasci|coaps|ischio|femur|cvadr|adduct|aductor|inghin/.test(l)) return "jos";
+  if (/um[aă]r|bra[țt]|cot|[îi]ncheiet|g[aâ]t|ceaf|pect|piept(?!.*inim)/.test(l)) return "sus";
+  if (/spate|lomb|coloan|sacr|fes/.test(l)) return "spate";
+  return "necunoscut";
+}
+function sportsBlockedByPain(loc) {
+  const r2 = painRegion(loc);
+  return r2 === "jos" ? ["alergare"] : r2 === "sus" ? ["inot", "forta"] : r2 === "spate" ? ["forta"] : [];
+}
 function stopAction(reason) {
   if (/cardiac|piept|leșin|lesin|palpita|lipsă de aer|lipsa de aer|evaluare medical/i.test(reason ?? "")) return CARDIAC_ACTION;
   if (/febr/i.test(reason ?? "")) return FEVER_ACTION;
@@ -2271,6 +2284,9 @@ function activeRestriction(input) {
   if (s.febra === true) add("stop", "Febr\u0103 raportat\u0103 azi: f\u0103r\u0103 antrenament.");
   if (input.savedVerdict === "stop") add("stop", "Stop pentru azi.");
   if (s.boala === true) add("rosu", "Boal\u0103 raportat\u0103 azi: pauz\u0103.");
+  const reports = [...input.mornings ?? [], ...input.morning?.date ? [{ date: input.morning.date, semnale: input.morning.semnale ?? null }] : []].filter((m) => m.date && m.date <= input.today && m.semnale && Object.keys(m.semnale).length).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const lastReport = reports[reports.length - 1];
+  if (s.febra !== true && lastReport && lastReport.date < input.today && lastReport.semnale?.febra === true) add("rosu", `Ultima ta raportare (${lastReport.date}) a fost febr\u0103: reiei antrenamentul doar dup\u0103 ce spui diminea\u021Ba c\u0103 nu mai ai febr\u0103. Dac\u0103 nu scade sau apar dureri \xEEn piept ori lips\u0103 de aer, mergi la medic.`);
   const hm4 = input.morning && (input.morning.date == null || input.morning.date === input.today) ? input.morning : null;
   const dureri = hm4?.hooper?.dureri ?? null;
   const oboseala = hm4?.hooper?.oboseala ?? null;
@@ -4187,9 +4203,11 @@ function sportSwapBlock(w) {
   if (/^TEST/i.test(w.structure ?? "")) return "un test se face \xEEn sportul lui; \xEEl po\u021Bi muta \xEEn alt\u0103 zi";
   return null;
 }
-function changeSport(w, sport, at) {
+function changeSport(w, sport, at, pain) {
   const block = sportSwapBlock(w);
   if (block) throw new Error(block);
+  if (pain && pain.scor >= 3 && sportsBlockedByPain(pain.loc).includes(sport)) throw new Error(`ai o durere activ\u0103 (${pain.scor}/10${pain.loc ? ` la ${pain.loc}` : ""}): ${SPORT_NAME[sport]} \xEEncarc\u0103 zona; alege alt sport sau o zi de pauz\u0103`);
+  if (pain && pain.scor >= 5) throw new Error(`ai o durere ${pain.scor}/10${pain.loc ? ` la ${pain.loc}` : ""}: p\xE2n\u0103 la reevaluare nu se \xEEnlocuie\u0219te \u0219edin\u021Ba cu alt sport`);
   if (!SWAP_SPORTS.includes(sport)) throw new Error("sport necunoscut");
   if (sport === w.sport) throw new Error(`\u0219edin\u021Ba e deja ${SPORT_NAME[sport]}`);
   const o = w.original;
@@ -6150,7 +6168,7 @@ async function loadForms(userId, today) {
   for (const r2 of morningRows) if (!byDay.has(r2.for_date)) byDay.set(r2.for_date, { ...r2.answers, date: r2.for_date });
   const [painRows, cardiacRows] = await Promise.all([
     select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.seara", for_date: `gte.${addDays(today, -365)}`, "answers->durere->>scor": "not.is.null" }, { order: "for_date.asc", limit: 1e3 }).catch(() => []),
-    select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `gte.${addDays(today, -365)}`, or: "(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true)" }, { order: "for_date.asc", limit: 1e3 }).catch(() => [])
+    select("questionnaires", { user_id: `eq.${userId}`, kind: "eq.dimineata", for_date: `gte.${addDays(today, -365)}`, or: "(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true,answers->semnale->>febra.eq.true)" }, { order: "for_date.asc", limit: 1e3 }).catch(() => [])
   ]);
   const incidents = { evenings: painRows.map((r2) => ({ ...r2.answers, date: r2.answers.date ?? r2.for_date })), mornings: cardiacRows.map((r2) => ({ ...r2.answers, date: r2.for_date })) };
   return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r2) => r2.answers), intake: intakeRow?.answers ?? null, incidents };
@@ -6766,7 +6784,11 @@ function applyReadiness(plan, ev, ctx, changes) {
   const today = plan.filter((x) => x.date === ev.date && isActiveWorkout(x) && !(ctx.done ?? []).includes(x.id));
   if (ev.verdict === "galben") {
     for (const x of today) {
-      if (x.type === "forta" || x.type === "odihna" || x.suggestion?.accepted != null) continue;
+      if (x.type === "forta") {
+        if (suggestLighter(x, ev.reason ?? "recuperarea de azi e la jum\u0103tate")) changes.push(`${x.id}: sugestie for\u021B\u0103 u\u0219oar\u0103 (greut\u0103\u021Bi mai mici); sportivul alege`);
+        continue;
+      }
+      if (x.type === "odihna" || x.suggestion?.accepted != null) continue;
       const hard3 = x.type === "calitate" || x.type === "lung" || x.type === "brick";
       const minutes = Math.max(20, Math.round(x.plannedMinutes * (hard3 ? 0.75 : 0.8) / 5) * 5);
       x.suggestion = {
@@ -6814,8 +6836,14 @@ function applyPain(plan, ev, ctx, changes) {
     return;
   }
   const until = addDays(ev.date, 5);
+  const region = painRegion(ev.loc);
   for (const x of plan) {
     if (!isActiveWorkout(x) || done.has(x.id) || x.date < ev.date || x.date > until || x.suggestion?.accepted != null) continue;
+    if (region === "sus" || region === "spate") {
+      const hit = region === "sus" ? x.sport === "inot" || x.sport === "forta" : x.sport === "forta" || x.type === "lung";
+      if (hit && suggestLighter(x, `durere ${ev.score}/10 la ${ev.loc}: doar dac\u0103 nu doare; dac\u0103 apare durerea, te opre\u0219ti`)) changes.push(`${x.id}: sugestie u\u0219oar\u0103 (durere la ${ev.loc}), sportivul alege`);
+      continue;
+    }
     if (x.sport === "alergare") {
       const minutes = Math.max(20, Math.round(x.plannedMinutes * 0.8 / 5) * 5);
       x.suggestion = {
@@ -8928,7 +8956,7 @@ async function runPyramid(input, client) {
   let decision = physVerdict(phys, packet);
   if (RANK4[decision] < RANK4[safe]) decision = safe;
   const app = packet.decizia_aplicatiei;
-  if (app) decision = safe === "stop" ? "stop" : app.nivel;
+  if (app) decision = RANK4[app.nivel] >= RANK4[safe] ? app.nivel : safe;
   const packetWithVerdict = { ...packet, verdict_fiziolog: decision };
   const others = routed.filter((a) => a !== "fiziolog");
   const settled = await Promise.allSettled(
@@ -9042,7 +9070,7 @@ async function runMainCoach(input, client) {
   const mods = knowledgeModules(packet);
   const failures = [];
   const safe = safetyDecision(packet);
-  let decision = packet.decizia_aplicatiei ? safe === "stop" ? "stop" : packet.decizia_aplicatiei.nivel : safe;
+  let decision = packet.decizia_aplicatiei && RANK4[packet.decizia_aplicatiei.nivel] >= RANK4[safe] ? packet.decizia_aplicatiei.nivel : safe;
   const p = { ...packet, verdict_fiziolog: decision };
   const system = `${prompts.main_coach ?? prompts.head_coach}
 
@@ -10981,7 +11009,8 @@ async function handler10(req, res) {
     if (kind === "dimineata") {
       const date = formDate(body.date, today);
       await upsert("questionnaires", { user_id: u.id, kind, for_date: date, activity_id: null, answers: body }, "user_id,kind,for_date,activity_id");
-      const safety = morningSafetyEvents(date, body.semnale);
+      const sem0 = body.semnale ?? {};
+      const safety = morningSafetyEvents(date, urgentText(typeof sem0.nota === "string" ? sem0.nota : null) ? { ...sem0, simptom_cardiac: true } : sem0);
       const changes = await protect(u.id, today, user.tz, safety);
       json(res, 200, { ok: true, protectie: safety.events.length ? { verdict: safety.verdict, changes } : null });
       return;
@@ -10991,6 +11020,7 @@ async function handler10(req, res) {
       const activityId = typeof body.activityId === "string" ? body.activityId : null;
       await upsert("questionnaires", { user_id: u.id, kind, for_date: date, activity_id: activityId, answers: body }, "user_id,kind,for_date,activity_id");
       await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
+      if (urgentText(typeof body.comentariu === "string" ? body.comentariu : null)) await protect(u.id, today, user.tz, morningSafetyEvents(today, { simptom_cardiac: true }));
       const goal = user.goal && user.goal !== "full" ? user.goal : "70.3";
       await rescore(u.id, today, goal);
       await reactToActivities(u.id, today).catch(() => void 0);
@@ -11232,8 +11262,11 @@ async function handler10(req, res) {
       try {
         if (op === "muta") next = moveWorkout(workouts, id, String(body.date ?? ""), today, at, done);
         else if (op === "usor") next = easyWorkout(w, at);
-        else if (op === "sport") next = changeSport(w, String(body.sport ?? ""), at);
-        else throw new HttpError(400, "ac\u021Biune necunoscut\u0103");
+        else if (op === "sport") {
+          const forms = await loadForms(u.id, today);
+          const pain = activePain(withIncidents(forms.evenings, forms.incidents.evenings), today);
+          next = changeSport(w, String(body.sport ?? ""), at, pain);
+        } else throw new HttpError(400, "ac\u021Biune necunoscut\u0103");
       } catch (e) {
         if (e instanceof HttpError) throw e;
         throw new HttpError(409, e instanceof Error ? e.message : String(e));

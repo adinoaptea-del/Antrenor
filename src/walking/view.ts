@@ -34,7 +34,7 @@ export function walkingView(input: { rows: WalkRow[]; tz: string; today: string;
     history.push({ weekStart: ws, targetMin: w.targetMin, doneSec: w.doneSec, briskSec: w.briskSec, met: w.met });
   }
   const dup = new Map(dedupeWalks(records).merged.map((m) => [m.dropped, m.kept]));
-  const today = walkToday({ today: input.today, plan: input.plan, restriction: restrictionOf(input.dayLevel), remainingSec: week.remainingSec, restrictionWhy: input.dayWhy ?? null });
+  const today = walkToday({ today: input.today, plan: input.plan, restriction: restrictionOf(input.dayLevel, input.dayWhy ?? null), remainingSec: week.remainingSec, restrictionWhy: input.dayWhy ?? null });
   return {
     week,
     history,

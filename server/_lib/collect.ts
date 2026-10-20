@@ -222,7 +222,7 @@ export async function loadForms(userId: string, today: string): Promise<{ mornin
   // raportările din ultimele 12 luni; se închid doar prin declarația sportivului („a trecut” / „evaluat medical”).
   const [painRows, cardiacRows] = await Promise.all([
     select<{ answers: EveningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.seara', for_date: `gte.${addDays(today, -365)}`, 'answers->durere->>scor': 'not.is.null' }, { order: 'for_date.asc', limit: 1000 }).catch(() => []),
-    select<{ answers: MorningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `gte.${addDays(today, -365)}`, or: '(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true)' }, { order: 'for_date.asc', limit: 1000 }).catch(() => []),
+    select<{ answers: MorningForm; for_date: string }>('questionnaires', { user_id: `eq.${userId}`, kind: 'eq.dimineata', for_date: `gte.${addDays(today, -365)}`, or: '(answers->semnale->>simptom_cardiac.eq.true,answers->semnale->>cardiac_evaluat.eq.true,answers->semnale->>febra.eq.true)' }, { order: 'for_date.asc', limit: 1000 }).catch(() => []),
   ]);
   const incidents = { evenings: painRows.map((r) => ({ ...r.answers, date: r.answers.date ?? r.for_date })), mornings: cardiacRows.map((r) => ({ ...r.answers, date: r.for_date })) };
   return { morning: morningRow?.answers ?? null, mornings: [...byDay.values()], evenings: eveningRows.map((r) => r.answers), intake: intakeRow?.answers ?? null, incidents };

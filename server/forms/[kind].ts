@@ -19,7 +19,7 @@ import { rescore } from '../_lib/score.js';
 import { reactToActivities } from '../_lib/react.js';
 import { applyPlanEvents, executedIds, runAgents } from '../_lib/agents.js';
 import { loadForms, loadPlan, toWorkoutRow } from '../_lib/collect.js';
-import { morningSafetyEvents, painSafetyEvents, urgentText, type MorningSafety } from '../../src/calendar/safety.js';
+import { activePain, morningSafetyEvents, painSafetyEvents, urgentText, withIncidents, type MorningSafety } from '../../src/calendar/safety.js';
 import { addDays, diffDays, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { AWAY_LABEL, applyAway, changeSport, easyWorkout, moveWorkout, restoreAway, type Away, type FixedMeet } from '../../src/calendar/actions.js';
 import { currentAway, loadPrefs, savePrefs, walkProfileOf } from '../_lib/prefs.js';
@@ -82,7 +82,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const date = formDate(body.date, today);
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: null, answers: body }, 'user_id,kind,for_date,activity_id');
       // Protecția din cod, imediat la salvare, fără să aștepte agenții: febră, simptom cardiac, boală.
-      const safety = morningSafetyEvents(date, body.semnale as Record<string, unknown> | undefined);
+      const sem0 = (body.semnale as Record<string, unknown> | undefined) ?? {};
+      // Auditul v93, A64: un simptom urgent scris în notă oprește calendarul imediat, ca bifa „simptom cardiac”.
+      const safety = morningSafetyEvents(date, urgentText(typeof sem0.nota === 'string' ? sem0.nota : null) ? { ...sem0, simptom_cardiac: true } : sem0);
       const changes = await protect(u.id, today, user.tz, safety);
       json(res, 200, { ok: true, protectie: safety.events.length ? { verdict: safety.verdict, changes } : null });
       return;
@@ -93,6 +95,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       await upsert('questionnaires', { user_id: u.id, kind, for_date: date, activity_id: activityId, answers: body }, 'user_id,kind,for_date,activity_id');
       // Durerea mare schimbă zilele următoare imediat, din cod, chiar dacă agenții nu rulează.
       await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
+      // Auditul v93, A64: simptomul urgent scris seara oprește și calendarul, nu doar ecranul.
+      if (urgentText(typeof body.comentariu === 'string' ? body.comentariu : null)) await protect(u.id, today, user.tz, morningSafetyEvents(today, { simptom_cardiac: true }));
       const goal = user.goal && user.goal !== 'full' ? user.goal : '70.3';
       await rescore(u.id, today, goal);
       // RPE ≥ 7 sau tipul ales (cursă / altceva) schimbă reacția calendarului imediat.
@@ -361,7 +365,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       try {
         if (op === 'muta') next = moveWorkout(workouts, id, String(body.date ?? ''), today, at, done);
         else if (op === 'usor') next = easyWorkout(w, at);
-        else if (op === 'sport') next = changeSport(w, String(body.sport ?? '') as Sport, at);
+        else if (op === 'sport') {
+          const forms = await loadForms(u.id, today);
+          const pain = activePain(withIncidents(forms.evenings, forms.incidents.evenings), today);
+          next = changeSport(w, String(body.sport ?? '') as Sport, at, pain);
+        }
         else throw new HttpError(400, 'acțiune necunoscută');
       } catch (e) {
         if (e instanceof HttpError) throw e;

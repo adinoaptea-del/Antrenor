@@ -311,7 +311,8 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
   if (RANK[decision] < RANK[safe]) decision = safe;
   // Decizia aplicației (din toate datele obiective) e decizia zilei; doar stopul de siguranță din cod o poate înăspri.
   const app = packet.decizia_aplicatiei;
-  if (app) decision = safe === 'stop' ? 'stop' : app.nivel;
+  // Auditul v93, A12: decizia aplicației nu poate fi mai permisivă decât verdictul de siguranță din cod.
+  if (app) decision = RANK[app.nivel as keyof typeof RANK] >= RANK[safe] ? app.nivel : safe;
   const packetWithVerdict: Packet = { ...packet, verdict_fiziolog: decision };
 
   // 2. Restul, în paralel, cu verdictul Fiziologului în pachet. Unul căzut nu le oprește pe celelalte.
@@ -438,7 +439,8 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   const failures: string[] = [];
   const safe = safetyDecision(packet);
   // Decizia zilei: din cod (decizia aplicației), înăsprită doar de stopul de siguranță.
-  let decision: HeadResponse['decizie'] = packet.decizia_aplicatiei ? (safe === 'stop' ? 'stop' : packet.decizia_aplicatiei.nivel) : safe;
+  // Auditul v93, A12: decizia aplicației, dar niciodată mai permisivă decât verdictul de siguranță din cod.
+  let decision: HeadResponse['decizie'] = packet.decizia_aplicatiei && RANK[packet.decizia_aplicatiei.nivel as keyof typeof RANK] >= RANK[safe] ? packet.decizia_aplicatiei.nivel : safe;
   const p: Packet = { ...packet, verdict_fiziolog: decision };
   const system = `${prompts.main_coach ?? prompts.head_coach}\n\n=== CUNOȘTINȚE (doar conținut; formatul lor nu se aplică) ===\n${prompts.ghid && p.meta.tip_obiectiv !== 'fitness' ? `--- MODUL: ghid ---\n${prompts.ghid.trim()}\n\n` : ''}${knowledgeText(mods, prompts, p)}`;
   const fallback = (why: string): HeadResponse => ({

@@ -43,3 +43,43 @@ describe('auditul v93 · siguranță', () => {
     assert.equal(ok?.level, 'verde');
   });
 });
+
+import { adapt } from '../src/calendar/adapt.js';
+import { changeSport } from '../src/calendar/actions.js';
+import { restrictionOf } from '../src/walking/plan.js';
+import { strengthStructure } from '../src/strength/ppl.js';
+
+describe('auditul v93 · aceeași protecție în toate sporturile', () => {
+  const ctx = { today, freeBlocks: [], recentKeyScores: [], done: [] as string[] };
+  it('T06/A06: după febră, fără o raportare „nu mai am febră”, ziua rămâne roșie', () => {
+    const r = activeRestriction({ today, morning: null, evenings: [], mornings: [{ date: '2026-10-16', semnale: { febra: true } }] });
+    assert.equal(r?.verdict, 'rosu');
+    assert.match(r!.reason, /nu mai ai febră/);
+    const ok = activeRestriction({ today, morning: { date: today, semnale: { febra: false } }, evenings: [], mornings: [{ date: '2026-10-16', semnale: { febra: true } }] });
+    assert.equal(ok, null);
+  });
+  it('T07/A05: roșu din boală sau durere la picioare = fără mers prescris; roșu doar din recuperare = varianta scurtă', () => {
+    assert.equal(restrictionOf('rosu', 'Boală raportată azi: pauză.'), 'stop');
+    assert.equal(restrictionOf('rosu', 'Durere 6/10 la genunchi'), 'stop');
+    assert.equal(restrictionOf('rosu', 'Somn 4 h, HRV mult sub medie'), 'short');
+  });
+  it('T08/A05: galben de recuperare → și forța primește varianta ușoară (aceleași serii, greutăți mai mici)', () => {
+    const f: PlannedWorkout = { id: 'f', date: today, sport: 'forta', type: 'forta', plannedMinutes: 55, targetZones: [], key: false, status: 'planificat', structure: strengthStructure({ session: 'pushA', block: 'baza', week: 1, len: 4 } as never) };
+    const out = adapt([f], { kind: 'readiness', date: today, verdict: 'galben', reason: 'HRV sub medie' }, ctx).plan[0]!;
+    assert.equal(out.status, 'planificat');
+    assert.equal(out.suggestion?.accepted, null);
+    assert.ok(out.suggestion!.minutes >= 45);
+  });
+  it('T09/A07: durere la umăr → fără înot ca alternativă; înotul și sala primesc varianta ușoară, alergarea rămâne', () => {
+    const run: PlannedWorkout = { id: 'r', date: today, sport: 'alergare', type: 'z2', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat' };
+    const swim: PlannedWorkout = { ...run, id: 's', sport: 'inot', type: 'tehnica' };
+    assert.throws(() => changeSport(run, 'inot', '2026-10-20T10:00:00Z', { loc: 'umăr', scor: 4 }), /încarcă zona/);
+    assert.doesNotThrow(() => changeSport(run, 'bicicleta', '2026-10-20T10:00:00Z', { loc: 'umăr', scor: 4 }));
+    assert.throws(() => changeSport(run, 'bicicleta', '2026-10-20T10:00:00Z', { loc: 'gleznă', scor: 6 }), /până la reevaluare/);
+    const p = adapt([run, swim], { kind: 'durere', date: today, score: 4, loc: 'umăr' }, ctx).plan;
+    assert.equal(p.find((x) => x.id === 'r')!.suggestion ?? null, null, 'alergarea nu e atinsă de durerea de umăr');
+    assert.equal(p.find((x) => x.id === 's')!.suggestion?.accepted, null);
+    const k = adapt([run], { kind: 'durere', date: today, score: 4, loc: 'genunchi' }, ctx).plan[0]!;
+    assert.equal(k.suggestion?.sport, 'bicicleta');
+  });
+});
