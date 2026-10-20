@@ -1,107 +1,143 @@
-// Dizolvarea ecranului secundar în praf, la întoarcerea pe Acasă (cererea lui Cuza, 20.10.2026): după „Trimite” într-un
-// formular și la orice „înapoi” spre Acasă, fereastra se erodează rapid în granule (același praf ca întâmpinarea:
-// src/motion/fireStorm.ts), iar granulele zboară în bula de Acasă. Logica e pură și deterministă (seed fix), desenul e
-// în ui/Dissolve.tsx.
+// Dizolvarea ecranului secundar la întoarcerea pe Acasă — aceeași idee ca ieșirea din întâmpinare (src/motion/fireStorm.ts,
+// regula 27), comprimată (~1,3 s): ecranul însuși (imaginea lui) se erodează din 4 zone, fiecare bucată ruptă devine
+// praf cu culoarea ei reală, praful e purtat de rafale oblice + turbulență locală (fără vârtej), apoi un resort amortizat
+// îl strânge în bula de Acasă, unde se stinge. Logică pură, deterministă (seed fix); desenul e în ui/Dissolve.tsx.
+
+import { turbAt, windAt } from './fireStorm.js';
 
 export const DISSOLVE = {
-  /** Cât durează eroziunea ecranului (ms): pragul fiecărei celule e în [0, ERODE]. */
-  erode: 420,
-  /** Viața unei granule după ce s-a desprins (ms). */
-  lifeMin: 420,
-  lifeMax: 640,
-  /** Celula măștii (px CSS). */
-  cell: 8,
+  /** Celula de eroziune (px CSS): o celulă ruptă = o granulă. */
+  cell: 2,
+  /** Fereastra eroziunii: prima zonă se rupe la start, ultima celulă până la `erode` ms. */
+  erode: 520,
+  /** Shake-ul unic al imaginii (px, ms), ca la întâmpinare. */
+  shakePx: 2,
+  shakeMs: 180,
+  /** După desprindere: zbor liber, apoi strângerea (resort) în bulă. */
+  freeMs: 260,
+  gatherMs: 520,
 } as const;
+export const DISSOLVE_TOTAL_MS = DISSOLVE.erode + DISSOLVE.freeMs + DISSOLVE.gatherMs + 120;
+export const DISSOLVE_DT = 1 / 60;
+const SPRING_K = 150;
+const SPRING_C = 2 * Math.sqrt(SPRING_K);
 
-/** Durata totală, până dispare ultima granulă. */
-export const DISSOLVE_TOTAL_MS = DISSOLVE.erode + DISSOLVE.lifeMax;
-
-/** Zgomot determinist în [0, 1). */
 export function hash(i: number, salt: number): number {
   const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
   return x - Math.floor(x);
 }
+const smooth = (p: number) => (p <= 0 ? 0 : p >= 1 ? 1 : p * p * (3 - 2 * p));
 
-/**
- * Pragul (0..1) la care se desprinde punctul (u, v) din ecran (coordonate 0..1): un front dinspre colțul de sus-stânga
- * (unde e „înapoi”) amestecat cu zgomot pe celule, ca marginea să fie ruptă, nu o linie.
- */
-export function threshold(u: number, v: number, cellIndex: number): number {
-  const front = (u * 0.4 + v * 0.6) * 0.78;
-  const noise = hash(cellIndex, 3) * 0.22;
-  return Math.min(1, Math.max(0, front + noise));
+/** 4 zone de rupere (u, v în 0..1), cu decalaj: prima pornește la 0, următoarele la ~70 ms una după alta. */
+export function dissolveZones(seed = 7): { u: number; v: number; o: number }[] {
+  return [0, 1, 2, 3].map((i) => ({ u: 0.1 + hash(i, seed) * 0.8, v: 0.08 + hash(i, seed + 1) * 0.84, o: i * 70 + hash(i, seed + 2) * 40 }));
 }
 
-export interface Grains {
+/** Când se rupe punctul (u, v): de la cea mai apropiată zonă spre exterior, cu zgomot pe margine (ms). */
+export function erosionAt(u: number, v: number, aspect: number, zones: { u: number; v: number; o: number }[], jitter: number): number {
+  let best = Infinity;
+  for (const z of zones) {
+    const d = Math.hypot((u - z.u) * aspect, v - z.v) / Math.hypot(aspect, 1);
+    best = Math.min(best, z.o + d * 900);
+  }
+  return Math.max(0, Math.min(DISSOLVE.erode, best + jitter));
+}
+
+export interface DGrains {
   n: number;
-  x0: Float32Array;
-  y0: Float32Array;
-  /** Momentul desprinderii (ms de la start). */
+  x: Float32Array;
+  y: Float32Array;
+  vx: Float32Array;
+  vy: Float32Array;
   born: Float32Array;
-  life: Float32Array;
-  /** Derivă inițială (px), rafala oblică. */
-  dx: Float32Array;
-  dy: Float32Array;
-  /** Ținta în bulă (px). */
+  /** Culoarea reală a bucății de ecran (0..255). */
+  r: Uint8Array;
+  g: Uint8Array;
+  b: Uint8Array;
   tx: Float32Array;
   ty: Float32Array;
-  size: Float32Array;
-  col: Uint8Array;
+  done: Uint8Array;
+  alive: Uint8Array;
 }
 
 /**
- * Granulele pentru un dreptunghi W × H (px CSS), cu ținta în jurul centrului bulei (cx, cy, raza r).
- * Culoarea: aceeași paletă ca întâmpinarea (0 cyan 45%, 1 verde 43%, 2 lime 12%).
+ * Granulele din celulele cu conținut ale imaginii (nu din fundalul gol): poziția, culoarea și momentul ruperii. `cells`
+ * vine din imaginea ecranului (ui/Dissolve.tsx), deja filtrată și limitată ca număr.
  */
-export function makeGrains(n: number, W: number, H: number, target: { cx: number; cy: number; r: number }): Grains {
-  const g: Grains = {
-    n,
-    x0: new Float32Array(n),
-    y0: new Float32Array(n),
-    born: new Float32Array(n),
-    life: new Float32Array(n),
-    dx: new Float32Array(n),
-    dy: new Float32Array(n),
-    tx: new Float32Array(n),
-    ty: new Float32Array(n),
-    size: new Float32Array(n),
-    col: new Uint8Array(n),
-  };
-  const cols = Math.max(1, Math.ceil(W / DISSOLVE.cell));
+export function makeDGrains(cells: { x: number; y: number; r: number; g: number; b: number; t: number }[], target: { cx: number; cy: number; r: number }): DGrains {
+  const n = cells.length;
+  const G: DGrains = { n, x: new Float32Array(n), y: new Float32Array(n), vx: new Float32Array(n), vy: new Float32Array(n), born: new Float32Array(n), r: new Uint8Array(n), g: new Uint8Array(n), b: new Uint8Array(n), tx: new Float32Array(n), ty: new Float32Array(n), done: new Uint8Array(n), alive: new Uint8Array(n) };
   for (let i = 0; i < n; i++) {
-    const u = hash(i, 1);
-    const v = hash(i, 2);
-    const x = u * W;
-    const y = v * H;
-    const ci = Math.floor(y / DISSOLVE.cell) * cols + Math.floor(x / DISSOLVE.cell);
-    g.x0[i] = x;
-    g.y0[i] = y;
-    g.born[i] = threshold(x / W, y / H, ci) * DISSOLVE.erode;
-    g.life[i] = DISSOLVE.lifeMin + hash(i, 4) * (DISSOLVE.lifeMax - DISSOLVE.lifeMin);
-    // Rafală oblică (spre dreapta-sus) + turbulență mică; fără vârtej.
-    const gust = 18 + hash(i, 5) * 42;
-    g.dx[i] = gust * 0.8 + (hash(i, 6) - 0.5) * 30;
-    g.dy[i] = -gust * 0.45 + (hash(i, 7) - 0.5) * 30;
-    const a = hash(i, 8) * Math.PI * 2;
-    const rr = target.r * Math.sqrt(hash(i, 9));
-    g.tx[i] = target.cx + Math.cos(a) * rr;
-    g.ty[i] = target.cy + Math.sin(a) * rr;
-    g.size[i] = 0.35 + hash(i, 10) * 0.85 + (hash(i, 11) > 0.97 ? 0.8 : 0);
-    const k = hash(i, 12);
-    g.col[i] = k < 0.45 ? 0 : k < 0.88 ? 1 : 2;
+    const c = cells[i]!;
+    G.x[i] = c.x;
+    G.y[i] = c.y;
+    G.born[i] = c.t;
+    G.r[i] = c.r;
+    G.g[i] = c.g;
+    G.b[i] = c.b;
+    // Ținta: în bulă, mai des spre margine (cum se atașează praful la firele bulei la întâmpinare).
+    const a = hash(i, 21) * Math.PI * 2;
+    const rr = target.r * (0.55 + 0.45 * Math.sqrt(hash(i, 22)));
+    G.tx[i] = target.cx + Math.cos(a) * rr;
+    G.ty[i] = target.cy + Math.sin(a) * rr;
   }
-  return g;
+  return G;
 }
 
-const smooth = (p: number) => p * p * (3 - 2 * p);
+/** Un pas fix de simulare la momentul t (ms de la start). */
+export function stepDGrains(G: DGrains, t: number): void {
+  const dt = DISSOLVE_DT;
+  const ts = t / 1000;
+  for (let i = 0; i < G.n; i++) {
+    if (G.done[i]) continue;
+    const age = t - G.born[i]!;
+    if (age < 0) continue;
+    const x = G.x[i]!;
+    const y = G.y[i]!;
+    if (!G.alive[i]) {
+      G.alive[i] = 1;
+      // Se desprinde cu un impuls mic, spre exterior și oblic.
+      G.vx[i] = 30 + hash(i, 31) * 50;
+      G.vy[i] = -20 - hash(i, 32) * 40;
+    }
+    const w = smooth((age - DISSOLVE.freeMs) / DISSOLVE.gatherMs);
+    const free = (1 - w) * (1 - w);
+    const [wx, wy] = windAt(x, y, ts);
+    const [ux, uy] = turbAt(x, y, ts + hash(i, 33) * 3);
+    let ax = (wx * 2.2 + ux * 3) * free - 1.2 * G.vx[i]!;
+    let ay = (wy * 2.2 + uy * 3) * free - 1.2 * G.vy[i]!;
+    if (w > 0) {
+      ax += w * (SPRING_K * (G.tx[i]! - x) - SPRING_C * G.vx[i]!);
+      ay += w * (SPRING_K * (G.ty[i]! - y) - SPRING_C * G.vy[i]!);
+    }
+    G.vx[i] = G.vx[i]! + ax * dt;
+    G.vy[i] = G.vy[i]! + ay * dt;
+    G.x[i] = x + G.vx[i]! * dt;
+    G.y[i] = y + G.vy[i]! * dt;
+    if (age > DISSOLVE.freeMs + DISSOLVE.gatherMs + 80) G.done[i] = 1;
+  }
+}
 
-/** Poziția și opacitatea granulei i la momentul t (ms). null = încă lipită de ecran sau deja stinsă. */
-export function grainAt(g: Grains, i: number, t: number): { x: number; y: number; a: number } | null {
-  const p = (t - g.born[i]!) / g.life[i]!;
-  if (p < 0 || p >= 1) return null;
-  const drift = smooth(Math.min(1, p * 1.6));
-  const pull = Math.pow(p, 2.2);
-  const x = g.x0[i]! + g.dx[i]! * drift;
-  const y = g.y0[i]! + g.dy[i]! * drift;
-  return { x: x + (g.tx[i]! - x) * pull, y: y + (g.ty[i]! - y) * pull, a: Math.min(1, p * 6) * (1 - smooth(Math.max(0, (p - 0.55) / 0.45))) };
+/**
+ * Culoarea și opacitatea granulei: pornește cu culoarea bucății de ecran, trece spre paleta bulei în zbor și se stinge
+ * când ajunge în bulă.
+ */
+const PAL: [number, number, number][] = [
+  [70, 205, 210],
+  [110, 236, 140],
+  [222, 252, 70],
+];
+export function grainLook(G: DGrains, i: number, t: number): { r: number; g: number; b: number; a: number } | null {
+  if (!G.alive[i] || G.done[i]) return null;
+  const age = t - G.born[i]!;
+  const k = smooth(age / (DISSOLVE.freeMs + 150));
+  const k2 = hash(i, 41);
+  const p = PAL[k2 < 0.45 ? 0 : k2 < 0.88 ? 1 : 2]!;
+  // Granulele din fundalul cardurilor (închise la culoare) se luminează spre paletă, ca praful să se vadă.
+  const r = G.r[i]! + (p[0] - G.r[i]!) * k;
+  const g = G.g[i]! + (p[1] - G.g[i]!) * k;
+  const b = G.b[i]! + (p[2] - G.b[i]!) * k;
+  const end = DISSOLVE.freeMs + DISSOLVE.gatherMs;
+  const a = 1 - smooth((age - end + 160) / 240);
+  return { r, g, b, a: Math.max(0, a) };
 }

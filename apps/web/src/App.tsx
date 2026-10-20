@@ -13,6 +13,7 @@ import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento, welcomeDue } from './ui/Memento';
 import { Dissolve, reducedMotion, type DissolveShot } from './ui/Dissolve';
+import { snapshotScreen } from './ui/snapshot';
 import { Countdown } from './ui/Countdown';
 import { Admin } from './ui/Admin';
 import { LabsGate } from './ui/LabsGate';
@@ -308,16 +309,16 @@ function Shell() {
       try {
         const el = document.querySelector('.screen') as HTMLElement | null;
         if (el) {
-          const r = el.getBoundingClientRect();
-          const node = el.cloneNode(true) as HTMLElement;
-          node.style.left = `${r.left}px`;
-          node.style.top = `${r.top}px`;
-          node.style.width = `${r.width}px`;
-          setShot({ id: Date.now(), node, rect: { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } });
+          const bgCss = getComputedStyle(document.body).backgroundColor;
+          const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(bgCss);
+          const bg: [number, number, number] = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [14, 17, 18];
+          const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 700 ? 1.5 : 2);
+          const image = snapshotScreen(el, `rgb(${bg.join(',')})`, dpr);
+          setShot({ id: Date.now(), image, dpr, bg });
           setNavDir('none');
         }
       } catch {
-        /* fără copie: navigarea obișnuită */
+        /* fără imagine: navigarea obișnuită */
       }
     }
     setScreen(t);

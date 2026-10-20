@@ -1478,9 +1478,6 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .missed-triage { display: grid; gap: 6px; margin-top: 8px; }
 .missed-triage label { display: flex; gap: 8px; align-items: flex-start; }
 
-/* Dizolvarea spre Acasă (src/motion/dissolve.ts, ui/Dissolve.tsx): copia ecranului care pleacă, mascată pe celule,
-   și praful care zboară în bulă. Nu blochează atingerile pe Acasă. */
-.dissolve { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
-.dissolve-shot { position: fixed; overflow: hidden; background: var(--bg); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
-.dissolve-shot > .screen { position: absolute; margin: 0; animation: none !important; }
-.dissolve-cv { position: fixed; inset: 0; width: 100%; height: 100%; }
+/* Dizolvarea spre Acasă (src/motion/dissolve.ts, ui/Dissolve.tsx): imaginea ecranului care pleacă se rupe în praf
+   care intră în bula de Acasă. Nu blochează atingerile pe Acasă. */
+.dissolve-cv { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 60; pointer-events: none; }
