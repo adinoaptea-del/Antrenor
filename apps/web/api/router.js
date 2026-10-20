@@ -13740,7 +13740,7 @@ async function handler10(req, res) {
       if (!row) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
       if (row.date < today) throw new HttpError(409, "\u0219edin\u021Ba e \xEEn trecut");
       const ws = weekStart(row.date);
-      const { planId, workouts } = await loadPlan(u.id, ws, addDays(ws, 6));
+      const { planId, workouts } = await loadPlan(u.id, addDays(ws, -1), addDays(ws, 7));
       const w = workouts.find((x) => x.id === id);
       if (!planId || !w) throw new HttpError(404, "\u0219edin\u021Ba nu e \xEEn planul activ");
       const done = await executedIds(u.id, today, workouts);

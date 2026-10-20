@@ -1,6 +1,7 @@
 // Acțiunile sportivului pe calendar: Actualizat, Mută, Fă-o ușoară, Plecat, întâlniri fixe.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { applyAway, changeSummary, easyWorkout, fixedBonus, moveOptions, moveWorkout, restoreAway, withOriginal } from '../src/calendar/actions.js';
 import { generatePlan } from '../src/calendar/generate.js';
 import type { PlannedWorkout } from '../src/types.js';
@@ -45,6 +46,17 @@ describe('Mută', () => {
     const easy = moveOptions(plan, 'c', '2026-10-19');
     assert.equal(easy.find((o) => o.date === '2026-10-24')!.ok, false); // are deja bicicletă
     assert.equal(easy.find((o) => o.date === '2026-10-25')!.ok, true);
+  });
+  it('vecinii reali, inclusiv peste granița săptămânii: luni nu primește o ședință grea când duminica de dinainte a fost grea', () => {
+    // Săptămâna 26.10–1.11; duminica de dinainte (25.10) are alergarea lungă grea (final în Z3–Z4).
+    const plan = [w('prev', '2026-10-25', 'alergare', 'lung', 80, [2, 3, 4]), w('x', '2026-10-28', 'bicicleta', 'calitate', 60, [3, 4]), w('y', '2026-10-30', 'inot', 'tehnica', 40, [1, 2])];
+    const opts = moveOptions(plan, 'x', '2026-10-26');
+    assert.equal(opts.find((o) => o.date === '2026-10-26')!.ok, false);
+    assert.match(opts.find((o) => o.date === '2026-10-26')!.reason!, /zi grea/);
+    // Fără ziua de dinainte în plan, luni ar părea liberă: de aceea serverul citește planul cu o zi înainte și după.
+    assert.equal(moveOptions(plan.filter((p) => p.id !== 'prev'), 'x', '2026-10-26').find((o) => o.date === '2026-10-26')!.ok, true);
+    const src = readFileSync(new URL('../server/forms/[kind].ts', import.meta.url), 'utf8');
+    assert.match(src, /loadPlan\(u\.id, addDays\(ws, -1\), addDays\(ws, 7\)\)/);
   });
   it('nu în trecut, nu în altă săptămână, nu o ședință făcută', () => {
     const plan = week();

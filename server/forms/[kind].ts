@@ -405,7 +405,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!row) throw new HttpError(404, 'ședință inexistentă');
       if (row.date < today) throw new HttpError(409, 'ședința e în trecut');
       const ws = weekStart(row.date);
-      const { planId, workouts } = await loadPlan(u.id, ws, addDays(ws, 6));
+      // Vecinii reali, inclusiv peste granița săptămânii (duminică–luni): planul se citește cu o zi înainte și după
+      // (auditul de coaching, ch. 05/20). Opțiunile de mutare rămân în aceeași săptămână (moveOptions).
+      const { planId, workouts } = await loadPlan(u.id, addDays(ws, -1), addDays(ws, 7));
       const w = workouts.find((x) => x.id === id);
       if (!planId || !w) throw new HttpError(404, 'ședința nu e în planul activ');
       const done = await executedIds(u.id, today, workouts);
