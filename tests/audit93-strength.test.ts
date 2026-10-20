@@ -5,9 +5,9 @@ import { adapt } from '../src/calendar/adapt.js';
 import { generateFitnessPlan } from '../src/calendar/fitness-plan.js';
 import { assignStrengthDays, type WeekPlan } from '../src/calendar/generate.js';
 import { shortenWorkout } from '../src/calendar/validate.js';
-import { SESSIONS, sessionKind, type SessionId } from '../src/strength/ppl.js';
+import { HOME_EQUIP, SESSIONS, isFitnessSession, sessionKind, type SessionId } from '../src/strength/ppl.js';
 import { CATALOG, MIN_STRENGTH_MINUTES, estimateMinutes, parseStrength, prescribe, prescribeFull, setSides, setWorkSec, strengthStructure, weekSetTotals, type Rx, type StrengthSpec } from '../src/strength/ppl.js';
-import { FITNESS_WEEK_ACTION, fitnessProfile, unlockDecision } from '../src/strength/fitness.js';
+import { FITNESS_WEEK_ACTION, fitnessProfile, fitnessWeekAction, unlockDecision } from '../src/strength/fitness.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
 import type { FreeBlock, PlannedWorkout } from '../src/types.js';
 import { STRENGTH_LOG_CONFLICT, cleanEntry, isMeasured, parseKgInput, strengthLogRow, suggest, type StrengthLogEntry } from '../src/strength/log.js';
@@ -438,5 +438,59 @@ describe('A105 / T77: sarcina / postpartum ajunge în încălzire și în exerci
     assert.deepEqual(upgradeStrengthRules(merged, '2026-11-01', 'fit-slabire', { pregnancy: true }), [], 'a doua oară nu mai schimbă nimic');
     // Fără context, regula 25 rămâne: slăbirea începe cu mers înclinat.
     assert.ok(prescribe(parseStrength(plan[1]!.structure)!, plan[1]!.plannedMinutes).warmup.min > 10 || prescribe(parseStrength(plan[0]!.structure)!, plan[0]!.plannedMinutes).warmup.min > 10);
+  });
+});
+
+describe('A60 / T84: textul exercițiului vine din aceeași structură; fără contradicții cu 3 serii', () => {
+  it('mers fandat: numele nu conține doza, iar catalogul și prescripția spun același lucru (10 + 10)', () => {
+    for (const ex of Object.values(CATALOG)) assert.doesNotMatch(ex.name, /\d+\s*(pași|repetări|pe picior)/, `${ex.id}: ${ex.name}`);
+    const it = prescribeFull({ session: 'l1', block: 'construire', week: 2, len: 4, variant: 2 }).items.find((r) => r.ex.id === 'fit-lunge-walk')!;
+    assert.equal(it.ex.name, 'Mers fandat');
+    assert.equal(it.reps, CATALOG['fit-lunge-walk']!.reps);
+    assert.match(it.reps, /^10 pași înainte \+ 10 înapoi/);
+  });
+  it('„presă cu mișcare prea scurtă” nu mai apare; textele nu mai spun „două serii”', () => {
+    assert.doesNotMatch(CATALOG['fit-leg-ext']!.alt, /prea scurtă/);
+    for (let w = 1; w <= 26; w++) assert.doesNotMatch(fitnessWeekAction(w, 'ampla'), /două serii|o serie mai puțin/, `săpt. ${w}`);
+    const prompt = readFileSync(new URL('../src/prompts/antrenor_fitness.md', import.meta.url), 'utf8');
+    assert.doesNotMatch(prompt, /Săpt\. 1–4 două serii|o serie mai puțin la exercițiile cu trei serii/);
+    for (const id of ['fa', 'fb', 'fc', 'fd'] as const) assert.ok(Object.values(SESSIONS[id].dose!).every((d) => d.sets >= 3), id);
+    for (const ex of Object.values(CATALOG)) if (ex.id.startsWith('fit-')) assert.ok(ex.sets >= 3 && ex.sets <= 4, ex.id);
+  });
+  it('fiecare exercițiu de fitness prescris (sală și acasă) are poziția și greșelile de evitat', () => {
+    const lacking = new Set<string>();
+    for (const id of (Object.keys(SESSIONS) as SessionId[]).filter((x) => isFitnessSession(x) || SESSIONS[x].maintenance))
+      for (const place of ['sala', 'acasa'] as const)
+        for (const variant of [0, 1, 2])
+          for (const block of ['construire', 'consolidare'] as const)
+            for (const r of prescribeFull({ session: id, block, week: 1, len: 4, variant, place }).items) if (!r.ex.setup || !r.ex.mistakes) lacking.add(r.ex.id);
+    assert.deepEqual([...lacking], []);
+  });
+});
+
+describe('Regula 22 la bărbați și înlocuirea cu doza ei', () => {
+  const FREE: FreeBlock[] = [0, 2, 4].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+  it('bărbat acasă (1, 2 și 3 zile): doar gantere, bandă, corp, scaun — și la Push / Pull / Picioare', () => {
+    for (const n of [1, 2, 3]) {
+      const r = generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: FREE.slice(0, n), fitness: { goal: 'fit-tonifiere', days: 3, minutes: 60, beginner: false, place: 'acasa', unlocked: 3 }, male: true });
+      assert.ok(r.ok);
+      if (!r.ok) return;
+      for (const w of r.weeks.slice(0, 6).flatMap((x) => x.workouts)) {
+        const spec = parseStrength(w.structure)!;
+        assert.equal(spec.place, 'acasa');
+        const p = prescribe(spec, w.plannedMinutes);
+        assert.ok(p.items.length >= 3, `${n} zile, ${spec.session}: ${p.items.length} exerciții`);
+        for (const it of p.items) assert.ok((it.ex.equip ?? []).length > 0 && it.ex.equip!.every((e) => HOME_EQUIP.includes(e)), `${n} zile, ${spec.session}: ${it.ex.id}`);
+        if (spec.session === 'legs') assert.ok(p.items.some((i) => i.ex.region === 'legs'));
+      }
+    }
+  });
+  it('înlocuirea recalculează repetările: podul pe un picior nu moștenește „30” de la hiperextensii, piramida nu trece pe genuflexiunea de acasă', () => {
+    const l3 = prescribeFull({ session: 'l3', block: 'construire', week: 2, len: 4, variant: 0, place: 'acasa' });
+    const gb = l3.items.find((r) => r.ex.id === 'fit-glute-bridge-1')!;
+    assert.equal(gb.reps, CATALOG['fit-glute-bridge-1']!.reps);
+    assert.doesNotMatch(gb.reps, /^30/);
+    const l1 = prescribeFull({ session: 'l1', block: 'construire', week: 2, len: 4, variant: 0, place: 'acasa' });
+    for (const r of l1.items) if (r.ex.id.startsWith('fit-h-')) assert.equal(r.reps, r.ex.reps, r.ex.id);
   });
 });

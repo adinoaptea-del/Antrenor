@@ -258,14 +258,14 @@ function plusDays(iso: string, n: number): string {
 
 /** Ce face săptămâna în varianta amplă A–D (programul din 19.10.2026). */
 const WIDE_ACTION: [number, string][] = [
-  [2, 'Învățare: două serii de lucru pe exercițiu, oprindu-te când mai aveai 3–4 repetări. Notezi greutățile (și setările aparatelor, la sală).'],
-  [4, 'Consolidare: rămân două serii; progresezi în control și repetări.'],
-  [8, 'Construire: doza A–D (trei serii la exercițiile principale) doar dacă te simți bine și ai timp.'],
+  [2, 'Învățare: 3 serii de lucru pe exercițiu, cu greutăți ușoare, oprindu-te când mai aveai 3–4 repetări. Notezi greutățile (și setările aparatelor, la sală).'],
+  [4, 'Consolidare: rămân 3 serii; progresezi în control și repetări.'],
+  [8, 'Construire: doza A–D, 3 serii la fiecare exercițiu; crești repetările sau greutatea doar dacă te simți bine și ai timp.'],
   [12, 'Progres: aceleași exerciții principale, repetări sau încărcări mai bune.'],
   [16, 'Varietate controlată: câte un exercițiu schimbat cu unul asemănător, cu greutatea căutată din nou; principalele rămân.'],
   [20, 'Consolidare: progres numai susținut de execuții și recuperare.'],
   [24, 'Stabilizare: păstrezi performanța, nu trebuie să crești.'],
-  [26, 'Tranziție: testezi o doză mai mică (o serie mai puțin la exercițiile cu trei serii) pentru menținere.'],
+  [26, 'Tranziție: testezi o doză de menținere — un exercițiu mai puțin pe ședință, nu serii sub 3.'],
 ];
 
 /** Acțiunea săptămânii, după varianta programului (A–D are tabelul lui; altfel calendarul de referință S1–S26). */
