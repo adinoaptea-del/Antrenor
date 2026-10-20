@@ -210,8 +210,7 @@ function UsageOverview({ users, ready }: { users: AdminUser[]; ready: boolean })
     );
   const withU = users.filter((u) => u.usage);
   const active7 = withU.filter((u) => (u.usage?.activeDays7 ?? 0) > 0).length;
-  const rated = withU.filter((u) => u.usage?.rating);
-  const avg = rated.length ? Math.round((rated.reduce((s, u) => s + (u.usage!.rating!.last), 0) / rated.length) * 10) / 10 : null;
+  const regular = withU.filter((u) => (u.usage?.activeDays7 ?? 0) >= 3).length;
   const sorted = [...withU].sort((a, b) => ((b.usage?.lastSeen ?? '') > (a.usage?.lastSeen ?? '') ? 1 : -1));
   return (
     <Card tight>
@@ -222,8 +221,8 @@ function UsageOverview({ users, ready }: { users: AdminUser[]; ready: boolean })
           <div className="tiny muted">au intrat în ultimele 7 zile</div>
         </div>
         <div>
-          <span className="num md">{avg != null ? `${avg.toLocaleString('ro-RO')} / 5` : '–'}</span>
-          <div className="tiny muted">{rated.length ? `cât le place (ultima notă, ${rated.length} ${rated.length === 1 ? 'om' : 'oameni'})` : 'încă nicio notă'}</div>
+          <span className="num md">{regular} / {withU.length}</span>
+          <div className="tiny muted">intră des (3+ zile din 7)</div>
         </div>
       </div>
       <div className="kv" style={{ marginTop: 8 }}>
@@ -234,7 +233,7 @@ function UsageOverview({ users, ready }: { users: AdminUser[]; ready: boolean })
           </div>
         ))}
       </div>
-      <div className="tiny muted" style={{ marginTop: 8 }}>Se numără din 20.10.2026: intrări, minute, ce ecrane deschid. Nu și ce scrie pe ele.</div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>Se numără din 20.10.2026, fără ca ei să vadă ceva: intrări, minute, ce ecrane deschid. Nu și ce scrie pe ele. Cât le place se vede din comportament: revin singuri, des, și caută lucruri în aplicație.</div>
     </Card>
   );
 }
@@ -249,11 +248,8 @@ function UsageBlock({ u }: { u: UsageSummary }) {
         <div className="tiny" style={{ textAlign: 'right', fontWeight: 700 }}>{ago(u.lastSeen)}</div>
         <div className="k">Zile cu aplicația</div>
         <div className="tiny" style={{ textAlign: 'right' }}>{u.activeDays7}/7 · {u.activeDays28}/28 · {TREND[u.trend]}</div>
-        <div className="k">Cât îi place</div>
-        <div className="tiny" style={{ textAlign: 'right' }}>
-          {u.rating ? `${u.rating.last}/5 (${u.rating.lastDate.slice(5).split('-').reverse().join('.')})${u.rating.n > 1 ? ` · media ${u.rating.avg.toLocaleString('ro-RO')} din ${u.rating.n}` : ''}` : 'încă n-a dat notă'}
-          {u.rating?.note && <div className="tiny muted">„{u.rating.note}”</div>}
-        </div>
+        <div className="k">Timp în aplicație</div>
+        <div className="tiny" style={{ textAlign: 'right' }}>{u.weeks[3]!.minutes} min în ultimele 7 zile</div>
         <div className="k">Caută informații</div>
         <div className="tiny" style={{ textAlign: 'right' }}>{u.infoPerSession != null ? `${u.infoPerSession.toLocaleString('ro-RO')} deschideri / intrare` : '–'}</div>
       </div>
