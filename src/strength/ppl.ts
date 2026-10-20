@@ -652,6 +652,31 @@ export class FitnessRotator {
   }
 }
 export const FITNESS_ROTATION_WIDE: FitnessSessionId[] = ['fa', 'fb', 'fc', 'fd'];
+
+/** L = picioare (și trunchi), U = partea de sus (și trunchi), F = tot corpul. */
+export type SessionKind = 'L' | 'U' | 'F';
+/**
+ * Clasificarea ședinței (auditul v93, A104) din metadatele exercițiilor — regiunea fiecăruia, pe toate pozițiile și
+ * variantele — după maparea numelor vechi (LEGACY_FIT), nu dintr-o listă de nume. Abdomenul și transportul nu schimbă
+ * clasa. O ședință nouă se clasifică singură; încălzirea, cardio-ul de final și rotația citesc aceeași clasă.
+ */
+export function sessionKind(id: SessionId): SessionKind {
+  const s = SESSIONS[LEGACY_FIT[id as FitnessSessionId] ?? id];
+  if (s.fullBody) return 'F';
+  const ids = [...s.exercises, ...(s.slots?.flat() ?? []), ...(s.variants?.flatMap((v) => v.exercises) ?? [])];
+  const regions = new Set(ids.map((e) => CATALOG[e]?.region));
+  return regions.has('legs') && regions.has('upper') ? 'F' : regions.has('legs') ? 'L' : 'U';
+}
+/** Grupul de rotație: ședințele care se pot înlocui una pe alta când se decalează rotația (aceeași structură). */
+export function rotationGroup(id: SessionId): string {
+  if (isMaintenanceSession(id)) return 'intretinere';
+  if (id === 'full' || id === 'ft') return id;
+  if (id === 'fullA' || id === 'fullB') return 'sus-jos';
+  if (isSplitSession(id)) return 'ppl';
+  if (isWideSession(id)) return 'fitness-ampla';
+  if (isFitnessSession(id)) return 'fitness';
+  return 'ppl-ab';
+}
 export const isFitnessSession = (id: SessionId): id is FitnessSessionId => ['f1', 'f2', 'a3', 'b3', 'c3', 'l1', 'l2', 'l3', 'u1', 'u2', 'fa', 'fb', 'fc', 'fd', 'ft'].includes(id);
 
 export const PPL_ROTATION: SessionId[] = ['pushA', 'pullA', 'legsA', 'pushB', 'pullB', 'legsB'];
@@ -1067,7 +1092,19 @@ const isEnduranceGoal = (g: string | null | undefined) => !!g && ENDURANCE_GOALS
 const RUN_GOALS_SET = new Set(['semimaraton', 'maraton', '5k', '10k']);
 const BIKE_GOALS_SET = new Set(['bike-50', 'bike-100', 'bike-160']);
 /** Ziua de picioare (pentru cât cardio încape la început). */
-const legsDay = (id: SessionId) => isLegsSession(id) || ['l1', 'l2', 'l3', 'fullA', 'f1', 'a3', 'b3'].includes(id);
+/**
+ * Ziua de picioare (auditul v93, A104): din clasificarea ședinței (sessionKind, citită din regiunea exercițiilor, după
+ * maparea numelor vechi), nu dintr-o listă paralelă de nume. Tot corpul se numără zi de picioare (10 min la început,
+ * restul de cardio la final).
+ */
+const legsDay = (id: SessionId) => sessionKind(id) !== 'U';
+/** Slăbire: cardio-ul de la final în zilele de picioare, când ședința nu are finalul ei (ex. varianta amplă A–D). */
+const SLABIRE_FINISHER = { text: 'mers pe bandă înclinată, ritm la care poți vorbi (restul de cardio, după greutăți)', min: 10, max: 20 };
+/** Cardio-ul de la final: în zilele de sus la slăbire nu există (s-a făcut la început); în rest, al ședinței. */
+function finisherOf(spec: StrengthSpec, session: StrengthSession): StrengthSession['finisher'] {
+  if (spec.opener === 'slabire') return legsDay(spec.session) ? (session.finisher ?? SLABIRE_FINISHER) : undefined;
+  return session.finisher;
+}
 export const OPENER_INCLINE = 'mers pe bandă înclinată: pornești de la 5% înclinație și 5 km/h; respiri mai des, dar poți vorbi (ajustezi viteza, nu forțezi)';
 const MOBILITY = 'rotiri de umeri și șolduri, fandări și genuflexiuni fără greutate, apoi 1–2 serii ușoare la primul exercițiu (nu se numără)';
 
@@ -1212,7 +1249,7 @@ function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimm
   // Excepțiile (varianta scurtă, modulul de întreținere): durata e a conținutului, fără completare până la 45 de minute.
   if (spec.reduced || session.maintenance) return { spec, session, items, minutes: roundUp5(work), trimmed, notes, warmup: warm, finisher: null };
   // Slăbire, zi de sus: cardio-ul s-a făcut la început; la final rămâne doar ce trebuie până la 45 de minute.
-  const fin = spec.opener === 'slabire' && !legsDay(spec.session) ? null : session.finisher;
+  const fin = finisherOf(spec, session);
   let finMin = 0;
   if (fin) {
     // Cu timp scurt, finalul de cardio scade până la 5 minute: întâi exercițiile.
@@ -1311,7 +1348,7 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
   const minSets = reduced ? MIN_REDUCED_SETS : MIN_WORK_SETS;
   const items = p.items.map((r) => ({ ...r }));
   const trimmed: string[] = [];
-  const minFinisher = !reduced && p.session.finisher && !(spec.opener === 'slabire' && !legsDay(spec.session)) ? FINISHER_SHORT : 0;
+  const minFinisher = !reduced && finisherOf(spec, p.session) ? FINISHER_SHORT : 0;
   const fits = () => (reduced ? roundUp5(estimateMinutes(items, p.warmup.min)) : Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher) <= limit;
   const removeWhere = (pred: (r: Rx) => boolean, why: (r: Rx) => string) => {
     for (let i = items.length - 1; i >= 0 && !fits(); i--) {

@@ -5,6 +5,7 @@ import { adapt } from '../src/calendar/adapt.js';
 import { generateFitnessPlan } from '../src/calendar/fitness-plan.js';
 import { assignStrengthDays, type WeekPlan } from '../src/calendar/generate.js';
 import { shortenWorkout } from '../src/calendar/validate.js';
+import { SESSIONS, sessionKind, type SessionId } from '../src/strength/ppl.js';
 import { CATALOG, MIN_STRENGTH_MINUTES, estimateMinutes, parseStrength, prescribe, prescribeFull, setSides, setWorkSec, strengthStructure, weekSetTotals, type Rx, type StrengthSpec } from '../src/strength/ppl.js';
 import { FITNESS_WEEK_ACTION, fitnessProfile, unlockDecision } from '../src/strength/fitness.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
@@ -296,5 +297,48 @@ describe('A58 / T35: „am făcut cum scrie” e declarat conform, nu măsurăto
     const pyr = (date: string, source: StrengthLogEntry['source']): StrengthLogEntry => ({ date, exercise: 'fit-squat', sets: [20, 15, 12, 8].map((n, i) => ({ kg: 20 + 5 * i, reps: n })), rir: null, source });
     assert.equal(suggest('fit-squat', '20 / 15 / 12 / 8', '2–3', [pyr('2026-11-02', 'declarat_conform'), pyr('2026-11-09', 'declarat_conform')]).kind, 'ramai');
     assert.match(suggest('fit-squat', '20 / 15 / 12 / 8', '2–3', [pyr('2026-11-02', 'declarat_conform')]).last ?? '', /cum scria/);
+  });
+});
+
+describe('A104 / T76: zilele de picioare se recunosc din metadate (inclusiv fa / fc și acasă)', () => {
+  const ids = (Object.keys(SESSIONS) as SessionId[]).filter((id) => !SESSIONS[id].maintenance);
+  it('clasa fiecărei ședințe corespunde exercițiilor ei, pe toate variantele, la sală și acasă', () => {
+    assert.equal(sessionKind('fa'), 'L');
+    assert.equal(sessionKind('fc'), 'L');
+    assert.equal(sessionKind('fb'), 'U');
+    assert.equal(sessionKind('b3'), 'U', 'b3 vechi = spate și biceps acum');
+    assert.equal(sessionKind('c3'), 'L', 'c3 vechi = picioare B acum');
+    for (const id of ids)
+      for (const place of ['sala', 'acasa'] as const)
+        for (const variant of [0, 1, 2]) {
+          const items = prescribeFull({ session: id, block: 'construire', week: 2, len: 4, variant, place }).items;
+          const legs = items.some((r) => r.ex.region === 'legs');
+          const upper = items.some((r) => r.ex.region === 'upper');
+          const k = sessionKind(id);
+          if (k === 'L') assert.ok(!upper, `${id} ${place} v${variant}: L cu exerciții de sus`);
+          if (k === 'U') assert.ok(!legs, `${id} ${place} v${variant}: U cu exerciții de picioare`);
+          if (k === 'F') assert.ok(legs && upper, `${id} ${place} v${variant}: tot corpul fără una din părți`);
+        }
+  });
+  it('slăbire: în zilele de picioare 10 min la început și cardio la final; în zilele de sus 20 min la început, fără dublarea cardio-ului', () => {
+    for (const id of ids)
+      for (const place of ['sala', 'acasa'] as const)
+        for (const minutes of [45, 60, 75]) {
+          const p = prescribe({ session: id, block: 'construire', week: 2, len: 4, place, opener: 'slabire' }, minutes);
+          const tag = `${id} ${place} ${minutes}: încălzire ${p.warmup.min}, final ${p.finisher?.min ?? 0}`;
+          if (sessionKind(id) !== 'U') {
+            assert.equal(p.warmup.min, 15, tag);
+            assert.match(p.warmup.text, /^10 min .*restul de cardio la final/, tag);
+            assert.ok(p.finisher && p.finisher.min >= 5, tag);
+          } else {
+            assert.equal(p.warmup.min, 25, tag);
+            assert.match(p.warmup.text, /^20 min /, tag);
+            // Fără cardio „la final” în plus: doar completarea până la 45 de minute, dacă e nevoie.
+            assert.ok(!p.finisher || p.minutes <= 45, tag);
+          }
+          // Durata = încălzire + exerciții + final (cardio-ul nu e numărat de două ori).
+          const work = Math.ceil(estimateMinutes(p.items, p.warmup.min));
+          assert.ok(p.minutes - work - (p.finisher?.min ?? 0) < 5 && p.minutes >= work, tag);
+        }
   });
 });
