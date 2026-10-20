@@ -308,7 +308,7 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined): Fitn
 
 export const FITNESS_RULES: { t: string; d: string }[] = [
   { t: 'Structura', d: 'Picioarele și partea de sus nu sunt niciodată în aceeași ședință. Femei: trei zile de picioare cu accente diferite (cvadriceps; fesieri și femurali; abductori) și două pentru partea de sus (spate și biceps; piept, umeri și triceps). Bărbați: Push, Pull, Picioare pe rând.' },
-  { t: 'Durata', d: 'Fiecare ședință are cel puțin 45 de minute: 10 min de încălzire, exercițiile, apoi cardio la final (scări, mers rapid sau eliptică).' },
+  { t: 'Durata', d: 'Fiecare ședință are cel puțin 45 de minute: 10 min de încălzire, exercițiile, apoi cardio la final (scări, mers rapid sau eliptică). Excepții: după febră, la recuperare slabă sau durere și când spui că ai mai puțin timp — atunci varianta scurtă, cu cel puțin 2 serii pe exercițiu.' },
   { t: 'Serii', d: '3 sau 4 serii la fiecare exercițiu, mereu. În zilele mai ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
   { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune (la început 3–4). Nu mergi până nu mai poți.' },
   { t: 'Piramida', d: 'La 20 / 15 / 12 / 8 crești greutatea la fiecare serie, pentru că scad repetările. Pauza 1–2 minute, nu mai mult.' },

@@ -202,7 +202,8 @@ describe('audit 14 · o „regulă” nu poate acoperi o măsurătoare', () => {
 
 describe('audit 21 · forța în faza de învățare', () => {
   it('acomodarea: 3 serii (regula proprietarului: 3–4 mereu), 3–4 repetări în rezervă, fără completări, pe toate ședințele', () => {
-    for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[]) {
+    // Modulele de întreținere ale fizioterapeutului (A91) nu sunt ședințe de sală: au doza lor de 1–2 serii.
+    for (const id of (Object.keys(SESSIONS) as (keyof typeof SESSIONS)[]).filter((x) => !SESSIONS[x].maintenance)) {
       const p = prescribeFull({ session: id, block: 'acomodare', week: 1, len: 4 });
       for (const r of p.items) {
         assert.equal(r.sets, 3, `${id} ${r.ex.name}`);

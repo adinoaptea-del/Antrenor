@@ -45,7 +45,9 @@ export interface Exercise {
 export type FitnessSessionId = 'f1' | 'f2' | 'a3' | 'b3' | 'c3' | 'l1' | 'l2' | 'l3' | 'u1' | 'u2' | 'fa' | 'fb' | 'fc' | 'fd';
 /** Bărbații (anduranță): Push / Pull / Picioare cu exerciții care se schimbă de la o ședință la alta. */
 export type SplitSessionId = 'push' | 'pull' | 'legs';
-export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | SplitSessionId | FitnessSessionId;
+/** Modulele scurte de întreținere ale fizioterapeutului (A: picior și șold; B: umăr și trunchi), separate de sală. */
+export type MaintenanceSessionId = 'intA' | 'intB';
+export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | SplitSessionId | FitnessSessionId | MaintenanceSessionId;
 
 export interface StrengthSession {
   id: SessionId;
@@ -73,6 +75,11 @@ export interface StrengthSession {
   aliases?: string[];
   /** Variantele ședinței (fitness, din săptămânile antrenoarei): exercițiile se schimbă de la o ședință la alta. */
   variants?: { exercises: string[]; dose: NonNullable<StrengthSession['dose']> }[];
+  /**
+   * Modul de întreținere (fizioterapeut, auditul v93 A91): 12–20 min, 1–2 serii, rezervă mare. NU e ședință de sală:
+   * nu se ridică la 45 de minute și la 3 serii (regula 20 guvernează ședințele de forță, nu modulul de întreținere).
+   */
+  maintenance?: boolean;
 }
 
 const E = (x: Exercise): Exercise => x;
@@ -256,6 +263,15 @@ export const CATALOG: Record<string, Exercise> = Object.fromEntries(
     E({ id: 'fit-h-band-pallof', equip: ['banda'], name: 'Pallof press cu banda', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '8–12/parte', unilateral: true, rest: 50, cue: 'împingi banda drept în față și nu lași trunchiul să se rotească', alt: 'dead bug', setup: 'banda prinsă lateral, la nivelul pieptului (ușă, picior de masă)', mistakes: 'te rotești după bandă' }),
     E({ id: 'fit-h-seated-calf', equip: ['gantere', 'scaun'], name: 'Ridicări pe vârfuri din șezut, gantera pe genunchi', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '12–15', rest: 60, cue: 'urci pe vârfuri, ții o secundă, cobori încet', alt: 'ridicări pe vârfuri din picioare, pe treaptă', setup: 'pe scaun; vârfurile pe o carte groasă', mistakes: 'ricoșezi jos' }),
     E({ id: 'fit-h-bulgarian', equip: ['gantere', 'scaun'], name: 'Fandare bulgărească cu piciorul din spate pe un scaun', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 2, reps: '8–10/picior', unilateral: true, rest: 105, cue: 'cobori drept în jos; sprijin de perete e permis', alt: 'fandare înapoi cu sprijin', purpose: 'fesieri și coapse, pe un picior', setup: 'scaun stabil, lipit de perete', mistakes: 'genunchiul din față cade spre interior' }),
+    // ——— Întreținerea fizioterapeutului (promptul fizioterapeut.md, traseul A): doza mică, rezervă mare, fără aparate ———
+    E({ id: 'pt-sit-stand', equip: ['scaun', 'corp'], name: 'Ridicare de pe scaun', group: 'cvadriceps, fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '8', rest: 50, cue: 'te ridici fără să te împingi cu mâinile; cobori încet până atingi scaunul', alt: 'genuflexiune până la scaun, cu mâna pe un sprijin', purpose: 'forța de a te ridica, genunchi și șold', setup: 'scaun stabil, lipit de perete; tălpile la lățimea șoldurilor', mistakes: 'te arunci înapoi pe scaun; genunchii cad spre interior' }),
+    E({ id: 'pt-calf-floor', equip: ['corp'], name: 'Ridicări pe vârfuri la sol, cu sprijin', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '10, lent', rest: 45, cue: 'urci în 2 secunde, cobori în 2–3 secunde; mâna pe perete doar pentru echilibru', alt: 'aceeași mișcare din șezut', purpose: 'gambele și glezna', setup: 'în picioare, lângă un perete', mistakes: 'ricoșezi jos; te lași pe marginea exterioară a tălpii' }),
+    E({ id: 'pt-balance', equip: ['corp'], name: 'Echilibru pe un picior, lângă sprijin', group: 'echilibru, gleznă', region: 'legs', role: 'accessory', sets: 2, reps: '20 s pe fiecare picior', unilateral: true, rest: 30, cue: 'genunchiul ușor moale, bazinul drept; atingi sprijinul doar dacă pierzi echilibrul', alt: 'cu ambele picioare, unul în fața celuilalt', purpose: 'controlul gleznei și al șoldului', setup: 'lângă un perete sau o masă', mistakes: 'bazinul cade pe o parte; ții respirația' }),
+    E({ id: 'pt-bridge', equip: ['corp'], name: 'Pod fesier', group: 'fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '8', rest: 45, cue: 'ridici bazinul strângând fesierii, ții o secundă sus, cobori încet', alt: 'ridicare de pe scaun', purpose: 'fesierii', setup: 'pe spate, tălpile pe sol aproape de fesieri', mistakes: 'arcuiești spatele în loc să ridici din șold' }),
+    E({ id: 'pt-band-row', equip: ['banda'], name: 'Ramat cu bandă ușoară', group: 'spate, umăr posterior', region: 'upper', role: 'accessory', sets: 2, reps: '10', rest: 45, cue: 'tragi coatele pe lângă corp și strângi omoplații, fără să ridici umerii', alt: 'ramat cu o sticlă de apă, aplecat cu sprijin', purpose: 'spatele și postura umerilor', setup: 'banda prinsă la nivelul pieptului (clanță, picior de masă) sau în jurul tălpilor, din șezut', mistakes: 'umerii urcă spre urechi; tragi din trunchi' }),
+    E({ id: 'pt-wall-slide', equip: ['corp'], name: 'Alunecări ale brațelor pe perete', group: 'umeri', region: 'upper', role: 'accessory', sets: 2, reps: '8', rest: 40, cue: 'antebrațele pe perete; urci brațele cât nu doare și cobori încet', alt: 'ridicări ale brațelor în față, fără greutate', purpose: 'mobilitatea și controlul umerilor', setup: 'cu fața la perete, antebrațele pe perete la nivelul umerilor', mistakes: 'ridici umerii spre urechi; forțezi peste durere' }),
+    E({ id: 'pt-bird-dog', equip: ['corp'], name: 'Bird-dog simplificat', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '6 pe fiecare parte', unilateral: true, rest: 40, cue: 'în patru labe, întinzi un braț și piciorul opus fără să se rotească bazinul', alt: 'doar piciorul sau doar brațul, pe rând', purpose: 'controlul trunchiului', setup: 'palmele sub umeri, genunchii sub șolduri', mistakes: 'arcuiești spatele; bazinul se rotește' }),
+    E({ id: 'pt-thoracic', equip: ['scaun'], name: 'Mobilizare toracică în șezut', group: 'spate (mijloc)', region: 'core', role: 'core', sets: 1, reps: '6 rotații lente pe fiecare parte', rest: 30, cue: 'brațele încrucișate pe piept; rotești trunchiul încet, bazinul rămâne pe scaun', alt: 'rotații culcat pe o parte', purpose: 'mobilitatea spatelui de sus', setup: 'pe un scaun, tălpile pe sol', mistakes: 'rotești din bazin; forțezi capătul mișcării' }),
   ].map((x) => [x.id, x]),
 );
 
@@ -485,6 +501,10 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
   a3: fit('a3', 'A3 Fesieri și coapse', 'fesieri, coapse și trunchi superior', { 'fit-hip-thrust': 3 }),
   b3: fit('b3', 'B3 Partea superioară', 'partea superioară și femurali', { 'fit-lat': 3 }),
   c3: fit('c3', 'C3 Posterior și fesieri', 'posterior, fesieri și trunchi superior', { 'fit-rdl': 3 }),
+  // Întreținerea fizioterapeutului (traseul A, fără durere și fără restricții): modul scurt, 12–20 min, nu ședință de
+  // sală. Doza e cea din promptul fizioterapeut.md; regula 20 (45 min, 3–4 serii) nu i se aplică.
+  intA: maint('intA', 'Întreținere A: picior și șold', 'ridicarea de pe scaun, gambe, echilibru, fesieri', { 'pt-sit-stand': [2, '8', 50], 'pt-calf-floor': [2, '10, lent', 45], 'pt-balance': [2, '20 s pe fiecare picior', 30], 'pt-bridge': [2, '8', 45] }),
+  intB: maint('intB', 'Întreținere B: umăr și trunchi', 'spatele de sus, umerii, trunchiul', { 'pt-band-row': [2, '10', 45], 'pt-wall-slide': [2, '8', 40], 'pt-bird-dog': [2, '6 pe fiecare parte', 40], 'pt-thoracic': [1, '6 rotații lente pe fiecare parte', 30] }),
   // Varianta amplă de patru zile (A–D): doza pentru sportiva eligibilă (experiență, timp ≥ 55 min, prezență
   // demonstrată la 4 zile), nu o înlocuire obligatorie a ședințelor L1/U1/L2/U2. Doza de construire; săpt. 1–4: 2 serii.
   fa: fitX('fa', 'A Picioare și fesieri', 'picioare și fesieri, accent genuflexiune', '55–70 min', { 'fit-hip-thrust': [3, '8–12', 120], 'fit-leg-press': [3, '8–12', 150], 'fit-bulgarian': [2, '8–10/picior', 105], 'fit-leg-curl': [2, '10–15', 90], 'fit-abduction': [2, '12–20', 75], 'fit-calf': [2, '10–15', 75], 'fit-pallof': [2, '8–12/parte', 50] }),
@@ -507,6 +527,11 @@ export const isSplitSession = (id: SessionId): id is SplitSessionId => id === 'p
 function fitX(id: FitnessSessionId, name: string, focus: string, estimate: string, dose: Record<string, [number, string, number]>): StrengthSession {
   return { id, name, focus, estimate, exercises: Object.keys(dose), completions: [], dose: Object.fromEntries(Object.entries(dose).map(([k, [sets, reps, rest]]) => [k, { sets, reps, rest }])) };
 }
+
+function maint(id: MaintenanceSessionId, name: string, focus: string, dose: Record<string, [number, string, number]>): StrengthSession {
+  return { id, name, focus, maintenance: true, exercises: Object.keys(dose), completions: [], dose: Object.fromEntries(Object.entries(dose).map(([k, [sets, reps, rest]]) => [k, { sets, reps, rest }])) };
+}
+export const isMaintenanceSession = (id: SessionId): id is MaintenanceSessionId => id === 'intA' || id === 'intB';
 
 /** Ședințele variantei ample. */
 export const FITNESS_WIDE: FitnessSessionId[] = ['fa', 'fb', 'fc', 'fd'];
@@ -770,7 +795,27 @@ export interface StrengthSpec {
   place?: 'sala' | 'acasa';
   /** Slăbire: ședința începe cu mers pe bandă înclinată (20 min în zilele de sus, 10 în cele de picioare + restul la final). */
   opener?: 'slabire';
+  /**
+   * Varianta scurtă (excepțiile de la regula 20, decizia proprietarului din 20.10.2026): restricție de siguranță sau
+   * sugestie de recuperare, revenire după boală (febră), taper înainte de cursă, timpul declarat de sportiv sub 45 de
+   * minute. Atunci: minimum 2 serii pe exercițiu și durata prescripției (ex. 25–30 min), nu „45 de minute fictive”.
+   * Motivul se scrie în textul ședinței, ca refacerea sau deschiderea aplicației să nu restaureze seriile tăiate.
+   */
+  reduced?: { why: ReducedReason; minutes: number };
 }
+
+/** Motivele pentru care o ședință de forță poate coborî sub 45 de minute și 3 serii (decizia proprietarului, 20.10.2026). */
+export type ReducedReason = 'siguranta' | 'boala' | 'taper' | 'timp';
+export const REDUCED_LABEL: Record<ReducedReason, string> = {
+  siguranta: 'recuperare / restricție de siguranță',
+  boala: 'revenire după boală',
+  taper: 'înainte de cursă',
+  timp: 'timpul tău de azi',
+};
+/** În varianta scurtă: cel puțin 2 serii pe exercițiu (nu 3) și cel puțin 15 minute. */
+export const MIN_REDUCED_SETS = 2;
+const MIN_REDUCED_MINUTES = 15;
+const REDUCED_WARMUP = { min: 5, text: '5 min de mișcare ușoară (mers vioi sau bicicletă staționară), rotiri de umeri și șolduri, apoi o serie ușoară la primul exercițiu (nu se numără)' };
 
 /** Ce știe ecranul (sau pachetul) despre ziua ședinței: obiectivul și sporturile de anduranță din aceeași zi. */
 export interface StrengthDayContext {
@@ -919,6 +964,9 @@ function openerMin(spec: StrengthSpec, ctx?: StrengthDayContext): number {
 
 /** Încălzirea completă: cardio la început (după obiectiv) + mobilitate; minutele intră în durata ședinței. */
 function warmupOf(spec: StrengthSpec, session: StrengthSession, ctx?: StrengthDayContext): { min: number; text: string } {
+  // Modulul de întreținere (fizioterapeut) și varianta scurtă: pornire scurtă, fără cardio lung la început.
+  if (session.maintenance) return { min: 2, text: '2 min de mișcare ușoară pe loc (mers, rotiri de umeri și glezne)' };
+  if (spec.reduced) return REDUCED_WARMUP;
   // Partea de după cardio din încălzirea ședinței (activare, serii ușoare); cardio-ul îl dă obiectivul.
   const tail = session.warmup && /^\d+ min [^,]*,/.test(session.warmup) ? session.warmup.replace(/^\d+ min [^,]*,\s*(apoi\s*)?/, '') : MOBILITY;
   if (spec.opener === 'slabire') {
@@ -940,7 +988,8 @@ function baseSets(r: Rx, spec: StrengthSpec): number {
 
 /** Prescripția întreagă pentru blocul și săptămâna date, fără limită de timp. */
 export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
-  if (isFitnessSession(spec.session)) return prescribeFitness(spec, ctx);
+  if (isMaintenanceSession(spec.session)) return prescribeMaintenance(spec, ctx);
+  if (isFitnessSession(spec.session)) return reduce(prescribeFitness(spec, ctx));
   const session = SESSIONS[spec.session];
   const rir = rirFor(spec);
   const notes: string[] = [];
@@ -982,6 +1031,36 @@ export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Pre
   clampSets(items);
   const dropped: string[] = [];
   items = capPerMuscle(items, dropped);
+  return reduce(finish(spec, session, items, [], notes, Infinity, ctx));
+}
+
+/**
+ * Varianta scurtă (spec.reduced, decizia proprietarului 20.10.2026): seriile coboară până la 2 (la siguranță și boală
+ * pornesc de la 2, la taper și timp de la cel mult 3), rezerva crește la siguranță/boală, iar motivul se scrie în
+ * ședință. Durata o dă `prescribe` din minutele variantei, nu minimul de 45.
+ */
+function reduce(p: Prescription): Prescription {
+  const r = p.spec.reduced;
+  if (!r) return p;
+  const gentle = r.why === 'siguranta' || r.why === 'boala';
+  for (const it of p.items) {
+    it.sets = gentle ? MIN_REDUCED_SETS : Math.min(it.sets, MIN_WORK_SETS);
+    if (gentle) it.rir = '3–4';
+  }
+  for (const it of p.items) fitScheme(it);
+  p.notes.push(`variantă scurtă (${REDUCED_LABEL[r.why]}): cel mult ${r.minutes} min, ${gentle ? '2 serii' : '2–3 serii'} pe exercițiu${gentle ? ', greutăți mai mici' : ''}; e excepția de la minimul de 45 de minute și 3 serii`);
+  return finish(p.spec, p.session, p.items, p.trimmed, p.notes, Infinity);
+}
+
+/** Modulul de întreținere al fizioterapeutului: doza din modul (1–2 serii, rezervă 3–4), fără plafonul de 45 de minute. */
+function prescribeMaintenance(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+  const session = SESSIONS[spec.session];
+  const items: Rx[] = session.exercises.map((id) => {
+    const ex = CATALOG[id]!;
+    const d = session.dose?.[id];
+    return { ex, sets: d?.sets ?? ex.sets, reps: d?.reps ?? ex.reps, rir: '3–4', rest: d?.rest ?? ex.rest ?? REST[ex.role] };
+  });
+  const notes = ['modul de întreținere (fizioterapeut): înlocuiește exerciții mici din sală, nu se adaugă peste; crește un singur element după două ședințe fără durere (ex. +2 repetări)', 'nu e tratament: la durere nouă sau care crește te oprești și spui în formularul de seară'];
   return finish(spec, session, items, [], notes, Infinity, ctx);
 }
 
@@ -1001,6 +1080,8 @@ function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimm
   for (const r of items) fitScheme(r);
   const warm = warmupOf(spec, session, ctx);
   const work = Math.ceil(estimateMinutes(items, warm.min));
+  // Excepțiile (varianta scurtă, modulul de întreținere): durata e a conținutului, fără completare până la 45 de minute.
+  if (spec.reduced || session.maintenance) return { spec, session, items, minutes: roundUp5(work), trimmed, notes, warmup: warm, finisher: null };
   // Slăbire, zi de sus: cardio-ul s-a făcut la început; la final rămâne doar ce trebuie până la 45 de minute.
   const fin = spec.opener === 'slabire' && !legsDay(spec.session) ? null : session.finisher;
   let finMin = 0;
@@ -1093,11 +1174,16 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
  */
 export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDayContext): Prescription {
   const p = prescribeFull(spec, ctx);
-  const limit = Math.max(MIN_STRENGTH_MINUTES, minutes);
+  // Modulul de întreținere are doza lui (12–20 min): nu se lungește și nu se taie după minutele din calendar.
+  if (p.session.maintenance) return p;
+  // Varianta scurtă: limita e cea a variantei (cel puțin 15 min), nu minimul de 45; altfel regula 20 rămâne exact cum e.
+  const reduced = spec.reduced;
+  const limit = reduced ? Math.max(MIN_REDUCED_MINUTES, Math.min(reduced.minutes, minutes)) : Math.max(MIN_STRENGTH_MINUTES, minutes);
+  const minSets = reduced ? MIN_REDUCED_SETS : MIN_WORK_SETS;
   const items = p.items.map((r) => ({ ...r }));
   const trimmed: string[] = [];
-  const minFinisher = p.session.finisher && !(spec.opener === 'slabire' && !legsDay(spec.session)) ? FINISHER_SHORT : 0;
-  const fits = () => Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher <= limit;
+  const minFinisher = !reduced && p.session.finisher && !(spec.opener === 'slabire' && !legsDay(spec.session)) ? FINISHER_SHORT : 0;
+  const fits = () => (reduced ? roundUp5(estimateMinutes(items, p.warmup.min)) : Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher) <= limit;
   const removeWhere = (pred: (r: Rx) => boolean, why: (r: Rx) => string) => {
     for (let i = items.length - 1; i >= 0 && !fits(); i--) {
       if (items.length > 1 && pred(items[i]!)) {
@@ -1126,6 +1212,16 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
       trimmed.push(`seria a 4-a la ${r.ex.name.toLowerCase()}`);
     }
   }
+  // Doar în varianta scurtă: seria a 3-a cade (întâi la exercițiile mici, apoi la principale), până la 2 pe exercițiu.
+  for (const role of reduced ? (['accessory', 'carry', 'core', 'main'] as Role[]) : []) {
+    for (let i = items.length - 1; i >= 0 && !fits(); i--) {
+      const r = items[i]!;
+      if (r.ex.role === role && r.sets > minSets) {
+        r.sets -= 1;
+        trimmed.push(`seria a 3-a la ${r.ex.name.toLowerCase()}`);
+      }
+    }
+  }
   removeWhere((r) => r.ex.role === 'accessory', (r) => r.ex.name.toLowerCase());
   removeWhere((r) => r.ex.role === 'carry', (r) => r.ex.name.toLowerCase());
   removeWhere((r) => r.ex.role === 'core', (r) => r.ex.name.toLowerCase());
@@ -1143,7 +1239,7 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
   // O superserie rămasă cu un singur exercițiu nu mai e superserie.
   for (const r of items) if (r.ss && items.filter((x) => x.ss === r.ss).length < 2) delete r.ss;
   const notes = [...p.notes];
-  if (trimmed.length) notes.push(`ca să încapă în ${limit} min, azi sari peste: ${trimmed.join(', ')} (pauzele rămân întregi, seriile rămân minimum 3)`);
+  if (trimmed.length) notes.push(`ca să încapă în ${limit} min, azi sari peste: ${trimmed.join(', ')} (pauzele rămân întregi, seriile rămân minimum ${minSets})`);
   return finish(spec, p.session, items, trimmed, notes, limit, ctx);
 }
 
@@ -1161,6 +1257,7 @@ export function strengthStructure(spec: StrengthSpec): string {
   if (spec.legs && spec.legs !== 'normal') parts.push(LEGS_TEXT[spec.legs]);
   if (spec.place === 'acasa') parts.push('acasă');
   if (spec.opener === 'slabire') parts.push(OPENER_TAG);
+  if (spec.reduced) parts.push(`variantă scurtă ${spec.reduced.minutes} min (${REDUCED_LABEL[spec.reduced.why]})`);
   return parts.join(' · ');
 }
 
@@ -1181,7 +1278,9 @@ export function parseStrength(structure: string | null | undefined): StrengthSpe
   if (!block) return null;
   const rest = parts.slice(2);
   const legs: LegsMode = rest.includes(LEGS_TEXT.fara) ? 'fara' : rest.includes(LEGS_TEXT.usor) ? 'usor' : 'normal';
-  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}) };
+  const red = rest.map((x) => /^variantă scurtă (\d+) min \((.+)\)$/.exec(x)).find(Boolean);
+  const why = red ? ((Object.entries(REDUCED_LABEL).find(([, l]) => l === red[2]) ?? [])[0] as ReducedReason | undefined) : undefined;
+  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}), ...(red && why ? { reduced: { why, minutes: Number(red[1]) } } : {}) };
 }
 
 /** Numele ședinței din textul din plan (și pentru planurile vechi „Push 1 · …”). */
@@ -1194,7 +1293,7 @@ export function sessionName(structure: string | null | undefined): string | null
 
 export const STRENGTH_RULES: { t: string; d: string }[] = [
   { t: 'Structura', d: 'Picioarele nu se combină niciodată cu partea de sus în aceeași ședință. Bărbați: Push (piept, umeri, triceps), Pull (spate, biceps), Picioare, pe rând.' },
-  { t: 'Durata', d: 'Cel puțin 45 de minute cu tot cu încălzirea. Încălzire: 10 minute de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără).' },
+  { t: 'Durata', d: 'Cel puțin 45 de minute cu tot cu încălzirea. Încălzire: 10 minute de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără). Excepții: după febră, la recuperare slabă sau durere, înainte de cursă și când spui că ai mai puțin timp — atunci varianta scurtă, cu cel puțin 2 serii pe exercițiu.' },
   { t: 'Serii', d: '3 sau 4 serii de lucru la fiecare exercițiu, mereu. În săptămânile ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
   { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune în tine (la început 3–4). Nu mergi până nu mai poți ridica deloc.' },
   { t: 'Pauze', d: 'Cam 2–3 minute la primele exerciții (cele grele) și 1–2 minute la restul. Dacă încă gâfâi, mai stai puțin.' },

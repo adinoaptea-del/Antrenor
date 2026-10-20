@@ -407,7 +407,10 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?:
         if (session === 'fullA' && nearRace) session = 'fullB';
       }
       const legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
-      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs: split === 'ppl' && legs === 'usor' ? 'normal' : legs, ...(variant != null ? { variant } : {}) };
+      // Taper (blocul „înainte de cursă”): excepție de la regula 20 (decizia proprietarului, 20.10.2026, A49) — varianta
+      // scurtă de ~30 min, 2–3 serii, nimic nou.
+      const taper = bw.block === 'precursa';
+      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs: split === 'ppl' && legs === 'usor' ? 'normal' : legs, ...(variant != null ? { variant } : {}), ...(taper ? { reduced: { why: 'taper' as const, minutes: Math.min(30, x.plannedMinutes) } } : {}) };
       const rx = prescribe(spec, x.plannedMinutes);
       x.structure = strengthStructure(spec);
       // O singură durată: cea a prescripției (cel puțin 45 de minute, cel mult cât are în calendar când încape).
