@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BurstAtTap, useOpenOrigin } from './OpenFrom';
 import { ALL_ALLERGENS, ALLERGEN_LABEL, type Allergen } from '@core/nutrition/foods.js';
-import { NUTRITION_DISCLAIMER, alternatives, type Diet, type Meal } from '@core/nutrition/engine.js';
-import { nutritionForMe, nutritionInputFromMe, recentRecipes } from '@core/nutrition/from-me.js';
+import { NUTRITION_DISCLAIMER, alternatives, nutritionDay, type AltPreview, type Diet, type Meal } from '@core/nutrition/engine.js';
+import { stateOf, type MealLogEntry } from '@core/nutrition/log.js';
+import { nutritionInputFromMe, recentRecipes } from '@core/nutrition/from-me.js';
 import { Card, Icons, Label } from './common';
 import { useData, useMe } from '../data/store';
 import { isNetworkError } from '../data/api';
@@ -10,30 +11,71 @@ import { isNetworkError } from '../data/api';
 const ALLERGENS: Allergen[] = ALL_ALLERGENS;
 const n0 = (x: number) => Math.round(x).toLocaleString('ro-RO');
 const ron = (x: number) => `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON`;
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const toMin = (s: string) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const STATE_WORD = { suggested: 'propusă', accepted: 'acceptată', replaced: 'schimbată de tine', consumed: 'mâncată' } as const;
 
 /**
  * „Mese recomandate pentru azi”: ținta, mesele și alimentarea din efort sunt calculate în cod (src/nutrition), din
  * aceeași zi a planului pe care o vezi; nimic nu e inventat de AI. Fiecare masă: ce și cât, cum, de ce, alternativă.
+ * După „Schimbă” toată ziua se revalidează (energie, proteine, alergeni, buget, mese) și diferența rămasă e la vedere.
  */
 export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
   const me = useMe();
   const { submitForm, local } = useData();
-  const day = useMemo(() => nutritionForMe(me), [me]);
-  const prefs = nutritionInputFromMe(me).prefs;
+  const input = useMemo(() => nutritionInputFromMe(me), [me]);
+  const day = useMemo(() => nutritionDay(input), [input]);
+  const prefs = input.prefs;
   const [open, setOpen] = useState<string | null>(null);
   const [swap, setSwap] = useState<string | null>(null);
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const recent = useMemo(() => (swap ? recentRecipes(me) : []), [me, swap]);
+  const alts = useMemo(() => (swap ? alternatives(input, swap as Meal['slot'], recent) : []), [input, swap, recent]);
+  const logToday = useMemo(() => prefs.log?.[me.today] ?? [], [prefs.log, me.today]);
 
-  const choose = async (slot: string, recipeId: string | null) => {
+  // Jurnalul (auditul v93, A84): ce s-a propus azi se scrie o dată (și se actualizează cât timp n-ai atins masa), ca
+  // zilele trecute să rămână cum au fost, chiar dacă schimbi preferințele.
+  const sent = useRef<string | null>(null);
+  useEffect(() => {
+    if (local) return;
+    const base = day.meals.filter((m) => m.label !== 'Gustare cu proteine' && !m.label.startsWith('Gustare în'));
+    const need = base.filter((m) => {
+      const e = logToday.find((x) => x.slot === m.slot);
+      return !e || (stateOf(e) === 'suggested' && e.suggested !== m.recipe.id && !prefs.choices?.[me.today]?.[m.slot]);
+    });
+    const key = `${me.today}:${base.map((m) => m.recipe.id).join(',')}`;
+    if (!need.length || sent.current === key) return;
+    sent.current = key;
+    void submitForm('nutritie', { jurnal: { date: me.today, meals: base.map((m) => ({ slot: m.slot, recipeId: m.recipe.id })) } }).catch(() => {
+      sent.current = null;
+    });
+  }, [day, logToday, local, me.today, prefs.choices, submitForm]);
+
+  const choose = async (m: Meal, recipeId: string | null) => {
     if (busy) return;
     setBusy(true);
     setMsg(null);
     try {
-      await submitForm('nutritie', { alegere: { date: me.today, slot, recipeId } });
+      const suggested = logToday.find((x) => x.slot === m.slot)?.suggested ?? (prefs.choices?.[me.today]?.[m.slot] ? null : m.recipe.id);
+      await submitForm('nutritie', { alegere: { date: me.today, slot: m.slot, recipeId, suggested } });
       setSwap(null);
+    } catch (e) {
+      setMsg(isNetworkError(e) ? 'Fără semnal: încearcă din nou.' : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const eaten = async (m: Meal, da: boolean | null) => {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await submitForm('nutritie', { consumat: { date: me.today, slot: m.slot, da } });
     } catch (e) {
       setMsg(isNetworkError(e) ? 'Fără semnal: încearcă din nou.' : e instanceof Error ? e.message : String(e));
     } finally {
@@ -42,6 +84,8 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
   };
 
   const e = day.energy;
+  const c = day.check;
+  const mac = day.macros;
   return (
     <div className="stack">
       <Card>
@@ -53,11 +97,12 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
             </b>
             <span className="small muted">
               țintă estimată · proteine ~{n0(day.protein!.target)} g ({day.protein!.gPerKg.toLocaleString('ro-RO')} g/kg)
+              {mac ? ` · carbohidrați ${n0(mac.carbs.g[0])}–${n0(mac.carbs.g[1])} g (${mac.carbs.gPerKg[0]}–${mac.carbs.gPerKg[1]} g/kg) · grăsimi ${n0(mac.fat.g[0])}–${n0(mac.fat.g[1])} g` : ''}
             </span>
           </div>
         ) : (
           <div className="warn-line">
-            Porții de referință, nu personalizate. Lipsește: {day.missing.join(', ')}.{' '}
+            {day.missing.length ? <>Porții de referință, nu personalizate. Lipsește: {day.missing.join(', ')}. </> : null}
             {day.missing.some((m) => m.startsWith('greutatea')) && (
               <button className="linkish" onClick={() => onOpen('corp')}>
                 Adaugă greutatea
@@ -69,19 +114,31 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
           {day.message}
         </p>
         <div className="small muted">
-          {day.meals.length} mese · {n0(day.totals.kcal)} kcal
+          {c.meals.main} {c.meals.main === 1 ? 'masă' : 'mese'}
+          {c.meals.extra ? ` + ${c.meals.extra} în plus` : ''} · {n0(day.totals.kcal)} kcal
           {day.fuel.length ? ` + ${n0(day.totals.dayKcal - day.totals.kcal)} kcal în efort = ${n0(day.totals.dayKcal)} kcal` : ''} · {n0(day.totals.protein)} g proteine ·{' '}
           {day.totals.costComplete ? `~${ron(day.totals.costKnown)}` : 'cost incomplet (lipsesc prețuri)'}
         </div>
-        {day.budgetNote && <div className="tiny muted" style={{ marginTop: 4 }}>{day.budgetNote}</div>}
+        {c.energy && !c.energy.inRange && (
+          <div className="tiny warn-line" style={{ marginTop: 4 }}>
+            Diferența rămasă față de țintă: {c.energy.gap > 0 ? `lipsesc ~${n0(c.energy.gap)} kcal` : `~${n0(-c.energy.gap)} kcal peste`}
+            {c.protein && c.protein.gap > 0 ? ` · proteine: lipsesc ~${n0(c.protein.gap)} g` : ''}
+          </div>
+        )}
+        {day.budgetNote && <div className={`tiny ${c.budget.status === 'peste' ? 'warn-line' : 'muted'}`} style={{ marginTop: 4 }}>{day.budgetNote}</div>}
       </Card>
 
-      {day.fuel.length > 0 && (
+      {(day.fuel.length > 0 || day.fuelNotes.length > 0) && (
         <Card tight>
           <Label icon={Icons.droplet}>În timpul efortului</Label>
           {day.fuel.map((f) => (
             <div key={f.sessionLabel} className="small" style={{ marginTop: 6 }}>
               <b>{f.sessionLabel}:</b> ~{f.plannedG} g carbohidrați în total ({f.carbsPerHour[0]}–{f.carbsPerHour[1]} g/oră); {f.note}. Intră o singură dată în totalul zilei.
+            </div>
+          ))}
+          {day.fuelNotes.map((n) => (
+            <div key={n} className="tiny muted" style={{ marginTop: 6 }}>
+              {n.charAt(0).toUpperCase() + n.slice(1)}.
             </div>
           ))}
         </Card>
@@ -95,13 +152,26 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
           onToggle={() => setOpen(open === m.label ? null : m.label)}
           swapping={swap === m.slot}
           onSwap={() => setSwap(swap === m.slot ? null : m.slot)}
-          alts={swap === m.slot ? alternatives(day, m.slot, prefs, recent) : []}
+          alts={swap === m.slot ? alts : []}
           chosen={!!prefs.choices?.[me.today]?.[m.slot]}
-          onChoose={(id) => void choose(m.slot, id)}
+          log={m.label.startsWith('Gustare în') || m.label === 'Gustare cu proteine' ? null : (logToday.find((x) => x.slot === m.slot) ?? null)}
+          onChoose={(id) => void choose(m, id)}
+          onEaten={(da) => void eaten(m, da)}
           busy={busy || local}
         />
       ))}
       {msg && <div className="wk-note">{msg}</div>}
+
+      {day.supplements.length > 0 && (
+        <Card tight>
+          <Label icon={Icons.bowl}>Suplimente (opțional)</Label>
+          {day.supplements.map((s) => (
+            <div key={s.kind} className="small" style={{ marginTop: 6 }}>
+              {s.text.charAt(0).toUpperCase() + s.text.slice(1)}.
+            </div>
+          ))}
+        </Card>
+      )}
 
       {day.warnings.length > 0 && (
         <ul className="str-notes">
@@ -117,7 +187,9 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
             <b>Preferințe</b>
             <small>
               {prefs.diet}
-              {prefs.exclude.length ? ` · fără ${prefs.exclude.join(', ')}` : ''} · {prefs.meals} {prefs.meals === 1 ? 'masă' : 'mese'}{prefs.currentMeals ? ` (acum ${prefs.currentMeals})` : ''} · {prefs.budget ? `${prefs.budget} RON/zi` : 'fără buget'}
+              {prefs.exclude.length ? ` · fără ${prefs.exclude.join(', ')}` : ''} · {prefs.meals} {prefs.meals === 1 ? 'masă' : 'mese'}
+              {prefs.mealTimes?.length ? ` (${prefs.mealTimes.map(hhmm).join(', ')})` : ''}
+              {prefs.currentMeals ? ` (acum ${prefs.currentMeals})` : ''} · {prefs.snacksOk === false ? 'fără gustări' : 'gustări acceptate'} · {prefs.budget ? `${prefs.budget} RON/zi` : 'fără buget'}
               {prefs.allergiesConfirmed ? '' : ' · alergii neconfirmate'}
             </small>
           </span>
@@ -129,11 +201,13 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
       {e && (
         <details className="small muted meal-how">
           <summary>Cum am calculat</summary>
-          <p>
-            Repaus (Mifflin-St Jeor): {n0(e.ree)} kcal · fără sport (× 1,4, regulă AIRON): {n0(e.base)} kcal · antrenamentele de azi, peste repaus (Compendium, MET): {n0(e.exercise)} kcal
-            {e.adjustPct ? ` · ${e.adjustPct > 0 ? '+' : ''}${e.adjustPct}% (${day.goalNote})` : ''}. Intervalul de ±10% arată incertitudinea: e o estimare, nu o măsurătoare. Caloriile ceasului nu se adună peste.
-          </p>
-          <p>Compoziția: CoFID 2021 și eticheta producătorului; prețurile: Auchan online, 19.10.2026. Carbohidrații și vitaminele meselor nu sunt calculate încă.</p>
+          <ul className="meal-items">
+            {e.method.map((l) => (
+              <li key={l}>{l.charAt(0).toUpperCase() + l.slice(1)}.</li>
+            ))}
+          </ul>
+          {mac && <p>{mac.explain.charAt(0).toUpperCase() + mac.explain.slice(1)}.</p>}
+          <p>Compoziția: CoFID 2021, USDA și eticheta producătorului; prețurile: Auchan online, 19.10.2026 (nu toate alimentele au preț). Vitaminele meselor nu sunt calculate.</p>
         </details>
       )}
       <p className="tiny muted">{NUTRITION_DISCLAIMER}</p>
@@ -141,12 +215,16 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
   );
 }
 
-function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose, busy }: { m: Meal; open: boolean; onToggle: () => void; swapping: boolean; onSwap: () => void; alts: ReturnType<typeof alternatives>; chosen: boolean; onChoose: (id: string | null) => void; busy: boolean }) {
+function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, log, onChoose, onEaten, busy }: { m: Meal; open: boolean; onToggle: () => void; swapping: boolean; onSwap: () => void; alts: AltPreview[]; chosen: boolean; log: MealLogEntry | null; onChoose: (id: string | null) => void; onEaten: (da: boolean | null) => void; busy: boolean }) {
+  const st = log ? stateOf(log) : null;
   return (
     <Card tight>
       <button className="exp-row" onClick={onToggle} aria-expanded={open}>
         <span>
-          <small>{m.label}</small>
+          <small>
+            {m.label}
+            {st && st !== 'suggested' ? ` · ${STATE_WORD[st]}` : ''}
+          </small>
           <b>{m.recipe.name}</b>
           <small>
             {n0(m.kcal)} kcal · {n0(m.protein)} g proteine · {m.cost != null ? ron(m.cost) : 'preț incomplet'} · ~{m.recipe.minutes} min
@@ -175,7 +253,7 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose,
             {m.recipe.note ? ` ${m.recipe.note}` : ''}
           </p>
           <div className="tiny muted">
-            Alergeni: {m.allergens.length ? m.allergens.join(', ') : 'niciunul din cei urmăriți'} (verifică etichetele){m.missingPrices.length ? ` · fără preț: ${m.missingPrices.join(', ')}` : ''}
+            Alergeni: {m.allergens.length ? m.allergens.map((a) => ALLERGEN_LABEL[a]).join(', ') : 'niciunul din cei urmăriți'} (verifică etichetele){m.missingPrices.length ? ` · fără preț: ${m.missingPrices.join(', ')}` : ''}
             {m.repeat ? ' · se repetă mai des decât regula, din cauza preferințelor' : ''}
           </div>
         </MealOpen>
@@ -189,15 +267,24 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, onChoose,
             Înapoi la propunere
           </button>
         )}
+        {log && (
+          <button className={`pill ${log.consumed === true ? 'on' : ''}`} onClick={() => onEaten(log.consumed === true ? null : true)} disabled={busy} aria-pressed={log.consumed === true}>
+            {log.consumed === true ? 'Mâncată' : 'Am mâncat'}
+          </button>
+        )}
       </div>
       {swapping && (
         <div className="meal-alts">
-          {alts.length === 0 && <div className="small muted">Nu e altă variantă eligibilă cu energie apropiată (preferințe, alergii, fără repetare recentă).</div>}
+          {alts.length === 0 && <div className="small muted">Nu e altă variantă eligibilă (preferințe, alergii, fără repetare recentă).</div>}
           {alts.map((a) => (
             <button key={a.id} className="adapt-opt" onClick={() => onChoose(a.id)} disabled={busy}>
               <b>{a.name}</b>
               <span>
                 {n0(a.kcal)} kcal · {n0(a.protein)} g proteine · {a.cost != null ? ron(a.cost) : 'preț incomplet'}
+              </span>
+              <span className="tiny muted">
+                ziua: {n0(a.day.kcal)} kcal{a.day.gapKcal != null ? (a.day.gapKcal > 0 ? `, lipsesc ~${n0(a.day.gapKcal)}` : `, ~${n0(-a.day.gapKcal)} peste`) : ''} · {a.day.protein} g proteine
+                {a.day.budget === 'peste' ? ' · peste buget' : a.day.budget === 'necunoscut' ? ' · buget neverificabil (prețuri lipsă)' : a.day.budget === 'ok' ? ' · în buget' : ''}
               </span>
             </button>
           ))}
@@ -217,15 +304,24 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
   const [confirmed, setConfirmed] = useState(cur.allergiesConfirmed);
   const [budget, setBudget] = useState(cur.budget != null ? String(cur.budget) : '');
   const [meals, setMeals] = useState<1 | 2 | 3 | 4>(cur.meals);
+  const [times, setTimes] = useState<string[]>([0, 1].map((i) => (cur.mealTimes?.[i] != null ? hhmm(cur.mealTimes[i]!) : '')));
   const [currentMeals, setCurrentMeals] = useState<number | null>(cur.currentMeals ?? null);
   const [snacksOk, setSnacksOk] = useState(cur.snacksOk !== false);
+  const [powder, setPowder] = useState(cur.proteinPowder === true);
+  const [iron, setIron] = useState(cur.indications?.iron === true);
+  const [vitD, setVitD] = useState(cur.indications?.vitaminD === true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const save = async () => {
+    const mt = times.slice(0, meals <= 2 ? meals : 0).map(toMin);
+    if (mt.some((t, i) => t == null && times[i]!.trim() !== '')) {
+      setErr('Ora mesei: scrie-o ca 13:00.');
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
-      await submitForm('nutritie', { diet, exclude, other: other.split(',').map((x) => x.trim()).filter(Boolean), allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals, currentMeals, snacksOk });
+      await submitForm('nutritie', { diet, exclude, other: other.split(',').map((x) => x.trim()).filter(Boolean), allergiesConfirmed: confirmed, budget: budget.trim() === '' ? null : Number(budget), meals, mealTimes: mt.filter((t): t is number => t != null), currentMeals, snacksOk, proteinPowder: powder, indications: { iron, vitaminD: vitD } });
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -280,11 +376,27 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
         ))}
       </div>
       {meals <= 2 && (
-        <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-          <input type="checkbox" checked={snacksOk} onChange={(e) => setSnacksOk(e.target.checked)} /> Accept o gustare înainte sau după antrenament, dacă mesele nu ajung
-        </label>
+        <div className="small" style={{ marginTop: 8 }}>
+          La ce oră mănânci, aproximativ{' '}
+          {Array.from({ length: meals }, (_, i) => (
+            <input key={i} inputMode="numeric" placeholder={meals === 1 ? '13:00' : i === 0 ? '12:00' : '19:00'} value={times[i]} onChange={(e) => setTimes(times.map((t, k) => (k === i ? e.target.value : t)))} style={{ width: 60, marginLeft: 6 }} aria-label={`ora mesei ${i + 1}`} />
+          ))}
+        </div>
       )}
+      <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <input type="checkbox" checked={snacksOk} onChange={(e) => setSnacksOk(e.target.checked)} /> Accept o gustare înainte sau după antrenament, dacă mesele nu ajung (debifat = nicio gustare în plus)
+      </label>
       <div className="tiny muted" style={{ marginTop: 4 }}>Ce iei în timpul antrenamentului (geluri, băutură) e separat de mese.</div>
+      <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <input type="checkbox" checked={powder} onChange={(e) => setPowder(e.target.checked)} /> Accept proteină praf doar pentru diferența rămasă după mese
+      </label>
+      <div className="small" style={{ marginTop: 8 }}>Indicație de la medic (sau din analize)</div>
+      <label className="small" style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+        <input type="checkbox" checked={iron} onChange={(e) => setIron(e.target.checked)} /> fier
+      </label>
+      <label className="small" style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+        <input type="checkbox" checked={vitD} onChange={(e) => setVitD(e.target.checked)} /> vitamina D
+      </label>
       <label className="small" style={{ display: 'block', marginTop: 8 }}>
         Buget pe zi (RON, 20–150, opțional){' '}
         <input inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} style={{ width: 70 }} aria-label="buget pe zi" />

@@ -11,6 +11,7 @@ import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../..
 import { addDays, labsExpired, weekStart, weekday } from '../../src/util/dates.js';
 import { loadPrefs } from './prefs.js';
 import { DEFAULT_PREFS, nutritionDay } from '../../src/nutrition/engine.js';
+import { daySessions, labIndications } from '../../src/nutrition/from-me.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import { isFitnessGoal, isRunGoal, isWalkGoal, RUN_DISTANCE_KM } from '../../src/calendar/phases.js';
@@ -339,13 +340,18 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const age = user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null;
   const nutritionRestriction = activeRestriction({ today, morning: forms.morning as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never })?.verdict ?? null;
   const tiredRows = await select<{ workout_id: string }>('workout_outcomes', { user_id: `eq.${userId}`, motiv: 'eq.oboseala', reported_at: `gte.${addDays(today, -7)}` }, { select: 'workout_id', limit: 10 }).catch(() => []);
+  const nutPrefs = { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) };
   const mealsToday = nutritionDay({
     date: today,
     athlete: { sex: user.sex ?? null, age, heightCm: user.height_cm ?? null, weightKg: bodyRow?.weight_kg != null ? Number(bodyRow.weight_kg) : null, weightDate: bodyRow?.date ?? null },
     goal: user.goal ?? null,
     athleteId: userId,
-    sessions: planRes.workouts.filter((w) => w.date === today && (w.status === 'planificat' || w.status === 'mutat') && w.type !== 'odihna').map((w, i) => ({ sport: w.sport, type: w.type, minutes: w.plannedMinutes, key: w.key, startMin: program[i] ?? program[0] ?? null })),
-    prefs: { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) },
+    // Auditul v93, A77 / T57: aceleași ședințe ca ecranul — cea făcută rămâne cu durata reală, efortul neplanificat intră,
+    // brick-ul se împarte ca în calendar (daySessions).
+    sessions: daySessions(planRes.workouts, activities, today, program),
+    prefs: nutPrefs,
+    // A80: fier / vitamina D doar din analize sub intervalul laboratorului sau din indicația declarată, nu din sex.
+    indications: labIndications((labs?.in_afara_intervalului ?? []).map((x) => ({ nume: x.nume, sub: x.directie === 'sub' })), nutPrefs.indications),
     // Auditul v93, A79: aceleași blocaje ca ecranul (restricția activă, oboseala repetată, sarcina, minorul), ca AI-ul să
     // nu vadă deficit într-o zi roșie sau galbenă.
     blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da' || (forms.intake as { sarcina?: string } | null)?.sarcina === 'da', minor: age != null && age < 18 },

@@ -118,8 +118,8 @@ test('Vegan și alergie la lapte: nicio masă cu produse animale / lapte; lipsa 
   const noMilk = { ...DEFAULT_PREFS, exclude: ['lapte' as const] };
   const sel = selectDays(addDays(DATE, -13), DATE, noMilk);
   for (const [, day] of sel) for (const id of Object.values(day.picks)) assert.ok(!RECIPE[id!]!.ingredients.some((i) => FOODS[i.food]!.allergens.includes('lapte')), id);
-  const d = nutritionDay(man({ prefs: noMilk }));
-  for (const slot of ['mic_dejun', 'pranz', 'cina', 'gustare'] as const) for (const a of alternatives(d, slot, noMilk)) assert.ok(!RECIPE[a.id]!.ingredients.some((i) => i.food === 'lapte' || i.food === 'iaurt' || i.food === 'cottage'), a.id);
+  // Auditul v93, A83: alternativele se previzualizează din intrarea zilei (aceeași funcție ca după alegere).
+  for (const slot of ['mic_dejun', 'pranz', 'cina', 'gustare'] as const) for (const a of alternatives(man({ prefs: noMilk }), slot)) assert.ok(!RECIPE[a.id]!.ingredients.some((i) => i.food === 'lapte' || i.food === 'iaurt' || i.food === 'cottage'), a.id);
 });
 
 test('Triatlon cu două ședințe: un singur total zilnic, alimentarea fiecărei ședințe lungi o dată', () => {
