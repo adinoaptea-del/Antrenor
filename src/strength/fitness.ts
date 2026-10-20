@@ -4,7 +4,8 @@
 // tranziție (S17–20) · menținere (S21–26). La „întreținere” se poate începe direct cu menținerea, după acomodare.
 // Frecvența: 2, 3 sau 4 zile. Începătoarea pornește cu două zile (picioare / partea de sus); trecerea la trei e posibilă din S5, la patru
 // din S9 — DAR doar după prezență reală (3 săptămâni la rând cu ≥ 80% din ședințe, `unlockedDays`), nu pentru că a
-// trecut timpul. Prima săptămână cu o zi în plus distribuie volumul (fără serii în plus), nu îl adaugă.
+// trecut timpul. Prima săptămână cu o zi în plus are 3 serii la toate exercițiile, dar ședința în plus ADAUGĂ serii pe
+// săptămână (auditul v93, A52); planul o spune cu cifre în notele săptămânii, nu o prezintă ca „distribuire”.
 // Ședințele (exercițiile, seriile, pauzele) sunt în src/strength/ppl.ts; aici sunt etapele, calendarul săptămânilor,
 // mișcarea zilnică și regulile pentru agent.
 
@@ -152,7 +153,7 @@ export interface UnlockResult {
  *    (ponderat: la 2 ședințe/săpt. înseamnă 5 din 6, nu „2 din 2 în fiecare săptămână”);
  *  - feedback în fiecare din cele 3 săptămâni (lipsa feedbackului nu e toleranță);
  *  - fără durere raportată și fără restricție activă.
- * Prima săptămână cu o zi în plus distribuie doza existentă (fără serii în plus), nu o crește.
+ * Prima săptămână cu o zi în plus are 3 serii pe exercițiu; totalul săptămânii crește și se spune cu cifre (A52).
  */
 export function unlockDecision(p: Pick<FitnessProfile, 'days' | 'beginner' | 'activity'>, weeks: AttendanceWeek[], opts: { freeDays?: number; restricted?: boolean } = {}): UnlockResult {
   let level: number = startDays(p);
@@ -192,7 +193,7 @@ export function unlockDecision(p: Pick<FitnessProfile, 'days' | 'beginner' | 'ac
         continue;
       }
       level += 1;
-      why = `prezență ${done}/${planned} în 3 săptămâni, cu feedback și fără durere: ${level} zile (prima săptămână distribuie doza, nu o crește)`;
+      why = `prezență ${done}/${planned} în 3 săptămâni, cu feedback și fără durere: ${level} zile (prima săptămână cu 3 serii pe exercițiu; totalul pe săptămână crește cu ședința în plus)`;
       run = [];
     }
   }
@@ -214,7 +215,7 @@ export const FITNESS_WEEK_ACTION: Record<number, string> = {
   6: 'Cum crești: întâi repetări, apoi greutatea imediat următoare.',
   7: 'Menții. Mersul/cardio-ul crește numai dacă nu te simți mai obosită la sală.',
   8: 'Verifici performanța, energia și tendințele, fără test maximal. Cel mult 1–2 înlocuiri, dacă există motiv.',
-  9: 'Consolidezi schema aleasă. Patru zile doar prin distribuirea volumului existent.',
+  9: 'Consolidezi schema aleasă. Patru zile doar dacă le-ai ținut pe cele trei; prima săptămână cu 3 serii pe exercițiu (totalul pe săptămână crește cu ședința în plus).',
   10: 'Crești sarcina la un exercițiu dacă toate seriile au atins capătul de sus fără să mergi până la limită.',
   11: 'Păstrezi exercițiile de referință; opțional o serie în plus la un exercițiu prioritar care merge bine.',
   12: 'Revizuire. Dacă se adună oboseala: greutăți mai mici și oprit mai departe de limită (seriile rămân 3).',

@@ -5,7 +5,8 @@ import { adapt } from '../src/calendar/adapt.js';
 import { generateFitnessPlan } from '../src/calendar/fitness-plan.js';
 import { assignStrengthDays, type WeekPlan } from '../src/calendar/generate.js';
 import { shortenWorkout } from '../src/calendar/validate.js';
-import { MIN_STRENGTH_MINUTES, parseStrength, prescribe, prescribeFull, strengthStructure, type StrengthSpec } from '../src/strength/ppl.js';
+import { CATALOG, MIN_STRENGTH_MINUTES, estimateMinutes, parseStrength, prescribe, prescribeFull, setSides, setWorkSec, strengthStructure, weekSetTotals, type Rx, type StrengthSpec } from '../src/strength/ppl.js';
+import { FITNESS_WEEK_ACTION, fitnessProfile, unlockDecision } from '../src/strength/fitness.js';
 import { upgradeStrengthRules } from '../src/strength/split-upgrade.js';
 import type { FreeBlock, PlannedWorkout } from '../src/types.js';
 
@@ -175,5 +176,57 @@ describe('A50 / T32: structura după frecvență (1 = tot corpul, 2 = sus / jos,
     assert.ok(m2.ok);
     if (!m2.ok) return;
     assert.deepEqual(m2.weeks.slice(0, 3).map((w) => w.workouts.map((x) => parseStrength(x.structure)!.session).join('+')), ['fullA+fullB', 'fullA+fullB', 'fullA+fullB']);
+  });
+});
+
+describe('A52 / T33 / T88: durata seriilor și totalul săptămânii', () => {
+  const rx = (id: string, reps: string, sets = 3, rest = 60): Rx => ({ ex: CATALOG[id]!, sets, reps, rir: '2–3', rest });
+
+  it('T33: 40 de repetări cu 3 s ținut nu sunt 53 s; ambele părți, menținerile și pauzele intră în durată', () => {
+    assert.ok(setWorkSec(rx('fit-abduction', '40, ții 3 s la fiecare deschidere; la ultima ții 10 s')) >= 200);
+    assert.ok(setWorkSec(rx('fit-abduction', '50: 30 cu 3 s ținut la deschidere + 20 rapide')) >= 170);
+    assert.ok(setWorkSec(rx('fit-glute-bridge', '40: 30 cu 3 s ținut sus + 10 rapide')) >= 160);
+    // Pe un picior, cu mențineri: lucrul pe o parte × 2 + schimbarea părții, la fiecare serie, plus pauza.
+    const uni = rx('fit-straight-leg', '30 pe picior: 20 cu 3 s sus + 10 rapide (greutăți la glezne)', 3, 60);
+    assert.equal(setSides(uni), 2);
+    const perSide = setWorkSec(uni);
+    assert.ok(perSide >= 110, String(perSide));
+    // + ~90 s de reglaj al aparatului / serii de acomodare la fiecare exercițiu de fitness.
+    assert.ok(Math.abs(estimateMinutes([uni], 0) * 60 - (3 * (2 * perSide + 15 + 60) + 90)) < 1);
+    // „20 (10 pe fiecare picior)” e totalul pe ambele picioare: nu se dublează.
+    assert.equal(setSides(rx('fit-walking-lunge', '20 (10 pe fiecare picior)')), 1);
+    // Piramida: fiecare serie cu repetările ei.
+    const pyr = rx('fit-squat', '20 / 15 / 12 / 8 — crești greutatea la fiecare serie', 4, 120);
+    assert.deepEqual([0, 1, 2, 3].map((i) => setWorkSec(pyr, i)), [60, 45, 36, 24]);
+  });
+
+  it('circuitul, piramida și exercițiul pe un picior încap efectiv în durata promisă', () => {
+    for (const session of ['l1', 'l2', 'l3', 'u1', 'u2'] as const)
+      for (const variant of [0, 1, 2])
+        for (const minutes of [45, 60, 75]) {
+          const p = prescribe({ session, block: 'construire', week: 2, len: 4, variant }, minutes);
+          const work = estimateMinutes(p.items, p.warmup.min) + (p.finisher?.min ?? 0);
+          assert.ok(work <= p.minutes + 0.01, `${session} v${variant} ${minutes}: ${work.toFixed(1)} > ${p.minutes}`);
+          assert.ok(p.minutes <= Math.max(45, minutes), `${session} v${variant} ${minutes}: ${p.minutes}`);
+        }
+  });
+
+  it('T88: totalul de serii al fiecărei săptămâni e vizibil, iar trecerea 2 → 3 și 3 → 4 zile spune creșterea cu cifre', () => {
+    const FREE: FreeBlock[] = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+    for (const [zile, experienta] of [[3, 'incepatoare'], [4, 'stabila']] as const) {
+      const fitness = { ...fitnessProfile('fit-tonifiere', { experienta, zile, minute: 60, acces: 'sala', miscare: 'plimbari' }), unlocked: zile };
+      const r = generateFitnessPlan({ startDate: '2026-10-26', raceDate: '2027-04-26', freeBlocks: FREE, fitness });
+      assert.ok(r.ok);
+      if (!r.ok) return;
+      const totals = r.weeks.map((w) => weekSetTotals(w.workouts.map((x) => prescribe(parseStrength(x.structure)!, x.plannedMinutes))).total);
+      r.weeks.forEach((w, i) => assert.ok(w.notes.some((n) => n.startsWith(`serii de lucru în săptămână: ${totals[i]} `)), `${zile} săpt. ${i + 1}: ${w.notes.join(' | ')}`));
+      const t = r.weeks.findIndex((w) => w.workouts.some((x) => parseStrength(x.structure)!.transition));
+      assert.ok(t > 0, 'există o săptămână de trecere');
+      assert.ok(totals[t]! > totals[t - 1]!, 'o ședință în plus adaugă serii');
+      const pct = Math.round(((totals[t]! - totals[t - 1]!) / totals[t - 1]!) * 100);
+      assert.ok(r.weeks[t]!.notes.some((n) => n.includes(`de la ${totals[t - 1]} la ${totals[t]} (+${pct}%)`)), r.weeks[t]!.notes.join(' | '));
+    }
+    // Nicio promisiune falsă de „volum distribuit fără creștere” în textele pentru sportivă.
+    assert.ok(!/distribuie (volumul|doza)[^.]*(nu (îl|o) (crește|adaugă)|fără serii în plus)/.test(FITNESS_WEEK_ACTION[9]! + unlockDecision({ days: 3, beginner: true }, Array(4).fill({ planned: 2, done: 2, feedback: 2 })).why));
   });
 });

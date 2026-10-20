@@ -5,7 +5,7 @@
 import type { FreeBlock, PlannedWorkout } from '../types.js';
 import { addDays, weekStart } from '../util/dates.js';
 import { fitnessPlanWeeks, type FitnessProfile } from '../strength/fitness.js';
-import { FitnessRotator, MIN_STRENGTH_MINUTES, newSplitState, nextSplit, prescribe, splitFamily, strengthStructure, upperLowerWeek, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
+import { FitnessRotator, MIN_STRENGTH_MINUTES, newSplitState, nextSplit, prescribe, splitFamily, strengthStructure, upperLowerWeek, weekSetTotals, type LegsMode, type Prescription, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import type { GenerateResult, WeekPlan } from './generate.js';
 
 /** Zilele preferate din program, când ferestrele permit: 2 → luni/joi, 3 → luni/miercuri/vineri, 4 → luni/marți/joi/sâmbătă. */
@@ -76,6 +76,7 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
     return { ok: false, reason: `Nu ai nicio fereastră liberă de cel puțin ${MIN_SESSION} de minute. Bifează în program zilele în care poți ajunge la sală.`, budgetHours: 0, minimumHours: 1, options: ['adaugă în program ferestre de 60 de minute (minimum 45) în 2–3 zile'] };
   }
   const out: WeekPlan[] = [];
+  let prevSets: number | null = null;
   const rot = new FitnessRotator();
   const split = newSplitState();
   for (const fw of weeks) {
@@ -94,10 +95,12 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
       : fw.variant === 'ampla'
         ? days.map((_, i) => ({ session: fw.rotation[i % fw.rotation.length]! }))
         : rot.week(days.length);
+    const rxs: Prescription[] = [];
     const workouts: PlannedWorkout[] = days.map((d, i) => {
       const spec: StrengthSpec = { session: order[i]!.session, block: fw.block, week: fw.blockWeek, len: fw.blockLen, recovery: fw.recovery, ...(order[i]!.variant != null ? { variant: order[i]!.variant } : {}), ...(fw.transition ? { transition: true } : {}), ...(input.fitness.place === 'acasa' ? { place: 'acasa' as const } : {}), ...(f.goal === 'fit-slabire' ? { opener: 'slabire' as const } : {}) };
       const avail = Math.max(MIN_SESSION, Math.min(Math.max(f.minutes, MIN_SESSION), free.get(d) ?? f.minutes));
       const rx = prescribe(spec, avail);
+      rxs.push(rx);
       return {
         id: `${ws}-${i + 1}`,
         date: addDays(ws, d),
@@ -110,6 +113,12 @@ export function generateFitnessPlan(input: { startDate: string; raceDate: string
         status: 'planificat',
       };
     });
+    // Totalul săptămânii (auditul v93, A52), vizibil și spus cinstit la trecerea la o zi în plus: o ședință în plus
+    // adaugă serii (fiecare exercițiu rămâne la 3), nu e „aceeași doză distribuită”.
+    const sets = weekSetTotals(rxs).total;
+    notes.push(`serii de lucru în săptămână: ${sets} (${rxs.length} ședințe; se numără seriile de la fiecare exercițiu, fără încălzire)`);
+    if (fw.transition && prevSets != null && sets > prevSets) notes.push(`săptămâna de trecere la ${days.length} zile: seriile cresc de la ${prevSets} la ${sets} (+${Math.round(((sets - prevSets) / prevSets) * 100)}%), cu câte 3 serii pe exercițiu: ședința în plus adaugă serii, nu e aceeași doză distribuită`);
+    prevSets = sets;
     const planned = Math.round((workouts.reduce((n, w) => n + w.plannedMinutes, 0) / 60) * 10) / 10;
     out.push({ weekStart: ws, phase: fw.phase, recovery: fw.recovery, targetHours: planned, plannedHours: planned, workouts: workouts.filter((w) => w.date < input.raceDate), notes });
   }

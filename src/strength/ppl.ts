@@ -835,7 +835,7 @@ export interface StrengthSpec {
   recovery?: boolean;
   /** „usor”: a doua zi e ședință-cheie; „fara”: ultimele 10 zile dinaintea cursei. */
   legs?: LegsMode;
-  /** Fitness: prima săptămână cu mai multe zile (2 → 3 sau 3 → 4): volumul se distribuie, nu crește dintr-odată. */
+  /** Fitness: prima săptămână cu mai multe zile (2 → 3 sau 3 → 4): 3 serii pe exercițiu; totalul pe săptămână crește (A52). */
   transition?: boolean;
   /** Push / Pull / Picioare: a câta ședință de acest tip (de la 0); alege exercițiile. */
   variant?: number;
@@ -941,13 +941,73 @@ function rirFor(spec: StrengthSpec): string {
   return '2–3';
 }
 
-/** Timpul de lucru al unei serii (s), din repetările scrise: ~3 s pe repetare, între 30 și 90 s; „30–45 s” = timpul. */
-function workSec(r: Rx): number {
-  const sec = /(\d+)\s*s\b(?!\s*(ținut|sus|pauză))/.exec(r.reps);
-  if (sec && !/rep/.test(r.reps) && /^\d+[–-]?\d*\s*s/.test(r.reps.trim())) return Math.min(90, Math.max(30, Number(sec[1])));
-  const nums = (r.reps.split('—')[0] ?? r.reps).match(/\d+/g)?.map(Number).filter((n) => n > 0 && n <= 100) ?? [];
-  const per = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 10;
-  return Math.min(90, Math.max(30, per * 3));
+// ——— Durata unei serii (auditul v93, A52): din structura repetărilor, nu din media cifrelor ———
+// Reperele (estimări de produs AIRON, nu măsurători): o repetare controlată ~3 s; o repetare cu menținere = 2 s de
+// mișcare + secundele ținute; o repetare „rapidă” ~1,5 s; un pas ~1,5 s (la mersul fandat ~2,5 s); un puls ~1,2 s;
+// „lent” ~5 s. Pe o parte („pe picior”, „/braț”, „pe fiecare parte”) seria se face de două ori, cu ~15 s la schimbare.
+const REP_SEC = 3;
+const HOLD_MOVE_SEC = 2;
+const FAST_SEC = 1.5;
+const STEP_SEC = 1.5;
+const LUNGE_STEP_SEC = 2.5;
+const PULSE_SEC = 1.2;
+const SLOW_SEC = 5;
+const LIGHT_SEC = 2.5;
+const mean = (a: number, b?: number) => (b == null || Number.isNaN(b) ? a : (a + b) / 2);
+const num = (m: RegExpExecArray) => mean(Number(m[1]), m[2] ? Number(m[2]) : undefined);
+
+/** Câte părți are seria: 2 la exercițiile pe o parte (dacă repetările nu sunt deja totalul pe ambele părți). */
+export function setSides(r: { reps: string; ex: { unilateral?: boolean } }): 1 | 2 {
+  const t = r.reps.toLowerCase();
+  // „20 (10 pe fiecare picior)”, „10 pași stânga + 10 dreapta”, „o repetare = stânga + dreapta”: totalul e deja scris.
+  if (/\(\s*\d+\s*(pe|\/)/.test(t) || /stânga\s*\+|o repetare = stânga/.test(t)) return 1;
+  if (r.ex.unilateral || /pe fiecare (parte|picior|braț)|\/\s*(parte|picior|braț)|\bpe (picior|parte|braț)\b/.test(t)) return 2;
+  return 1;
+}
+
+/**
+ * Lucrul unei serii (s), pe o parte, pentru seria `i` (piramidele au repetări diferite pe serii). Exemple: „40, ții 3 s
+ * la fiecare deschidere; la ultima ții 10 s” = 40 × (2 + 3) + 10 = 210 s (înainte: 53 s); „40: 30 cu 3 s ținut sus +
+ * 10 rapide” = 30 × 5 + 10 × 1,5 = 165 s.
+ */
+export function setWorkSec(r: { reps: string }, i = 0): number {
+  const t = (r.reps.split('—')[0] ?? r.reps).toLowerCase().trim();
+  // Doar timp: „30–45 s”, „1 min ținut”, „20 s pe fiecare picior”.
+  const time = /^(\d+)\s*(?:[–-]\s*(\d+))?\s*(s|sec|min)\b/.exec(t);
+  if (time) return Math.round(num(time) * (time[3] === 'min' ? 60 : 1));
+  // Distanță (transport): ~1 s pe metru.
+  const dist = /^(\d+)\s*(?:[–-]\s*(\d+))?\s*m\b/.exec(t);
+  if (dist) return Math.round(num(dist));
+  // Piramidă: „20 / 15 / 12 / 8”, fiecare serie cu ținta ei.
+  const pyr = /^(\d+(?:\s*\/\s*\d+){2,})/.exec(t);
+  if (pyr) {
+    const steps = pyr[1]!.split('/').map((x) => Number(x.trim()));
+    return steps[Math.min(i, steps.length - 1)]! * REP_SEC;
+  }
+  // „la ultima (repetare) ții 10 s”: o singură menținere, la final.
+  const lastHold = /la ultima(?: repetare)? ții (\d+)\s*s/.exec(t);
+  const extra = lastHold ? Number(lastHold[1]) : 0;
+  const body = t.replace(/la ultima(?: repetare)? ții \d+\s*s/, '');
+  const times = /de (\d+) ori/.exec(body);
+  const k = times ? Number(times[1]) : 1;
+  // Pași: „10 pași stânga + 10 dreapta”, „4 pași stânga + 4 dreapta, de 5 ori”, „10 pași înainte + 10 înapoi”.
+  if (/pași/.test(body)) {
+    const steps = [...body.replace(/de \d+ ori/, '').matchAll(/(\d+)(?:\s*[–-]\s*(\d+))?/g)].map((m) => mean(Number(m[1]), m[2] ? Number(m[2]) : undefined));
+    const per = /înainte|înapoi/.test(body) ? LUNGE_STEP_SEC : STEP_SEC;
+    return Math.round(steps.reduce((a, b) => a + b, 0) * k * per + extra);
+  }
+  // Segmente: „30 cu 3 s ținut sus + 10 rapide”, „20 cu 3 s sus + 10 rapide”; altfel un singur segment.
+  const segs = body.includes('+') ? body.replace(/^\d+\s*(pe picior)?\s*:/, '').split('+') : [body];
+  let sec = 0;
+  for (const seg of segs) {
+    const n0 = /(\d+)(?:\s*[–-]\s*(\d+))?/.exec(seg);
+    if (!n0) continue;
+    const hold = /(?:cu|ții)\s*(\d+)\s*s\b|(\d+)\s*s\s*(?:ținut|sus)/.exec(seg);
+    const h = hold ? Number(hold[1] ?? hold[2]) : 0;
+    const per = h ? HOLD_MOVE_SEC + h : /rapid/.test(seg) ? FAST_SEC : /puls/.test(seg) ? PULSE_SEC : /lent/.test(seg) ? SLOW_SEC : /greutate mică/.test(seg) ? LIGHT_SEC : /o repetare = stânga/.test(seg) ? 2 * REP_SEC : REP_SEC;
+    sec += num(n0) * per;
+  }
+  return Math.round(Math.max(10, sec) * k + extra);
 }
 const SIDE_SWITCH_SEC = 15;
 /** În superserie, trecerea de la un exercițiu la următorul (~15 s); pauza întreagă vine după ultimul din grup. */
@@ -957,9 +1017,30 @@ const FIT_SETUP_SEC = 90;
 
 /** Durata (s) a unui exercițiu: fiecare serie = lucru (+ ambele părți la unilateral) + pauză (sau trecerea în superserie). */
 function itemSec(r: Rx, lastInGroup: boolean): number {
-  const uni = r.ex.unilateral && !/\(\d+\s*(pe|\/)/.test(r.reps);
+  const sides = setSides(r);
   const rest = r.ss && !lastInGroup ? SS_SWITCH_SEC : r.rest;
-  return r.sets * (workSec(r) * (uni ? 2 : 1) + (uni ? SIDE_SWITCH_SEC : 0) + rest);
+  let sec = 0;
+  for (let i = 0; i < r.sets; i++) sec += setWorkSec(r, i) * sides + (sides === 2 ? SIDE_SWITCH_SEC : 0) + rest;
+  return sec;
+}
+
+/**
+ * Seriile de lucru ale săptămânii (auditul v93, A52), cu convenția scrisă: mușchiul principal (primul din „group”)
+ * primește 1 pe serie, ceilalți mușchi din „group” câte 0,5. E o convenție de numărare, nu o măsurătoare fiziologică.
+ */
+export function weekSetTotals(rxs: Pick<Prescription, 'items'>[]): { total: number; byMuscle: Record<string, number> } {
+  const byMuscle: Record<string, number> = {};
+  let total = 0;
+  for (const p of rxs)
+    for (const r of p.items) {
+      total += r.sets;
+      r.ex.group
+        .split(',')
+        .map((g) => g.replace(/\(.*$/, '').trim())
+        .filter(Boolean)
+        .forEach((g, k) => (byMuscle[g] = (byMuscle[g] ?? 0) + r.sets * (k === 0 ? 1 : 0.5)));
+    }
+  return { total, byMuscle };
 }
 
 /** Minutele de exerciții + încălzire (fără cardio-ul de final). */
@@ -1199,7 +1280,7 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
   if (spec.block === 'acomodare') {
     notes.push(spec.week <= 2 ? 'învățare: 3 serii pe exercițiu, cu greutăți ușoare — te oprești când mai aveai 3–4 repetări; notează greutățile folosite' : 'consolidare: rămân 3 serii; progresezi în control și repetări');
     notes.push('fără istoric de greutăți: alegi greutatea cu care faci repetările fără să mergi până la limită');
-  } else if (spec.transition) notes.push(wide ? 'prima săptămână cu patru ședințe A–D: 3 serii la toate; doza de construire vine după, dacă merge bine' : 'prima săptămână cu mai multe zile: 3 serii la toate; volumul crește apoi, nu dintr-odată');
+  } else if (spec.transition) notes.push(wide ? 'prima săptămână cu patru ședințe A–D: 3 serii la toate; doza de construire vine după, dacă merge bine' : 'prima săptămână cu mai multe zile: 3 serii la toate exercițiile; ședința în plus adaugă serii pe săptămână, așa că restul crește abia după ce o ții');
   if (spec.block === 'mentinere') notes.push('menținere: 3 serii, păstrezi performanța, nu trebuie să crești');
   if (spec.recovery) {
     for (const r of items) r.rir = '3–4';

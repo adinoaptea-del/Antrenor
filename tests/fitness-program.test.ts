@@ -63,8 +63,10 @@ test('stagnare: aceleași repetări nu cresc greutatea; scăderea de două ori c
 
 test('4) durata include ambele picioare și schimbarea părții', () => {
   const bul = { ex: CATALOG['fit-bulgarian']!, sets: 2, reps: '8–10/picior', rir: '2–3', rest: 105 };
-  const bilat = { ...bul, ex: { ...bul.ex, unilateral: false } };
-  assert.ok(estimateMinutes([bul]) - estimateMinutes([bilat]) >= (2 * (30 + 15)) / 60 - 0.01);
+  // Martorul pe ambele picioare: același exercițiu fără „/picior” (auditul v93, A52: părțile se citesc din text și din
+  // exercițiu). Diferența = a doua parte (9 repetări × 3 s) + schimbarea părții (15 s), la fiecare din cele 2 serii.
+  const bilat = { ...bul, reps: '8–10', ex: { ...bul.ex, unilateral: false } };
+  assert.ok(estimateMinutes([bul]) - estimateMinutes([bilat]) >= (2 * (27 + 15)) / 60 - 0.01);
   const a = prescribeFull({ session: 'fa', block: 'construire', week: 1, len: 4 });
   assert.ok(a.minutes >= 55 && a.minutes <= 75, `A durează ${a.minutes} min (programul: 55–70)`);
 });
