@@ -121,3 +121,20 @@ test('întâmpinarea-sferă: curbare și vibrație înainte de desprindere, text
   assert.equal(m.sphereSceneOpacity(E.interfata[0]), 1);
   assert.equal(m.sphereSceneOpacity(m.SPHERE_EXIT_MS), 0);
 });
+
+test('furtuna: fără trepte — energia e un clopot lin, rotația pornește și se oprește lin, etapele se suprapun', async () => {
+  const m = await import('../src/motion/teleport.js');
+  // Continuitate: nicio variație mare între două cadre (16 ms) la nicio curbă, pe toată ieșirea.
+  const curves = [m.stormEnergy, m.stormRecomposeGlow, (o: number) => m.stormSpin(o) / 10, (o: number) => m.stormTextAlpha(5000, o), (o: number) => m.stormBody(5000, o), m.stormParticleFade, m.stormHomeBuild, m.stormContentAlpha, m.stormSceneOpacity];
+  for (const f of curves) for (let o = 0; o < m.STORM_OUT_MS; o += 16) assert.ok(Math.abs(f(o + 16) - f(o)) < 0.08, `salt la ${o} ms`);
+  for (let t = 0; t < 5000; t += 16) assert.ok(Math.abs(m.stormTextAlpha(t + 16, null) - m.stormTextAlpha(t, null)) < 0.08 && Math.abs(m.stormBody(t + 16, null) - m.stormBody(t, null)) < 0.08);
+  // Rotația: crește monoton și se oprește (viteza ~0 la capete).
+  const s1 = m.stormSpin(m.STORM_OUT.recompunere[1]);
+  assert.ok(s1 > 6 && s1 < 16, `rotații totale ~1–2 ture (${s1.toFixed(1)} rad)`);
+  assert.ok(m.stormSpin(m.STORM_OUT.vartej[0] + 50) < 0.01 && Math.abs(m.stormSpin(m.STORM_OUT_MS) - s1) < 1e-9);
+  // Suprapuneri: bula de Acasă începe să se construiască înainte ca vârtejul să se fi oprit; antrenamentele după.
+  assert.ok(m.STORM_OUT.preluare[0] < m.STORM_OUT.recompunere[1]);
+  assert.ok(m.stormHomeBuild(m.STORM_OUT.continut[0]) > 0.9);
+  assert.equal(m.stormSceneOpacity(m.STORM_OUT.continut[1] - 200), 1, 'interfața rămâne ascunsă până la final');
+  assert.ok(m.STORM_READY_MS >= m.STORM_IN.forma[1]);
+});

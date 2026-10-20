@@ -278,3 +278,95 @@ export function sphereContentAlpha(out: number): number {
 export function sphereSceneOpacity(out: number | null): number {
   return out == null ? 1 : 1 - easeInOut(span(out, SPHERE_EXIT.interfata));
 }
+
+// ——— Întâmpinarea „furtună” (cererea proprietarului, 20.10.2026, 11:07) ———
+// Sfera de întâmpinare se formează din sute de mii de particule venite de peste tot, exact pe locul bulei de Acasă.
+// Fără „boom” și fără shake: fiecare etapă e o curbă lină care se suprapune cu următoarea (nicio treaptă). La trecerea
+// spre Acasă, un vârtej (ca o furtună de nisip: haotic, dar estetic) descompune sfera și recompune, pe același loc,
+// bula reală de Acasă. Timpi de pornire, de ajustat vizual.
+export const STORM_IN = {
+  praf: [0, 700],
+  adunare: [400, 3300],
+  forma: [2800, 3900],
+  mesaj: [3400, 4200],
+} as const;
+export const STORM_READY_MS = 3900;
+export const STORM_OUT = {
+  stinge: [0, 700],
+  vartej: [300, 1900],
+  recompunere: [1900, 3900],
+  preluare: [2600, 4300],
+  continut: [4300, 4900],
+  interfata: [4700, 5400],
+} as const;
+export const STORM_OUT_MS = STORM_OUT.interfata[1];
+export type StormPhase = keyof typeof STORM_IN | 'repaus' | keyof typeof STORM_OUT;
+export const STORM_LABEL: Record<StormPhase, string> = {
+  praf: 'Praf în spațiu',
+  adunare: 'Particulele se adună',
+  forma: 'Sfera prinde formă',
+  mesaj: 'Mesajul',
+  repaus: 'Repaus',
+  stinge: 'Mesajul se stinge',
+  vartej: 'Vârtejul crește',
+  recompunere: 'Vârtejul recompune bula',
+  preluare: 'Bula de Acasă preia',
+  continut: 'Antrenamentele apar',
+  interfata: 'Restul interfeței',
+};
+export function stormPhaseAt(t: number, out: number | null): StormPhase {
+  if (out == null) {
+    if (t < STORM_IN.praf[1]) return 'praf';
+    if (t < STORM_IN.forma[0]) return 'adunare';
+    if (t < STORM_IN.mesaj[0]) return 'forma';
+    if (t < STORM_IN.mesaj[1]) return 'mesaj';
+    return 'repaus';
+  }
+  if (out < STORM_OUT.vartej[0]) return 'stinge';
+  if (out < STORM_OUT.vartej[1]) return 'vartej';
+  if (out < STORM_OUT.preluare[0]) return 'recompunere';
+  if (out < STORM_OUT.continut[0]) return 'preluare';
+  if (out < STORM_OUT.interfata[0]) return 'continut';
+  return 'interfata';
+}
+/** Energia vârtejului (0..1): crește lin, apoi se stinge lin; un singur clopot, fără trepte. */
+export function stormEnergy(out: number | null): number {
+  if (out == null) return 0;
+  return easeInOut(span(out, STORM_OUT.vartej)) * (1 - easeInOut(span(out, STORM_OUT.recompunere)));
+}
+/** Rotația acumulată a vârtejului (rad): integrala vitezei unghiulare (proporțională cu energia), deci pornește și se oprește lin. */
+export function stormSpin(out: number | null, maxRadPerS = 6.5): number {
+  if (out == null || out <= STORM_OUT.vartej[0]) return 0;
+  const end = Math.min(out, STORM_OUT.recompunere[1]);
+  let acc = 0;
+  const step = 10;
+  for (let x = STORM_OUT.vartej[0]; x < end; x += step) acc += stormEnergy(x + step / 2) * maxRadPerS * (Math.min(step, end - x) / 1000);
+  return acc;
+}
+export function stormTextAlpha(t: number, out: number | null): number {
+  return easeInOut(span(t, STORM_IN.mesaj)) * (out == null ? 1 : 1 - easeInOut(span(out, STORM_OUT.stinge)));
+}
+/** Corpul sferei (halou, membrană): apare la formă, pleacă lin când pornește vârtejul. */
+export function stormBody(t: number, out: number | null): number {
+  return easeInOut(span(t, STORM_IN.forma)) * (out == null ? 1 : 1 - easeInOut(span(out, [200, 1400])));
+}
+/** Particulele furtunii se sting cât bula reală le preia locul. */
+export function stormParticleFade(out: number | null): number {
+  return out == null ? 1 : 1 - easeInOut(span(out, [3700, 4700]));
+}
+/** Cât din bula reală de Acasă e construită (volum + particule). */
+export function stormHomeBuild(out: number | null): number {
+  return out == null ? 0 : easeInOut(span(out, STORM_OUT.preluare));
+}
+export function stormContentAlpha(out: number | null): number {
+  return out == null ? 0 : easeInOut(span(out, STORM_OUT.continut));
+}
+export function stormSceneOpacity(out: number | null): number {
+  return out == null ? 1 : 1 - easeInOut(span(out, STORM_OUT.interfata));
+}
+
+/** Lumina recompunerii: particulele rămân vizibile cât se adună înapoi în sferă, până preia bula reală (fără gol întunecat). */
+export function stormRecomposeGlow(out: number | null): number {
+  if (out == null) return 0;
+  return easeInOut(span(out, [1400, 2600])) * (1 - easeInOut(span(out, [3300, 4500])));
+}

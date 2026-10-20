@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, SPHERE_EXIT, SPHERE_EXIT_MS, SPHERE_LABEL, type PhaseName, type SpherePhase } from '@core/motion/teleport.js';
-import { WelcomeSphere } from './WelcomeSphere';
+import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, STORM_IN, STORM_OUT, STORM_OUT_MS, STORM_LABEL, type PhaseName, type StormPhase } from '@core/motion/teleport.js';
+import { WelcomeStorm, webglOk } from './WelcomeStorm';
 import { cheerFor } from '@core/cheers.js';
 import { CosmicMessage, type CosmicClock } from './Cosmic';
 import { Orb } from './Orb';
@@ -24,8 +24,8 @@ const MODES: [Mode, string][] = [
   ['tub', 'Tub'],
 ];
 /** Pe cursor: 0–3400 ms scena deschisă (intrare ~2,5 s + repaus), apoi ieșirea „03” și dezvăluirea Acasă. */
-const OPEN_END = 3400;
-const TOTAL = OPEN_END + Math.max(EXIT_MS, SPHERE_EXIT_MS);
+const OPEN_END = 5000;
+const TOTAL = OPEN_END + Math.max(EXIT_MS, STORM_OUT_MS);
 const mid = (r: readonly [number, number]) => Math.round((r[0] + r[1]) / 2);
 const JUMP: Record<PhaseName, number> = {
   liniste: mid(PHASES.liniste),
@@ -41,19 +41,23 @@ const JUMP: Record<PhaseName, number> = {
   ecou: OPEN_END + mid(EXIT.ecou),
   dezvaluire: OPEN_END + mid(EXIT.dezvaluire),
 };
-const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'curbare', 'unda', 'desprindere', 'transfer', 'continut', 'interfata']);
-/** Întâmpinarea: sfera vie; ieșirea e transferul materiei în bula de Acasă (aici, bula din laborator). */
-const JUMP_SPHERE: Record<SpherePhase, number> = {
-  curbare: OPEN_END + 400,
-  unda: OPEN_END + 700,
-  estompare: OPEN_END + 900,
-  desprindere: OPEN_END + 1700,
-  transfer: OPEN_END + 3000,
-  continut: OPEN_END + mid(SPHERE_EXIT.continut),
-  interfata: OPEN_END + mid(SPHERE_EXIT.interfata),
-};
-type AnyPhase = PhaseName | SpherePhase;
-const labelOf = (p: AnyPhase) => (p in SPHERE_LABEL && !(p in PHASE_LABEL) ? SPHERE_LABEL[p as SpherePhase] : PHASE_LABEL[p as PhaseName]);
+const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'stinge', 'vartej', 'recompunere', 'preluare', 'continut', 'interfata']);
+/** Întâmpinarea „furtună”: intrarea din praf și vârtejul care recompune bula de Acasă (aici, bula din laborator). */
+const JUMP_STORM: [StormPhase, number][] = [
+  ['praf', mid(STORM_IN.praf)],
+  ['adunare', 1800],
+  ['forma', mid(STORM_IN.forma)],
+  ['mesaj', mid(STORM_IN.mesaj)],
+  ['repaus', 4700],
+  ['stinge', OPEN_END + 350],
+  ['vartej', OPEN_END + 1500],
+  ['recompunere', OPEN_END + 2600],
+  ['preluare', OPEN_END + 3700],
+  ['continut', OPEN_END + mid(STORM_OUT.continut)],
+  ['interfata', OPEN_END + mid(STORM_OUT.interfata)],
+];
+type AnyPhase = PhaseName | StormPhase;
+const labelOf = (p: AnyPhase, welcome = false) => (welcome && p in STORM_LABEL ? STORM_LABEL[p as StormPhase] : (PHASE_LABEL[p as PhaseName] ?? STORM_LABEL[p as StormPhase]));
 
 export function GraphicsLab({ name, onClose }: { name: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('intampinare');
@@ -107,7 +111,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   };
   const jumps: [AnyPhase, number][] =
     mode === 'intampinare'
-      ? [...(Object.entries(JUMP) as [PhaseName, number][]).filter(([p]) => !['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire'].includes(p)), ...(Object.entries(JUMP_SPHERE) as [SpherePhase, number][])]
+      ? JUMP_STORM
       : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
     tl.current.closeAt = v > OPEN_END ? OPEN_END : null;
@@ -162,8 +166,8 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <small>trebuie să apară doar la final</small>
             </span>
           </div>
-          {!ended && mode === 'intampinare' && (
-            <WelcomeSphere
+          {!ended && mode === 'intampinare' && webglOk() && (
+            <WelcomeStorm
               key={`${mode}-${run}`}
               inline
               kicker="Ziua 12 din 342"
@@ -183,13 +187,13 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               text={mode === 'reusita' ? (cheer?.text ?? 'Ai bifat ședința.') : `Fiecare zonă 2 făcută cum trebuie e o cărămidă în plus${first ? `, ${first}` : ''}.`}
               clock={clock}
               onRequestContinue={closeNow}
-              onPhase={setPhase}
+              onPhase={(p) => setPhase(p as AnyPhase)}
               onClose={() => setEnded(true)}
             />
           )}
           <div className={`gfx-bar ${compact ? 'compact' : ''}`}>
             <div className="gfx-phase">
-              {labelOf(phase)} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
+              {labelOf(phase, mode === 'intampinare')} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
             </div>
             <input type="range" min={0} max={TOTAL} value={Math.round(ui.T)} onChange={(e) => scrub(Number(e.target.value))} aria-label="Momentul scenei" />
             <div className="wk-btns">
@@ -212,7 +216,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
             <div className="wk-btns gfx-jumps">
               {jumps.map(([p, at]) => (
                 <button key={p} className={`pill ${phase === p ? 'on' : ''}`} onClick={() => jump(p, at)}>
-                  {labelOf(p)}
+                  {labelOf(p, mode === 'intampinare')}
                 </button>
               ))}
             </div>
