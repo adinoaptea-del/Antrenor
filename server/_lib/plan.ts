@@ -216,7 +216,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const result: GenerateResult = generatePlan({
     walk: walk ? { profile: prefs.mers!, demonstratedMin: await walkDemonstrated(userId, today) } : undefined,
     fixed: prefs.fixe,
-    fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv as Goal, intake.fitness), continuing ? current!.id : null) : undefined,
+    fitness: fitness ? await fitnessWithAttendance(userId, today, fitnessProfile(intake.obiectiv as Goal, intake.fitness, { sarcina: intake.sarcina ?? null }), continuing ? current!.id : null) : undefined,
     startDate,
     raceDate: intake.dataCursa,
     goal: intake.obiectiv as Goal,

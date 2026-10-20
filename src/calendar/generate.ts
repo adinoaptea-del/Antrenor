@@ -1,5 +1,5 @@
 import { fixedBonus, type FixedMeet } from './actions.js';
-import { FULL_ROTATION, PPL_ROTATION, isLegsSession, newSplitState, nextSplit, prescribe, strengthBlocks, strengthStructure, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
+import { PPL_ROTATION, isLegsSession, newSplitState, nextSplit, prescribe, splitFamily, strengthBlocks, strengthStructure, upperLowerWeek, type LegsMode, type SessionId, type StrengthSpec } from '../strength/ppl.js';
 import { enforceLimits, enforceSpacing, fitStructure } from './validate.js';
 import { BIKE_TEST, BRICK_TRANSITION_MIN, RUN_TEST, brickText, normalizeWorkout } from './coherence.js';
 // Generatorul primului calendar: din bugetul de ore real, din volumul ultimelor 8 săptămâni și din data cursei.
@@ -377,33 +377,44 @@ function strengthSessions(p: Phase, slots: number): Session[] {
  * Forța, după programul AIRON (src/strength/ppl.ts): blocurile programului se întind pe săptămânile până la cursă
  * (strânse sub 26, extinse peste), fiecare ședință primește varianta din rotație și doza blocului, apoi conținutul
  * se potrivește în minutele pe care le are ședința în calendar (accesoriile cad primele, pauzele rămân întregi).
- * Rotația: 3+ ședințe pe săptămână → Push A, Pull A, Legs A, Push B, Pull B, Legs B; 1–2 → tot corpul A/B.
- * Bărbații (`split = 'ppl'`, cerința proprietarului): mereu Push → Pull → Picioare, oricâte ședințe sunt pe săptămână,
- * cu exerciții care se schimbă de la o ședință la alta (varianta).
- * Picioarele: în PPL, Legs nu cade în ajunul unei ședințe-cheie (trece la următoarea); cu tot corpul, picioarele sunt
- * ușoare în ajunul ei. În ultimele 10 zile dinaintea cursei, fără picioare.
+ * Structura după frecvența săptămânii (auditul v93, A50; decizia proprietarului, 20.10.2026), nu după sex:
+ *  - 1 ședință: tot corpul (excepția „fullBody”, singurul caz în care picioarele merg cu partea de sus);
+ *  - 2 ședințe: picioare / partea de sus, fiecare o dată pe săptămână (picioarele în ziua care nu e în ajunul cheii);
+ *  - 3+: bărbații (`split = 'ppl'`) Push → Pull → Picioare cu exerciții care se schimbă; ceilalți Push A … Legs B.
+ * Picioarele: în PPL nu cad în ajunul unei ședințe-cheie (trec la următoarea, dar nu dispar — vin ușoare după o
+ * ședință de așteptare); cu sus / jos, picioarele sunt ușoare în ajunul ei. În ultimele 10 zile dinaintea cursei, fără
+ * picioare.
  */
 export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?: 'ppl'): void {
   const blocks = strengthBlocks(weeks.length);
   const keyDates = new Set(weeks.flatMap((w) => w.workouts.filter((x) => x.key).map((x) => x.date)));
   let pplI = 0;
-  let fullI = 0;
   let deferred: SessionId | null = null;
   const st = newSplitState();
   weeks.forEach((w, wi) => {
     const bw = blocks[wi] ?? { block: 'mentinere' as const, week: 1, len: 1 };
     const fs = w.workouts.filter((x) => x.type === 'forta').sort((a, b) => (a.date < b.date ? -1 : 1));
-    const ppl = fs.length >= 3;
-    for (const x of fs) {
+    const family = splitFamily(fs.length);
+    const ul = family === 'upper-lower' ? upperLowerWeek(fs.map((x) => keyDates.has(addDays(x.date, 1)))) : [];
+    fs.forEach((x, k) => {
       const beforeKey = keyDates.has(addDays(x.date, 1));
       const nearRace = raceDate ? diffDays(x.date, raceDate) <= 10 : w.phase === 'taper';
       let session: SessionId;
       let variant: number | undefined;
-      if (split === 'ppl') {
+      let legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
+      if (family === 'full') {
+        session = 'full';
+      } else if (family === 'upper-lower') {
+        session = ul[k]!.session;
+        if (!nearRace) legs = ul[k]!.legs;
+        // Lângă cursă, ziua de picioare devine partea de sus.
+        if (session === 'fullA' && nearRace) session = 'fullB';
+      } else if (split === 'ppl') {
         const n = nextSplit(st, beforeKey, nearRace);
         session = n.session;
         variant = n.variant;
-      } else if (ppl) {
+        legs = nearRace ? 'fara' : n.light ? 'usor' : 'normal';
+      } else {
         if (deferred && !beforeKey && !nearRace) {
           session = deferred;
           deferred = null;
@@ -415,18 +426,16 @@ export function assignStrengthDays(weeks: WeekPlan[], raceDate?: string, split?:
             if (isLegsSession(session)) session = PPL_ROTATION[pplI++ % PPL_ROTATION.length]!;
           }
         }
-      } else {
-        // Două ședințe: picioare și partea de sus, alternativ. Lângă cursă, ziua de picioare devine partea de sus.
-        session = FULL_ROTATION[fullI++ % FULL_ROTATION.length]!;
-        if (session === 'fullA' && nearRace) session = 'fullB';
       }
-      const legs: LegsMode = nearRace ? 'fara' : beforeKey ? 'usor' : 'normal';
-      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs: split === 'ppl' && legs === 'usor' ? 'normal' : legs, ...(variant != null ? { variant } : {}) };
+      // Taper (blocul „înainte de cursă”): excepție de la regula 20 (decizia proprietarului, 20.10.2026, A49) — varianta
+      // scurtă de ~30 min, 2–3 serii, nimic nou.
+      const taper = bw.block === 'precursa';
+      const spec: StrengthSpec = { session, block: bw.block, week: bw.week, len: bw.len, recovery: w.recovery, legs, ...(variant != null ? { variant } : {}), ...(taper ? { reduced: { why: 'taper' as const, minutes: Math.min(30, x.plannedMinutes) } } : {}) };
       const rx = prescribe(spec, x.plannedMinutes);
       x.structure = strengthStructure(spec);
       // O singură durată: cea a prescripției (cel puțin 45 de minute, cel mult cât are în calendar când încape).
       x.plannedMinutes = rx.minutes;
-    }
+    });
   });
 }
 

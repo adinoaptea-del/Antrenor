@@ -63,12 +63,13 @@ describe('auditul v93 · aceeași protecție în toate sporturile', () => {
     assert.equal(restrictionOf('rosu', 'Durere 6/10 la genunchi'), 'stop');
     assert.equal(restrictionOf('rosu', 'Somn 4 h, HRV mult sub medie'), 'short');
   });
-  it('T08/A05: galben de recuperare → și forța primește varianta ușoară (aceleași serii, greutăți mai mici)', () => {
+  it('T08/A05: galben de recuperare → și forța primește varianta ușoară (scurtă, 2 serii — excepția A49 din 20.10.2026)', () => {
     const f: PlannedWorkout = { id: 'f', date: today, sport: 'forta', type: 'forta', plannedMinutes: 55, targetZones: [], key: false, status: 'planificat', structure: strengthStructure({ session: 'pushA', block: 'baza', week: 1, len: 4 } as never) };
     const out = adapt([f], { kind: 'readiness', date: today, verdict: 'galben', reason: 'HRV sub medie' }, ctx).plan[0]!;
     assert.equal(out.status, 'planificat');
     assert.equal(out.suggestion?.accepted, null);
-    assert.ok(out.suggestion!.minutes >= 45);
+    // Decizia proprietarului (20.10.2026, A49): sugestia de recuperare e o excepție de la 45 de minute / 3 serii.
+    assert.ok(out.suggestion!.minutes >= 20 && out.suggestion!.minutes < 45);
   });
   it('T09/A07: durere la umăr → fără înot ca alternativă; înotul și sala primesc varianta ușoară, alergarea rămâne', () => {
     const run: PlannedWorkout = { id: 'r', date: today, sport: 'alergare', type: 'z2', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat' };

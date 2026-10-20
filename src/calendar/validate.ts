@@ -1,6 +1,6 @@
 import { moduleStructure, parseModule } from './run-modules.js';
 import { normalizeWorkout } from './coherence.js';
-import { parseStrength, MIN_STRENGTH_MINUTES, prescribe } from '../strength/ppl.js';
+import { parseStrength, MIN_STRENGTH_MINUTES, prescribe, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
 // Validatorul final al planului: rulează după generare (și după plasare și scurtare). Nicio fază, șablon sau
 // progresie nu poate trece de limitele sportivului:
 //  - intensitate permisă Z2 (fără aviz cardiologic sau cu analize care limitează): nimic peste Z2, fără intervale;
@@ -190,6 +190,12 @@ function swapTarget(all: PlannedWorkout[], victim: PlannedWorkout): PlannedWorko
 export function resizeWorkout(w: PlannedWorkout, minutes: number): PlannedWorkout {
   if (w.type === 'forta') {
     const spec = parseStrength(w.structure);
+    // Timpul declarat sub 45 de minute e o excepție de la regula 20 (decizia proprietarului, 20.10.2026, A49): varianta
+    // scurtă (minimum 2 serii), cu motivul în textul ședinței; durata = a prescripției. De la 45 în sus, regula rămâne.
+    if (spec && minutes < MIN_STRENGTH_MINUTES) {
+      const short: StrengthSpec = { ...spec, reduced: { why: spec.reduced?.why ?? 'timp', minutes: Math.min(minutes, spec.reduced?.minutes ?? minutes) } };
+      return { ...w, structure: strengthStructure(short), plannedMinutes: prescribe(short, minutes).minutes };
+    }
     // Forța nu scade sub 45 de minute (regula proprietarului): durata e a prescripției, nu a minutelor cerute.
     return { ...w, plannedMinutes: spec ? prescribe(spec, minutes).minutes : Math.max(MIN_STRENGTH_MINUTES, minutes) };
   }

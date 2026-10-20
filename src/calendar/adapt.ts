@@ -4,7 +4,7 @@
 import { fitStructure, resizeWorkout, shortenWorkout } from './validate.js';
 import { brickSplit, normalizeWorkout } from './coherence.js';
 import { applyProgression, type Execution } from './progression.js';
-import { MIN_STRENGTH_MINUTES, SESSIONS, isFitnessSession, parseStrength, prescribe, strengthStructure } from '../strength/ppl.js';
+import { MIN_STRENGTH_MINUTES, SESSIONS, isFitnessSession, isMaintenanceSession, parseStrength, prescribe, rotationGroup, sessionKind, strengthStructure, type StrengthSpec } from '../strength/ppl.js';
 import { painRegion } from './safety.js';
 import type { CoverOption } from './load.js';
 import { isActiveWorkout, type Activity, type Color, type FreeBlock, type PlannedWorkout, type Sport } from '../types.js';
@@ -78,14 +78,16 @@ const FEVER_HALF_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: v
  */
 export const EXTRA_CANCEL_NOTE = /^(acoperită|gata pe azi|efort mare azi|zi de cursă neplanificată)/;
 export const EXTRA_SHORT_NOTE = /^scurtat la \d+ min: a mai rămas atât din efortul zilei/;
-export function suggestLighter(x: PlannedWorkout, reason: string, minutes?: number): boolean {
+export function suggestLighter(x: PlannedWorkout, reason: string, minutes?: number, opts: { safety?: boolean } = {}): boolean {
   if (x.type === 'odihna' || x.suggestion?.accepted != null) return false;
   if (x.sport === 'forta') {
     const sp = parseStrength(x.structure);
     if (!sp) return false;
-    // Forța: aceleași exerciții și serii, greutăți mai mici; nu scade sub minimul de 45 de minute (regula 20).
-    const light = { ...sp, recovery: true };
-    const m = Math.max(MIN_STRENGTH_MINUTES, prescribe(light, MIN_STRENGTH_MINUTES).minutes);
+    // Forța, efort în plus (regula 29): aceleași exerciții și serii, greutăți mai mici, cel puțin 45 de minute.
+    // Recuperare la jumătate / restricție de siguranță (excepția din 20.10.2026, A49): varianta scurtă — 2 serii pe
+    // exercițiu, ~60% din durată (cel puțin 20 min), cu motivul scris în ședință.
+    const light: StrengthSpec = opts.safety ? { ...sp, recovery: true, reduced: { why: 'siguranta', minutes: Math.max(20, Math.min(30, Math.round((x.plannedMinutes * 0.6) / 5) * 5)) } } : { ...sp, recovery: true };
+    const m = opts.safety ? prescribe(light, light.reduced!.minutes).minutes : Math.max(MIN_STRENGTH_MINUTES, prescribe(light, MIN_STRENGTH_MINUTES).minutes);
     x.suggestion = { minutes: m, zones: [], structure: strengthStructure(light), reason, accepted: null };
     return true;
   }
@@ -118,7 +120,7 @@ export function restoreExtraCuts(plan: PlannedWorkout[], today: string): Planned
   return out;
 }
 
-const FEVER_STRENGTH_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: forță ușoară — aceleași 3 serii, greutăți mai mici; altfel pauză și reevaluare';
+const FEVER_STRENGTH_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: forță scurtă — 2 serii pe exercițiu, greutăți mai mici; altfel pauză și reevaluare';
 const isFeverHalf = (n: string | null | undefined) => n === FEVER_HALF_NOTE || n === FEVER_STRENGTH_NOTE || n === 'prima săptămână după febră: volum −50%, fără cheie';
 
 /**
@@ -302,7 +304,7 @@ function applyReadiness(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
     for (const x of today) {
       // Forța primește și ea varianta ușoară (aceleași serii, greutăți mai mici), nu rămâne neatinsă (auditul v93, A05).
       if (x.type === 'forta') {
-        if (suggestLighter(x, ev.reason ?? 'recuperarea de azi e la jumătate')) changes.push(`${x.id}: sugestie forță ușoară (greutăți mai mici); sportivul alege`);
+        if (suggestLighter(x, ev.reason ?? 'recuperarea de azi e la jumătate', undefined, { safety: true })) changes.push(`${x.id}: sugestie forță scurtă (2 serii, greutăți mai mici); sportivul alege`);
         continue;
       }
       if (x.type === 'odihna' || x.suggestion?.accepted != null) continue;
@@ -368,7 +370,7 @@ function applyPain(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'dure
     if (!isActiveWorkout(x) || done.has(x.id) || x.date < ev.date || x.date > until || x.suggestion?.accepted != null) continue;
     if (region === 'sus' || region === 'spate') {
       const hit = region === 'sus' ? x.sport === 'inot' || x.sport === 'forta' : x.sport === 'forta' || x.type === 'lung';
-      if (hit && suggestLighter(x, `durere ${ev.score}/10 la ${ev.loc}: doar dacă nu doare; dacă apare durerea, te oprești`)) changes.push(`${x.id}: sugestie ușoară (durere la ${ev.loc}), sportivul alege`);
+      if (hit && suggestLighter(x, `durere ${ev.score}/10 la ${ev.loc}: doar dacă nu doare; dacă apare durerea, te oprești`, undefined, { safety: true })) changes.push(`${x.id}: sugestie ușoară (durere la ${ev.loc}), sportivul alege`);
       continue;
     }
     if (x.sport === 'alergare') {
@@ -412,13 +414,14 @@ function applyFever(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'feb
       x.targetZones = x.sport === 'forta' ? [] : [1, 2];
       const sp = x.sport === 'forta' ? parseStrength(x.structure) : null;
       if (sp) {
-        // Forța nu scade sub 45 de minute și sub 3 serii (regula proprietarului): după febră devine ședință ușoară —
-        // greutăți mai mici, mai multe repetări în rezervă, durata minimă.
-        const light = { ...sp, recovery: true };
+        // Revenirea după boală e o excepție de la regula 20 (decizia proprietarului, 20.10.2026, A49): forța devine
+        // varianta scurtă — 2 serii pe exercițiu, greutăți mai mici, ~jumătate din durată (cel puțin 20 min), cu motivul
+        // scris în ședință (refacerea planului sau deschiderea aplicației nu o readuc la 45 de minute).
+        const light: StrengthSpec = { ...sp, recovery: true, reduced: { why: 'boala', minutes: Math.max(20, Math.round((x.plannedMinutes * 0.5) / 5) * 5) } };
         x.structure = strengthStructure(light);
-        x.plannedMinutes = prescribe(light, MIN_STRENGTH_MINUTES).minutes;
+        x.plannedMinutes = prescribe(light, light.reduced!.minutes).minutes;
         x.note = FEVER_STRENGTH_NOTE;
-        changes.push(`${x.id}: forță ușoară după febră (greutăți mai mici, ${x.plannedMinutes} min)`);
+        changes.push(`${x.id}: forță scurtă după febră (2 serii, greutăți mai mici, ${x.plannedMinutes} min)`);
         continue;
       }
       // Durata și conținutul din aceleași cifre (structura rescrisă).
@@ -614,29 +617,40 @@ function applyCoverChoice(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind
 function applyMissedStrength(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'forta-ratat' }>, ctx: AdaptContext, changes: string[]): void {
   const missed = plan.find((x) => x.id === ev.workoutId);
   const spec0 = missed ? parseStrength(missed.structure) : null;
-  if (!missed || !spec0 || !isFitnessSession(spec0.session)) return;
-  const monday = addDays(missed.date, -weekday(missed.date));
+  if (!missed || !spec0 || isMaintenanceSession(spec0.session)) return;
   const done = new Set(ctx.done ?? []);
-  const rest = plan
-    .filter((x) => x.type === 'forta' && isActiveWorkout(x) && !done.has(x.id) && x.date > missed.date && x.date >= ctx.today && diffDays(monday, x.date) < 7)
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
-  if (!rest.length) {
-    changes.push(`sală ratată pe ${missed.date}: ședința nu se recuperează (nu mai e altă zi de sală săptămâna asta); săptămâna viitoare pornește normal`);
+  // Cursorul rotației urmează execuția (auditul v93, A59), pe tot planul viitor, nu doar în săptămâna asta, la fitness
+  // și la PPL deopotrivă: ședința ratată trece în următorul slot de forță, iar fiecare slot ia ședința dinaintea lui.
+  // Slotul își păstrează data, blocul, săptămâna și restricțiile (picioare ușoare / fără picioare, varianta scurtă);
+  // se mută doar ședința și varianta. Lanțul se oprește la prima structură diferită (alt număr de ședințe pe săptămână:
+  // tot corpul / sus-jos / PPL) sau la un slot „fără picioare” care ar primi picioare — acolo cade ședința purtată, nu
+  // aceeași categorie în fiecare săptămână. Nimic dublat, nimic adăugat.
+  const group = rotationGroup(spec0.session);
+  const slots = plan
+    .filter((x) => x.type === 'forta' && isActiveWorkout(x) && !done.has(x.id) && x.date > missed.date && x.date >= ctx.today)
+    .map((x) => ({ x, sp: parseStrength(x.structure) }))
+    .filter((o): o is { x: PlannedWorkout; sp: StrengthSpec } => !!o.sp)
+    .sort((a, b) => (a.x.date < b.x.date ? -1 : 1));
+  let carry: { session: StrengthSpec['session']; variant?: number } = { session: spec0.session, ...(spec0.variant != null ? { variant: spec0.variant } : {}) };
+  const moved: string[] = [];
+  for (const { x, sp } of slots) {
+    if (rotationGroup(sp.session) !== group) break;
+    if (sp.legs === 'fara' && sessionKind(carry.session) !== 'U') break;
+    const next: StrengthSpec = { ...sp, session: carry.session };
+    if (carry.variant != null) next.variant = carry.variant;
+    else delete next.variant;
+    carry = { session: sp.session, ...(sp.variant != null ? { variant: sp.variant } : {}) };
+    const longest = ctx.freeBlocks.filter((b) => b.day === weekday(x.date)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
+    // Ședința mutată încape în timpul slotului ei din plan (nu crește), dar nu sub 45 de minute (în afara excepțiilor).
+    const avail = Math.max(MIN_STRENGTH_MINUTES, Math.min(longest || x.plannedMinutes, x.plannedMinutes, 75));
+    x.structure = strengthStructure(next);
+    x.plannedMinutes = prescribe(next, avail).minutes;
+    if (!x.note || /^rotația continuă după ședința ratată/.test(x.note)) x.note = `rotația continuă după ședința ratată din ${missed.date}`;
+    moved.push(x.date);
+  }
+  if (!moved.length) {
+    changes.push(`sală ratată pe ${missed.date}: nu mai e altă zi de sală cu aceeași structură; ${SESSIONS[spec0.session].name} nu se recuperează prin dublare`);
     return;
   }
-  // Decalare: fiecare slot rămas primește ședința dinaintea lui; ultima din săptămână rămâne nefăcută (nu se dublează).
-  const specs = [spec0, ...rest.map((x) => parseStrength(x.structure))];
-  rest.forEach((x, i) => {
-    const sp = specs[i];
-    if (!sp) return;
-    const longest = ctx.freeBlocks.filter((b) => b.day === weekday(x.date)).reduce((m, b) => Math.max(m, b.endMin - b.startMin), 0);
-    // Ședința mutată încape în timpul slotului ei din plan (nu crește), dar nu sub 45 de minute.
-    const avail = Math.max(MIN_STRENGTH_MINUTES, Math.min(longest || x.plannedMinutes, x.plannedMinutes, 75));
-    const rx = prescribe(sp, avail);
-    x.structure = strengthStructure(sp);
-    x.plannedMinutes = rx.minutes;
-    x.note = `rotația continuă după ședința ratată din ${missed.date}`;
-  });
-  const dropped = specs[specs.length - 1];
-  changes.push(`sală ratată pe ${missed.date}: rotația continuă (${rest.map((x) => x.date).join(', ')})${dropped ? `; ${SESSIONS[dropped.session].name} nu se mai face săptămâna asta` : ''}; nimic dublat`);
+  changes.push(`sală ratată pe ${missed.date}: rotația continuă de la ședința ratată (${moved.length} ședințe decalate, prima pe ${moved[0]}); ${SESSIONS[carry.session].name} cade la capătul lanțului, nu în fiecare săptămână; nimic dublat`);
 }

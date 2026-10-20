@@ -45,12 +45,14 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     }
   });
 
-  it('2 ședințe pe săptămână la bărbat: Push → Pull → Picioare în continuare, cu variantă crescătoare; femeia: picioare / partea de sus alternativ', () => {
+  // Decizia proprietarului (20.10.2026, A50): structura după frecvență, nu după sex — la 2 ședințe pe săptămână bărbatul
+  // are tot picioare / partea de sus (fiecare tipar o dată pe săptămână), nu PPL care lasă picioarele o dată la 1,5 săpt.
+  it('2 ședințe pe săptămână, bărbat sau femeie: picioare / partea de sus în fiecare săptămână', () => {
     const mk = () => [week('2026-11-02', [w('2026-11-03', 'forta'), w('2026-11-05', 'forta')]), week('2026-11-09', [w('2026-11-10', 'forta'), w('2026-11-12', 'forta')]), week('2026-11-16', [w('2026-11-17', 'forta'), w('2026-11-19', 'forta')])];
     const men = mk();
     assignStrengthDays(men, undefined, 'ppl');
     const s = men.flatMap((x) => x.workouts.map((y) => parseStrength(y.structure)!));
-    assert.deepEqual(s.map((x) => `${x.session}${x.variant}`), ['push0', 'pull0', 'legs0', 'push1', 'pull1', 'legs1']);
+    assert.deepEqual(s.map((x) => x.session), ['fullA', 'fullB', 'fullA', 'fullB', 'fullA', 'fullB']);
     const women = mk();
     assignStrengthDays(women);
     // Femeia: picioarele și partea de sus alternativ, niciodată în aceeași ședință.
@@ -61,7 +63,8 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     const plan = [week('2026-11-02', [w('2026-11-02', 'forta'), w('2026-11-03', 'forta'), w('2026-11-05', 'forta'), w('2026-11-06', 'lung', true)]), week('2026-11-09', [w('2026-11-10', 'forta')])];
     assignStrengthDays(plan, undefined, 'ppl');
     const s = plan.flatMap((x) => x.workouts.filter((y) => y.type === 'forta').map((y) => parseStrength(y.structure)!.session));
-    assert.deepEqual(s, ['push', 'pull', 'push', 'legs']);
+    // A doua săptămână are o singură ședință: tot corpul (cu picioarele amânate din prima).
+    assert.deepEqual(s, ['push', 'pull', 'push', 'full']);
   });
 
   it('textul din plan se citește înapoi, cu varianta', () => {
@@ -90,7 +93,7 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
     const plan = [old('2026-10-13', 'Tot corpul A'), old('2026-10-15', 'Tot corpul B'), old('2026-10-20', 'Tot corpul A'), old('2026-10-22', 'Tot corpul B'), w('2026-10-24', 'lung', true), old('2026-10-23', 'Tot corpul A'), old('2026-10-27', 'Tot corpul B')];
     const up = upgradeToSplit(plan, '2026-10-19');
     assert.deepEqual(up.map((x) => x.date), ['2026-10-20', '2026-10-22', '2026-10-23', '2026-10-27']);
-    assert.deepEqual(up.map((x) => parseStrength(x.structure)!.session), ['push', 'pull', 'push', 'legs'], 'picioarele nu în ajunul ieșirii lungi');
+    assert.deepEqual(up.map((x) => parseStrength(x.structure)!.session), ['push', 'pull', 'push', 'full'], 'picioarele nu în ajunul ieșirii lungi; săptămâna cu o ședință = tot corpul');
     assert.ok(up.every((x) => x.plannedMinutes === 50));
     const merged = plan.map((x) => up.find((u) => u.id === x.id) ?? x);
     assert.deepEqual(upgradeToSplit(merged, '2026-10-19'), []);
@@ -108,11 +111,11 @@ describe('forța la bărbați: Push / Pull / Picioare cu exerciții care se schi
   });
 });
 
-describe('planurile vechi (text „Push 1 · …” / „forță”) trec și ele la Push / Pull / Picioare', () => {
-  it('cu resolve: o ședință ilizibilă primește blocul recalculat și ședința din rotație', () => {
+describe('planurile vechi (text „Push 1 · …” / „forță”) trec și ele la structura după frecvență', () => {
+  it('cu resolve: o ședință ilizibilă primește blocul recalculat și ședința din rotație (2 pe săptămână = sus / jos)', () => {
     const plan = [w('2026-10-20', 'forta', false, 50, 'Push 1 · programul complet'), w('2026-10-22', 'forta', false, 50, 'forță')];
     const up = upgradeToSplit(plan, '2026-10-19', () => ({ session: 'fullA', block: 'baza', week: 1, len: 4 }));
-    assert.deepEqual(up.map((x) => parseStrength(x.structure)!.session), ['push', 'pull']);
+    assert.deepEqual(up.map((x) => parseStrength(x.structure)!.session), ['fullA', 'fullB']);
     assert.deepEqual(upgradeToSplit(plan, '2026-10-19'), [], 'fără resolve nu se poate citi; de asta serverul îl dă');
   });
 });

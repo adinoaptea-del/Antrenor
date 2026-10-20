@@ -5,7 +5,7 @@
 
 import type { PlannedWorkout } from '../types.js';
 import { addDays, weekStart } from '../util/dates.js';
-import { FitnessRotator, LEGACY_FIT, MIN_STRENGTH_MINUTES, isFitnessSession, isSplitSession, isWideSession, newSplitState, nextSplit, parseStrength, prescribe, strengthStructure, type StrengthSpec } from './ppl.js';
+import { FitnessRotator, LEGACY_FIT, MIN_STRENGTH_MINUTES, isFitnessSession, isMaintenanceSession, isSplitSession, isWideSession, newSplitState, nextSplit, parseStrength, prescribe, splitFamily, strengthStructure, upperLowerWeek, type StrengthSpec } from './ppl.js';
 
 const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'mutat';
 
@@ -13,21 +13,49 @@ const active = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 
 /**
  * `resolve`: pentru planurile vechi al căror text nu se poate citi („Push 1 · …”, „forță”), blocul și săptămâna se
  * recalculează cu aceeași regulă ca generatorul (plan-specs.ts); fără el, acele ședințe ar rămâne „tot corpul”.
+ *
+ * Structura după frecvența săptămânii (auditul v93, A50; decizia proprietarului, 20.10.2026): o ședință pe săptămână =
+ * tot corpul, două = picioare / partea de sus, trei sau mai multe = Push → Pull → Picioare. Planurile salvate înainte
+ * (PPL la orice frecvență) se rescriu la deschidere; a doua oară nu mai schimbă nimic.
  */
 export function upgradeToSplit(plan: PlannedWorkout[], today: string, resolve?: (w: PlannedWorkout) => StrengthSpec | null): PlannedWorkout[] {
   const strength = plan
     .filter((w) => w.type === 'forta' && active(w) && w.date >= today)
     .map((w) => ({ w, spec: parseStrength(w.structure) ?? resolve?.(w) ?? null }))
-    .filter((x): x is { w: PlannedWorkout; spec: NonNullable<typeof x.spec> } => !!x.spec && !isFitnessSession(x.spec.session))
+    .filter((x): x is { w: PlannedWorkout; spec: NonNullable<typeof x.spec> } => !!x.spec && !isFitnessSession(x.spec.session) && !isMaintenanceSession(x.spec.session))
     .sort((a, b) => (a.w.date < b.w.date ? -1 : 1));
-  if (!strength.length || strength.every((x) => isSplitSession(x.spec.session))) return [];
+  if (!strength.length) return [];
+  // Frecvența săptămânii: ședințele de forță active din săptămâna aceea (și cele de la începutul ei, deja trecute).
+  const perWeek = new Map<string, number>();
+  for (const w of plan) if (w.type === 'forta' && active(w)) perWeek.set(weekStart(w.date), (perWeek.get(weekStart(w.date)) ?? 0) + 1);
+  const familyOf = (w: PlannedWorkout) => splitFamily(perWeek.get(weekStart(w.date)) ?? 1);
   const keyDates = new Set(plan.filter((w) => w.key && active(w)).map((w) => w.date));
+  const byWeek = new Map<string, typeof strength>();
+  for (const x of strength) byWeek.set(weekStart(x.w.date), [...(byWeek.get(weekStart(x.w.date)) ?? []), x]);
+  // Se rescriu doar săptămânile a căror structură nu se potrivește cu frecvența (PPL-ul deja corect nu se reia de la
+  // capăt la fiecare deschidere).
   const st = newSplitState();
-  return strength.map(({ w, spec }) => {
-    const nearRace = spec.legs === 'fara';
-    const n = nextSplit(st, keyDates.has(addDays(w.date, 1)) || spec.legs === 'usor', nearRace);
-    return { ...w, structure: strengthStructure({ ...spec, session: n.session, variant: n.variant, legs: nearRace ? 'fara' : 'normal' }) };
-  });
+  const out: PlannedWorkout[] = [];
+  for (const [, xs] of byWeek) {
+    const f = familyOf(xs[0]!.w);
+    const ul = f === 'upper-lower' ? upperLowerWeek(xs.map((x) => keyDates.has(addDays(x.w.date, 1)))) : [];
+    const ok = f === 'full' ? xs.every((x) => x.spec.session === 'full') : f === 'upper-lower' ? xs.every((x, k) => x.spec.session === (x.spec.legs === 'fara' && ul[k]!.session === 'fullA' ? 'fullB' : ul[k]!.session)) : xs.every((x) => isSplitSession(x.spec.session));
+    if (ok) continue;
+    xs.forEach(({ w, spec }, k) => {
+      const nearRace = spec.legs === 'fara';
+      let next: StrengthSpec;
+      if (f === 'full') next = { ...spec, session: 'full', variant: undefined, legs: nearRace ? 'fara' : 'normal' };
+      else if (f === 'upper-lower') next = { ...spec, session: nearRace && ul[k]!.session === 'fullA' ? 'fullB' : ul[k]!.session, variant: undefined, legs: nearRace ? 'fara' : ul[k]!.legs };
+      else {
+        const n = nextSplit(st, keyDates.has(addDays(w.date, 1)) || spec.legs === 'usor', nearRace);
+        next = { ...spec, session: n.session, variant: n.variant, legs: nearRace ? 'fara' : n.light ? 'usor' : 'normal' };
+      }
+      if (next.variant === undefined) delete next.variant;
+      const structure = strengthStructure(next);
+      if (structure !== w.structure) out.push({ ...w, structure });
+    });
+  }
+  return out;
 }
 
 /**
@@ -38,7 +66,7 @@ export function upgradeToSplit(plan: PlannedWorkout[], today: string, resolve?: 
  *  - numele vechi („Tot corpul A/B”) se rescriu cu ședința de acum (picioare și trunchi / partea de sus și trunchi).
  * Întoarce doar ședințele schimbate (copii).
  */
-export function upgradeStrengthRules(plan: PlannedWorkout[], today: string, goal?: string | null): PlannedWorkout[] {
+export function upgradeStrengthRules(plan: PlannedWorkout[], today: string, goal?: string | null, ctx: { pregnancy?: boolean } = {}): PlannedWorkout[] {
   const future = plan
     .filter((w) => w.type === 'forta' && active(w) && w.date >= today)
     .map((w) => ({ w, spec: parseStrength(w.structure) }))
@@ -62,8 +90,17 @@ export function upgradeStrengthRules(plan: PlannedWorkout[], today: string, goal
       const n = queue.shift();
       s2 = n ? { ...spec, session: n.session, ...(n.variant != null ? { variant: n.variant } : {}) } : spec;
     }
+    // Sarcină / postpartum (A105): contextul are prioritate și peste un obiectiv de slăbire salvat înainte — fără cardio
+    // înclinat la început, varianta prudentă a exercițiilor. Contextul retras (ctx.pregnancy === false) scoate eticheta.
+    if (ctx.pregnancy && !s2.pregnancy) {
+      const { opener: _o, ...rest } = s2;
+      s2 = { ...rest, pregnancy: true };
+    } else if (ctx.pregnancy === false && s2.pregnancy) {
+      const { pregnancy: _p, ...rest } = s2;
+      s2 = rest;
+    }
     // Slăbire: ședința începe cu mers pe bandă înclinată (regula 25); restul obiectivelor, fără schimbare.
-    if (goal === 'fit-slabire' && isFitnessSession(s2.session) && !s2.opener) s2 = { ...s2, opener: 'slabire' };
+    if (goal === 'fit-slabire' && isFitnessSession(s2.session) && !s2.opener && !s2.pregnancy) s2 = { ...s2, opener: 'slabire' };
     const structure = strengthStructure(s2);
     const minutes = prescribe(s2, Math.max(MIN_STRENGTH_MINUTES, w.plannedMinutes)).minutes;
     if (structure !== w.structure || minutes !== w.plannedMinutes) out.push({ ...w, structure, plannedMinutes: minutes });

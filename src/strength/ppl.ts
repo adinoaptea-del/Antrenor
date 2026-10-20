@@ -36,16 +36,20 @@ export interface Exercise {
   equip?: Equip[];
   /** Pauza dintre seturi (s), când exercițiul are pauza lui în program (fitness); altfel după rol. */
   rest?: number;
+  /** Poziția culcat (pe spate / pe burtă): exclusă în contextul de sarcină / postpartum (auditul v93, A105). */
+  lying?: 'spate' | 'burta';
   /** Fișa exercițiului (fitness): ce lucrează, cum reglezi aparatul, greșelile frecvente. */
   purpose?: string;
   setup?: string;
   mistakes?: string;
 }
 
-export type FitnessSessionId = 'f1' | 'f2' | 'a3' | 'b3' | 'c3' | 'l1' | 'l2' | 'l3' | 'u1' | 'u2' | 'fa' | 'fb' | 'fc' | 'fd';
+export type FitnessSessionId = 'f1' | 'f2' | 'a3' | 'b3' | 'c3' | 'l1' | 'l2' | 'l3' | 'u1' | 'u2' | 'fa' | 'fb' | 'fc' | 'fd' | 'ft';
 /** Bărbații (anduranță): Push / Pull / Picioare cu exerciții care se schimbă de la o ședință la alta. */
 export type SplitSessionId = 'push' | 'pull' | 'legs';
-export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | SplitSessionId | FitnessSessionId;
+/** Modulele scurte de întreținere ale fizioterapeutului (A: picior și șold; B: umăr și trunchi), separate de sală. */
+export type MaintenanceSessionId = 'intA' | 'intB';
+export type SessionId = 'pushA' | 'pullA' | 'legsA' | 'pushB' | 'pullB' | 'legsB' | 'fullA' | 'fullB' | 'full' | SplitSessionId | FitnessSessionId | MaintenanceSessionId;
 
 export interface StrengthSession {
   id: SessionId;
@@ -73,6 +77,17 @@ export interface StrengthSession {
   aliases?: string[];
   /** Variantele ședinței (fitness, din săptămânile antrenoarei): exercițiile se schimbă de la o ședință la alta. */
   variants?: { exercises: string[]; dose: NonNullable<StrengthSession['dose']> }[];
+  /**
+   * Modul de întreținere (fizioterapeut, auditul v93 A91): 12–20 min, 1–2 serii, rezervă mare. NU e ședință de sală:
+   * nu se ridică la 45 de minute și la 3 serii (regula 20 guvernează ședințele de forță, nu modulul de întreținere).
+   */
+  maintenance?: boolean;
+  /**
+   * Tot corpul (o singură ședință pe săptămână): picioarele ȘI partea de sus în aceeași ședință. EXCEPȚIA decisă de
+   * proprietar pe 20.10.2026 (auditul v93, A50) de la regula „picioarele nu se combină cu partea de sus”: la o ședință pe
+   * săptămână, altfel o grupă ar fi lucrată o dată la 2–3 săptămâni. La 2+ ședințe regula rămâne (sus / jos, PPL).
+   */
+  fullBody?: boolean;
 }
 
 const E = (x: Exercise): Exercise => x;
@@ -169,39 +184,39 @@ export const CATALOG: Record<string, Exercise> = Object.fromEntries(
     E({ id: 'core-plank', name: 'Planșă pe antebrațe', group: 'abdomen', region: 'core', role: 'core', sets: 2, reps: '30–45 s', cue: 'corpul drept de la cap la călcâie; strângi abdomenul și fesierii', alt: 'planșă pe genunchi' }),
     E({ id: 'core-ab-wheel', name: 'Roata pentru abdomen, din genunchi', group: 'abdomen', region: 'core', role: 'core', sets: 2, reps: '6–10', cue: 'mergi în față doar cât spatele nu se lasă', alt: 'planșă pe antebrațe' }),
     // ——— Fitness pentru femei (documentul „AIRON_Antrenor_Fitness_Femei_6_Luni”, 18.10.2026) ———
-    E({ id: 'fit-hip-thrust', equip: ['aparat', 'bara', 'banca'], name: 'Hip thrust la aparat sau cu bara', group: 'fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'sprijin stabil; extensie din șold, fără să arcuiești spatele', alt: 'glute bridge încărcat' }),
-    E({ id: 'fit-leg-press', equip: ['aparat'], name: 'Presă pentru picioare', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'mișcare confortabilă, cu bazinul stabil; nu forța adâncimea', alt: 'genuflexiune goblet la bancă' }),
-    E({ id: 'fit-reverse-lunge', equip: ['corp', 'gantere'], name: 'Fandare înapoi cu sprijin', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 2, reps: '8–10/picior', unilateral: true, rest: 90, cue: 'control, sprijin dacă e nevoie; sarcina nu compromite echilibrul', alt: 'step-up pe treaptă joasă' }),
-    E({ id: 'fit-leg-ext', equip: ['aparat'], name: 'Extensii genunchi la aparat', group: 'cvadriceps', region: 'legs', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'mișcare controlată, fără durere articulară', alt: 'presă cu mișcare prea scurtă' }),
-    E({ id: 'fit-calf', equip: ['corp', 'scaun'], name: 'Ridicări pe vârfuri', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'mișcare fără durere, fără balans', alt: 'ridicări pe vârfuri din șezut' }),
-    E({ id: 'fit-calf-seated', equip: ['aparat'], name: 'Ridicări pe vârfuri din șezut', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'cât poți fără durere, ritm controlat', alt: 'ridicări pe vârfuri din picioare' }),
-    E({ id: 'fit-dead-bug', equip: ['corp'], name: 'Dead bug simplificat', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '6–8/parte', unilateral: true, rest: 50, cue: 'respirație confortabilă; cât controlezi', alt: 'Pallof press' }),
-    E({ id: 'fit-rdl', equip: ['gantere'], name: 'Îndreptări românești cu gantere', group: 'femurali, fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–10', rest: 120, cue: 'șoldurile merg înapoi; cobori doar până unde controlezi trunchiul', alt: 'glute bridge, iar aplecarea din șold se învață separat' }),
-    E({ id: 'fit-leg-curl', equip: ['aparat'], name: 'Flexii femurali la aparat', group: 'femurali', region: 'legs', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'bazin stabil, fără impuls', alt: 'flexii femurali culcat' }),
-    E({ id: 'fit-step-up', equip: ['scaun', 'gantere'], name: 'Step-up pe treaptă joasă', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 2, reps: '8–10/picior', unilateral: true, rest: 90, cue: 'înălțimea care permite control; sprijin la nevoie', alt: 'fandare înapoi cu sprijin' }),
-    E({ id: 'fit-kickback', equip: ['cablu'], name: 'Extensia șoldului la cablu (kickback)', group: 'fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '12–15/picior', unilateral: true, rest: 75, cue: 'mișcare din șold, fără să arcuiești spatele', alt: 'extensie de șold cu bandă' }),
-    E({ id: 'fit-abduction', equip: ['aparat'], name: 'Abducție șold la aparat sau cu bandă', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 2, reps: '12–20', rest: 75, cue: 'control, fără smucituri; banda nu e obligatorie', alt: 'abducție culcat pe o parte' }),
-    E({ id: 'fit-lat', equip: ['aparat'], name: 'Tracțiuni la helcometru, priză confortabilă', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'tragi cu coatele spre șolduri, fără balans', alt: 'tracțiuni asistate' }),
-    E({ id: 'fit-chest-press', equip: ['aparat'], name: 'Împins la aparat pentru piept', group: 'piept, triceps', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'omoplații stabili, coborâre controlată', alt: 'flotări la suport înalt' }),
-    E({ id: 'fit-row', equip: ['aparat', 'banca'], name: 'Ramat cu pieptul sprijinit', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'pieptul rămâne pe sprijin, pauză scurtă la final', alt: 'ramat la cablu' }),
-    E({ id: 'fit-cable-row', equip: ['cablu'], name: 'Ramat la cablu, priză confortabilă', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'trunchiul fix, tragi cu coatele', alt: 'ramat cu pieptul sprijinit' }),
-    E({ id: 'fit-incline', equip: ['banca', 'gantere'], name: 'Împins înclinat cu gantere sau la aparat', group: 'piept, umeri', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'banca puțin înclinată, coborâre controlată', alt: 'împins la aparat pentru piept' }),
-    E({ id: 'fit-shoulder', equip: ['aparat'], name: 'Împins umeri la aparat, dacă nu doare', group: 'umeri', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'fără să arcuiești spatele; cobori cât nu doare', alt: 'împins landmine' }),
-    E({ id: 'fit-pushup-high', equip: ['corp', 'scaun'], name: 'Flotări la suport înalt sau împins la aparat pentru piept', group: 'piept, triceps', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'corpul drept; înălțimea suportului dă dificultatea', alt: 'împins la aparat pentru piept' }),
-    E({ id: 'fit-lateral', equip: ['gantere'], name: 'Ridicări laterale cu gantere', group: 'umeri', region: 'upper', role: 'accessory', sets: 2, reps: '12–15', rest: 75, cue: 'până la nivelul umerilor, fără balans', alt: 'ridicări laterale cu banda' }),
-    E({ id: 'fit-triceps', equip: ['cablu'], name: 'Extensii triceps la cablu', group: 'triceps', region: 'upper', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'coatele lângă corp', alt: 'extensii triceps la aparat' }),
-    E({ id: 'fit-biceps', equip: ['gantere'], name: 'Flexii biceps cu gantere', group: 'biceps', region: 'upper', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'coatele fixe, fără balans', alt: 'flexii cu banda (sub tălpi)' }),
-    E({ id: 'fit-rev-fly', equip: ['aparat'], name: 'Reverse fly la aparat sau cu bandă', group: 'umăr posterior', region: 'upper', role: 'accessory', sets: 2, reps: '12–15', rest: 75, cue: 'brațele lungi, mișcarea din umăr', alt: 'fluturări inverse la cablu' }),
-    E({ id: 'fit-pallof', equip: ['cablu'], name: 'Pallof press la cablu sau cu bandă', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '8–12/parte', unilateral: true, rest: 50, cue: 'bazinul și umerii nu se rotesc', alt: 'dead bug simplificat' }),
+    E({ id: 'fit-hip-thrust', equip: ['aparat', 'bara', 'banca'], name: 'Hip thrust la aparat sau cu bara', group: 'fesieri', region: 'legs', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'sprijin stabil; extensie din șold, fără să arcuiești spatele', alt: 'glute bridge încărcat' }),
+    E({ id: 'fit-leg-press', equip: ['aparat'], name: 'Presă pentru picioare', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'mișcare confortabilă, cu bazinul stabil; nu forța adâncimea', alt: 'genuflexiune goblet la bancă' }),
+    E({ id: 'fit-reverse-lunge', equip: ['corp', 'gantere'], name: 'Fandare înapoi cu sprijin', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 3, reps: '8–10/picior', unilateral: true, rest: 90, cue: 'control, sprijin dacă e nevoie; sarcina nu compromite echilibrul', alt: 'step-up pe treaptă joasă' }),
+    E({ id: 'fit-leg-ext', equip: ['aparat'], name: 'Extensii genunchi la aparat', group: 'cvadriceps', region: 'legs', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'mișcare controlată, fără durere articulară', alt: 'presă pentru picioare, pe o porțiune mai scurtă de mișcare, fără durere în genunchi' }),
+    E({ id: 'fit-calf', equip: ['corp', 'scaun'], name: 'Ridicări pe vârfuri', group: 'gambe', region: 'legs', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'mișcare fără durere, fără balans', alt: 'ridicări pe vârfuri din șezut' }),
+    E({ id: 'fit-calf-seated', equip: ['aparat'], name: 'Ridicări pe vârfuri din șezut', group: 'gambe', region: 'legs', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'cât poți fără durere, ritm controlat', alt: 'ridicări pe vârfuri din picioare' }),
+    E({ id: 'fit-dead-bug', equip: ['corp'], name: 'Dead bug simplificat', group: 'trunchi', region: 'core', role: 'core', sets: 3, reps: '6–8/parte', unilateral: true, rest: 50, cue: 'respirație confortabilă; cât controlezi', alt: 'Pallof press' }),
+    E({ id: 'fit-rdl', equip: ['gantere'], name: 'Îndreptări românești cu gantere', group: 'femurali, fesieri', region: 'legs', role: 'main', sets: 3, reps: '8–10', rest: 120, cue: 'șoldurile merg înapoi; cobori doar până unde controlezi trunchiul', alt: 'glute bridge, iar aplecarea din șold se învață separat' }),
+    E({ id: 'fit-leg-curl', equip: ['aparat'], name: 'Flexii femurali la aparat', group: 'femurali', region: 'legs', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'bazin stabil, fără impuls', alt: 'flexii femurali culcat' }),
+    E({ id: 'fit-step-up', equip: ['scaun', 'gantere'], name: 'Step-up pe treaptă joasă', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 3, reps: '8–10/picior', unilateral: true, rest: 90, cue: 'înălțimea care permite control; sprijin la nevoie', alt: 'fandare înapoi cu sprijin' }),
+    E({ id: 'fit-kickback', equip: ['cablu'], name: 'Extensia șoldului la cablu (kickback)', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '12–15/picior', unilateral: true, rest: 75, cue: 'mișcare din șold, fără să arcuiești spatele', alt: 'extensie de șold cu bandă' }),
+    E({ id: 'fit-abduction', equip: ['aparat'], name: 'Abducție șold la aparat sau cu bandă', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 3, reps: '12–20', rest: 75, cue: 'control, fără smucituri; banda nu e obligatorie', alt: 'abducție culcat pe o parte' }),
+    E({ id: 'fit-lat', equip: ['aparat'], name: 'Tracțiuni la helcometru, priză confortabilă', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'tragi cu coatele spre șolduri, fără balans', alt: 'tracțiuni asistate' }),
+    E({ id: 'fit-chest-press', equip: ['aparat'], name: 'Împins la aparat pentru piept', group: 'piept, triceps', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'omoplații stabili, coborâre controlată', alt: 'flotări la suport înalt' }),
+    E({ id: 'fit-row', equip: ['aparat', 'banca'], name: 'Ramat cu pieptul sprijinit', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'pieptul rămâne pe sprijin, pauză scurtă la final', alt: 'ramat la cablu' }),
+    E({ id: 'fit-cable-row', equip: ['cablu'], name: 'Ramat la cablu, priză confortabilă', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'trunchiul fix, tragi cu coatele', alt: 'ramat cu pieptul sprijinit' }),
+    E({ id: 'fit-incline', equip: ['banca', 'gantere'], name: 'Împins înclinat cu gantere sau la aparat', group: 'piept, umeri', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'banca puțin înclinată, coborâre controlată', alt: 'împins la aparat pentru piept' }),
+    E({ id: 'fit-shoulder', equip: ['aparat'], name: 'Împins umeri la aparat, dacă nu doare', group: 'umeri', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'fără să arcuiești spatele; cobori cât nu doare', alt: 'împins landmine' }),
+    E({ id: 'fit-pushup-high', equip: ['corp', 'scaun'], name: 'Flotări la suport înalt sau împins la aparat pentru piept', group: 'piept, triceps', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'corpul drept; înălțimea suportului dă dificultatea', alt: 'împins la aparat pentru piept' }),
+    E({ id: 'fit-lateral', equip: ['gantere'], name: 'Ridicări laterale cu gantere', group: 'umeri', region: 'upper', role: 'accessory', sets: 3, reps: '12–15', rest: 75, cue: 'până la nivelul umerilor, fără balans', alt: 'ridicări laterale cu banda' }),
+    E({ id: 'fit-triceps', equip: ['cablu'], name: 'Extensii triceps la cablu', group: 'triceps', region: 'upper', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'coatele lângă corp', alt: 'extensii triceps la aparat' }),
+    E({ id: 'fit-biceps', equip: ['gantere'], name: 'Flexii biceps cu gantere', group: 'biceps', region: 'upper', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'coatele fixe, fără balans', alt: 'flexii cu banda (sub tălpi)' }),
+    E({ id: 'fit-rev-fly', equip: ['aparat'], name: 'Reverse fly la aparat sau cu bandă', group: 'umăr posterior', region: 'upper', role: 'accessory', sets: 3, reps: '12–15', rest: 75, cue: 'brațele lungi, mișcarea din umăr', alt: 'fluturări inverse la cablu' }),
+    E({ id: 'fit-pallof', equip: ['cablu'], name: 'Pallof press la cablu sau cu bandă', group: 'trunchi', region: 'core', role: 'core', sets: 3, reps: '8–12/parte', unilateral: true, rest: 50, cue: 'bazinul și umerii nu se rotesc', alt: 'dead bug simplificat' }),
     // ——— Fitness, varianta amplă A–D (documentul „AIRON_Fitness_Femei_26_Saptamani”, 19.10.2026) ———
-    E({ id: 'fit-bulgarian', equip: ['banca', 'gantere'], name: 'Bulgarian split squat', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 2, reps: '8–10/picior', unilateral: true, rest: 105, cue: 'sprijinul pentru echilibru e permis; coborâre controlată', alt: 'fandare înapoi cu sprijin', purpose: 'forță și control pe un picior, fesieri și coapse', setup: 'piciorul din spate pe o bancă de înălțimea genunchiului; distanța cât să cobori drept', mistakes: 'genunchiul din față cade spre interior; elan din trunchi; pas prea scurt' }),
-    E({ id: 'fit-goblet', equip: ['gantere', 'banca'], name: 'Genuflexiune goblet la bancă', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12', rest: 120, cue: 'gantera la piept, cobori controlat până atingi banca', alt: 'presă pentru picioare', purpose: 'genuflexiunea, cu adâncimea dată de bancă', setup: 'banca la înălțimea la care cobori cu spatele neutru', mistakes: 'te lași greu pe bancă; călcâiele se ridică' }),
-    E({ id: 'fit-abduction-cable', equip: ['cablu'], name: 'Abducție la cablu', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 2, reps: '12–20', rest: 75, cue: 'piciorul pleacă lateral din șold, fără balans', alt: 'abducție la aparat', purpose: 'fesierul mijlociu, stabilitatea bazinului', setup: 'manșeta la gleznă, scripetele jos; te ții de aparat', mistakes: 'înclini trunchiul ca să ridici piciorul mai sus' }),
-    E({ id: 'fit-db-press', equip: ['gantere', 'banca'], name: 'Împins cu gantere, bancă orizontală', group: 'piept, triceps', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'omoplații strânși, coborâre controlată', alt: 'împins la aparat pentru piept', purpose: 'piept și triceps, cu stabilizare', setup: 'urci ganterele de pe genunchi în poziție, apoi te întinzi', mistakes: 'coatele larg la 90°; ganterele se lovesc sus' }),
-    E({ id: 'fit-lateral-cable', equip: ['cablu'], name: 'Ridicări laterale la cablu', group: 'umeri', region: 'upper', role: 'accessory', sets: 2, reps: '12–20', rest: 75, cue: 'ridici fără avânt, până la umăr', alt: 'ridicări laterale cu gantere', purpose: 'deltoidul lateral', setup: 'scripetele jos, mânerul în mâna opusă, lateral față de aparat', mistakes: 'ridici umărul spre ureche; balans din corp' }),
-    E({ id: 'fit-lat-neutral', equip: ['aparat'], name: 'Helcometru, priză neutră', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '10–12', rest: 105, cue: 'tragi fără impuls și controlezi revenirea', alt: 'altă priză confortabilă', purpose: 'spatele (dorsalii), cu umerii într-o poziție comodă', setup: 'genunchii fixați sub pernă; mânerul neutru (palmele față în față)', mistakes: 'te lași pe spate ca să tragi; bara coboară la ceafă' }),
-    E({ id: 'fit-hammer', equip: ['gantere'], name: 'Biceps hammer cu gantere', group: 'biceps, antebraț', region: 'upper', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'încheietura neutră, cotul stabil', alt: 'flexii cu banda', purpose: 'biceps și antebraț', setup: 'în picioare sau așezată, ganterele cu palmele spre corp', mistakes: 'coatele pleacă în față; balans din spate' }),
-    E({ id: 'fit-carry', equip: ['gantere'], name: 'Transport gantere (farmer carry)', group: 'trunchi, prindere', region: 'carry', role: 'carry', sets: 2, reps: '20–30 m', rest: 75, cue: 'mers stabil și respirație confortabilă', alt: 'alt exercițiu de trunchi, dacă spațiul nu permite distanța' }),
+    E({ id: 'fit-bulgarian', equip: ['banca', 'gantere'], name: 'Bulgarian split squat', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 3, reps: '8–10/picior', unilateral: true, rest: 105, cue: 'sprijinul pentru echilibru e permis; coborâre controlată', alt: 'fandare înapoi cu sprijin', purpose: 'forță și control pe un picior, fesieri și coapse', setup: 'piciorul din spate pe o bancă de înălțimea genunchiului; distanța cât să cobori drept', mistakes: 'genunchiul din față cade spre interior; elan din trunchi; pas prea scurt' }),
+    E({ id: 'fit-goblet', equip: ['gantere', 'banca'], name: 'Genuflexiune goblet la bancă', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 3, reps: '8–12', rest: 120, cue: 'gantera la piept, cobori controlat până atingi banca', alt: 'presă pentru picioare', purpose: 'genuflexiunea, cu adâncimea dată de bancă', setup: 'banca la înălțimea la care cobori cu spatele neutru', mistakes: 'te lași greu pe bancă; călcâiele se ridică' }),
+    E({ id: 'fit-abduction-cable', equip: ['cablu'], name: 'Abducție la cablu', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 3, reps: '12–20', rest: 75, cue: 'piciorul pleacă lateral din șold, fără balans', alt: 'abducție la aparat', purpose: 'fesierul mijlociu, stabilitatea bazinului', setup: 'manșeta la gleznă, scripetele jos; te ții de aparat', mistakes: 'înclini trunchiul ca să ridici piciorul mai sus' }),
+    E({ id: 'fit-db-press', equip: ['gantere', 'banca'], name: 'Împins cu gantere, bancă orizontală', group: 'piept, triceps', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'omoplații strânși, coborâre controlată', alt: 'împins la aparat pentru piept', purpose: 'piept și triceps, cu stabilizare', setup: 'urci ganterele de pe genunchi în poziție, apoi te întinzi', mistakes: 'coatele larg la 90°; ganterele se lovesc sus' }),
+    E({ id: 'fit-lateral-cable', equip: ['cablu'], name: 'Ridicări laterale la cablu', group: 'umeri', region: 'upper', role: 'accessory', sets: 3, reps: '12–20', rest: 75, cue: 'ridici fără avânt, până la umăr', alt: 'ridicări laterale cu gantere', purpose: 'deltoidul lateral', setup: 'scripetele jos, mânerul în mâna opusă, lateral față de aparat', mistakes: 'ridici umărul spre ureche; balans din corp' }),
+    E({ id: 'fit-lat-neutral', equip: ['aparat'], name: 'Helcometru, priză neutră', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '10–12', rest: 105, cue: 'tragi fără impuls și controlezi revenirea', alt: 'altă priză confortabilă', purpose: 'spatele (dorsalii), cu umerii într-o poziție comodă', setup: 'genunchii fixați sub pernă; mânerul neutru (palmele față în față)', mistakes: 'te lași pe spate ca să tragi; bara coboară la ceafă' }),
+    E({ id: 'fit-hammer', equip: ['gantere'], name: 'Biceps hammer cu gantere', group: 'biceps, antebraț', region: 'upper', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'încheietura neutră, cotul stabil', alt: 'flexii cu banda', purpose: 'biceps și antebraț', setup: 'în picioare sau așezată, ganterele cu palmele spre corp', mistakes: 'coatele pleacă în față; balans din spate' }),
+    E({ id: 'fit-carry', equip: ['gantere'], name: 'Transport gantere (farmer carry)', group: 'trunchi, prindere', region: 'carry', role: 'carry', sets: 3, reps: '20–30 m', rest: 75, cue: 'mers stabil și respirație confortabilă', alt: 'alt exercițiu de trunchi, dacă spațiul nu permite distanța' }),
     // ——— Exercițiile din structura unei antrenoare reale (19.10.2026): picioare pe trei accente, spate+biceps, piept+umeri+triceps ———
     E({ id: 'fit-squat', equip: ['bara'], name: 'Genuflexiuni cu bara', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 4, reps: '20 / 15 / 12 / 8', rest: 120, cue: 'bara pe umeri, picioarele la lățimea umerilor; cobori controlat cu spatele drept, genunchii în direcția vârfurilor', alt: 'genuflexiuni la Smith sau cu gantera la piept', purpose: 'cvadriceps și fesieri', setup: 'suporturile barei la nivelul umerilor; începi cu bara goală', mistakes: 'călcâiele se ridică; genunchii cad spre interior; rotunjești spatele jos' }),
     E({ id: 'fit-glute-bridge', equip: ['corp', 'banda'], name: 'Pod de fesieri (glute bridge), cu bandă deasupra genunchilor', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '40 (30 cu 3 s sus + 10 rapide)', rest: 75, cue: 'pe spate, tălpile aproape de fesieri; ridici bazinul strângând fesierii, ții sus, cobori controlat', alt: 'pod de fesieri cu gantera pe bazin', purpose: 'fesierii mari' }),
@@ -235,27 +250,36 @@ export const CATALOG: Record<string, Exercise> = Object.fromEntries(
     E({ id: 'fit-reverse-hyper', equip: ['banca', 'corp'], name: 'Reverse hyper pe bancă (cu greutăți la glezne)', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '20, ții 3 s sus la fiecare', rest: 60, cue: 'culcat cu bazinul pe marginea băncii; ridici picioarele întinse până la linia corpului', alt: 'extensia șoldului în patru labe' }),
     E({ id: 'fit-straight-leg', equip: ['banca', 'corp'], name: 'Ridicări cu piciorul întins, pe bancă (greutăți la glezne)', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '30 pe picior: 20 cu 3 s sus + 10 rapide', unilateral: true, rest: 60, cue: 'sprijinit pe bancă, piciorul întins urcă până la linia corpului', alt: 'extensia șoldului cu banda' }),
     E({ id: 'fit-frog-pumps', equip: ['corp'], name: 'Frog pumps (pod de fesieri cu tălpile lipite)', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '30', rest: 45, cue: 'tălpile lipite, genunchii în lateral; ridici bazinul scurt și strângi fesierii', alt: 'pod de fesieri' }),
-    E({ id: 'fit-lunge-walk', equip: ['gantere', 'corp'], name: 'Mers fandat (15 pași înainte, 15 înapoi)', group: 'fesieri, cvadriceps', region: 'legs', role: 'accessory', sets: 3, reps: '15 pași înainte + 15 înapoi', rest: 75, cue: 'pași lungi, trunchiul drept, genunchiul din spate aproape de sol', alt: 'fandări pe loc' }),
+    E({ id: 'fit-lunge-walk', equip: ['gantere', 'corp'], name: 'Mers fandat', group: 'fesieri, cvadriceps', region: 'legs', role: 'accessory', sets: 3, reps: '10 pași înainte + 10 înapoi', rest: 75, cue: 'pași lungi, trunchiul drept, genunchiul din spate aproape de sol', alt: 'fandări pe loc' }),
     E({ id: 'fit-rdl-bar', equip: ['bara'], name: 'Îndreptări românești cu bara', group: 'femurali, fesieri', region: 'legs', role: 'main', sets: 4, reps: '20 / 20 / 10 / 10 — crești la seriile de 10', rest: 120, cue: 'bara aproape de picioare, spatele drept; cobori până simți întinderea în spatele coapsei', alt: 'îndreptări românești cu gantere' }),
     E({ id: 'fit-h-db-fly', equip: ['gantere', 'corp'], name: 'Fluturări cu gantere de pe podea', group: 'piept', region: 'upper', role: 'accessory', sets: 3, reps: '15', rest: 60, cue: 'pe spate, coatele ușor îndoite; cobori până ating podeaua cu brațele', alt: 'flotări cu mâinile pe scaun' }),
     // ——— Fitness acasă: gantere, bandă, corp, scaun (auditul F55, F01). Nimic cu aparat, cablu, bară sau bancă. ———
-    E({ id: 'fit-h-glute-bridge', equip: ['gantere', 'corp'], name: 'Pod de fesieri cu gantera pe bazin', group: 'fesieri', region: 'legs', role: 'main', sets: 2, reps: '10–15', rest: 105, cue: 'pe spate, tălpile pe podea; ridici bazinul strângând fesierii, ții o secundă sus', alt: 'pod de fesieri pe un picior, fără ganteră', purpose: 'fesierii mari', setup: 'gantera pe bazin, ținută cu ambele mâini; un prosop sub ea', mistakes: 'arcuiești spatele în loc să ridici din șold' }),
-    E({ id: 'fit-h-goblet', equip: ['gantere', 'scaun'], name: 'Genuflexiune cu gantera la piept, până la scaun', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'cobori controlat până atingi scaunul, apoi urci împingând în călcâie', alt: 'genuflexiune fără greutate, până la scaun', purpose: 'coapse și fesieri', setup: 'scaun stabil în spate; gantera ținută vertical la piept', mistakes: 'te lași greu pe scaun; genunchii cad spre interior' }),
-    E({ id: 'fit-h-split-squat', equip: ['gantere', 'corp'], name: 'Fandare statică cu gantere', group: 'cvadriceps, fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '8–12/picior', unilateral: true, rest: 75, cue: 'un picior în față, unul în spate; cobori drept în jos și urci', alt: 'fandare statică fără greutate, cu mâna pe perete', purpose: 'coapse, pe un picior', setup: 'o ganteră în fiecare mână; sprijin de perete dacă ai nevoie', mistakes: 'genunchiul din față cade spre interior' }),
-    E({ id: 'fit-h-band-curl', equip: ['banda'], name: 'Flexii femurali cu banda, culcat pe burtă', group: 'femurali', region: 'legs', role: 'accessory', sets: 2, reps: '12–15', rest: 75, cue: 'aduci călcâiele spre fesieri, revii încet', alt: 'îndreptări românești pe un picior, fără greutate', purpose: 'spatele coapsei', setup: 'banda prinsă de un picior de masă sau de ușă, la nivelul gleznelor', mistakes: 'ridici bazinul de pe podea' }),
-    E({ id: 'fit-h-band-kickback', equip: ['banda'], name: 'Extensia șoldului cu banda, în patru labe', group: 'fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '12–15/picior', unilateral: true, rest: 75, cue: 'împingi piciorul în spate din șold, fără să arcuiești spatele', alt: 'aceeași mișcare fără bandă', setup: 'banda în jurul tălpii, capetele sub mâini', mistakes: 'arcuiești spatele; balans' }),
-    E({ id: 'fit-h-band-abduction', equip: ['banda'], name: 'Abducție cu banda deasupra genunchilor', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 2, reps: '12–20', rest: 75, cue: 'deschizi genunchii împotriva benzii, ții o secundă', alt: 'abducție culcat pe o parte, fără bandă', setup: 'așezată pe scaun sau în pod de fesieri; banda deasupra genunchilor', mistakes: 'deschizi cu smucituri' }),
-    E({ id: 'fit-h-band-pulldown', equip: ['banda'], name: 'Tragere la piept cu banda prinsă sus', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '10–15', rest: 105, cue: 'tragi coatele în jos spre coaste, strângi omoplații', alt: 'ramat cu gantera, un braț', purpose: 'spatele (dorsalii)', setup: 'banda prinsă sus, de ușă (cu o ancoră de ușă); stai în genunchi', mistakes: 'te lași pe spate; ridici umerii' }),
-    E({ id: 'fit-h-floor-press', equip: ['gantere', 'corp'], name: 'Împins cu gantere de pe podea', group: 'piept, triceps', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 105, cue: 'pe spate, cobori până atinge cotul podeaua ușor, apoi împingi', alt: 'flotări cu mâinile pe scaun', purpose: 'piept și triceps', setup: 'genunchii îndoiți, ganterele urcate de pe genunchi', mistakes: 'coatele la 90° de corp; lovești podeaua cu cotul' }),
-    E({ id: 'fit-h-db-row', equip: ['gantere', 'scaun'], name: 'Ramat cu gantera, un braț, sprijin pe scaun', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '8–12/braț', unilateral: true, rest: 90, cue: 'tragi gantera spre șold, fără să rotești trunchiul', alt: 'ramat cu banda', purpose: 'mijlocul spatelui', setup: 'o mână și un genunchi pe scaun, spatele drept', mistakes: 'tragi din biceps; rotești trunchiul' }),
-    E({ id: 'fit-h-band-row', equip: ['banda'], name: 'Ramat cu banda, din șezut', group: 'spate', region: 'upper', role: 'main', sets: 2, reps: '10–15', rest: 90, cue: 'tragi mânerele spre burtă, strângi omoplații', alt: 'ramat cu gantera, un braț', purpose: 'mijlocul spatelui', setup: 'pe podea, banda în jurul tălpilor', mistakes: 'te lași pe spate; ridici umerii' }),
-    E({ id: 'fit-h-pushup-incline', equip: ['corp', 'scaun'], name: 'Flotări cu mâinile pe scaun sau masă', group: 'piept, triceps', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 90, cue: 'corpul drept; cobori pieptul spre margine și împingi', alt: 'flotări cu mâinile pe perete', purpose: 'piept, triceps', setup: 'scaun lipit de perete sau masă stabilă', mistakes: 'șoldurile cad; capul înainte' }),
-    E({ id: 'fit-h-db-ohp', equip: ['gantere', 'scaun'], name: 'Împins cu gantere deasupra capului, pe scaun', group: 'umeri', region: 'upper', role: 'main', sets: 2, reps: '8–12', rest: 90, cue: 'spatele drept; împingi în sus fără să te arcuiești', alt: 'același exercițiu cu banda sub tălpi', purpose: 'umerii', setup: 'pe scaun, ganterele la nivelul umerilor', mistakes: 'arcuiești spatele; cobori prea jos' }),
-    E({ id: 'fit-h-db-triceps', equip: ['gantere'], name: 'Extensii triceps cu o ganteră deasupra capului', group: 'triceps', region: 'upper', role: 'accessory', sets: 2, reps: '10–15', rest: 75, cue: 'coatele spre tavan; cobori gantera în spatele capului și o urci', alt: 'extensii cu banda', setup: 'așezată, gantera ținută cu ambele mâini', mistakes: 'coatele se deschid larg' }),
-    E({ id: 'fit-h-band-pullapart', equip: ['banda'], name: 'Desfacerea benzii în fața pieptului', group: 'umăr posterior', region: 'upper', role: 'accessory', sets: 2, reps: '12–20', rest: 60, cue: 'brațele întinse; deschizi banda până la piept, strângi omoplații', alt: 'fluturări inverse cu gantere ușoare, aplecată', setup: 'banda ținută la lățimea umerilor', mistakes: 'ridici umerii; îndoi coatele mult' }),
-    E({ id: 'fit-h-band-pallof', equip: ['banda'], name: 'Pallof press cu banda', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '8–12/parte', unilateral: true, rest: 50, cue: 'împingi banda drept în față și nu lași trunchiul să se rotească', alt: 'dead bug', setup: 'banda prinsă lateral, la nivelul pieptului (ușă, picior de masă)', mistakes: 'te rotești după bandă' }),
-    E({ id: 'fit-h-seated-calf', equip: ['gantere', 'scaun'], name: 'Ridicări pe vârfuri din șezut, gantera pe genunchi', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '12–15', rest: 60, cue: 'urci pe vârfuri, ții o secundă, cobori încet', alt: 'ridicări pe vârfuri din picioare, pe treaptă', setup: 'pe scaun; vârfurile pe o carte groasă', mistakes: 'ricoșezi jos' }),
-    E({ id: 'fit-h-bulgarian', equip: ['gantere', 'scaun'], name: 'Fandare bulgărească cu piciorul din spate pe un scaun', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 2, reps: '8–10/picior', unilateral: true, rest: 105, cue: 'cobori drept în jos; sprijin de perete e permis', alt: 'fandare înapoi cu sprijin', purpose: 'fesieri și coapse, pe un picior', setup: 'scaun stabil, lipit de perete', mistakes: 'genunchiul din față cade spre interior' }),
+    E({ id: 'fit-h-glute-bridge', equip: ['gantere', 'corp'], name: 'Pod de fesieri cu gantera pe bazin', group: 'fesieri', region: 'legs', role: 'main', sets: 3, reps: '10–15', rest: 105, cue: 'pe spate, tălpile pe podea; ridici bazinul strângând fesierii, ții o secundă sus', alt: 'pod de fesieri pe un picior, fără ganteră', purpose: 'fesierii mari', setup: 'gantera pe bazin, ținută cu ambele mâini; un prosop sub ea', mistakes: 'arcuiești spatele în loc să ridici din șold' }),
+    E({ id: 'fit-h-goblet', equip: ['gantere', 'scaun'], name: 'Genuflexiune cu gantera la piept, până la scaun', group: 'cvadriceps, fesieri', region: 'legs', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'cobori controlat până atingi scaunul, apoi urci împingând în călcâie', alt: 'genuflexiune fără greutate, până la scaun', purpose: 'coapse și fesieri', setup: 'scaun stabil în spate; gantera ținută vertical la piept', mistakes: 'te lași greu pe scaun; genunchii cad spre interior' }),
+    E({ id: 'fit-h-split-squat', equip: ['gantere', 'corp'], name: 'Fandare statică cu gantere', group: 'cvadriceps, fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '8–12/picior', unilateral: true, rest: 75, cue: 'un picior în față, unul în spate; cobori drept în jos și urci', alt: 'fandare statică fără greutate, cu mâna pe perete', purpose: 'coapse, pe un picior', setup: 'o ganteră în fiecare mână; sprijin de perete dacă ai nevoie', mistakes: 'genunchiul din față cade spre interior' }),
+    E({ id: 'fit-h-band-curl', equip: ['banda'], name: 'Flexii femurali cu banda, culcat pe burtă', group: 'femurali', region: 'legs', role: 'accessory', sets: 3, reps: '12–15', rest: 75, cue: 'aduci călcâiele spre fesieri, revii încet', alt: 'îndreptări românești pe un picior, fără greutate', purpose: 'spatele coapsei', setup: 'banda prinsă de un picior de masă sau de ușă, la nivelul gleznelor', mistakes: 'ridici bazinul de pe podea' }),
+    E({ id: 'fit-h-band-kickback', equip: ['banda'], name: 'Extensia șoldului cu banda, în patru labe', group: 'fesieri', region: 'legs', role: 'accessory', sets: 3, reps: '12–15/picior', unilateral: true, rest: 75, cue: 'împingi piciorul în spate din șold, fără să arcuiești spatele', alt: 'aceeași mișcare fără bandă', setup: 'banda în jurul tălpii, capetele sub mâini', mistakes: 'arcuiești spatele; balans' }),
+    E({ id: 'fit-h-band-abduction', equip: ['banda'], name: 'Abducție cu banda deasupra genunchilor', group: 'abductori (fesierul lateral)', region: 'legs', role: 'accessory', sets: 3, reps: '12–20', rest: 75, cue: 'deschizi genunchii împotriva benzii, ții o secundă', alt: 'abducție culcat pe o parte, fără bandă', setup: 'așezată pe scaun sau în pod de fesieri; banda deasupra genunchilor', mistakes: 'deschizi cu smucituri' }),
+    E({ id: 'fit-h-band-pulldown', equip: ['banda'], name: 'Tragere la piept cu banda prinsă sus', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '10–15', rest: 105, cue: 'tragi coatele în jos spre coaste, strângi omoplații', alt: 'ramat cu gantera, un braț', purpose: 'spatele (dorsalii)', setup: 'banda prinsă sus, de ușă (cu o ancoră de ușă); stai în genunchi', mistakes: 'te lași pe spate; ridici umerii' }),
+    E({ id: 'fit-h-floor-press', equip: ['gantere', 'corp'], name: 'Împins cu gantere de pe podea', group: 'piept, triceps', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 105, cue: 'pe spate, cobori până atinge cotul podeaua ușor, apoi împingi', alt: 'flotări cu mâinile pe scaun', purpose: 'piept și triceps', setup: 'genunchii îndoiți, ganterele urcate de pe genunchi', mistakes: 'coatele la 90° de corp; lovești podeaua cu cotul' }),
+    E({ id: 'fit-h-db-row', equip: ['gantere', 'scaun'], name: 'Ramat cu gantera, un braț, sprijin pe scaun', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '8–12/braț', unilateral: true, rest: 90, cue: 'tragi gantera spre șold, fără să rotești trunchiul', alt: 'ramat cu banda', purpose: 'mijlocul spatelui', setup: 'o mână și un genunchi pe scaun, spatele drept', mistakes: 'tragi din biceps; rotești trunchiul' }),
+    E({ id: 'fit-h-band-row', equip: ['banda'], name: 'Ramat cu banda, din șezut', group: 'spate', region: 'upper', role: 'main', sets: 3, reps: '10–15', rest: 90, cue: 'tragi mânerele spre burtă, strângi omoplații', alt: 'ramat cu gantera, un braț', purpose: 'mijlocul spatelui', setup: 'pe podea, banda în jurul tălpilor', mistakes: 'te lași pe spate; ridici umerii' }),
+    E({ id: 'fit-h-pushup-incline', equip: ['corp', 'scaun'], name: 'Flotări cu mâinile pe scaun sau masă', group: 'piept, triceps', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 90, cue: 'corpul drept; cobori pieptul spre margine și împingi', alt: 'flotări cu mâinile pe perete', purpose: 'piept, triceps', setup: 'scaun lipit de perete sau masă stabilă', mistakes: 'șoldurile cad; capul înainte' }),
+    E({ id: 'fit-h-db-ohp', equip: ['gantere', 'scaun'], name: 'Împins cu gantere deasupra capului, pe scaun', group: 'umeri', region: 'upper', role: 'main', sets: 3, reps: '8–12', rest: 90, cue: 'spatele drept; împingi în sus fără să te arcuiești', alt: 'același exercițiu cu banda sub tălpi', purpose: 'umerii', setup: 'pe scaun, ganterele la nivelul umerilor', mistakes: 'arcuiești spatele; cobori prea jos' }),
+    E({ id: 'fit-h-db-triceps', equip: ['gantere'], name: 'Extensii triceps cu o ganteră deasupra capului', group: 'triceps', region: 'upper', role: 'accessory', sets: 3, reps: '10–15', rest: 75, cue: 'coatele spre tavan; cobori gantera în spatele capului și o urci', alt: 'extensii cu banda', setup: 'așezată, gantera ținută cu ambele mâini', mistakes: 'coatele se deschid larg' }),
+    E({ id: 'fit-h-band-pullapart', equip: ['banda'], name: 'Desfacerea benzii în fața pieptului', group: 'umăr posterior', region: 'upper', role: 'accessory', sets: 3, reps: '12–20', rest: 60, cue: 'brațele întinse; deschizi banda până la piept, strângi omoplații', alt: 'fluturări inverse cu gantere ușoare, aplecată', setup: 'banda ținută la lățimea umerilor', mistakes: 'ridici umerii; îndoi coatele mult' }),
+    E({ id: 'fit-h-band-pallof', equip: ['banda'], name: 'Pallof press cu banda', group: 'trunchi', region: 'core', role: 'core', sets: 3, reps: '8–12/parte', unilateral: true, rest: 50, cue: 'împingi banda drept în față și nu lași trunchiul să se rotească', alt: 'dead bug', setup: 'banda prinsă lateral, la nivelul pieptului (ușă, picior de masă)', mistakes: 'te rotești după bandă' }),
+    E({ id: 'fit-h-seated-calf', equip: ['gantere', 'scaun'], name: 'Ridicări pe vârfuri din șezut, gantera pe genunchi', group: 'gambe', region: 'legs', role: 'accessory', sets: 3, reps: '12–15', rest: 60, cue: 'urci pe vârfuri, ții o secundă, cobori încet', alt: 'ridicări pe vârfuri din picioare, pe treaptă', setup: 'pe scaun; vârfurile pe o carte groasă', mistakes: 'ricoșezi jos' }),
+    E({ id: 'fit-h-bulgarian', equip: ['gantere', 'scaun'], name: 'Fandare bulgărească cu piciorul din spate pe un scaun', group: 'fesieri, coapse', region: 'legs', role: 'main', sets: 3, reps: '8–10/picior', unilateral: true, rest: 105, cue: 'cobori drept în jos; sprijin de perete e permis', alt: 'fandare înapoi cu sprijin', purpose: 'fesieri și coapse, pe un picior', setup: 'scaun stabil, lipit de perete', mistakes: 'genunchiul din față cade spre interior' }),
+    // ——— Întreținerea fizioterapeutului (promptul fizioterapeut.md, traseul A): doza mică, rezervă mare, fără aparate ———
+    E({ id: 'pt-sit-stand', equip: ['scaun', 'corp'], name: 'Ridicare de pe scaun', group: 'cvadriceps, fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '8', rest: 50, cue: 'te ridici fără să te împingi cu mâinile; cobori încet până atingi scaunul', alt: 'genuflexiune până la scaun, cu mâna pe un sprijin', purpose: 'forța de a te ridica, genunchi și șold', setup: 'scaun stabil, lipit de perete; tălpile la lățimea șoldurilor', mistakes: 'te arunci înapoi pe scaun; genunchii cad spre interior' }),
+    E({ id: 'pt-calf-floor', equip: ['corp'], name: 'Ridicări pe vârfuri la sol, cu sprijin', group: 'gambe', region: 'legs', role: 'accessory', sets: 2, reps: '10, lent', rest: 45, cue: 'urci în 2 secunde, cobori în 2–3 secunde; mâna pe perete doar pentru echilibru', alt: 'aceeași mișcare din șezut', purpose: 'gambele și glezna', setup: 'în picioare, lângă un perete', mistakes: 'ricoșezi jos; te lași pe marginea exterioară a tălpii' }),
+    E({ id: 'pt-balance', equip: ['corp'], name: 'Echilibru pe un picior, lângă sprijin', group: 'echilibru, gleznă', region: 'legs', role: 'accessory', sets: 2, reps: '20 s pe fiecare picior', unilateral: true, rest: 30, cue: 'genunchiul ușor moale, bazinul drept; atingi sprijinul doar dacă pierzi echilibrul', alt: 'cu ambele picioare, unul în fața celuilalt', purpose: 'controlul gleznei și al șoldului', setup: 'lângă un perete sau o masă', mistakes: 'bazinul cade pe o parte; ții respirația' }),
+    E({ id: 'pt-bridge', equip: ['corp'], name: 'Pod fesier', group: 'fesieri', region: 'legs', role: 'accessory', sets: 2, reps: '8', rest: 45, cue: 'ridici bazinul strângând fesierii, ții o secundă sus, cobori încet', alt: 'ridicare de pe scaun', purpose: 'fesierii', setup: 'pe spate, tălpile pe sol aproape de fesieri', mistakes: 'arcuiești spatele în loc să ridici din șold' }),
+    E({ id: 'pt-band-row', equip: ['banda'], name: 'Ramat cu bandă ușoară', group: 'spate, umăr posterior', region: 'upper', role: 'accessory', sets: 2, reps: '10', rest: 45, cue: 'tragi coatele pe lângă corp și strângi omoplații, fără să ridici umerii', alt: 'ramat cu o sticlă de apă, aplecat cu sprijin', purpose: 'spatele și postura umerilor', setup: 'banda prinsă la nivelul pieptului (clanță, picior de masă) sau în jurul tălpilor, din șezut', mistakes: 'umerii urcă spre urechi; tragi din trunchi' }),
+    E({ id: 'pt-wall-slide', equip: ['corp'], name: 'Alunecări ale brațelor pe perete', group: 'umeri', region: 'upper', role: 'accessory', sets: 2, reps: '8', rest: 40, cue: 'antebrațele pe perete; urci brațele cât nu doare și cobori încet', alt: 'ridicări ale brațelor în față, fără greutate', purpose: 'mobilitatea și controlul umerilor', setup: 'cu fața la perete, antebrațele pe perete la nivelul umerilor', mistakes: 'ridici umerii spre urechi; forțezi peste durere' }),
+    E({ id: 'pt-bird-dog', equip: ['corp'], name: 'Bird-dog simplificat', group: 'trunchi', region: 'core', role: 'core', sets: 2, reps: '6 pe fiecare parte', unilateral: true, rest: 40, cue: 'în patru labe, întinzi un braț și piciorul opus fără să se rotească bazinul', alt: 'doar piciorul sau doar brațul, pe rând', purpose: 'controlul trunchiului', setup: 'palmele sub umeri, genunchii sub șolduri', mistakes: 'arcuiești spatele; bazinul se rotește' }),
+    E({ id: 'pt-thoracic', equip: ['scaun'], name: 'Mobilizare toracică în șezut', group: 'spate (mijloc)', region: 'core', role: 'core', sets: 1, reps: '6 rotații lente pe fiecare parte', rest: 30, cue: 'brațele încrucișate pe piept; rotești trunchiul încet, bazinul rămâne pe scaun', alt: 'rotații culcat pe o parte', purpose: 'mobilitatea spatelui de sus', setup: 'pe un scaun, tălpile pe sol', mistakes: 'rotești din bazin; forțezi capătul mișcării' }),
   ].map((x) => [x.id, x]),
 );
 
@@ -289,6 +313,98 @@ const FIT_SHEETS: Record<string, [string, string, string]> = {
 };
 for (const [id, [purpose, setup, mistakes]] of Object.entries(FIT_SHEETS)) Object.assign(CATALOG[id]!, { purpose, setup, mistakes });
 
+/** Exercițiile făcute culcat (metadată de catalog), pentru varianta prudentă la sarcină / postpartum. */
+const LYING: Record<string, 'spate' | 'burta'> = {
+  'fit-glute-bridge': 'spate', 'fit-glute-bridge-1': 'spate', 'fit-frog-pumps': 'spate', 'fit-dead-bug': 'spate', 'fit-hip-thrust': 'spate',
+  'fit-h-glute-bridge': 'spate', 'fit-h-floor-press': 'spate', 'fit-h-db-fly': 'spate', 'fit-triceps-floor': 'spate', 'fit-db-press': 'spate',
+  'fit-h-band-curl': 'burta', 'fit-reverse-hyper': 'burta', 'fit-straight-leg': 'burta', 'fit-hyperext': 'burta',
+  'pt-bridge': 'spate', 'legs-dead-bug': 'spate', 'legs-hip-thrust': 'spate', 'legs-lying-curl': 'burta',
+  'push-db-bench': 'spate', 'push-bb-bench': 'spate', 'push-db-fly': 'spate', 'push-skullcrusher': 'spate',
+};
+for (const [id, lying] of Object.entries(LYING)) CATALOG[id]!.lying = lying;
+
+/**
+ * Fișe adăugate (auditul v93, A60): doar ce e standard și sigur — scopul, poziția de start și greșelile de evitat —, fără
+ * texte lungi inventate. Exercițiile rămase fără fișă au indicația scurtă (`cue`) și alternativa; lista lor e în raport.
+ */
+const MORE_SHEETS: Record<string, [string, string, string]> = {
+  'fit-adduction': ['interiorul coapsei (adductorii)', 'pernele pe interiorul genunchilor; aparatul deschis cât simți o întindere ușoară, fără durere', 'închizi cu smucituri; deschizi aparatul mai larg decât controlezi'],
+  'fit-bent-fly': ['umărul din spate și mijlocul spatelui', 'aplecat din șold, spatele drept, genunchii ușor îndoiți; ganterele atârnă sub umeri', 'ridici trunchiul ca să ajuți; îndoi mult coatele; ridici umerii spre urechi'],
+  'fit-cable-squat': ['cvadriceps și fesieri', 'scripetele jos, mânerul ținut la piept; picioarele la lățimea umerilor, la un pas de aparat', 'te lași tras în față de cablu; călcâiele se ridică; genunchii cad spre interior'],
+  'fit-curl-alt': ['biceps', 'în picioare, ganterele lângă coapse, coatele lipite de corp', 'balans din spate; coatele pleacă în față; cobori necontrolat'],
+  'fit-curl-rot': ['biceps și antebraț', 'în picioare, ganterele lângă coapse, palmele spre corp', 'balans din spate; coatele pleacă în față'],
+  'fit-fly': ['piept', 'scaunul reglat cât mânerele să fie la înălțimea pieptului; spatele lipit de spătar', 'împingi umerii în față; îndoi coatele și devine împins; deschizi mai mult decât e confortabil pentru umăr'],
+  'fit-frog-pumps': ['fesierii', 'pe spate, tălpile lipite, genunchii căzuți în lateral, călcâiele aproape de fesieri', 'împingi din spate în loc de fesieri; arcuiești partea de jos a spatelui'],
+  'fit-front-raise': ['umărul din față', 'în picioare, ganterele în fața coapselor, coatele ușor îndoite', 'balans din trunchi; urci peste nivelul umerilor; ridici umerii spre urechi'],
+  'fit-glute-bridge': ['fesierii mari', 'pe spate, tălpile pe sol la lățimea șoldurilor, aproape de fesieri; banda deasupra genunchilor', 'arcuiești spatele sus în loc să strângi fesierii; genunchii cad spre interior după bandă'],
+  'fit-glute-bridge-1': ['fesierul piciorului de sprijin', 'pe spate, o talpă pe sol aproape de fesier, celălalt picior întins în aer', 'bazinul se înclină spre piciorul din aer; împingi din vârf, nu din călcâi'],
+  'fit-h-db-fly': ['piept', 'pe spate pe podea, genunchii îndoiți; ganterele deasupra pieptului, palmele față în față', 'întinzi complet coatele; lași brațele să cadă pe podea'],
+  'fit-heel-squat': ['cvadriceps', 'călcâiele pe un disc subțire, vârfurile pe sol; gantera la piept, dacă o folosești', 'trunchiul se apleacă mult în față; genunchii cad spre interior'],
+  'fit-hyperext': ['fesieri și partea de jos a spatelui', 'perna aparatului sub oasele bazinului, gleznele fixate, brațele încrucișate la piept', 'urci peste linia corpului și arcuiești spatele; cobori brusc'],
+  'fit-lat-narrow': ['spatele (dorsalii)', 'mânerul îngust, genunchii fixați sub pernă', 'te lași mult pe spate; tragi din brațe în loc să duci coatele în jos'],
+  'fit-lateral-lunge': ['adductori, fesieri, cvadriceps', 'picioarele apropiate; mâinile la piept sau o ganteră ușoară ținută la piept', 'genunchiul piciorului îndoit cade spre interior; călcâiul se ridică; trunchiul cade în față'],
+  'fit-lateral-step': ['fesierul lateral', 'manșeta la gleznă, scripetele jos, stai lateral față de aparat, ușor ghemuit', 'te ridici din genuflexiune la fiecare pas; înclini trunchiul'],
+  'fit-lateral-walk': ['fesierul lateral', 'banda deasupra genunchilor, picioarele la lățimea șoldurilor, ușor ghemuit', 'lași banda să se strângă între pași; genunchii cad spre interior; te legeni dintr-o parte în alta'],
+  'fit-lunge-walk': ['fesieri și cvadriceps', 'câțiva metri de spațiu liber; ganterele lângă corp sau fără greutate', 'pas prea scurt; genunchiul din față cade spre interior; trunchiul cade în față'],
+  'fit-pulse-squat': ['cvadriceps și fesieri', 'gantera ținută la piept; cobori în genuflexiune și rămâi jos', 'urci prea sus între pulsuri; călcâiele se ridică'],
+  'fit-pushup': ['piept, triceps, umeri', 'mâinile puțin mai larg decât umerii; pe genunchi sau pe vârfuri', 'șoldurile cad sau urcă; coatele larg la 90° de corp; capul înainte'],
+  'fit-rdl-bar': ['femurali și fesieri', 'bara în fața coapselor, priza puțin mai largă decât șoldurile, genunchii ușor îndoiți', 'rotunjești spatele; bara se depărtează de picioare; cobori sub ce controlezi'],
+  'fit-reverse-hyper': ['fesieri', 'culcat cu bazinul pe marginea băncii, te ții de bancă; greutățile la glezne', 'arcuiești spatele sus; balansezi picioarele'],
+  'fit-sl-rdl': ['femurali și fesieri, echilibru', 'în picioare pe un picior, genunchiul ușor îndoit; o mână pe un sprijin, dacă ai nevoie', 'bazinul se rotește în lateral; rotunjești spatele; genunchiul se blochează'],
+  'fit-smith-lunge': ['fesieri și cvadriceps, pe un picior', 'bara Smith pe umeri; un picior în față, unul în spate, la distanța la care cobori drept', 'genunchiul din față cade spre interior; împingi din piciorul din spate'],
+  'fit-straight-arm': ['spatele (dorsalii)', 'scripetele sus; aplecat ușor din șold, brațele aproape întinse', 'îndoi coatele și devine împins; balans din trunchi'],
+  'fit-straight-leg': ['fesierii', 'sprijinit pe bancă, greutățile la glezne', 'arcuiești spatele ca să urci piciorul mai sus; balans'],
+  'fit-sumo-deadlift': ['fesieri, femurali, adductori', 'picioarele larg, vârfurile în afară; gantera ținută între picioare', 'rotunjești spatele; genunchii cad spre interior; ridici din spate, nu din picioare'],
+  'fit-sumo-squat': ['adductori și fesieri', 'picioarele larg, vârfurile în afară; gantera ținută vertical între picioare', 'genunchii cad spre interior; călcâiele se ridică; trunchiul cade în față'],
+  'fit-triceps-floor': ['triceps', 'pe spate pe podea, coatele spre tavan, ganterele deasupra pieptului', 'coatele se deschid larg; duci ganterele spre față'],
+  'fit-triceps-kickback': ['triceps', 'aplecat din șold, cu o mână sprijinită; cotul lipit de corp, la nivelul trunchiului', 'mișcarea vine din umăr; balans; cotul coboară'],
+  'fit-walking-lunge': ['fesieri și cvadriceps', 'un picior în față, unul în spate; ganterele lângă corp', 'genunchiul din față cade spre interior; trunchiul cade în față; pas prea scurt'],
+  'core-ab-wheel': ['abdomen', 'în genunchi pe o saltea, roata sub umeri', 'lași spatele să se arcuiască; mergi mai departe decât controlezi'],
+  'core-cable-crunch': ['abdomen', 'în genunchi în fața scripetelui sus, frânghia lângă cap', 'tragi din brațe; te lași pe călcâie în loc să rulezi trunchiul'],
+  'core-hanging-knee': ['abdomen', 'atârnat la bară sau sprijinit pe coate la aparatul pentru abdomen', 'balans; ridici genunchii fără să rulezi bazinul'],
+  'core-plank': ['trunchi', 'antebrațele sub umeri, corpul drept de la cap la călcâie', 'șoldurile cad sau urcă; ții respirația'],
+  'legs-press': ['cvadriceps și fesieri', 'spatele lipit de spătar, picioarele pe platformă la lățimea șoldurilor', 'bazinul se dezlipește jos; genunchii se blochează sus; genunchii cad spre interior'],
+  'legs-bb-squat': ['cvadriceps și fesieri', 'bara pe partea de sus a spatelui (nu pe gât), picioarele la lățimea umerilor', 'călcâiele se ridică; genunchii cad spre interior; rotunjești spatele jos'],
+  'legs-goblet': ['cvadriceps și fesieri', 'gantera ținută vertical la piept, picioarele puțin mai larg decât șoldurile', 'trunchiul cade în față; călcâiele se ridică'],
+  'legs-db-rdl': ['femurali și fesieri', 'ganterele în fața coapselor, genunchii ușor îndoiți', 'rotunjești spatele; ganterele se depărtează de picioare'],
+  'legs-bb-rdl': ['femurali și fesieri', 'bara în fața coapselor, priza la lățimea umerilor, genunchii ușor îndoiți', 'rotunjești spatele; bara se depărtează de picioare'],
+  'legs-hip-thrust': ['fesieri', 'omoplații pe bancă, bara peste bazin cu o pernă, tălpile la lățimea șoldurilor', 'arcuiești spatele sus; împingi din vârfuri'],
+  'legs-seated-curl': ['femurali', 'axa aparatului în dreptul genunchiului, perna pe gleznă', 'ridici bazinul de pe scaun; revii necontrolat'],
+  'legs-lying-curl': ['femurali', 'axa aparatului în dreptul genunchiului, perna pe gleznă', 'ridici bazinul de pe banc; revii necontrolat'],
+  'legs-ext': ['cvadriceps', 'axa aparatului în dreptul genunchiului, perna pe gleznă', 'smucești sus; ridici bazinul de pe scaun'],
+  'legs-standing-calf': ['gambe', 'antepiciorul pe o treaptă, călcâiele libere', 'ricoșezi jos; mișcare prea scurtă'],
+  'legs-seated-calf': ['gamba (solearul)', 'perna pe coapse, chiar deasupra genunchilor; antepiciorul pe platformă', 'ricoșezi jos; urci prea repede'],
+  'legs-adduction': ['interiorul coapsei (adductorii)', 'pernele pe interiorul genunchilor', 'închizi cu smucituri; deschizi mai larg decât controlezi'],
+  'legs-abduction': ['fesierul lateral', 'pernele pe exteriorul genunchilor; spătarul drept', 'deschizi cu smucituri; revii necontrolat'],
+  'push-db-bench': ['piept, triceps', 'pe bancă, omoplații strânși, tălpile pe sol; ganterele urcate de pe genunchi', 'coatele larg la 90°; ganterele se lovesc sus; arcuiești mult spatele'],
+  'push-bb-bench': ['piept, triceps', 'ochii sub bară, priza puțin mai largă decât umerii, omoplații strânși', 'bara sare de pe piept; fesierii se ridică de pe bancă; coatele larg la 90°'],
+  'push-db-incline': ['pieptul de sus, umeri', 'banca la 15–30°, ganterele urcate de pe genunchi', 'banca prea ridicată; coborâre necontrolată'],
+  'push-db-ohp': ['umeri', 'pe bancă cu spătar vertical, ganterele la nivelul umerilor', 'arcuiești spatele; cobori mai jos decât controlezi'],
+  'push-db-lateral': ['deltoidul lateral', 'în picioare, ganterele lângă coapse, coatele ușor îndoite', 'balans din corp; ridici umerii spre urechi'],
+  'push-cable-lateral': ['deltoidul lateral', 'scripetele jos, mânerul în mâna opusă, lateral față de aparat', 'balans din corp; ridici umerii spre urechi'],
+  'push-rope-pushdown': ['triceps', 'scripetele sus, frânghia; coatele lângă corp', 'coatele pleacă în față; te apleci peste'],
+  'pull-lat-neutral': ['spatele (dorsalii)', 'genunchii fixați sub pernă; mânerul neutru (palmele față în față)', 'te lași mult pe spate; tragi bara la ceafă'],
+  'pull-lat-wide': ['spatele (dorsalii)', 'genunchii fixați sub pernă; priza puțin mai largă decât umerii', 'te lași mult pe spate; tragi bara la ceafă'],
+  'pull-chest-row': ['mijlocul spatelui', 'pieptul pe pernă, mânerele la capătul brațelor', 'pieptul se ridică de pe pernă; tragi din biceps'],
+  'pull-seated-cable-row': ['mijlocul spatelui', 'picioarele pe suport, genunchii ușor îndoiți, spatele drept', 'balans din trunchi; umerii urcă'],
+  'pull-db-hammer': ['biceps și antebraț', 'în picioare, ganterele cu palmele spre corp, coatele lângă corp', 'coatele pleacă în față; balans din spate'],
+  'pull-face-pull': ['umărul din spate, trapez', 'scripetele la nivelul feței, frânghia', 'tragi din trunchi; ridici umerii'],
+  'pull-assisted-pullup': ['spatele (dorsalii)', 'genunchii pe platforma de asistență; priza puțin mai largă decât umerii', 'balans; cobori brusc; nu urci până la bărbie'],
+};
+for (const [id, [purpose, setup, mistakes]] of Object.entries(MORE_SHEETS)) {
+  const ex = CATALOG[id]!;
+  Object.assign(ex, { purpose: ex.purpose ?? purpose, setup: ex.setup ?? setup, mistakes: ex.mistakes ?? mistakes });
+}
+
+/** Echipamentul exercițiilor de sală care se pot face și acasă (gantere, bandă, corp, scaun) — pentru PPL-ul de acasă. */
+const HOME_OK: Record<string, Equip[]> = {
+  'pull-db-shrug': ['gantere'], 'pull-db-curl-alt': ['gantere'], 'pull-db-hammer': ['gantere'], 'push-db-lateral': ['gantere'], 'push-db-overhead-ext': ['gantere'],
+  'push-arnold': ['gantere', 'scaun'], 'push-pushup': ['corp', 'scaun'], 'legs-walking-lunge': ['gantere', 'corp'], 'legs-step-up': ['scaun', 'corp'], 'legs-sumo-goblet': ['gantere'],
+  'legs-band-walk': ['banda'], 'legs-standing-calf': ['corp'], 'legs-goblet': ['gantere'], 'legs-db-rdl': ['gantere'], 'legs-split-squat': ['corp', 'gantere'],
+  'legs-dead-bug': ['corp'], 'core-plank': ['corp'], 'pull-farmer': ['gantere'], 'pull-suitcase': ['gantere'], 'legs-pogo': ['corp'],
+};
+for (const [id, eq] of Object.entries(HOME_OK)) CATALOG[id]!.equip ??= eq;
+
 /** Abdomenul de la finalul ședinței (opțional), altul la fiecare ședință. */
 const ABS = ['core-cable-crunch', 'core-hanging-knee', 'core-plank', 'core-ab-wheel', 'legs-dead-bug', 'legs-pallof'];
 
@@ -312,8 +428,8 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
   pushB: { id: 'pushB', name: 'Push B', focus: 'piept, umeri, triceps', exercises: ['push-db-incline', 'push-machine-shoulder', 'push-pushup', 'push-db-lateral', 'push-overhead-cable'], completions: [] },
   pullB: { id: 'pullB', name: 'Pull B', focus: 'spate, umăr posterior, biceps', exercises: ['pull-assisted-pullup', 'pull-cable-row-1arm', 'pull-rev-fly-cable', 'pull-cable-curl', 'pull-suitcase'], completions: [] },
   legsB: { id: 'legsB', name: 'Legs B', focus: 'picioare, trunchi', exercises: ['legs-goblet', 'legs-hip-thrust', 'legs-lying-curl', 'legs-seated-calf', 'legs-pallof'], completions: [], legSwap: 'legs-step-up' },
-  // Bărbații (anduranță): Push / Pull / Picioare în rotație, indiferent de numărul de ședințe pe săptămână; fiecare
-  // poziție are trei variante cu exerciții și aparate diferite, ca ședințele să nu fie identice.
+  // Bărbații: Push / Pull / Picioare în rotație de la 3 ședințe pe săptămână (sub 3: tot corpul sau sus / jos, A50);
+  // fiecare poziție are trei variante cu exerciții și aparate diferite, ca ședințele să nu fie identice.
   push: split('push', 'Push', 'piept, umeri (fața și lateral), triceps, abdomen', [
     ['push-bb-bench', 'push-db-bench', 'push-machine-chest'],
     ['push-db-incline', 'push-smith-incline', 'push-bb-incline'],
@@ -345,6 +461,9 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
     ['legs-standing-calf', 'legs-seated-calf', 'legs-press-calf'],
     [...ABS.slice(1), ABS[0]!],
   ]),
+  // O singură ședință pe săptămână: tot corpul (excepția din 20.10.2026, A50 — vezi `fullBody`). Câte o mișcare
+  // principală pe tipar: genuflexiune, împins, tras orizontal, aplecare din șold, tras vertical; gambe și trunchi la final.
+  full: { id: 'full', name: 'Tot corpul', fullBody: true, focus: 'picioare, piept, spate, umeri, trunchi', exercises: ['legs-goblet', 'push-db-bench', 'pull-chest-row', 'legs-db-rdl', 'pull-lat-neutral', 'legs-standing-calf', 'legs-pallof'], completions: [] },
   // Cu două ședințe pe săptămână: o zi de picioare și una pentru partea de sus, alternativ. Picioarele nu se combină
   // niciodată cu partea de sus în aceeași ședință (regula proprietarului, 19.10.2026); abdomenul merge cu oricare.
   fullA: { id: 'fullA', name: 'Picioare și trunchi', aliases: ['Tot corpul A'], focus: 'cvadriceps, femurali, fesieri, gambe, abdomen', exercises: ['legs-press', 'legs-db-rdl', 'legs-split-squat', 'legs-lying-curl', 'legs-standing-calf', 'legs-dead-bug'], completions: [] },
@@ -478,6 +597,17 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
     ['fit-triceps-kickback', 3, '30', 60, 'C'],
     ['fit-triceps-floor', 3, '50, greutate mică', 60, 'C'],
   ]),
+  // Fitness cu o singură zi pe săptămână: tot corpul (excepția din 20.10.2026, A50), aceleași exerciții de bază ale
+  // programului, 3 serii, ca fiecare tipar (fesieri, coapse, spate, piept) să fie lucrat în fiecare săptămână.
+  ft: { ...coach('ft', 'Tot corpul (o zi pe săptămână)', [], 'fesieri, coapse, spate, piept, trunchi', '10 min mers rapid pe bandă sau eliptică, apoi 20 de genuflexiuni fără greutate și rotiri de umeri', WALK, [
+    ['fit-hip-thrust', 3, '10–12', 105],
+    ['fit-leg-press', 3, '10–12', 105],
+    ['fit-lat', 3, '10–12', 90],
+    ['fit-chest-press', 3, '10–12', 90],
+    ['fit-row', 3, '10–12', 90],
+    ['fit-rdl', 3, '10–12', 105],
+    ['fit-pallof', 3, '8–12/parte', 50],
+  ]), fullBody: true },
   // Ședințele vechi (planuri salvate înainte de 19.10.2026, combinau picioarele cu partea de sus): se citesc din plan,
   // dar prescripția lor e cea a ședinței noi echivalente (LEGACY_FIT); planul se rescrie la deschidere.
   f1: fit('f1', 'F1 Tot corpul', 'fesieri, coapse, împins, tras, trunchi', { 'fit-hip-thrust': 3 }),
@@ -485,12 +615,17 @@ export const SESSIONS: Record<SessionId, StrengthSession> = {
   a3: fit('a3', 'A3 Fesieri și coapse', 'fesieri, coapse și trunchi superior', { 'fit-hip-thrust': 3 }),
   b3: fit('b3', 'B3 Partea superioară', 'partea superioară și femurali', { 'fit-lat': 3 }),
   c3: fit('c3', 'C3 Posterior și fesieri', 'posterior, fesieri și trunchi superior', { 'fit-rdl': 3 }),
+  // Întreținerea fizioterapeutului (traseul A, fără durere și fără restricții): modul scurt, 12–20 min, nu ședință de
+  // sală. Doza e cea din promptul fizioterapeut.md; regula 20 (45 min, 3–4 serii) nu i se aplică.
+  intA: maint('intA', 'Întreținere A: picior și șold', 'ridicarea de pe scaun, gambe, echilibru, fesieri', { 'pt-sit-stand': [2, '8', 50], 'pt-calf-floor': [2, '10, lent', 45], 'pt-balance': [2, '20 s pe fiecare picior', 30], 'pt-bridge': [2, '8', 45] }),
+  intB: maint('intB', 'Întreținere B: umăr și trunchi', 'spatele de sus, umerii, trunchiul', { 'pt-band-row': [2, '10', 45], 'pt-wall-slide': [2, '8', 40], 'pt-bird-dog': [2, '6 pe fiecare parte', 40], 'pt-thoracic': [1, '6 rotații lente pe fiecare parte', 30] }),
   // Varianta amplă de patru zile (A–D): doza pentru sportiva eligibilă (experiență, timp ≥ 55 min, prezență
-  // demonstrată la 4 zile), nu o înlocuire obligatorie a ședințelor L1/U1/L2/U2. Doza de construire; săpt. 1–4: 2 serii.
-  fa: fitX('fa', 'A Picioare și fesieri', 'picioare și fesieri, accent genuflexiune', '55–70 min', { 'fit-hip-thrust': [3, '8–12', 120], 'fit-leg-press': [3, '8–12', 150], 'fit-bulgarian': [2, '8–10/picior', 105], 'fit-leg-curl': [2, '10–15', 90], 'fit-abduction': [2, '12–20', 75], 'fit-calf': [2, '10–15', 75], 'fit-pallof': [2, '8–12/parte', 50] }),
-  fb: fitX('fb', 'B Superior, accent spate', 'spate, umeri, brațe', '45–60 min', { 'fit-lat': [3, '8–12', 120], 'fit-row': [3, '8–12', 120], 'fit-chest-press': [2, '8–12', 105], 'fit-lateral': [2, '12–20', 75], 'fit-rev-fly': [2, '12–20', 75], 'fit-biceps': [2, '10–15', 75], 'fit-triceps': [2, '10–15', 75] }),
-  fc: fitX('fc', 'C Fesieri și lanț posterior', 'fesieri, femurali, trunchi', '50–65 min', { 'fit-rdl': [3, '8–10', 150], 'fit-hip-thrust': [2, '10–15', 120], 'fit-reverse-lunge': [2, '8–12/picior', 105], 'fit-leg-curl': [2, '10–15', 90], 'fit-calf-seated': [2, '12–15', 75], 'fit-dead-bug': [2, '6–10/parte', 50] }),
-  fd: fitX('fd', 'D Superior, accent împins', 'piept, umeri, spate, brațe', '45–60 min', { 'fit-incline': [3, '8–12', 120], 'fit-cable-row': [3, '8–12', 120], 'fit-shoulder': [2, '8–12', 105], 'fit-lat-neutral': [2, '10–12', 105], 'fit-lateral': [2, '12–20', 75], 'fit-hammer': [2, '10–15', 75], 'fit-triceps': [2, '10–15', 75] }),
+  // demonstrată la 4 zile), nu o înlocuire obligatorie a ședințelor L1/U1/L2/U2. Doza de construire: 3 serii la fiecare
+  // exercițiu (regula 20; documentul de referință avea 2 la accesorii și în săpt. 1–4, aliniat pe 20.10.2026, A60).
+  fa: fitX('fa', 'A Picioare și fesieri', 'picioare și fesieri, accent genuflexiune', '55–70 min', { 'fit-hip-thrust': [3, '8–12', 120], 'fit-leg-press': [3, '8–12', 150], 'fit-bulgarian': [3, '8–10/picior', 105], 'fit-leg-curl': [3, '10–15', 90], 'fit-abduction': [3, '12–20', 75], 'fit-calf': [3, '10–15', 75], 'fit-pallof': [3, '8–12/parte', 50] }),
+  fb: fitX('fb', 'B Superior, accent spate', 'spate, umeri, brațe', '45–60 min', { 'fit-lat': [3, '8–12', 120], 'fit-row': [3, '8–12', 120], 'fit-chest-press': [3, '8–12', 105], 'fit-lateral': [3, '12–20', 75], 'fit-rev-fly': [3, '12–20', 75], 'fit-biceps': [3, '10–15', 75], 'fit-triceps': [3, '10–15', 75] }),
+  fc: fitX('fc', 'C Fesieri și lanț posterior', 'fesieri, femurali, trunchi', '50–65 min', { 'fit-rdl': [3, '8–10', 150], 'fit-hip-thrust': [3, '10–15', 120], 'fit-reverse-lunge': [3, '8–12/picior', 105], 'fit-leg-curl': [3, '10–15', 90], 'fit-calf-seated': [3, '12–15', 75], 'fit-dead-bug': [3, '6–10/parte', 50] }),
+  fd: fitX('fd', 'D Superior, accent împins', 'piept, umeri, spate, brațe', '45–60 min', { 'fit-incline': [3, '8–12', 120], 'fit-cable-row': [3, '8–12', 120], 'fit-shoulder': [3, '8–12', 105], 'fit-lat-neutral': [3, '10–12', 105], 'fit-lateral': [3, '12–20', 75], 'fit-hammer': [3, '10–15', 75], 'fit-triceps': [3, '10–15', 75] }),
 };
 
 function split(id: SplitSessionId, name: string, focus: string, slots: string[][]): StrengthSession {
@@ -507,6 +642,11 @@ export const isSplitSession = (id: SessionId): id is SplitSessionId => id === 'p
 function fitX(id: FitnessSessionId, name: string, focus: string, estimate: string, dose: Record<string, [number, string, number]>): StrengthSession {
   return { id, name, focus, estimate, exercises: Object.keys(dose), completions: [], dose: Object.fromEntries(Object.entries(dose).map(([k, [sets, reps, rest]]) => [k, { sets, reps, rest }])) };
 }
+
+function maint(id: MaintenanceSessionId, name: string, focus: string, dose: Record<string, [number, string, number]>): StrengthSession {
+  return { id, name, focus, maintenance: true, exercises: Object.keys(dose), completions: [], dose: Object.fromEntries(Object.entries(dose).map(([k, [sets, reps, rest]]) => [k, { sets, reps, rest }])) };
+}
+export const isMaintenanceSession = (id: SessionId): id is MaintenanceSessionId => id === 'intA' || id === 'intB';
 
 /** Ședințele variantei ample. */
 export const FITNESS_WIDE: FitnessSessionId[] = ['fa', 'fb', 'fc', 'fd'];
@@ -562,6 +702,28 @@ export const HOME_SWAP: Record<string, string> = {
   'fit-reverse-hyper': 'fit-h-band-kickback',
   'fit-straight-leg': 'fit-h-band-kickback',
   'fit-rdl-bar': 'fit-rdl',
+  // Bărbații acasă (regula 22): Push / Pull / Picioare și tot corpul, cu echivalentele de acasă (aceeași poziție din ședință).
+  'push-bb-bench': 'fit-h-floor-press', 'push-db-bench': 'fit-h-floor-press', 'push-machine-chest': 'fit-h-floor-press',
+  'push-db-incline': 'push-pushup', 'push-smith-incline': 'push-pushup', 'push-bb-incline': 'push-pushup',
+  'push-db-ohp': 'fit-h-db-ohp', 'push-machine-shoulder': 'fit-h-db-ohp', 'push-landmine': 'fit-h-db-ohp',
+  'push-cable-lateral': 'push-db-lateral', 'push-machine-lateral': 'push-db-lateral',
+  'push-cable-fly': 'fit-h-db-fly', 'push-pec-deck': 'fit-h-db-fly', 'push-db-fly': 'fit-h-db-fly',
+  'push-rope-pushdown': 'fit-triceps-kickback', 'push-dips': 'fit-triceps-kickback', 'push-bar-pushdown': 'fit-triceps-kickback',
+  'push-overhead-cable': 'push-db-overhead-ext', 'push-skullcrusher': 'push-db-overhead-ext',
+  'pull-lat-wide': 'fit-h-band-pulldown', 'pull-assisted-pullup': 'fit-h-band-pulldown', 'pull-lat-neutral': 'fit-h-band-pulldown',
+  'pull-bb-row': 'fit-h-band-row', 'pull-seated-cable-row': 'fit-h-band-row', 'pull-chest-row': 'fit-h-band-row',
+  'pull-db-row-1arm': 'fit-h-db-row', 'pull-straight-arm': 'fit-h-db-row', 'pull-tbar-row': 'fit-h-db-row', 'pull-cable-row-1arm': 'fit-h-db-row',
+  'pull-face-pull': 'fit-h-band-pullapart', 'pull-rev-fly-machine': 'fit-h-band-pullapart', 'pull-rev-fly-cable': 'fit-h-band-pullapart',
+  'pull-bb-shrug': 'pull-db-shrug', 'pull-machine-shrug': 'pull-db-shrug',
+  'pull-ez-curl': 'fit-biceps', 'pull-cable-curl': 'fit-biceps', 'pull-incline-curl': 'pull-db-hammer', 'pull-preacher': 'pull-db-hammer',
+  'legs-bb-squat': 'fit-h-goblet', 'legs-press': 'fit-h-goblet', 'legs-hack': 'fit-h-goblet',
+  'legs-bb-rdl': 'fit-rdl', 'legs-hip-thrust': 'fit-h-glute-bridge', 'legs-bulgarian': 'fit-h-bulgarian',
+  'legs-ext': 'fit-h-split-squat', 'legs-ext-1': 'fit-h-split-squat',
+  'legs-lying-curl': 'fit-h-band-curl', 'legs-seated-curl': 'fit-h-band-curl', 'legs-standing-curl': 'fit-h-band-curl',
+  'legs-adduction': 'legs-sumo-goblet', 'legs-cable-adduction': 'legs-sumo-goblet',
+  'legs-abduction': 'fit-h-band-abduction', 'legs-cable-abduction': 'fit-h-band-abduction',
+  'legs-seated-calf': 'fit-h-seated-calf', 'legs-press-calf': 'legs-standing-calf',
+  'core-cable-crunch': 'core-plank', 'core-ab-wheel': 'core-plank', 'core-hanging-knee': 'legs-dead-bug', 'legs-pallof': 'fit-h-band-pallof',
 };
 
 /** Exercițiul executabil la locul dat; null dacă nu există variantă (nu se activează un exercițiu imposibil). */
@@ -581,8 +743,11 @@ export const FITNESS_ROTATION: Record<2 | 3 | 4, FitnessSessionId[]> = { 2: ['l1
 export const LEGACY_FIT: Partial<Record<FitnessSessionId, FitnessSessionId>> = { f1: 'l1', f2: 'u1', a3: 'l1', b3: 'u1', c3: 'l2' };
 const FIT_LOWER: FitnessSessionId[] = ['l1', 'l2', 'l3'];
 const FIT_UPPER: FitnessSessionId[] = ['u1', 'u2'];
-/** Tiparul săptămânii: 2 zile = picioare, sus; 3 = picioare, sus, picioare; 4 = picioare, sus, picioare, sus. */
-export const FIT_PATTERN: Record<number, ('L' | 'U')[]> = { 1: ['L'], 2: ['L', 'U'], 3: ['L', 'U', 'L'], 4: ['L', 'U', 'L', 'U'] };
+/**
+ * Tiparul săptămânii, după frecvență (auditul v93, A50; decizia proprietarului, 20.10.2026): 1 zi = tot corpul;
+ * 2 zile = picioare, sus; 3 = picioare, sus, picioare; 4 = picioare, sus, picioare, sus.
+ */
+export const FIT_PATTERN: Record<number, ('L' | 'U' | 'F')[]> = { 1: ['F'], 2: ['L', 'U'], 3: ['L', 'U', 'L'], 4: ['L', 'U', 'L', 'U'] };
 /**
  * Rotația de fitness pe tot programul (nu doar în săptămână): zilele de picioare trec prin A → B → C, cele de sus prin
  * spate+biceps → piept+umeri+triceps, ca toate ședințele să apară și să nu se repete aceeași zi de la o săptămână la alta.
@@ -591,7 +756,8 @@ export class FitnessRotator {
   private l = 0;
   private u = 0;
   private v: Record<string, number> = {};
-  next(kind: 'L' | 'U'): { session: FitnessSessionId; variant?: number } {
+  next(kind: 'L' | 'U' | 'F'): { session: FitnessSessionId; variant?: number } {
+    if (kind === 'F') return { session: 'ft' };
     const session = kind === 'L' ? FIT_LOWER[this.l++ % FIT_LOWER.length]! : FIT_UPPER[this.u++ % FIT_UPPER.length]!;
     if (!SESSIONS[session].variants) return { session };
     const variant = (this.v[session] ?? 0) % SESSIONS[session].variants!.length;
@@ -603,7 +769,32 @@ export class FitnessRotator {
   }
 }
 export const FITNESS_ROTATION_WIDE: FitnessSessionId[] = ['fa', 'fb', 'fc', 'fd'];
-export const isFitnessSession = (id: SessionId): id is FitnessSessionId => ['f1', 'f2', 'a3', 'b3', 'c3', 'l1', 'l2', 'l3', 'u1', 'u2', 'fa', 'fb', 'fc', 'fd'].includes(id);
+
+/** L = picioare (și trunchi), U = partea de sus (și trunchi), F = tot corpul. */
+export type SessionKind = 'L' | 'U' | 'F';
+/**
+ * Clasificarea ședinței (auditul v93, A104) din metadatele exercițiilor — regiunea fiecăruia, pe toate pozițiile și
+ * variantele — după maparea numelor vechi (LEGACY_FIT), nu dintr-o listă de nume. Abdomenul și transportul nu schimbă
+ * clasa. O ședință nouă se clasifică singură; încălzirea, cardio-ul de final și rotația citesc aceeași clasă.
+ */
+export function sessionKind(id: SessionId): SessionKind {
+  const s = SESSIONS[LEGACY_FIT[id as FitnessSessionId] ?? id];
+  if (s.fullBody) return 'F';
+  const ids = [...s.exercises, ...(s.slots?.flat() ?? []), ...(s.variants?.flatMap((v) => v.exercises) ?? [])];
+  const regions = new Set(ids.map((e) => CATALOG[e]?.region));
+  return regions.has('legs') && regions.has('upper') ? 'F' : regions.has('legs') ? 'L' : 'U';
+}
+/** Grupul de rotație: ședințele care se pot înlocui una pe alta când se decalează rotația (aceeași structură). */
+export function rotationGroup(id: SessionId): string {
+  if (isMaintenanceSession(id)) return 'intretinere';
+  if (id === 'full' || id === 'ft') return id;
+  if (id === 'fullA' || id === 'fullB') return 'sus-jos';
+  if (isSplitSession(id)) return 'ppl';
+  if (isWideSession(id)) return 'fitness-ampla';
+  if (isFitnessSession(id)) return 'fitness';
+  return 'ppl-ab';
+}
+export const isFitnessSession = (id: SessionId): id is FitnessSessionId => ['f1', 'f2', 'a3', 'b3', 'c3', 'l1', 'l2', 'l3', 'u1', 'u2', 'fa', 'fb', 'fc', 'fd', 'ft'].includes(id);
 
 export const PPL_ROTATION: SessionId[] = ['pushA', 'pullA', 'legsA', 'pushB', 'pullB', 'legsB'];
 export const FULL_ROTATION: SessionId[] = ['fullA', 'fullB'];
@@ -613,27 +804,51 @@ export const isLegsSession = (id: SessionId) => id === 'legsA' || id === 'legsB'
 export interface SplitState {
   i: number;
   deferred: boolean;
+  /** Câte ședințe au trecut de când picioarele au fost amânate. */
+  waits?: number;
   counts: Record<SplitSessionId, number>;
 }
-export const newSplitState = (): SplitState => ({ i: 0, deferred: false, counts: { push: 0, pull: 0, legs: 0 } });
+export const newSplitState = (): SplitState => ({ i: 0, deferred: false, waits: 0, counts: { push: 0, pull: 0, legs: 0 } });
 
 /**
  * Următoarea ședință din rotația Push → Pull → Picioare. Picioarele nu cad în ajunul unei ședințe-cheie (trec la
  * următoarea zi de sală) și deloc în ultimele 10 zile dinaintea cursei. Varianta = a câta ședință de acel tip e.
+ * Amânarea nu poate deveni dispariție (auditul v93, A50): după o ședință în plus de așteptare, picioarele vin oricum,
+ * ca ședință de picioare ușoară (`light`: greutăți mai mici), nu se mai amână.
  */
-export function nextSplit(st: SplitState, legsBlocked: boolean, nearRace: boolean): { session: SplitSessionId; variant: number } {
-  let session: SplitSessionId;
-  if (st.deferred && !legsBlocked && !nearRace) {
-    session = 'legs';
+export function nextSplit(st: SplitState, legsBlocked: boolean, nearRace: boolean): { session: SplitSessionId; variant: number; light?: boolean } {
+  if (st.deferred && !nearRace && (!legsBlocked || (st.waits ?? 0) >= 1)) {
     st.deferred = false;
-  } else {
-    session = SPLIT_ROTATION[st.i++ % 3]!;
-    if (session === 'legs' && (legsBlocked || nearRace)) {
-      if (!nearRace) st.deferred = true;
-      session = SPLIT_ROTATION[st.i++ % 3]!;
+    st.waits = 0;
+    return { session: 'legs', variant: st.counts.legs++, ...(legsBlocked ? { light: true } : {}) };
+  }
+  if (st.deferred && !nearRace) st.waits = (st.waits ?? 0) + 1;
+  let session = SPLIT_ROTATION[st.i++ % 3]!;
+  if (session === 'legs' && (legsBlocked || nearRace)) {
+    if (!nearRace && !st.deferred) {
+      st.deferred = true;
+      st.waits = 0;
     }
+    session = SPLIT_ROTATION[st.i++ % 3]!;
   }
   return { session, variant: st.counts[session]++ };
+}
+
+/**
+ * Structura forței după frecvența REALĂ a săptămânii (auditul v93, A50; decizia proprietarului, 20.10.2026), nu după
+ * sex: 1 ședință = tot corpul (excepția „fullBody”); 2 = picioare / partea de sus (fiecare tipar o dată pe săptămână);
+ * 3+ = Push / Pull / Picioare la bărbați (regula 20), structura antrenoarei / PPL A–B la celelalte.
+ */
+export type SplitFamily = 'full' | 'upper-lower' | 'ppl';
+export const splitFamily = (perWeek: number): SplitFamily => (perWeek <= 1 ? 'full' : perWeek === 2 ? 'upper-lower' : 'ppl');
+
+/**
+ * Ordinea sus / jos într-o săptămână cu 2 ședințe: picioarele în ziua care nu e în ajunul unei ședințe-cheie; dacă
+ * ambele sunt, picioarele rămân, dar ușoare (nu dispar).
+ */
+export function upperLowerWeek(beforeKey: boolean[]): { session: 'fullA' | 'fullB'; legs: LegsMode }[] {
+  const legsAt = beforeKey[0] && !beforeKey[1] ? 1 : 0;
+  return beforeKey.map((bk, i) => (i === legsAt ? { session: 'fullA' as const, legs: bk ? ('usor' as const) : ('normal' as const) } : { session: 'fullB' as const, legs: 'normal' as const }));
 }
 
 // ——— Blocurile ———
@@ -762,7 +977,7 @@ export interface StrengthSpec {
   recovery?: boolean;
   /** „usor”: a doua zi e ședință-cheie; „fara”: ultimele 10 zile dinaintea cursei. */
   legs?: LegsMode;
-  /** Fitness: prima săptămână cu mai multe zile (2 → 3 sau 3 → 4): volumul se distribuie, nu crește dintr-odată. */
+  /** Fitness: prima săptămână cu mai multe zile (2 → 3 sau 3 → 4): 3 serii pe exercițiu; totalul pe săptămână crește (A52). */
   transition?: boolean;
   /** Push / Pull / Picioare: a câta ședință de acest tip (de la 0); alege exercițiile. */
   variant?: number;
@@ -770,7 +985,34 @@ export interface StrengthSpec {
   place?: 'sala' | 'acasa';
   /** Slăbire: ședința începe cu mers pe bandă înclinată (20 min în zilele de sus, 10 în cele de picioare + restul la final). */
   opener?: 'slabire';
+  /**
+   * Varianta scurtă (excepțiile de la regula 20, decizia proprietarului din 20.10.2026): restricție de siguranță sau
+   * sugestie de recuperare, revenire după boală (febră), taper înainte de cursă, timpul declarat de sportiv sub 45 de
+   * minute. Atunci: minimum 2 serii pe exercițiu și durata prescripției (ex. 25–30 min), nu „45 de minute fictive”.
+   * Motivul se scrie în textul ședinței, ca refacerea sau deschiderea aplicației să nu restaureze seriile tăiate.
+   */
+  reduced?: { why: ReducedReason; minutes: number };
+  /**
+   * Sarcină sau primul an după naștere (intake.fitness.sarcina === 'da' sau intake.sarcina === 'da'; auditul v93, A105):
+   * varianta prudentă, explicită — fără cardio înclinat de slăbire la început, fără exerciții culcat pe spate sau pe burtă
+   * (AIRON nu știe săptămâna sarcinii, deci nu se presupune că e sub 16), efort la care vorbești ușor. Nu e o
+   * prescripție medicală: recomandarea e coordonarea cu medicul sau moașa.
+   */
+  pregnancy?: boolean;
 }
+
+/** Motivele pentru care o ședință de forță poate coborî sub 45 de minute și 3 serii (decizia proprietarului, 20.10.2026). */
+export type ReducedReason = 'siguranta' | 'boala' | 'taper' | 'timp';
+export const REDUCED_LABEL: Record<ReducedReason, string> = {
+  siguranta: 'recuperare / restricție de siguranță',
+  boala: 'revenire după boală',
+  taper: 'înainte de cursă',
+  timp: 'timpul tău de azi',
+};
+/** În varianta scurtă: cel puțin 2 serii pe exercițiu (nu 3) și cel puțin 15 minute. */
+export const MIN_REDUCED_SETS = 2;
+const MIN_REDUCED_MINUTES = 15;
+const REDUCED_WARMUP = { min: 5, text: '5 min de mișcare ușoară (mers vioi sau bicicletă staționară), rotiri de umeri și șolduri, apoi o serie ușoară la primul exercițiu (nu se numără)' };
 
 /** Ce știe ecranul (sau pachetul) despre ziua ședinței: obiectivul și sporturile de anduranță din aceeași zi. */
 export interface StrengthDayContext {
@@ -848,13 +1090,73 @@ function rirFor(spec: StrengthSpec): string {
   return '2–3';
 }
 
-/** Timpul de lucru al unei serii (s), din repetările scrise: ~3 s pe repetare, între 30 și 90 s; „30–45 s” = timpul. */
-function workSec(r: Rx): number {
-  const sec = /(\d+)\s*s\b(?!\s*(ținut|sus|pauză))/.exec(r.reps);
-  if (sec && !/rep/.test(r.reps) && /^\d+[–-]?\d*\s*s/.test(r.reps.trim())) return Math.min(90, Math.max(30, Number(sec[1])));
-  const nums = (r.reps.split('—')[0] ?? r.reps).match(/\d+/g)?.map(Number).filter((n) => n > 0 && n <= 100) ?? [];
-  const per = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 10;
-  return Math.min(90, Math.max(30, per * 3));
+// ——— Durata unei serii (auditul v93, A52): din structura repetărilor, nu din media cifrelor ———
+// Reperele (estimări de produs AIRON, nu măsurători): o repetare controlată ~3 s; o repetare cu menținere = 2 s de
+// mișcare + secundele ținute; o repetare „rapidă” ~1,5 s; un pas ~1,5 s (la mersul fandat ~2,5 s); un puls ~1,2 s;
+// „lent” ~5 s. Pe o parte („pe picior”, „/braț”, „pe fiecare parte”) seria se face de două ori, cu ~15 s la schimbare.
+const REP_SEC = 3;
+const HOLD_MOVE_SEC = 2;
+const FAST_SEC = 1.5;
+const STEP_SEC = 1.5;
+const LUNGE_STEP_SEC = 2.5;
+const PULSE_SEC = 1.2;
+const SLOW_SEC = 5;
+const LIGHT_SEC = 2.5;
+const mean = (a: number, b?: number) => (b == null || Number.isNaN(b) ? a : (a + b) / 2);
+const num = (m: RegExpExecArray) => mean(Number(m[1]), m[2] ? Number(m[2]) : undefined);
+
+/** Câte părți are seria: 2 la exercițiile pe o parte (dacă repetările nu sunt deja totalul pe ambele părți). */
+export function setSides(r: { reps: string; ex: { unilateral?: boolean } }): 1 | 2 {
+  const t = r.reps.toLowerCase();
+  // „20 (10 pe fiecare picior)”, „10 pași stânga + 10 dreapta”, „o repetare = stânga + dreapta”: totalul e deja scris.
+  if (/\(\s*\d+\s*(pe|\/)/.test(t) || /stânga\s*\+|o repetare = stânga/.test(t)) return 1;
+  if (r.ex.unilateral || /pe fiecare (parte|picior|braț)|\/\s*(parte|picior|braț)|\bpe (picior|parte|braț)\b/.test(t)) return 2;
+  return 1;
+}
+
+/**
+ * Lucrul unei serii (s), pe o parte, pentru seria `i` (piramidele au repetări diferite pe serii). Exemple: „40, ții 3 s
+ * la fiecare deschidere; la ultima ții 10 s” = 40 × (2 + 3) + 10 = 210 s (înainte: 53 s); „40: 30 cu 3 s ținut sus +
+ * 10 rapide” = 30 × 5 + 10 × 1,5 = 165 s.
+ */
+export function setWorkSec(r: { reps: string }, i = 0): number {
+  const t = (r.reps.split('—')[0] ?? r.reps).toLowerCase().trim();
+  // Doar timp: „30–45 s”, „1 min ținut”, „20 s pe fiecare picior”.
+  const time = /^(\d+)\s*(?:[–-]\s*(\d+))?\s*(s|sec|min)\b/.exec(t);
+  if (time) return Math.round(num(time) * (time[3] === 'min' ? 60 : 1));
+  // Distanță (transport): ~1 s pe metru.
+  const dist = /^(\d+)\s*(?:[–-]\s*(\d+))?\s*m\b/.exec(t);
+  if (dist) return Math.round(num(dist));
+  // Piramidă: „20 / 15 / 12 / 8”, fiecare serie cu ținta ei.
+  const pyr = /^(\d+(?:\s*\/\s*\d+){2,})/.exec(t);
+  if (pyr) {
+    const steps = pyr[1]!.split('/').map((x) => Number(x.trim()));
+    return steps[Math.min(i, steps.length - 1)]! * REP_SEC;
+  }
+  // „la ultima (repetare) ții 10 s”: o singură menținere, la final.
+  const lastHold = /la ultima(?: repetare)? ții (\d+)\s*s/.exec(t);
+  const extra = lastHold ? Number(lastHold[1]) : 0;
+  const body = t.replace(/la ultima(?: repetare)? ții \d+\s*s/, '');
+  const times = /de (\d+) ori/.exec(body);
+  const k = times ? Number(times[1]) : 1;
+  // Pași: „10 pași stânga + 10 dreapta”, „4 pași stânga + 4 dreapta, de 5 ori”, „10 pași înainte + 10 înapoi”.
+  if (/pași/.test(body)) {
+    const steps = [...body.replace(/de \d+ ori/, '').matchAll(/(\d+)(?:\s*[–-]\s*(\d+))?/g)].map((m) => mean(Number(m[1]), m[2] ? Number(m[2]) : undefined));
+    const per = /înainte|înapoi/.test(body) ? LUNGE_STEP_SEC : STEP_SEC;
+    return Math.round(steps.reduce((a, b) => a + b, 0) * k * per + extra);
+  }
+  // Segmente: „30 cu 3 s ținut sus + 10 rapide”, „20 cu 3 s sus + 10 rapide”; altfel un singur segment.
+  const segs = body.includes('+') ? body.replace(/^\d+\s*(pe picior)?\s*:/, '').split('+') : [body];
+  let sec = 0;
+  for (const seg of segs) {
+    const n0 = /(\d+)(?:\s*[–-]\s*(\d+))?/.exec(seg);
+    if (!n0) continue;
+    const hold = /(?:cu|ții)\s*(\d+)\s*s\b|(\d+)\s*s\s*(?:ținut|sus)/.exec(seg);
+    const h = hold ? Number(hold[1] ?? hold[2]) : 0;
+    const per = h ? HOLD_MOVE_SEC + h : /rapid/.test(seg) ? FAST_SEC : /puls/.test(seg) ? PULSE_SEC : /lent/.test(seg) ? SLOW_SEC : /greutate mică/.test(seg) ? LIGHT_SEC : /o repetare = stânga/.test(seg) ? 2 * REP_SEC : REP_SEC;
+    sec += num(n0) * per;
+  }
+  return Math.round(Math.max(10, sec) * k + extra);
 }
 const SIDE_SWITCH_SEC = 15;
 /** În superserie, trecerea de la un exercițiu la următorul (~15 s); pauza întreagă vine după ultimul din grup. */
@@ -864,9 +1166,30 @@ const FIT_SETUP_SEC = 90;
 
 /** Durata (s) a unui exercițiu: fiecare serie = lucru (+ ambele părți la unilateral) + pauză (sau trecerea în superserie). */
 function itemSec(r: Rx, lastInGroup: boolean): number {
-  const uni = r.ex.unilateral && !/\(\d+\s*(pe|\/)/.test(r.reps);
+  const sides = setSides(r);
   const rest = r.ss && !lastInGroup ? SS_SWITCH_SEC : r.rest;
-  return r.sets * (workSec(r) * (uni ? 2 : 1) + (uni ? SIDE_SWITCH_SEC : 0) + rest);
+  let sec = 0;
+  for (let i = 0; i < r.sets; i++) sec += setWorkSec(r, i) * sides + (sides === 2 ? SIDE_SWITCH_SEC : 0) + rest;
+  return sec;
+}
+
+/**
+ * Seriile de lucru ale săptămânii (auditul v93, A52), cu convenția scrisă: mușchiul principal (primul din „group”)
+ * primește 1 pe serie, ceilalți mușchi din „group” câte 0,5. E o convenție de numărare, nu o măsurătoare fiziologică.
+ */
+export function weekSetTotals(rxs: Pick<Prescription, 'items'>[]): { total: number; byMuscle: Record<string, number> } {
+  const byMuscle: Record<string, number> = {};
+  let total = 0;
+  for (const p of rxs)
+    for (const r of p.items) {
+      total += r.sets;
+      r.ex.group
+        .split(',')
+        .map((g) => g.replace(/\(.*$/, '').trim())
+        .filter(Boolean)
+        .forEach((g, k) => (byMuscle[g] = (byMuscle[g] ?? 0) + r.sets * (k === 0 ? 1 : 0.5)));
+    }
+  return { total, byMuscle };
 }
 
 /** Minutele de exerciții + încălzire (fără cardio-ul de final). */
@@ -893,7 +1216,20 @@ const isEnduranceGoal = (g: string | null | undefined) => !!g && ENDURANCE_GOALS
 const RUN_GOALS_SET = new Set(['semimaraton', 'maraton', '5k', '10k']);
 const BIKE_GOALS_SET = new Set(['bike-50', 'bike-100', 'bike-160']);
 /** Ziua de picioare (pentru cât cardio încape la început). */
-const legsDay = (id: SessionId) => isLegsSession(id) || ['l1', 'l2', 'l3', 'fullA', 'f1', 'a3', 'b3'].includes(id);
+/**
+ * Ziua de picioare (auditul v93, A104): din clasificarea ședinței (sessionKind, citită din regiunea exercițiilor, după
+ * maparea numelor vechi), nu dintr-o listă paralelă de nume. Tot corpul se numără zi de picioare (10 min la început,
+ * restul de cardio la final).
+ */
+const legsDay = (id: SessionId) => sessionKind(id) !== 'U';
+/** Slăbire: cardio-ul de la final în zilele de picioare, când ședința nu are finalul ei (ex. varianta amplă A–D). */
+const SLABIRE_FINISHER = { text: 'mers pe bandă înclinată, ritm la care poți vorbi (restul de cardio, după greutăți)', min: 10, max: 20 };
+/** Cardio-ul de la final: în zilele de sus la slăbire nu există (s-a făcut la început); în rest, al ședinței. */
+function finisherOf(spec: StrengthSpec, session: StrengthSession): StrengthSession['finisher'] {
+  if (spec.pregnancy) return session.finisher ? { text: 'mers ușor pe teren plat sau bicicletă staționară, ritm la care vorbești ușor', min: session.finisher.min, max: session.finisher.max } : undefined;
+  if (spec.opener === 'slabire') return legsDay(spec.session) ? (session.finisher ?? SLABIRE_FINISHER) : undefined;
+  return session.finisher;
+}
 export const OPENER_INCLINE = 'mers pe bandă înclinată: pornești de la 5% înclinație și 5 km/h; respiri mai des, dar poți vorbi (ajustezi viteza, nu forțezi)';
 const MOBILITY = 'rotiri de umeri și șolduri, fandări și genuflexiuni fără greutate, apoi 1–2 serii ușoare la primul exercițiu (nu se numără)';
 
@@ -919,8 +1255,13 @@ function openerMin(spec: StrengthSpec, ctx?: StrengthDayContext): number {
 
 /** Încălzirea completă: cardio la început (după obiectiv) + mobilitate; minutele intră în durata ședinței. */
 function warmupOf(spec: StrengthSpec, session: StrengthSession, ctx?: StrengthDayContext): { min: number; text: string } {
+  // Modulul de întreținere (fizioterapeut) și varianta scurtă: pornire scurtă, fără cardio lung la început.
+  if (session.maintenance) return { min: 2, text: '2 min de mișcare ușoară pe loc (mers, rotiri de umeri și glezne)' };
+  if (spec.reduced) return REDUCED_WARMUP;
   // Partea de după cardio din încălzirea ședinței (activare, serii ușoare); cardio-ul îl dă obiectivul.
   const tail = session.warmup && /^\d+ min [^,]*,/.test(session.warmup) ? session.warmup.replace(/^\d+ min [^,]*,\s*(apoi\s*)?/, '') : MOBILITY;
+  // Sarcină / postpartum: pornire pe teren plat, fără înclinație și fără gâfâit (A105).
+  if (spec.pregnancy) return { min: WARMUP_MIN, text: `10 min mers vioi pe teren plat sau bicicletă staționară, ritm la care vorbești ușor (fără înclinație); apoi ${tail}` };
   if (spec.opener === 'slabire') {
     const n = openerMin(spec, ctx);
     const where = spec.place === 'acasa' ? 'mers vioi în pantă sau pe scări (acasă nu ai bandă), ritm la care poți vorbi' : OPENER_INCLINE;
@@ -939,12 +1280,42 @@ function baseSets(r: Rx, spec: StrengthSpec): number {
 }
 
 /** Prescripția întreagă pentru blocul și săptămâna date, fără limită de timp. */
-export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
-  if (isFitnessSession(spec.session)) return prescribeFitness(spec, ctx);
+export function prescribeFull(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+  // Sarcină / postpartum: fără cardio înclinat de slăbire la început, chiar dacă obiectivul salvat e slăbirea (A105).
+  const spec: StrengthSpec = spec0.pregnancy && spec0.opener ? (({ opener: _o, ...rest }) => rest)(spec0) : spec0;
+  if (isMaintenanceSession(spec.session)) return prescribeMaintenance(spec, ctx);
+  return reduce(pregnancySafe(isFitnessSession(spec.session) ? prescribeFitness(spec, ctx) : prescribeGym(spec, ctx), ctx));
+}
+
+/**
+ * Sarcină / postpartum (A105): exercițiile culcat pe spate sau pe burtă ies din ședință (varianta prudentă, fără să se
+ * presupună săptămâna sarcinii), iar ședința spune explicit regulile de oprire.
+ */
+function pregnancySafe(p: Prescription, ctx?: StrengthDayContext): Prescription {
+  if (!p.spec.pregnancy) return p;
+  const out = p.items.filter((r) => !r.ex.lying);
+  const gone = p.items.filter((r) => r.ex.lying).map((r) => r.ex.name.toLowerCase());
+  const notes = [...p.notes, `sarcină sau primul an după naștere: varianta prudentă — fără cardio înclinat la început, fără exerciții culcat pe spate sau pe burtă${gone.length ? ` (scoase azi: ${gone.join(', ')})` : ''}; greutăți cu care vorbești ușor, fără să-ți ții respirația; te oprești la durere, sângerare, amețeală sau presiune în bazin și întrebi medicul sau moașa`];
+  for (const r of out) if (r.ss && out.filter((x) => x.ss === r.ss).length < 2) delete r.ss;
+  return finish(p.spec, p.session, out, p.trimmed, notes, Infinity, ctx);
+}
+
+/** Ședințele de anduranță și Push / Pull / Picioare (catalogul de sală). */
+function prescribeGym(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
   const session = SESSIONS[spec.session];
   const rir = rirFor(spec);
   const notes: string[] = [];
-  const ids = sessionExercises(session, spec.variant ?? 0);
+  const all = sessionExercises(session, spec.variant ?? 0);
+  // Acasă (regula 22, și la bărbați): fiecare exercițiu de sală trece la echivalentul de acasă, cu doza lui; fără
+  // echivalent nu se activează; două exerciții cu același echivalent rămân unul.
+  const missingHome: string[] = [];
+  const ids: string[] = [];
+  for (const id of all) {
+    const placed = forPlace(id, spec.place);
+    if (!placed) missingHome.push(CATALOG[id]!.name.toLowerCase());
+    else if (!ids.includes(placed)) ids.push(placed);
+  }
+  if (spec.place === 'acasa') notes.push(`acasă: doar gantere, bandă și greutatea corpului (un scaun stabil ajută); exercițiile de sală sunt înlocuite cu echivalentele lor, cu repetările lor${missingHome.length ? `; fără variantă acasă: ${missingHome.join(', ')} — nu e inclus` : ''}`);
   let items: Rx[] = ids.map((id, k) => {
     const ex = CATALOG[id]!;
     return { ex, sets: ex.sets, reps: ex.reps, rir, rest: REST[ex.role], ...(session.slots && k === ids.length - 1 && ex.region === 'core' ? { optional: true, note: 'opțional' } : {}) };
@@ -982,6 +1353,36 @@ export function prescribeFull(spec: StrengthSpec, ctx?: StrengthDayContext): Pre
   clampSets(items);
   const dropped: string[] = [];
   items = capPerMuscle(items, dropped);
+  return reduce(finish(spec, session, items, [], notes, Infinity, ctx));
+}
+
+/**
+ * Varianta scurtă (spec.reduced, decizia proprietarului 20.10.2026): seriile coboară până la 2 (la siguranță și boală
+ * pornesc de la 2, la taper și timp de la cel mult 3), rezerva crește la siguranță/boală, iar motivul se scrie în
+ * ședință. Durata o dă `prescribe` din minutele variantei, nu minimul de 45.
+ */
+function reduce(p: Prescription): Prescription {
+  const r = p.spec.reduced;
+  if (!r) return p;
+  const gentle = r.why === 'siguranta' || r.why === 'boala';
+  for (const it of p.items) {
+    it.sets = gentle ? MIN_REDUCED_SETS : Math.min(it.sets, MIN_WORK_SETS);
+    if (gentle) it.rir = '3–4';
+  }
+  for (const it of p.items) fitScheme(it);
+  p.notes.push(`variantă scurtă (${REDUCED_LABEL[r.why]}): cel mult ${r.minutes} min, ${gentle ? '2 serii' : '2–3 serii'} pe exercițiu${gentle ? ', greutăți mai mici' : ''}; e excepția de la minimul de 45 de minute și 3 serii`);
+  return finish(p.spec, p.session, p.items, p.trimmed, p.notes, Infinity);
+}
+
+/** Modulul de întreținere al fizioterapeutului: doza din modul (1–2 serii, rezervă 3–4), fără plafonul de 45 de minute. */
+function prescribeMaintenance(spec: StrengthSpec, ctx?: StrengthDayContext): Prescription {
+  const session = SESSIONS[spec.session];
+  const items: Rx[] = session.exercises.map((id) => {
+    const ex = CATALOG[id]!;
+    const d = session.dose?.[id];
+    return { ex, sets: d?.sets ?? ex.sets, reps: d?.reps ?? ex.reps, rir: '3–4', rest: d?.rest ?? ex.rest ?? REST[ex.role] };
+  });
+  const notes = ['modul de întreținere (fizioterapeut): înlocuiește exerciții mici din sală, nu se adaugă peste; crește un singur element după două ședințe fără durere (ex. +2 repetări)', 'nu e tratament: la durere nouă sau care crește te oprești și spui în formularul de seară'];
   return finish(spec, session, items, [], notes, Infinity, ctx);
 }
 
@@ -1001,8 +1402,10 @@ function finish(spec: StrengthSpec, session: StrengthSession, items: Rx[], trimm
   for (const r of items) fitScheme(r);
   const warm = warmupOf(spec, session, ctx);
   const work = Math.ceil(estimateMinutes(items, warm.min));
+  // Excepțiile (varianta scurtă, modulul de întreținere): durata e a conținutului, fără completare până la 45 de minute.
+  if (spec.reduced || session.maintenance) return { spec, session, items, minutes: roundUp5(work), trimmed, notes, warmup: warm, finisher: null };
   // Slăbire, zi de sus: cardio-ul s-a făcut la început; la final rămâne doar ce trebuie până la 45 de minute.
-  const fin = spec.opener === 'slabire' && !legsDay(spec.session) ? null : session.finisher;
+  const fin = finisherOf(spec, session);
   let finMin = 0;
   if (fin) {
     // Cu timp scurt, finalul de cardio scade până la 5 minute: întâi exercițiile.
@@ -1060,9 +1463,12 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
     if (placed !== id && ids.some((o) => o !== id && (forPlace(o, spec.place) === placed) && ids.indexOf(o) < ids.indexOf(id))) return [];
     const ex = CATALOG[placed]!;
     const d = dose?.[swapped && id === swapped[1] ? swapped[0] : id];
+    // Înlocuit acasă (auditul v93, A55/A60): repetările și pauza vin din exercițiul nou, nu se copiază „30” sau piramida
+    // exercițiului de sală (ex. pod de fesieri pe un picior: 20 pe picior, nu 30 moștenite de la hiperextensii).
+    if (placed !== id) return [{ ex, sets: d?.sets ?? ex.sets, reps: ex.reps, rir, rest: ex.rest ?? REST[ex.role], ...(d?.ss ? { ss: d.ss } : {}) }];
     return [{ ex, sets: d?.sets ?? ex.sets, reps: d?.reps ?? ex.reps, rir, rest: d?.rest ?? ex.rest ?? REST[ex.role], ...(d?.ss ? { ss: d.ss } : {}) }];
   });
-  if (spec.place === 'acasa') notes.push('acasă: doar gantere, bandă și greutatea corpului (un scaun stabil ajută); exercițiile de sală sunt înlocuite cu echivalentele lor');
+  if (spec.place === 'acasa') notes.push('acasă: doar gantere, bandă și greutatea corpului (un scaun stabil ajută); exercițiile de sală sunt înlocuite cu echivalentele lor, cu repetările lor');
   if (missingHome.length) notes.push(`fără variantă acasă pentru: ${missingHome.join(', ')} — nu e inclus`);
   if (swapped) notes.push(`varietate controlată: ${CATALOG[swapped[1]]!.name.toLowerCase()} în loc de ${CATALOG[swapped[0]]!.name.toLowerCase()}; cauți din nou greutatea (kilogramele nu se transferă de la un exercițiu la altul)`);
   const light = spec.block === 'acomodare' || spec.block === 'mentinere' || spec.recovery || spec.transition;
@@ -1070,14 +1476,14 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
   if (spec.block === 'acomodare') {
     notes.push(spec.week <= 2 ? 'învățare: 3 serii pe exercițiu, cu greutăți ușoare — te oprești când mai aveai 3–4 repetări; notează greutățile folosite' : 'consolidare: rămân 3 serii; progresezi în control și repetări');
     notes.push('fără istoric de greutăți: alegi greutatea cu care faci repetările fără să mergi până la limită');
-  } else if (spec.transition) notes.push(wide ? 'prima săptămână cu patru ședințe A–D: 3 serii la toate; doza de construire vine după, dacă merge bine' : 'prima săptămână cu mai multe zile: 3 serii la toate; volumul crește apoi, nu dintr-odată');
+  } else if (spec.transition) notes.push(wide ? 'prima săptămână cu patru ședințe A–D: 3 serii la toate; doza de construire vine după, dacă merge bine' : 'prima săptămână cu mai multe zile: 3 serii la toate exercițiile; ședința în plus adaugă serii pe săptămână, așa că restul crește abia după ce o ții');
   if (spec.block === 'mentinere') notes.push('menținere: 3 serii, păstrezi performanța, nu trebuie să crești');
   if (spec.recovery) {
     for (const r of items) r.rir = '3–4';
     notes.push('revizuire: oboseala sau performanța în scădere cer greutăți mai mici și oprit mai departe de limită, temporar (seriile rămân 3)');
   }
   if (items.some((r) => r.ss)) notes.push('superserie: exercițiile cu aceeași literă le faci unul după altul, fără pauză între ele; pauza (1–2 min) vine după ultimul din grup');
-  if (items.some((r) => /crești greutatea/.test(r.reps))) notes.push('la seriile cu repetări din ce în ce mai puține (20 / 15 / 12 / 8) crești greutatea la fiecare serie; pauza 1–2 min, nu mai mult');
+  if (items.some((r) => /crești greutatea/.test(r.reps))) notes.push('la seriile cu repetări din ce în ce mai puține (20 / 15 / 12 / 8) crești greutatea de la o serie la alta doar dacă seria de dinainte a ieșit curat și mai aveai cel puțin o repetare; altfel păstrezi greutatea (sau o scazi). Pauza 1–2 min, nu mai mult');
   if (spec.block !== 'acomodare' && spec.block !== 'mentinere') notes.push('cum crești: când faci numărul maxim de repetări la toate seriile, de două ori la rând, pui greutatea imediat următoare');
   clampSets(items);
   const dropped: string[] = [];
@@ -1093,11 +1499,16 @@ function prescribeFitness(spec0: StrengthSpec, ctx?: StrengthDayContext): Prescr
  */
 export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDayContext): Prescription {
   const p = prescribeFull(spec, ctx);
-  const limit = Math.max(MIN_STRENGTH_MINUTES, minutes);
+  // Modulul de întreținere are doza lui (12–20 min): nu se lungește și nu se taie după minutele din calendar.
+  if (p.session.maintenance) return p;
+  // Varianta scurtă: limita e cea a variantei (cel puțin 15 min), nu minimul de 45; altfel regula 20 rămâne exact cum e.
+  const reduced = spec.reduced;
+  const limit = reduced ? Math.max(MIN_REDUCED_MINUTES, Math.min(reduced.minutes, minutes)) : Math.max(MIN_STRENGTH_MINUTES, minutes);
+  const minSets = reduced ? MIN_REDUCED_SETS : MIN_WORK_SETS;
   const items = p.items.map((r) => ({ ...r }));
   const trimmed: string[] = [];
-  const minFinisher = p.session.finisher && !(spec.opener === 'slabire' && !legsDay(spec.session)) ? FINISHER_SHORT : 0;
-  const fits = () => Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher <= limit;
+  const minFinisher = !reduced && finisherOf(spec, p.session) ? FINISHER_SHORT : 0;
+  const fits = () => (reduced ? roundUp5(estimateMinutes(items, p.warmup.min)) : Math.ceil(estimateMinutes(items, p.warmup.min)) + minFinisher) <= limit;
   const removeWhere = (pred: (r: Rx) => boolean, why: (r: Rx) => string) => {
     for (let i = items.length - 1; i >= 0 && !fits(); i--) {
       if (items.length > 1 && pred(items[i]!)) {
@@ -1126,6 +1537,16 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
       trimmed.push(`seria a 4-a la ${r.ex.name.toLowerCase()}`);
     }
   }
+  // Doar în varianta scurtă: seria a 3-a cade (întâi la exercițiile mici, apoi la principale), până la 2 pe exercițiu.
+  for (const role of reduced ? (['accessory', 'carry', 'core', 'main'] as Role[]) : []) {
+    for (let i = items.length - 1; i >= 0 && !fits(); i--) {
+      const r = items[i]!;
+      if (r.ex.role === role && r.sets > minSets) {
+        r.sets -= 1;
+        trimmed.push(`seria a 3-a la ${r.ex.name.toLowerCase()}`);
+      }
+    }
+  }
   removeWhere((r) => r.ex.role === 'accessory', (r) => r.ex.name.toLowerCase());
   removeWhere((r) => r.ex.role === 'carry', (r) => r.ex.name.toLowerCase());
   removeWhere((r) => r.ex.role === 'core', (r) => r.ex.name.toLowerCase());
@@ -1143,7 +1564,7 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
   // O superserie rămasă cu un singur exercițiu nu mai e superserie.
   for (const r of items) if (r.ss && items.filter((x) => x.ss === r.ss).length < 2) delete r.ss;
   const notes = [...p.notes];
-  if (trimmed.length) notes.push(`ca să încapă în ${limit} min, azi sari peste: ${trimmed.join(', ')} (pauzele rămân întregi, seriile rămân minimum 3)`);
+  if (trimmed.length) notes.push(`ca să încapă în ${limit} min, azi sari peste: ${trimmed.join(', ')} (pauzele rămân întregi, seriile rămân minimum ${minSets})`);
   return finish(spec, p.session, items, trimmed, notes, limit, ctx);
 }
 
@@ -1151,6 +1572,7 @@ export function prescribe(spec: StrengthSpec, minutes: number, ctx?: StrengthDay
 // ——— Textul din plan (citit de oameni și de cod) ———
 
 const OPENER_TAG = 'cardio înclinat la început';
+const PREGNANCY_TAG = 'sarcină / postpartum';
 const LEGS_TEXT: Record<Exclude<LegsMode, 'normal'>, string> = { usor: 'picioare ușoare', fara: 'fără picioare' };
 
 /** „Push A · Bază, săpt. 2/4 · 2–3 repetări în rezervă · descărcare”. */
@@ -1161,6 +1583,8 @@ export function strengthStructure(spec: StrengthSpec): string {
   if (spec.legs && spec.legs !== 'normal') parts.push(LEGS_TEXT[spec.legs]);
   if (spec.place === 'acasa') parts.push('acasă');
   if (spec.opener === 'slabire') parts.push(OPENER_TAG);
+  if (spec.reduced) parts.push(`variantă scurtă ${spec.reduced.minutes} min (${REDUCED_LABEL[spec.reduced.why]})`);
+  if (spec.pregnancy) parts.push(PREGNANCY_TAG);
   return parts.join(' · ');
 }
 
@@ -1181,7 +1605,9 @@ export function parseStrength(structure: string | null | undefined): StrengthSpe
   if (!block) return null;
   const rest = parts.slice(2);
   const legs: LegsMode = rest.includes(LEGS_TEXT.fara) ? 'fara' : rest.includes(LEGS_TEXT.usor) ? 'usor' : 'normal';
-  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}) };
+  const red = rest.map((x) => /^variantă scurtă (\d+) min \((.+)\)$/.exec(x)).find(Boolean);
+  const why = red ? ((Object.entries(REDUCED_LABEL).find(([, l]) => l === red[2]) ?? [])[0] as ReducedReason | undefined) : undefined;
+  return { session, block, week: Number(m[2]), len: Number(m[3]), recovery: rest.includes('descărcare'), legs, ...(rest.includes('trecere') ? { transition: true } : {}), ...(variant != null ? { variant } : {}), ...(rest.includes('acasă') ? { place: 'acasa' as const } : {}), ...(rest.includes(OPENER_TAG) ? { opener: 'slabire' as const } : {}), ...(red && why ? { reduced: { why, minutes: Number(red[1]) } } : {}), ...(rest.includes(PREGNANCY_TAG) ? { pregnancy: true } : {}) };
 }
 
 /** Numele ședinței din textul din plan (și pentru planurile vechi „Push 1 · …”). */
@@ -1193,12 +1619,12 @@ export function sessionName(structure: string | null | undefined): string | null
 }
 
 export const STRENGTH_RULES: { t: string; d: string }[] = [
-  { t: 'Structura', d: 'Picioarele nu se combină niciodată cu partea de sus în aceeași ședință. Bărbați: Push (piept, umeri, triceps), Pull (spate, biceps), Picioare, pe rând.' },
-  { t: 'Durata', d: 'Cel puțin 45 de minute cu tot cu încălzirea. Încălzire: 10 minute de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără).' },
+  { t: 'Structura', d: 'După câte ședințe ai pe săptămână: una = tot corpul; două = o zi de picioare și una pentru partea de sus; trei sau mai multe = Push (piept, umeri, triceps), Pull (spate, biceps), Picioare, pe rând. În afară de ziua de tot corpul, picioarele nu se combină cu partea de sus.' },
+  { t: 'Durata', d: 'Cel puțin 45 de minute cu tot cu încălzirea. Încălzire: 10 minute de mișcare ușoară, apoi 1–2 serii ușoare la primul exercițiu (nu se numără). Excepții: după febră, la recuperare slabă sau durere, înainte de cursă și când spui că ai mai puțin timp — atunci varianta scurtă, cu cel puțin 2 serii pe exercițiu.' },
   { t: 'Serii', d: '3 sau 4 serii de lucru la fiecare exercițiu, mereu. În săptămânile ușoare scade greutatea, nu numărul de serii. Cel mult 10 serii pe același mușchi într-o ședință.' },
   { t: 'Cât de greu', d: 'Te oprești din serie când mai aveai încă 2–3 repetări bune în tine (la început 3–4). Nu mergi până nu mai poți ridica deloc.' },
   { t: 'Pauze', d: 'Cam 2–3 minute la primele exerciții (cele grele) și 1–2 minute la restul. Dacă încă gâfâi, mai stai puțin.' },
-  { t: 'Cum crești', d: 'Notezi greutatea și repetările. Data viitoare încerci o repetare în plus. Când faci numărul maxim de repetări la toate seriile, pui greutatea imediat următoare.' },
+  { t: 'Cum crești', d: 'Notezi greutatea și repetările. Data viitoare încerci o repetare în plus. Când faci numărul maxim de repetări la toate seriile, de două ori la rând, pui greutatea imediat următoare. „Am făcut cum scrie” confirmă ședința, dar pentru creștere scrii măcar o dată valorile reale.' },
   { t: 'Exerciții diferite', d: 'Push, Pull și Picioare au de fiecare dată alte exerciții sau alte aparate. Fiecare exercițiu revine cam la a treia ședință de același tip; kilogramele de la un aparat nu se transferă la altul.' },
   { t: 'Durere', d: 'Durere nouă sau ascuțită: oprești exercițiul și spui în formularul de seară. Durere în piept, amețeală sau lipsă de aer neobișnuită: te oprești și mergi la medic.' },
 ];

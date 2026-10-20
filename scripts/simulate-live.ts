@@ -157,7 +157,8 @@ for (const { p, label } of matrix) {
     add('F55 fitness acasă: o singură durată', 'durata din calendar = durata prescripției, la fiecare ședință', `nepotriviri: ${mismatch.length} din ${ws.length}`, mismatch.length === 0);
     const after = adapt(ws.filter((w) => w.date < '2026-11-10'), { kind: 'febra', date: '2026-10-26' }, { today: '2026-10-26', freeBlocks: [], recentKeyScores: [] }).plan.filter((w) => w.status !== 'anulat_sistem' && w.note?.includes('febr'));
     const bad = after.filter((w) => prescribe(parseStrength(w.structure)!, w.plannedMinutes).minutes !== w.plannedMinutes);
-    add('F55 febră: ședințele de după', 'forță ușoară (greutăți mai mici, ≥ 45 min, 3 serii), aceeași durată în calendar și detaliu; mesaj condiționat', `${after.length} ședințe ușurate; nepotriviri: ${bad.length}; nota: „${after[0]?.note ?? '—'}”`, after.length > 0 && bad.length === 0 && after.every((w) => w.plannedMinutes >= 45 && parseStrength(w.structure)!.recovery) && /doar dacă/.test(after[0]!.note ?? ''));
+    // Decizia proprietarului (20.10.2026, A49): după febră forța e varianta scurtă (2 serii, ~jumătate din durată).
+    add('F55 febră: ședințele de după', 'forță scurtă după boală (greutăți mai mici, 2 serii, sub 45 min, motivul în ședință), aceeași durată în calendar și detaliu; mesaj condiționat', `${after.length} ședințe ușurate; nepotriviri: ${bad.length}; nota: „${after[0]?.note ?? '—'}”`, after.length > 0 && bad.length === 0 && after.every((w) => w.plannedMinutes >= 20 && w.plannedMinutes < 45 && parseStrength(w.structure)!.recovery && parseStrength(w.structure)!.reduced?.why === 'boala' && prescribe(parseStrength(w.structure)!, w.plannedMinutes).items.every((i) => i.sets >= 2)) && /doar dacă/.test(after[0]!.note ?? ''));
   }
 }
 

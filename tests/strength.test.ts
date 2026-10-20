@@ -116,7 +116,7 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
       const spec = parseStrength(x.structure);
       assert.ok(spec, x.structure ?? "");
       const rx = prescribe(spec!, x.plannedMinutes);
-      assert.ok(estimateMinutes(rx.items) <= x.plannedMinutes + 0.01 || rx.items.length === 1, `${x.date} ${x.structure} ${x.plannedMinutes}`);
+      assert.ok(estimateMinutes(rx.items, rx.warmup.min) <= x.plannedMinutes + 0.01 || rx.items.length === 1, `${x.date} ${x.structure} ${x.plannedMinutes}`);
       if (x.date >= '2027-01-21') assert.equal(spec!.legs, 'fara');
     }
   });
@@ -127,14 +127,16 @@ describe('forța: programul AIRON Push / Pull / Legs adaptiv', () => {
     assert.ok(r.ok);
     if (!r.ok) return;
     assert.ok(r.weeks.flatMap((x) => x.workouts).some((y) => /^Push A/.test(y.structure ?? '')));
-    assert.ok(r.weeks.every((x) => x.workouts.filter((y) => y.type === 'forta').every((y) => y.plannedMinutes >= 45)));
+    // Taper-ul (blocul „înainte de cursă”) e excepția A49 din 20.10.2026: varianta scurtă, cu motivul în text.
+    assert.ok(r.weeks.every((x) => x.workouts.filter((y) => y.type === 'forta').every((y) => y.plannedMinutes >= 45 || parseStrength(y.structure)?.reduced?.why === 'taper')));
   });
 });
 
 describe('3–4 serii de lucru pe exercițiu, în orice bloc și orice ședință; cel puțin 45 de minute', () => {
   it('orice ședință, bloc, variantă, timp, descărcare, acasă: 3–4 serii, ≥ 45 min, fără picioare + partea de sus împreună', () => {
     const blocks: Block[] = ['acomodare', 'baza', 'forta', 'hipertrofie', 'integrare', 'consolidare', 'evaluare', 'mentinere', 'precursa', 'construire', 'progres', 'tranzitie'];
-    for (const id of Object.keys(SESSIONS) as (keyof typeof SESSIONS)[])
+    // Excepțiile decise pe 20.10.2026 au testele lor (tests/audit93-strength.test.ts): modulele de întreținere (A91).
+    for (const id of (Object.keys(SESSIONS) as (keyof typeof SESSIONS)[]).filter((x) => !SESSIONS[x].maintenance))
       for (const block of blocks)
         for (const recovery of [false, true])
           for (const place of ['sala', 'acasa'] as const)
@@ -144,7 +146,8 @@ describe('3–4 serii de lucru pe exercițiu, în orice bloc și orice ședinț�
                 const tag = `${id} ${block} ${recovery} ${place} v${variant} ${minutes}: ${p.items.map((r) => `${r.ex.id}×${r.sets}`).join(' ')}`;
                 assert.ok(p.items.length > 0 && p.items.every((r) => r.sets >= 3 && r.sets <= 4), tag);
                 assert.ok(p.minutes >= 45, tag);
-                assert.ok(!(p.items.some((r) => r.ex.region === 'legs') && p.items.some((r) => r.ex.region === 'upper')), `picioare + sus: ${tag}`);
+                // Tot corpul (o ședință pe săptămână) e excepția decisă pe 20.10.2026 (A50); restul nu combină niciodată.
+                if (!SESSIONS[id].fullBody) assert.ok(!(p.items.some((r) => r.ex.region === 'legs') && p.items.some((r) => r.ex.region === 'upper')), `picioare + sus: ${tag}`);
                 assert.equal(p.warmup.min, 10);
                 // Durata = încălzire + exerciții + cardio de final (diferența de rotunjire sub 5 min intră în pauze).
                 const work = Math.ceil(estimateMinutes(p.items));

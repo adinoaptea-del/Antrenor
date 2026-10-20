@@ -4,22 +4,42 @@
 //
 // Ce NU face: nu inventează kilograme. Fără o valoare înregistrată, sugestia e în cuvinte („alegi greutatea după
 // rezervă”), iar un „am făcut cum scrie” fără kilograme nu creează o greutate.
+//
+// Proveniența (auditul v93, A57/A58): „declarat_conform” = sportivul confirmă că a făcut prescripția (repetările sunt
+// ținta, NU o măsurătoare; rezerva rămâne necunoscută, null); „ajustat” = valorile scrise de el. Înregistrarea e pe
+// serie (greutatea fiecărei serii din piramidă), pe ședință (workoutId) și pe apariția exercițiului în ședință
+// (instance = poziția în prescripție), ca două ședințe în aceeași zi să nu se suprascrie.
 
 export interface LoggedSet {
   kg: number | null;
   reps: number | null;
+  /** Rezerva la seria asta, doar dacă a scris-o sportivul. */
+  rir?: number | null;
 }
+
+/** „confirmat” e numele vechi (rândurile salvate înainte de 20.10.2026) pentru „declarat_conform”. */
+export type LogSource = 'declarat_conform' | 'ajustat' | 'confirmat';
+/** Cum se citesc kilogramele: total (bară, aparat cu cifre), pe mână (gantere), treapta aparatului. Necunoscut = null. */
+export type LoadConvention = 'total' | 'per_mana' | 'aparat_treapta';
 
 export interface StrengthLogEntry {
   date: string;
   /** Id-ul exercițiului din catalog (src/strength/ppl.ts). */
   exercise: string;
   sets: LoggedSet[];
-  /** Repetări în rezervă la ultima serie (cât simțea că mai poate). */
+  /** Repetări în rezervă la ultima serie (cât simțea că mai poate); null = nescris (nu „rezerva minimă”). */
   rir: number | null;
-  /** „confirmat” = a preluat valorile propuse; „ajustat” = a scris valorile reale. */
-  source: 'confirmat' | 'ajustat';
+  source: LogSource;
+  /** Ședința din plan (id-ul din calendar); lipsă la rândurile vechi. */
+  workoutId?: string | null;
+  /** Poziția exercițiului în prescripția ședinței (de la 0). */
+  instance?: number;
+  unit?: 'kg';
+  loadConvention?: LoadConvention | null;
 }
+
+/** Valorile au fost scrise de sportiv (nu doar confirmarea prescripției). */
+export const isMeasured = (e: Pick<StrengthLogEntry, 'source'>) => e.source === 'ajustat';
 
 /** „8–12” → [8, 12]; „10” → [10, 10]; „30–45 s” → null (timp, nu repetări). */
 export function repRange(reps: string): [number, number] | null {
@@ -73,17 +93,27 @@ export function suggest(exercise: string, reps: string, rir: string, history: St
   const last = own.at(-1);
   if (!last) return { kind: 'prima', last: null, today: 'Prima dată: alegi o greutate cu care faci repetările cerute și simți că mai puteai câteva; după ședință o notezi.' };
   const kg = topKg(last);
-  const lastText = `${last.sets.length} × ${last.sets.map((s) => s.reps ?? '?').join('/')}${kg >= 0 ? ` la ${fmtKg(kg)}` : ''}${last.rir != null ? `, mai puteai ${last.rir}` : ''}`;
+  const kgs = [...new Set(last.sets.map((s) => s.kg).filter((x): x is number => x != null))];
+  const kgText = kgs.length > 1 ? ` la ${last.sets.map((s) => (s.kg != null ? s.kg.toLocaleString('ro-RO') : '?')).join(' / ')} kg` : kg >= 0 ? ` la ${fmtKg(kg)}` : '';
+  const lastText = `${last.sets.length} × ${last.sets.map((s) => s.reps ?? '?').join('/')}${kgText}${last.rir != null ? `, mai puteai ${last.rir}` : ''}${isMeasured(last) ? '' : ' (cum scria)'}`;
   if (opts.pain) return { kind: 'stop-durere', last: lastText, today: 'Ai raportat durere recent: fără creștere azi. Aceeași greutate sau mai puțin, în amplitudinea fără durere; dacă exercițiul doare, îl oprești.' };
-  // Piramida (20 / 15 / 12 / 8 cu greutatea crescută la fiecare serie): fiecare serie are ținta ei; nu e un interval.
+  // Piramida (20 / 15 / 12 / 8): fiecare serie are ținta ei; nu e un interval. Greutatea de pornire crește doar după
+  // DOUĂ ședințe la rând cu toate seriile în țintă, la aceleași greutăți și cu cel puțin o repetare în rezervă, iar cel
+  // puțin una din ele e scrisă de sportiv (auditul v93, A54/A58). O serie ratată nu crește niciodată greutatea.
   if (/\d+\s*\/\s*\d+\s*\/\s*\d+/.test(reps)) {
     const targets = (reps.split('—')[0] ?? reps).match(/\d+/g)!.map(Number);
-    const hit = last.sets.length >= targets.length && targets.every((t, i) => (last.sets[i]?.reps ?? 0) >= t);
-    if (kg < 0) return { kind: 'fara-kg', last: lastText, today: `Piramidă: la fiecare serie greutatea crește (${targets.join(' / ')} repetări). Notează greutatea de la fiecare serie, ca data viitoare să ai de unde porni.` };
+    const hit = (e: StrengthLogEntry) => e.sets.length >= targets.length && targets.every((t, i) => (e.sets[i]?.reps ?? 0) >= t);
+    const reserve = (e: StrengthLogEntry) => (e.rir == null || e.rir >= 1) && e.sets.every((x) => x.rir == null || x.rir >= 1);
+    const sameKg = (a: StrengthLogEntry, b: StrengthLogEntry) => a.sets.map((x) => x.kg).join('/') === b.sets.map((x) => x.kg).join('/');
+    const prev = own.at(-2);
+    if (kg < 0) return { kind: 'fara-kg', last: lastText, today: `Piramidă (${targets.join(' / ')} repetări): notează greutatea de la fiecare serie, ca data viitoare să ai de unde porni.` };
     if (opts.maintain) return { kind: 'mentine', last: lastText, today: 'Menținere: aceleași greutăți pe serii ca data trecută; nu e nevoie să crești.' };
-    return hit
-      ? { kind: 'creste', last: lastText, today: `Ai făcut toate seriile piramidei (${targets.join(' / ')}): data asta pornești cu greutatea imediat următoare și crești la fel de la o serie la alta.` }
-      : { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): aceleași greutăți pe serii ca data trecută până ies toate repetările; abia apoi crești.` };
+    if (!hit(last)) return { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): data trecută o serie n-a ieșit — aceleași greutăți pe serii (sau mai puțin la seria aceea) până ies toate repetările; nu crești.` };
+    if (!reserve(last)) return { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): ai mers până la limită — aceleași greutăți, te oprești când mai ai cel puțin o repetare; nu crești.` };
+    if (prev && hit(prev) && reserve(prev) && sameKg(prev, last) && (isMeasured(last) || isMeasured(prev)))
+      return { kind: 'creste', last: lastText, today: `Toate seriile piramidei (${targets.join(' / ')}) au ieșit de două ori la rând, cu rezervă: pornești cu greutatea imediat următoare; de la o serie la alta crești doar dacă seria de dinainte a ieșit curat.` };
+    if (prev && hit(prev) && sameKg(prev, last) && !isMeasured(last) && !isMeasured(prev)) return { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): „am făcut cum scrie” confirmă ședința, dar nu e o măsurătoare — scrie o dată greutățile și repetările reale, apoi crești.` };
+    return { kind: 'ramai', last: lastText, today: `Piramidă (${targets.join(' / ')}): a ieșit o dată la greutățile astea; încă o ședință la fel, cu cel puțin o repetare în rezervă, și abia apoi crești.` };
   }
   if (!range) return { kind: 'ramai', last: lastText, today: 'Aceeași durată; crești doar dacă ai ținut-o ușor și corect.' };
   const [lo, hi] = range;
@@ -96,7 +126,8 @@ export function suggest(exercise: string, reps: string, rir: string, history: St
     return { kind: 'scade', last: lastText, today: `Repetările scad de două ori la rând la ${fmtKg(kg)}: azi aceleași serii cu greutatea cu ~5–10% mai mică și te oprești mai departe de limită (mai puteai 3–4). Uită-te la somn, mâncare și stres; nu compensezi cu mai mult.` };
   if (prev && prev2 && !atTop(last) && topKg(prev) === kg && topKg(prev2) === kg && totalReps(last) === totalReps(prev) && totalReps(prev) === totalReps(prev2))
     return { kind: 'stagnare', last: lastText, today: `Trei ședințe la fel la ${fmtKg(kg)}: e stagnare, nu eșec. Păstrezi greutatea; verifici somnul, mâncarea și execuția. Dacă nu se mișcă nici data viitoare, scazi ~5–10% și reconstruiești repetările.` };
-  if (atTop(last) && prev && atTop(prev) && topKg(prev) === kg) return { kind: 'creste', last: lastText, today: `Ai atins ${hi} repetări în toate seriile de două ori la ${fmtKg(kg)}: pune greutatea imediat următoare și revii la ${lo}–${Math.min(hi, lo + 2)} repetări.` };
+  // Confirmarea „cum scrie” nu e dovadă de capăt de sus: cel puțin una din cele două expuneri e scrisă de sportiv (A58).
+  if (atTop(last) && prev && atTop(prev) && topKg(prev) === kg && (isMeasured(last) || isMeasured(prev))) return { kind: 'creste', last: lastText, today: `Ai atins ${hi} repetări în toate seriile de două ori la ${fmtKg(kg)}: pune greutatea imediat următoare și revii la ${lo}–${Math.min(hi, lo + 2)} repetări.` };
   if (last.rir != null && last.rir < minRir(rir)) return { kind: 'ramai', last: lastText, today: `Data trecută ai mers prea aproape de limită: rămâi la ${fmtKg(kg)}, fără repetări în plus, și te oprești când mai poți ${minRir(rir)}.` };
   if (last.sets.some((x) => (x.reps ?? 0) < lo)) return { kind: 'ramai', last: lastText, today: `Data trecută o serie a fost sub ${lo} repetări: rămâi la ${fmtKg(kg)} până le atingi pe toate; dacă nu, scazi puțin greutatea.` };
   return { kind: 'repetari', last: lastText, today: `Rămâi la ${fmtKg(kg)} și încearcă o repetare în plus la o serie (până la ${hi}).` };
@@ -115,15 +146,46 @@ export function parseRepsInput(text: string, n: number): (number | null)[] {
   return Array.from({ length: n }, (_, i) => parts[Math.min(i, parts.length - 1)]!);
 }
 
-/** Validarea unei înregistrări primite de server: valori plauzibile, fără kilograme inventate. */
+/** „20/22,5/25” sau „20” → kilogramele pe serie (pentru `n` serii); gol = necunoscut (null), nu zero. */
+export function parseKgInput(text: string, n: number): (number | null)[] {
+  const parts = text
+    .split(/[\/;]+|\s+/)
+    .map((x) => x.trim().replace(',', '.'))
+    .filter(Boolean)
+    .map(Number)
+    .filter((x) => Number.isFinite(x) && x >= 0);
+  if (!parts.length) return Array(n).fill(null);
+  return Array.from({ length: n }, (_, i) => parts[Math.min(i, parts.length - 1)]!);
+}
+
+const okRir = (v: unknown) => (typeof v === 'number' && v >= 0 && v <= 10 ? Math.round(v) : null);
+
+/**
+ * Validarea unei înregistrări primite de server: valori plauzibile, fără kilograme inventate. La „declarat_conform”
+ * (și la vechiul „confirmat”) rezerva e necunoscută: null, chiar dacă un client vechi a trimis rezerva minimă.
+ */
 export function cleanEntry(e: unknown, date: string): StrengthLogEntry | null {
   const x = e as Partial<StrengthLogEntry>;
   if (!x || typeof x.exercise !== 'string' || !/^[a-z0-9-]{2,40}$/.test(x.exercise)) return null;
-  const sets = (Array.isArray(x.sets) ? x.sets : []).slice(0, 10).map((s) => ({
+  const measured = x.source === 'ajustat';
+  const sets: LoggedSet[] = (Array.isArray(x.sets) ? x.sets : []).slice(0, 10).map((s) => ({
     kg: typeof s?.kg === 'number' && s.kg >= 0 && s.kg <= 500 ? Math.round(s.kg * 4) / 4 : null,
     reps: typeof s?.reps === 'number' && s.reps >= 0 && s.reps <= 100 ? Math.round(s.reps) : null,
+    ...(measured && okRir(s?.rir) != null ? { rir: okRir(s?.rir) } : {}),
   }));
   if (!sets.length) return null;
-  const rir = typeof x.rir === 'number' && x.rir >= 0 && x.rir <= 10 ? Math.round(x.rir) : null;
-  return { date, exercise: x.exercise, sets, rir, source: x.source === 'ajustat' ? 'ajustat' : 'confirmat' };
+  const workoutId = typeof x.workoutId === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(x.workoutId) ? x.workoutId : null;
+  const instance = typeof x.instance === 'number' && Number.isInteger(x.instance) && x.instance >= 0 && x.instance < 40 ? x.instance : 0;
+  const loadConvention = x.loadConvention === 'total' || x.loadConvention === 'per_mana' || x.loadConvention === 'aparat_treapta' ? x.loadConvention : null;
+  return { date, exercise: x.exercise, sets, rir: measured ? okRir(x.rir) : null, source: measured ? 'ajustat' : 'declarat_conform', workoutId, instance, unit: 'kg', loadConvention };
+}
+
+/** Rândul din baza de date (supabase/migrations/0003_strength_log_sets.sql): cheia e ședință + apariție, nu doar ziua. */
+export const STRENGTH_LOG_CONFLICT = 'user_id,date,exercise,workout_id,instance';
+export function strengthLogRow(userId: string, e: StrengthLogEntry) {
+  return { user_id: userId, date: e.date, exercise: e.exercise, workout_id: e.workoutId ?? '', instance: e.instance ?? 0, sets: e.sets, rir: e.rir, source: e.source, unit: e.unit ?? 'kg', load_convention: e.loadConvention ?? null };
+}
+/** Rândul în forma veche (bază încă neactualizată la schema 11): fără coloanele noi, aceeași cheie ca înainte. */
+export function strengthLogRowLegacy(userId: string, e: StrengthLogEntry) {
+  return { user_id: userId, date: e.date, exercise: e.exercise, sets: e.sets, rir: e.rir, source: e.source === 'ajustat' ? 'ajustat' : 'confirmat' };
 }

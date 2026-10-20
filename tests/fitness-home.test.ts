@@ -50,9 +50,9 @@ test('F02: după febră, durata din calendar = durata prescripției (o singură 
   const x = r.plan[0]!;
   const rx = prescribe(parseStrength(x.structure)!, x.plannedMinutes);
   assert.equal(x.plannedMinutes, rx.minutes);
-  // Forța nu scade sub 45 de minute și sub 3 serii: după febră devine ușoară (greutăți mai mici), nu mai scurtă.
-  assert.equal(x.plannedMinutes, 45);
-  assert.ok(parseStrength(x.structure)!.recovery && rx.items.every((r) => r.sets >= 3));
+  // Revenirea după boală e excepție de la regula 20 (decizia proprietarului, 20.10.2026, A49): varianta scurtă, 2 serii.
+  assert.ok(x.plannedMinutes < 45 && x.plannedMinutes >= 20, String(x.plannedMinutes));
+  assert.ok(parseStrength(x.structure)!.recovery && parseStrength(x.structure)!.reduced?.why === 'boala' && rx.items.every((r) => r.sets === 2));
   assert.match(x.note ?? '', /doar dacă dimineața nu mai ai febră/);
 });
 

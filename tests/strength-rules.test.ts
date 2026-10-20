@@ -67,9 +67,11 @@ test('planurile vechi: ședințele care combinau picioarele cu partea de sus și
 
 test('piramida 20 / 15 / 12 / 8: sugestia nu o citește ca „minimum 20 de repetări”', async () => {
   const { suggest } = await import('../src/strength/log.js');
-  const entry = (reps: number[]) => ({ date: '2026-10-12', exercise: 'fit-squat', sets: reps.map((r) => ({ reps: r, kg: 40 })), rir: 2 });
+  const entry = (reps: number[], date = '2026-10-12') => ({ date, exercise: 'fit-squat', sets: reps.map((r) => ({ reps: r, kg: 40 })), rir: 2, source: 'ajustat' });
   const scheme = '20 / 15 / 12 / 8 — crești greutatea la fiecare serie';
-  assert.equal(suggest('fit-squat', scheme, '2–3', [entry([20, 15, 12, 8])] as never).kind, 'creste');
+  // Auditul v93, A54: o singură piramidă reușită nu mai crește greutatea; două la rând, cu rezervă, da.
+  assert.equal(suggest('fit-squat', scheme, '2–3', [entry([20, 15, 12, 8])] as never).kind, 'ramai');
+  assert.equal(suggest('fit-squat', scheme, '2–3', [entry([20, 15, 12, 8], '2026-10-05'), entry([20, 15, 12, 8])] as never).kind, 'creste');
   const r = suggest('fit-squat', scheme, '2–3', [entry([20, 14, 12, 8])] as never);
   assert.equal(r.kind, 'ramai');
   assert.doesNotMatch(r.today, /sub 20/);
