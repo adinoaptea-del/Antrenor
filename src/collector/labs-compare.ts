@@ -17,7 +17,7 @@ export interface LabChange {
   unitate: string | null;
   schimbare_pct: number;
   /** mai_bine / mai_rau față de interval (laborator sau pragul aplicației); null = nu există interval de comparat. */
-  directie: 'mai_bine' | 'mai_rau' | 'stabil' | null;
+  directie: 'mai_bine' | 'mai_rau' | 'stabil' | 'schimbare_in_interval' | null;
 }
 
 export interface LabsComparison {
@@ -51,12 +51,9 @@ function direction(before: number, now: number, min: number | null, max: number 
   const d1 = distance(now, min, max);
   if (d1 < d0) return 'mai_bine';
   if (d1 > d0) return 'mai_rau';
-  // Amândouă în interval: pentru praguri cu o singură margine contează sensul (feritina, vitamina D mai sus = rezervă mai mare).
-  if (d0 === 0 && d1 === 0) {
-    if (min != null && max == null) return now > before ? 'mai_bine' : 'mai_rau';
-    if (max != null && min == null) return now < before ? 'mai_bine' : 'mai_rau';
-    return 'stabil';
-  }
+  // Auditul v93, A90: amândouă în interval = schimbare în interval, nu „mai bine” — vitamina D 40 → 60 sau CRP 0,5 → 0,4
+  // nu sunt o îmbunătățire demonstrată (și o valoare foarte mare nu e mai bună). Fără felicitare automată.
+  if (d0 === 0 && d1 === 0) return 'schimbare_in_interval';
   return 'stabil';
 }
 

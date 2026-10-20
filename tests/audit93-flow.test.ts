@@ -155,3 +155,25 @@ test('T81 / A109: poarta de progres verifică și forma (TSB), nu doar minutele'
   assert.equal(tired.eligibil, false);
   assert.match(tired.motiv, /TSB/);
 });
+
+test('A90: ambele valori în interval = „schimbare în interval”, nu „mai bine”', async () => {
+  const { compareLabs } = await import('../src/collector/labs-compare.js');
+  const snap = (data: string, vitD: number, crp: number, fer: number) => ({ data, feritina: fer, vitamina_d: vitD, hemoglobina: null, ck: null, crp, alte: [] });
+  const c = compareLabs(snap('2026-10-01', 60, 0.4, 150), snap('2026-04-01', 40, 0.5, 80))!;
+  for (const n of ['Vitamina D', 'CRP', 'Feritină']) assert.equal(c.schimbari.find((x) => x.nume === n)?.directie, 'schimbare_in_interval', n);
+  const low = compareLabs(snap('2026-10-01', 35, 1, 40), snap('2026-04-01', 20, 1, 20))!;
+  assert.equal(low.schimbari.find((x) => x.nume === 'Vitamina D')?.directie, 'mai_bine', 'din afara intervalului spre interval');
+});
+
+test('T68 / A30: lunga nu crește după o lungă prost tolerată; fără date nu se schimbă nimic', async () => {
+  const { holdLongAfterPoorExecution } = await import('../src/calendar/long-progression.js');
+  const mk = (id: string, date: string, m: number) => ({ id, date, sport: 'alergare', type: 'lung', plannedMinutes: m, targetZones: [2], key: true, status: 'planificat' });
+  const plan = [mk('a', '2026-10-18', 90), mk('b', '2026-10-25', 100)] as never;
+  assert.equal(holdLongAfterPoorExecution(plan, [], '2026-10-20', 'x').length, 0, 'fără date');
+  assert.equal(holdLongAfterPoorExecution(plan, [{ workoutId: 'a', color: 'verde', pain: 0 }], '2026-10-20', 'x').length, 0, 'tolerată');
+  const h = holdLongAfterPoorExecution(plan, [{ workoutId: 'a', color: 'verde', pain: 4 }], '2026-10-20', 'x');
+  assert.equal(h.length, 1);
+  assert.equal(h[0]!.plannedMinutes, 90);
+  assert.match(h[0]!.note ?? '', /n-a fost bine tolerată/);
+  assert.equal(h[0]!.original?.plannedMinutes, 100);
+});

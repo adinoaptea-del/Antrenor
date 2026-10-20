@@ -437,7 +437,7 @@ function OtherValues({ values }: { values: NonNullable<LabsForm['alte']> }) {
 
 function LabsCompareCard({ c }: { c: NonNullable<ReturnType<typeof useMe>['baseline']['labsCompare']> }) {
   const fmt = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 2 });
-  const label = { mai_bine: 'mai bine', mai_rau: 'mai rău', stabil: 'stabil' } as const;
+  const label = { mai_bine: 'mai bine', mai_rau: 'mai rău', stabil: 'stabil', schimbare_in_interval: 'în interval' } as const;
   return (
     <section className="q">
       <h3>Față de analizele din {c.data_anterioare.split('-').reverse().join('.')}</h3>

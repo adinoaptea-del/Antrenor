@@ -19,6 +19,7 @@ import { todayIn } from './auth.js';
 import { applyPlanEvents } from './agents.js';
 import { insert, select, upsert } from './db.js';
 import { restoreEased } from '../../src/calendar/outcomes.js';
+import { holdLongAfterPoorExecution } from '../../src/calendar/long-progression.js';
 
 export interface Reaction {
   changes: string[];
@@ -123,6 +124,12 @@ export async function moduleProgression(userId: string, today: string): Promise<
     await upsert('workouts_planned', back.map((x) => toWorkoutRow(x, userId, planId)), 'id');
     await insert('journal', back.map((x) => ({ user_id: userId, date: today, entry: `calendar: ${x.sport} ${x.date} revine la plan (ședință bine tolerată după ușurare)` }))).catch(() => undefined);
   }
-  const restored = new Map(back.map((x) => [x.id, x]));
-  return [...back.map((x) => `${x.id}: revine la plan`), ...(await applyPlanEvents(userId, today, planId, workouts.map((w) => restored.get(w.id) ?? w), [{ kind: 'trepte', date: today }], undefined, executions))];
+  // A30: lunga nu crește după o lungă prost tolerată din același sport (keep pe dovezi).
+  const held = holdLongAfterPoorExecution(workouts.map((w) => back.find((x) => x.id === w.id) ?? w), executions, today, new Date().toISOString());
+  if (held.length) {
+    await upsert('workouts_planned', held.map((x) => toWorkoutRow(x, userId, planId)), 'id');
+    await insert('journal', held.map((x) => ({ user_id: userId, date: today, entry: `calendar: ${x.sport} ${x.date} ${x.note}` }))).catch(() => undefined);
+  }
+  const restored = new Map([...back, ...held].map((x) => [x.id, x]));
+  return [...back.map((x) => `${x.id}: revine la plan`), ...held.map((x) => `${x.id}: ${x.note}`), ...(await applyPlanEvents(userId, today, planId, workouts.map((w) => restored.get(w.id) ?? w), [{ kind: 'trepte', date: today }], undefined, executions))];
 }
