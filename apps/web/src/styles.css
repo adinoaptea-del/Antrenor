@@ -1398,24 +1398,23 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .ok-alert { background: radial-gradient(110% 70% at 90% 115%, rgba(87, 217, 154, 0.16), transparent 60%), var(--glass-fill); border-color: rgba(87, 217, 154, 0.4); }
 .sheet > :not(.sheet-body):not(.glass-fx) { flex-shrink: 0; }
 
-/* Mesajul cosmic (ui/Cosmic.tsx): scena de teleportare. Fundalul îl întunecă scena din canvas; textul e DOM stabil. */
-.cosmic { position: fixed; inset: 0; z-index: 120; cursor: pointer; }
-.cosmic.out { pointer-events: none; }
-/* Întâmpinarea: Acasă abia se întrezărește (~7–8%) din primul cadru; vălul se ridică din JS la tranziție. */
-.cosmic-intampinare { background-color: rgba(14, 17, 18, 0.925); }
-.cosmic.still.cosmic-intampinare { background: rgba(14, 17, 18, 0.925); }
-.cosmic-cv { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
-.cosmic-box { position: fixed; transform: translate(-50%, -50%); width: min(calc(100vw - 26vw - 32px), 232px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; }
+/* Mesajul cosmic (ui/Cosmic.tsx, brief v2): ecran cosmic opac pe tot ecranul (Acasă nu se vede până la revealHome),
+   decorul în canvas cu margine (shake-ul nu descoperă marginile), textul și controalele DOM deasupra. */
+.cosmic { position: fixed; inset: 0; z-index: 120; background: #071012; overscroll-behavior: contain; touch-action: none; }
+.cosmic-cv { position: fixed; left: -16px; top: -16px; pointer-events: none; }
+.cosmic-box { position: fixed; left: 50%; top: 44%; transform: translate(-50%, -50%); width: min(calc(100vw - 26vw - 32px), 232px); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 4px 0; }
 .cosmic-k { font: 600 12px var(--font-ui); letter-spacing: 0.08em; color: var(--accent); }
 .cosmic-reusita .cosmic-k { font: 700 19px/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--fg); }
 .cosmic-t { margin: 0; font: 600 clamp(19px, 5.4vw, 23px)/1.3 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; color: var(--fg); }
 .cosmic-reusita .cosmic-t { font: 500 16px/1.42 var(--font-ui); letter-spacing: 0; }
 .cosmic-ok { width: 30px; height: 30px; fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(212, 250, 58, 0.45)); }
-.cosmic-x { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 4px 10px; cursor: pointer; }
-.cosmic-go { position: absolute; top: calc(100% + 64px); left: 50%; transform: translateX(-50%); min-width: 160px; padding: 12px 34px; border-radius: 999px; border: 1px solid rgba(110, 236, 140, 0.45); background: rgba(10, 22, 20, 0.72); color: var(--fg); font: 600 15px var(--font-ui); cursor: pointer; box-shadow: inset 0 0 16px rgba(110, 236, 140, 0.16), 0 0 22px rgba(110, 236, 140, 0.14); }
-/* Mișcare redusă: o fereastră de sticlă, estompare scurtă, fără scenă. */
-.cosmic.still { background: rgba(3, 7, 7, 0.4); animation: cosmic-fade 0.25s ease both; }
-.cosmic.still.out { animation: cosmic-fade-out 0.25s ease both; }
+.cosmic-go { position: absolute; top: calc(100% + 64px); left: 50%; transform: translateX(-50%); min-width: 160px; padding: 12px 34px; border-radius: 999px; border: 1px solid rgba(110, 236, 140, 0.45); background: rgba(10, 22, 20, 0.72); color: var(--fg); font: 600 15px var(--font-ui); cursor: pointer; box-shadow: inset 0 0 16px rgba(110, 236, 140, 0.16), 0 0 22px rgba(110, 236, 140, 0.14); opacity: 0; pointer-events: none; transition: opacity 0.4s ease; }
+.cosmic-go.on { opacity: 1; pointer-events: auto; }
+.cosmic-skip { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: none; border: 0; color: rgba(200, 230, 215, 0.55); font: 500 13px var(--font-ui); padding: 10px 16px; cursor: pointer; }
+.cosmic-skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+/* Mișcare redusă: fereastră de sticlă pe același fundal opac, tranziție simplă de ~180 ms. */
+.cosmic.still { animation: cosmic-fade 0.18s ease both; }
+.cosmic.still.leaving { animation: cosmic-fade-out 0.18s ease both; }
 .cosmic.still .cosmic-box.glass { width: min(calc(100vw - 32px), 340px); padding: 26px 22px; border-radius: 30px; }
 .cosmic.still .cosmic-go { position: static; transform: none; margin-top: 10px; }
 @keyframes cosmic-fade { from { opacity: 0; } to { opacity: 1; } }

@@ -5,8 +5,8 @@ import { randomMotivation } from '../data/motivation';
 import { CosmicMessage } from './Cosmic';
 
 /**
- * Întâmpinarea de la intrarea în aplicație: mesajul cosmic, varianta „întâmpinare”, discret peste Acasă (care rămâne
- * vizibil). Se închide singur după timpul de citire sau imediat la atingere; lumina se întoarce în bula de Acasă.
+ * Întâmpinarea de la intrarea în aplicație: mesajul cosmic, varianta „întâmpinare” (brief v2): scenă cosmică opacă,
+ * Acasă nu se vede până la tranziția finală. Rămâne până la „Continuă” (sau „Sari peste”).
  */
 const SHOWN_KEY = 'airon-welcome-at';
 /**

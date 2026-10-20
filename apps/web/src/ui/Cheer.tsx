@@ -3,12 +3,12 @@ import type { Me } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { addDays, diffDays } from '@core/util/dates.js';
 import { cheerFor, type CheerSport } from '@core/cheers.js';
-import { CosmicMessage, homeOrbRect, workoutRect } from './Cosmic';
+import { CosmicMessage } from './Cosmic';
 import { activityFor, colorOf } from '../data/model';
 import { strengthOf } from './WorkoutSheet';
 
 /**
- * Felicitarea de după o ședință: mesajul cosmic, varianta „reușită” (ui/Cosmic.tsx), pornit din cardul ședinței.
+ * Felicitarea de după o ședință: mesajul cosmic, varianta „reușită” (ui/Cosmic.tsx), rămâne până la „Continuă”.
  * Doar pentru ședințele de azi și ieri CONFIRMATE (activitate importată și legată de ședință, sau jurnalul de forță
  * trimis) și executate cel puțin 60% (src/cheers.ts). O singură dată pe ședință: cheia e id-ul ședinței din plan, așa
  * că sincronizarea, reîncărcarea sau un import duplicat nu o mai declanșează. Deschiderea detaliilor nu felicită nimic.
@@ -93,6 +93,8 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
   const uid = me.user.id ?? 'eu';
   const [seen, setSeen] = useState<string[]>(() => readSeen(uid));
   const [demo, setDemo] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>> } | null>(null);
+  // Scena în curs nu se resetează: o sincronizare sau o altă ședință confirmată între timp așteaptă rândul ei.
+  const [cur, setCur] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>>; demo: boolean } | null>(null);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent<{ sport: CheerSport; tier: 'fix' | 'bine' }>).detail;
@@ -104,21 +106,24 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
     return () => window.removeEventListener('airon-cheer-preview', on);
   }, [me.user.name, me.today]);
   const real = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
-  const pick = demo ?? real;
   useEffect(() => {
-    if (pick) onShow?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pick?.w.id]);
-  if (!pick) return null;
-  const done = () => {
-    if (demo) {
-      setDemo(null);
-      return;
+    if (cur) return;
+    const next = demo ? { ...demo, demo: true } : real ? { ...real, demo: false } : null;
+    if (next) {
+      setCur(next);
+      onShow?.();
     }
-    const next = [...seen, pick.w.id];
-    writeSeen(uid, next);
-    setSeen(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur, demo, real]);
+  if (!cur) return null;
+  const done = () => {
+    if (cur.demo) setDemo(null);
+    else {
+      const next = [...seen, cur.w.id];
+      writeSeen(uid, next);
+      setSeen(next);
+    }
+    setCur(null);
   };
-  const id = pick.w.id;
-  return <CosmicMessage key={id} variant="reusita" kicker="Antrenament finalizat" text={pick.c.text} seed={id.length + 3} origin={() => workoutRect(id) ?? homeOrbRect()} onClose={done} />;
+  return <CosmicMessage key={cur.w.id} variant="reusita" kicker="Antrenament finalizat" text={cur.c.text} seed={cur.w.id.length + 3} onClose={done} />;
 }

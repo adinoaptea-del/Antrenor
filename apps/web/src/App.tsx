@@ -76,6 +76,7 @@ function Shell() {
   const [tour, setTour] = useState(false);
   const [ambient, setAmbient] = useState(ambientOn);
   const hiddenAt = useRef<number | null>(null);
+  const welcomeLive = useRef(false);
   // Gestul de „înapoi” ca pe iPhone: tragi din marginea stângă; ecranul te urmărește cu degetul, cu umbră,
   // iar la eliberare fie iese spre dreapta (și apare ecranul de dinainte), fie revine elastic.
   const swipeBack = useRef<(() => void) | null>(null);
@@ -298,6 +299,11 @@ function Shell() {
   const level = dayLevel(me);
   const quiet = labsGate || dayOf(me)?.level === 'stop';
   const cheerNow = me.intakeComplete && !local && !countdown && !tour && !isForm && !quiet && pendingCheer(me);
+  // O singură scenă: dacă la deschidere există o felicitare, ea are prioritate; o întâmpinare deja pornită nu e
+  // întreruptă de o felicitare apărută între timp (sincronizare) — felicitarea așteaptă să se termine întâmpinarea.
+  const showWelcome = memento && !countdown && !quiet && me.intakeComplete && (welcomeLive.current || !cheerNow);
+  if (showWelcome) welcomeLive.current = true;
+  else if (!memento) welcomeLive.current = false;
   const act = eveningFor ? me.activities.find((a) => a.id === eveningFor) : null;
   const eveningWorkout = eveningFor?.startsWith('plan-') ? (me.plan.find((w) => `plan-${w.id}` === eveningFor) ?? null) : act ? (me.plan.find((w) => w.sport === act.sport && (w.date === act.date || w.date === act.date) && !act.unplanned) ?? null) : null;
   const eveningUnplanned = act?.unplanned ? { date: act.date, sport: SPORT_LABEL[act.sport], minutes: act.minutes, distanceKm: act.distanceKm } : null;
@@ -320,8 +326,8 @@ function Shell() {
       {tour && screen === 'acasa' && <Tour onClose={() => setTour(false)} />}
       {/* Mesajele cosmice: felicitarea are prioritate (fără două ferestre la rând); niciuna peste formulare, ghid,
           numărătoare, analize sau un semnal de oprire (avertismentul are prioritate). */}
-      {memento && !countdown && !quiet && me.intakeComplete && !cheerNow && <Memento onClose={() => setMemento(false)} />}
-      {me.intakeComplete && !local && <Cheer me={me} blocked={!!countdown || tour || isForm || quiet} onShow={() => setMemento(false)} />}
+      {showWelcome && <Memento onClose={() => setMemento(false)} />}
+      {me.intakeComplete && !local && <Cheer me={me} blocked={!!countdown || tour || isForm || quiet || showWelcome} onShow={() => setMemento(false)} />}
       {ambient && <Ambient level={level} />}
       {local && screen !== 'acasa' && !isForm && (
         <div className="demo-banner" role="status">
