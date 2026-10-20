@@ -350,7 +350,8 @@ export function CosmicMessage({
       // altfel, dizolvarea „03”.
       if (out != null && !decided) {
         decided = true;
-        const el = variant === 'intampinare' && skipAt.current == null ? homeOrb() : null;
+        // Întâmpinarea are acum propria scenă (ui/WelcomeSphere.tsx); aici rămâne doar felicitarea, cu dizolvarea „03”.
+        const el = ((): HTMLElement | null => (variant === 'intampinare' && false ? homeOrb() : null))();
         if (el) {
           el.dataset.build = '0';
           const inner = el.querySelector<HTMLElement>('.orb-in');

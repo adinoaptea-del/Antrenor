@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, TRANSFER, TRANSFER_LABEL, TRANSFER_MS, type PhaseName, type TransferPhase } from '@core/motion/teleport.js';
+import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, SPHERE_EXIT, SPHERE_EXIT_MS, SPHERE_LABEL, type PhaseName, type SpherePhase } from '@core/motion/teleport.js';
+import { WelcomeSphere } from './WelcomeSphere';
 import { cheerFor } from '@core/cheers.js';
 import { CosmicMessage, type CosmicClock } from './Cosmic';
 import { Orb } from './Orb';
@@ -24,7 +25,7 @@ const MODES: [Mode, string][] = [
 ];
 /** Pe cursor: 0–3400 ms scena deschisă (intrare ~2,5 s + repaus), apoi ieșirea „03” și dezvăluirea Acasă. */
 const OPEN_END = 3400;
-const TOTAL = OPEN_END + Math.max(EXIT_MS, TRANSFER_MS);
+const TOTAL = OPEN_END + Math.max(EXIT_MS, SPHERE_EXIT_MS);
 const mid = (r: readonly [number, number]) => Math.round((r[0] + r[1]) / 2);
 const JUMP: Record<PhaseName, number> = {
   liniste: mid(PHASES.liniste),
@@ -40,17 +41,19 @@ const JUMP: Record<PhaseName, number> = {
   ecou: OPEN_END + mid(EXIT.ecou),
   dezvaluire: OPEN_END + mid(EXIT.dezvaluire),
 };
-const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'desprindere', 'transfer', 'continut', 'interfata']);
-/** Întâmpinarea: ieșirea e transferul în bula de Acasă (aici, bula din laborator). */
-const JUMP_TRANSFER: Record<TransferPhase, number> = {
-  estompare: OPEN_END + mid(TRANSFER.estompare),
-  desprindere: OPEN_END + mid(TRANSFER.desprindere),
-  transfer: OPEN_END + 2100,
-  continut: OPEN_END + mid(TRANSFER.continut),
-  interfata: OPEN_END + mid(TRANSFER.interfata),
+const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'curbare', 'unda', 'desprindere', 'transfer', 'continut', 'interfata']);
+/** Întâmpinarea: sfera vie; ieșirea e transferul materiei în bula de Acasă (aici, bula din laborator). */
+const JUMP_SPHERE: Record<SpherePhase, number> = {
+  curbare: OPEN_END + 400,
+  unda: OPEN_END + 700,
+  estompare: OPEN_END + 900,
+  desprindere: OPEN_END + 1700,
+  transfer: OPEN_END + 3000,
+  continut: OPEN_END + mid(SPHERE_EXIT.continut),
+  interfata: OPEN_END + mid(SPHERE_EXIT.interfata),
 };
-type AnyPhase = PhaseName | TransferPhase;
-const labelOf = (p: AnyPhase) => (p in TRANSFER_LABEL && !(p in PHASE_LABEL) ? TRANSFER_LABEL[p as TransferPhase] : PHASE_LABEL[p as PhaseName]);
+type AnyPhase = PhaseName | SpherePhase;
+const labelOf = (p: AnyPhase) => (p in SPHERE_LABEL && !(p in PHASE_LABEL) ? SPHERE_LABEL[p as SpherePhase] : PHASE_LABEL[p as PhaseName]);
 
 export function GraphicsLab({ name, onClose }: { name: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('intampinare');
@@ -104,7 +107,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   };
   const jumps: [AnyPhase, number][] =
     mode === 'intampinare'
-      ? [...(Object.entries(JUMP) as [PhaseName, number][]).filter(([p]) => !['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire'].includes(p)), ...(Object.entries(JUMP_TRANSFER) as [TransferPhase, number][])]
+      ? [...(Object.entries(JUMP) as [PhaseName, number][]).filter(([p]) => !['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire'].includes(p)), ...(Object.entries(JUMP_SPHERE) as [SpherePhase, number][])]
       : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
     tl.current.closeAt = v > OPEN_END ? OPEN_END : null;
@@ -159,7 +162,19 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <small>trebuie să apară doar la final</small>
             </span>
           </div>
-          {!ended && (
+          {!ended && mode === 'intampinare' && (
+            <WelcomeSphere
+              key={`${mode}-${run}`}
+              inline
+              kicker="Ziua 12 din 342"
+              text={`Fiecare zonă 2 făcută cum trebuie e o cărămidă în plus${first ? `, ${first}` : ''}.`}
+              clock={clock}
+              onRequestContinue={closeNow}
+              onPhase={setPhase}
+              onClose={() => setEnded(true)}
+            />
+          )}
+          {!ended && mode === 'reusita' && (
             <CosmicMessage
               key={`${mode}-${run}`}
               variant={mode}

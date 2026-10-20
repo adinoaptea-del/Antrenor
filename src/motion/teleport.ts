@@ -209,3 +209,72 @@ export function contentAlpha(out: number): number {
 export function transferSceneOpacity(out: number): number {
   return 1 - easeInOut(span(out, TRANSFER.interfata));
 }
+
+// ——— Întâmpinarea ca sferă vie (cererea proprietarului, 20.10.2026, „Welcome → Home”) ———
+// Întâmpinarea folosește sfera de pe Acasă (aceleași particule, fără lichid sau sticlă). La „Continuă”: fundalul se
+// curbează discret spre sferă, o undă de relaxare și o vibrație scurtă amortizată; mesajul se stinge; apoi sfera se
+// descompune progresiv dinspre bula de Acasă, iar particulele desprinse călătoresc pe curbe și o construiesc. Timpii
+// sunt de pornire, de ajustat vizual.
+export const SPHERE_EXIT = {
+  curbare: [0, 650],
+  unda: [600, 1000],
+  estompare: [700, 1000],
+  desprindere: [1000, 2900],
+  transfer: [1000, 4100],
+  continut: [3950, 4400],
+  interfata: [4300, 4950],
+} as const;
+export const SPHERE_EXIT_MS = SPHERE_EXIT.interfata[1];
+export const SPHERE_SHAKE_AT = 680;
+export type SpherePhase = 'curbare' | 'unda' | 'estompare' | 'desprindere' | 'transfer' | 'continut' | 'interfata';
+export const SPHERE_LABEL: Record<SpherePhase, string> = {
+  curbare: 'Spațiul se curbează',
+  unda: 'Undă + vibrație',
+  estompare: 'Mesajul se stinge',
+  desprindere: 'Sfera se desprinde',
+  transfer: 'Materia ajunge în bulă',
+  continut: 'Antrenamentele apar',
+  interfata: 'Restul interfeței',
+};
+export function spherePhaseAt(out: number): SpherePhase {
+  if (out < SPHERE_EXIT.unda[0]) return 'curbare';
+  if (out < SPHERE_EXIT.estompare[0]) return 'unda';
+  if (out < SPHERE_EXIT.estompare[1]) return 'estompare';
+  if (out < SPHERE_EXIT.desprindere[1]) return 'desprindere';
+  if (out < SPHERE_EXIT.transfer[1]) return 'transfer';
+  if (out < SPHERE_EXIT.interfata[0]) return 'continut';
+  return 'interfata';
+}
+/** Curbarea spațiului spre sferă (0..1), înainte de desprindere; se relaxează lin. */
+export function sphereLens(out: number): number {
+  const up = span(out, [0, 520]);
+  const down = span(out, [520, 1000]);
+  return Math.sin((Math.PI / 2) * up) * (1 - easeOut(down));
+}
+/** Unda de relaxare (raza 0..1) sau null. */
+export function sphereWave(out: number): number | null {
+  const u = span(out, [SPHERE_EXIT.unda[0], SPHERE_EXIT.unda[0] + 800]);
+  return u <= 0 || u >= 1 ? null : easeOut(u);
+}
+/** Vibrația scurtă, amortizată (doar decorul). */
+export function sphereShake(out: number): { x: number; y: number } {
+  return shakeAt(SHAKE.at + (out - SPHERE_SHAKE_AT));
+}
+/** Textul: lizibil în timpul curbării, se stinge înaintea transferului. */
+export function sphereTextAlpha(t: number, out: number | null): number {
+  return textAlpha(t, null) * (out == null ? 1 : 1 - span(out, SPHERE_EXIT.estompare));
+}
+/** Când pleacă particula, după poziția ei pe direcția spre bulă (s, -R…+R): întâi partea dinspre bulă. */
+export function sphereRelease(s: number, R: number, jitter = 0): number {
+  return releaseAt(s, R, SPHERE_EXIT.desprindere) + jitter;
+}
+/** Durata drumului: ajunge cel târziu la sfârșitul transferului. */
+export function sphereTravelDur(rel: number, base: number): number {
+  return Math.max(600, Math.min(base, SPHERE_EXIT.transfer[1] - rel));
+}
+export function sphereContentAlpha(out: number): number {
+  return easeInOut(span(out, SPHERE_EXIT.continut));
+}
+export function sphereSceneOpacity(out: number | null): number {
+  return out == null ? 1 : 1 - easeInOut(span(out, SPHERE_EXIT.interfata));
+}

@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
-import { CosmicMessage } from './Cosmic';
+import { WelcomeSphere } from './WelcomeSphere';
 
 /**
- * Întâmpinarea de la intrarea în aplicație: mesajul cosmic, varianta „întâmpinare” (brief v2): scenă cosmică opacă,
- * Acasă nu se vede până la tranziția finală. Rămâne până la „Continuă” (sau „Sari peste”).
+ * Întâmpinarea de la intrarea în aplicație: sfera vie (ui/WelcomeSphere.tsx), aceeași cu bula de Acasă, pe fundal
+ * cosmic opac; la „Continuă” materia ei construiește bula de Acasă. Rămâne până la „Continuă” (sau „Sari peste”).
  */
 const SHOWN_KEY = 'airon-welcome-at';
 /**
@@ -35,5 +35,14 @@ export function Memento({ onClose }: { onClose: () => void }) {
   const me = useMe();
   const [msg] = useState(randomMotivation);
   const d = dayIndex(me);
-  return <CosmicMessage variant="intampinare" kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} seed={7} onClose={() => { markWelcome(); onClose(); }} />;
+  return (
+    <WelcomeSphere
+      kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')}
+      text={msg}
+      onClose={() => {
+        markWelcome();
+        onClose();
+      }}
+    />
+  );
 }
