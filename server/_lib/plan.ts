@@ -21,6 +21,7 @@ import { currentFromIntake, isBeginnerRunner, planTarget, type RunIntakeLike } f
 const runBranch = (intake: { alergare?: { ramura?: 'finalizare' | 'timp' | null; tinta?: unknown } }): 'finalizare' | 'timp' => intake.alergare?.ramura ?? (intake.alergare?.tinta ? 'timp' : 'finalizare');
 import { swimDeclared } from '../../src/bar/sport-readiness.js';
 import { swimCapacity } from '../../src/calendar/swim-capacity.js';
+import { demonstrated } from '../../src/calendar/demonstrated.js';
 import { parsePace, type RunResult } from '../../src/util/run.js';
 import { decideReplan } from '../../src/calendar/reevaluate.js';
 
@@ -202,7 +203,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
   const labs = await labsGate(userId);
   const prefs = await loadPrefs(userId);
   // Capacitatea la înot cu proveniență: măsurată (ceas) sau declarată; necunoscut rămâne null (V2-04).
-  const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
+  const recentActs = dedupeActivities(await loadActivities(userId, addDays(today, -56)).catch(() => []));
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake as unknown as Record<string, unknown>), activities: recentActs, today });
   const result: GenerateResult = generatePlan({
     walk: walk ? { profile: prefs.mers!, demonstratedMin: await walkDemonstrated(userId, today) } : undefined,
     fixed: prefs.fixe,
@@ -220,6 +222,7 @@ export async function generateAndStore(userId: string, today: string, intake: In
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },
+    demonstrated: demonstrated(recentActs, today),
     run: isRunGoal(intake.obiectiv)
       ? {
           // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).

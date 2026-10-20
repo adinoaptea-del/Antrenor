@@ -11,6 +11,9 @@ import type { Goal } from '../../src/calendar/phases.js';
 import { one, select, update, upsert } from './db.js';
 import { ensureSplit } from './split.js';
 import { restoreExtraCuts } from '../../src/calendar/adapt.js';
+import { demonstrated, raiseToDemonstrated } from '../../src/calendar/demonstrated.js';
+import { fitStructure } from '../../src/calendar/validate.js';
+import { normalizeWorkout } from '../../src/calendar/coherence.js';
 import { fitnessWithAttendance } from './plan.js';
 import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
 import { isFitnessGoal, isWalkGoal } from '../../src/calendar/phases.js';
@@ -72,9 +75,15 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   // Regula proprietarului (20.10.2026): ce a tăiat un efort în plus revine în plan, cu sugestia ușoară; se salvează o dată.
   const restored = restoreExtraCuts(workouts0, today);
   if (restored.length && planLoad.planId) await upsert('workouts_planned', restored.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
-  const byId = new Map(restored.map((w) => [w.id, w]));
-  const workouts = workouts0.map((w) => byId.get(w.id) ?? w);
   const activities = dedupeActivities(acts);
+  // Corecția proprietarului (20.10.2026): ședințele ușoare viitoare nu stau sub ce face sportivul de obicei (ultimele 6
+  // săptămâni, src/calendar/demonstrated.ts); se ridică o dată și se salvează.
+  const restoredById = new Map(restored.map((w) => [w.id, w]));
+  const workouts1 = workouts0.map((w) => restoredById.get(w.id) ?? w);
+  const raised = raiseToDemonstrated(workouts1, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)));
+  if (raised.length && planLoad.planId) await upsert('workouts_planned', raised.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
+  const byId = new Map(raised.map((w) => [w.id, w]));
+  const workouts = workouts1.map((w) => byId.get(w.id) ?? w);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);

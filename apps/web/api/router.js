@@ -4272,6 +4272,53 @@ function perDayMinutes(blocks) {
   return Array.from({ length: 7 }, (_, d) => Math.min(MAX_SPORT_MIN_PER_DAY, usable.filter((b) => b.day === d).reduce((s, b) => s + (b.endMin - b.startMin), 0)));
 }
 
+// src/calendar/demonstrated.ts
+var RANGE = {
+  alergare: { lo: 20, hi: 90, cap: 60 },
+  bicicleta: { lo: 30, hi: 150, cap: 90 },
+  inot: { lo: 20, hi: 90, cap: 60 }
+};
+var DEMONSTRATED_WINDOW_DAYS = 42;
+var MIN_SESSIONS = 3;
+var r52 = (x) => Math.round(x / 5) * 5;
+function demonstrated(acts, today, days = DEMONSTRATED_WINDOW_DAYS) {
+  const out = { easy: {}, longest: {}, n: {} };
+  const recent = acts.filter((a) => diffDays(a.date, today) >= 0 && diffDays(a.date, today) <= days);
+  for (const sport of Object.keys(RANGE)) {
+    const r2 = RANGE[sport];
+    const all2 = recent.filter((a) => a.sport === sport && a.minutes > 0);
+    if (all2.length) out.longest[sport] = Math.max(...all2.map((a) => a.minutes));
+    const xs = all2.map((a) => a.minutes).filter((m) => m >= r2.lo && m <= r2.hi).sort((a, b) => a - b);
+    out.n[sport] = xs.length;
+    if (xs.length < MIN_SESSIONS) continue;
+    const mid = xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2;
+    out.easy[sport] = Math.min(r2.cap, r52(mid));
+  }
+  return out;
+}
+function easyFloor(dem, sport, light = false) {
+  const e = dem?.easy[sport];
+  if (!e) return null;
+  return light ? r52(e * 0.8) : e;
+}
+function longRunStart(dem) {
+  const l = dem?.longest.alergare;
+  if (!l || l < 45) return null;
+  return Math.max(45, Math.min(105, r52(l * 0.8)));
+}
+function raiseToDemonstrated(plan, today, dem) {
+  const out = [];
+  for (const w of plan) {
+    if (w.date < today || w.status !== "planificat" && w.status !== "mutat" || w.key) continue;
+    if (w.type !== "z2" && w.type !== "tehnica") continue;
+    if (w.note || w.suggestion?.accepted === true) continue;
+    const f = easyFloor(dem, w.sport);
+    if (!f || w.plannedMinutes >= f) continue;
+    out.push({ ...w, plannedMinutes: f });
+  }
+  return out;
+}
+
 // src/calendar/bike-swim-modules.ts
 var round52 = (m) => Math.round(m / 5) * 5;
 var total = (work, rest) => round52(15 + work + rest + 10);
@@ -4657,9 +4704,13 @@ function generatePlan(input) {
   const startLong = runGoal ? runStartLong(input.goal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
   const lvl = input.level ?? {};
   const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN2.bicicleta, Math.round(lvl.longestRideH * 60 * 1.25 / 5) * 5)) : 60;
-  const triRun = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN2.alergare, Math.round(lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25 / 5) * 5)) : 45;
+  const demLong = longRunStart(input.demonstrated);
+  const triRunDeclared = lvl.longestRunKm ? Math.min(75, Math.max(MIN_SESSION_MIN2.alergare, Math.round(lvl.longestRunKm * ((lvl.easyPaceSecKm ?? 420) / 60) * 1.25 / 5) * 5)) : 45;
+  const triRun = Math.max(triRunDeclared, demLong ?? 0);
   const swimStart = input.swim?.continuousM == null ? MIN_SESSION_MIN2.inot : Math.max(MIN_SESSION_MIN2.inot, Math.min(60, Math.round(input.swim.continuousM / 100 * 2.5 * 1.25)));
-  const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? input.run?.beginner ? 30 : startLong : triRun, brickRun: 15, longSwim: swimStart, walkStep: runGoal && input.run?.beginner ? 0 : void 0 };
+  const prog = { longRide: runGoal ? 90 : triRide, longRun: runGoal ? input.run?.beginner ? 30 : startLong : triRun, brickRun: 15, longSwim: swimStart, walkStep: runGoal && input.run?.beginner ? 0 : void 0, ...demLong ? { longRunFloor: demLong } : {} };
+  const dem = input.demonstrated;
+  const easyOf = (x, light) => !x.key && (x.type === "z2" || x.type === "tehnica") ? Math.max(MIN_SESSION_MIN2[x.sport], easyFloor(dem, x.sport, light) ?? 0) : MIN_SESSION_MIN2[x.sport];
   const out = [];
   const maxBlock = Math.max(0, ...budget.blocks.map((b) => b.endMin - b.startMin)) - CHANGE_MIN;
   let longCapNoted = false;
@@ -4689,11 +4740,12 @@ function generatePlan(input) {
         capNotes.push(`ATEN\u021AIE: ${what}, dar cel mai mare bloc liber din programul t\u0103u are ${maxBlock + CHANGE_MIN} min. Plafonat\u0103 la ${Math.min(maxBlock, Math.max(prog.longRide, prog.longRun))} min; elibereaz\u0103 o fereastr\u0103 mai lung\u0103 (de obicei \xEEn weekend) ca s\u0103 fii preg\u0103tit pentru ${GOAL_LABEL[input.goal]}.`);
       }
     }
-    const templated = kind === "run" ? runWeekTemplate(pw, input, prog) : kind === "swim" ? swimWeekTemplate(pw, input, prog) : kind === "bike" ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog);
+    const light = pw.recovery || pw.phase === "taper";
+    const templated = (kind === "run" ? runWeekTemplate(pw, input, prog) : kind === "swim" ? swimWeekTemplate(pw, input, prog) : kind === "bike" ? bikeWeekTemplate(pw, input, prog) : weekTemplate(pw, input, prog)).map((x) => x.minutes < easyOf(x, light) ? { ...x, minutes: easyOf(x, light) } : x);
     const raceWeek = pw.weekStart === weekStart(input.raceDate);
     const sessions = raceWeek ? raceWeekSessions(templated) : templated;
     const minCount = kind === "run" ? { alergare: 3, forta: 1 } : kind === "swim" ? { inot: 2, forta: 1 } : kind === "bike" ? { bicicleta: 2, forta: 1 } : { inot: 2, bicicleta: 2, alergare: 2, forta: 1 };
-    const fitted = fitToHours(sessions, target, pw.recovery, minCount);
+    const fitted = fitToHours(sessions, target, pw.recovery, minCount, (x) => easyOf(x, light));
     const placed = place(fitted.sessions, budget.blocks, pw.weekStart, pw.phase, minCount, input.fixed);
     if (raceWeek) shakeoutBeforeRace(placed.workouts, input.raceDate);
     const plannedHours = round12(placed.workouts.reduce((s, w) => s + w.plannedMinutes, 0) / 60);
@@ -4725,16 +4777,16 @@ function generatePlan(input) {
     const v = enforceLimits(w.workouts, limits);
     w.workouts = v.workouts.filter((x) => x.date < input.raceDate).map(fitStructure).map(normalizeWorkout);
     if (v.notes.length) w.notes.push(...v.notes);
-    capToBudget(w, budget.hours);
+    capToBudget(w, budget.hours, (x) => easyOf(x, w.recovery || w.phase === "taper"));
   }
   return { ok: true, weeks: out, budgetHours: budget.hours };
 }
-function capToBudget(w, hours) {
+function capToBudget(w, hours, floor = (x) => MIN_SESSION_MIN2[x.sport]) {
   const cap2 = Math.round(hours * 60);
   const total2 = () => w.workouts.filter((x) => x.status !== "anulat_sistem").reduce((n2, x) => n2 + x.plannedMinutes, 0);
   let guard = 200;
   while (total2() > cap2 && guard-- > 0) {
-    const pick2 = (pred) => w.workouts.filter((x2) => x2.status !== "anulat_sistem" && !x2.key && x2.type !== "lung" && x2.type !== "brick" && pred(x2) && x2.plannedMinutes - 5 >= MIN_SESSION_MIN2[x2.sport]).sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0];
+    const pick2 = (pred) => w.workouts.filter((x2) => x2.status !== "anulat_sistem" && !x2.key && x2.type !== "lung" && x2.type !== "brick" && pred(x2) && x2.plannedMinutes - 5 >= Math.max(MIN_SESSION_MIN2[x2.sport], floor(x2))).sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0];
     const anyLong = () => w.workouts.filter((y) => y.status !== "anulat_sistem" && !/^TEST:/.test(y.structure ?? "") && y.plannedMinutes - 5 >= MIN_SESSION_MIN2[y.sport]).sort((a, b) => b.plannedMinutes - a.plannedMinutes)[0];
     const x = pick2((y) => y.type === "z2" || y.type === "tehnica") ?? pick2((y) => y.type === "forta") ?? pick2((y) => y.type === "calitate") ?? anyLong();
     if (!x) break;
@@ -4825,7 +4877,7 @@ function advanceProgression(prog, pw) {
     peak: { ride: 180, run: 100, brick: 30 },
     taper: { ride: 90, run: 60, brick: 15 }
   };
-  const cap2 = caps[pw.phase];
+  const cap2 = { ...caps[pw.phase], run: pw.phase === "taper" ? caps.taper.run : Math.max(caps[pw.phase].run, prog.longRunFloor ?? 0) };
   if (pw.weekInPhase > 0 && pw.weekInPhase % 2 === 0) prog.longRide = Math.min(cap2.ride, prog.longRide + 15);
   if (pw.weekInPhase > 0) prog.longRun = Math.min(cap2.run, prog.longRun + (pw.phase === "baza1" ? 10 : pw.weekInPhase % 2 === 0 ? 10 : 0));
   if (pw.phase === "baza2" || pw.phase === "build") prog.brickRun = Math.min(cap2.brick, Math.max(prog.brickRun, 15) + (pw.weekInPhase % 2 === 0 ? 5 : 0));
@@ -5147,13 +5199,13 @@ function fieldTests(pw, input, sports) {
   if (sports.includes("inot") && input.swimContinuous400 && due("inot", 2)) out.push({ sport: "inot", type: "calitate", minutes: 40, zones: [4, 5], key: true, priority: 2.5, structure: "TEST CSS: \xEEnc\u0103lzire, 400 m tare, 5 min pauz\u0103, 200 m tare; noteaz\u0103 timpii" });
   return out;
 }
-function fitToHours(sessions, targetHours, recovery, minCount) {
+function fitToHours(sessions, targetHours, recovery, minCount, easyMin = (x) => MIN_SESSION_MIN2[x.sport]) {
   const notes = [];
   const targetMin = targetHours * 60;
   let all2 = sessions.map((x) => ({ ...x }));
   const total2 = () => all2.reduce((n2, x) => n2 + x.minutes, 0);
   const count = (sp) => all2.filter((x) => x.sport === sp).length;
-  const floorOf = (x) => x.key ? Math.max(MIN_SESSION_MIN2[x.sport], x.type === "lung" || x.type === "brick" ? x.sport === "bicicleta" ? 60 : 40 : 30) : MIN_SESSION_MIN2[x.sport];
+  const floorOf = (x) => x.key ? Math.max(MIN_SESSION_MIN2[x.sport], x.type === "lung" || x.type === "brick" ? x.sport === "bicicleta" ? 60 : 40 : 30) : Math.max(MIN_SESSION_MIN2[x.sport], easyMin(x));
   const shrink = (pred) => {
     const over = total2() - targetMin;
     if (over <= 0) return;
@@ -7136,7 +7188,8 @@ async function generateAndStore(userId, today, intake, opts = {}) {
   const history = await historyHours(userId, today);
   const labs = await labsGate(userId);
   const prefs = await loadPrefs(userId);
-  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), activities: await loadActivities(userId, addDays(today, -56)).catch(() => []), today });
+  const recentActs = dedupeActivities(await loadActivities(userId, addDays(today, -56)).catch(() => []));
+  const swimCap = swimCapacity({ declaredM: swimDeclared(intake), activities: recentActs, today });
   const result = generatePlan({
     walk: walk ? { profile: prefs.mers, demonstratedMin: await walkDemonstrated(userId, today) } : void 0,
     fixed: prefs.fixe,
@@ -7154,6 +7207,7 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     tests: await testsAvailable(userId, intake),
     level: { longestRideH: intake.bicicleta?.ceaMaiLungaOre ?? null, longestRunKm: intake.alergare?.ceaMaiLungaKm ?? null, easyPaceSecKm: parsePace(intake.evaluare?.ritmUsor ?? intake.alergare?.ritmActual ?? null) },
     swim: { continuousM: swimCap.meters },
+    demonstrated: demonstrated(recentActs, today),
     run: isRunGoal(intake.obiectiv) ? {
       // Ritmul de cursă din plan: ținta, sau timpul realist de acum când ținta e nerealistă (promisiunea din chestionar).
       goalPaceSecKm: runBranch(intake) === "finalizare" ? null : planTarget(intake.obiectiv, intake.alergare?.tinta ?? null, currentFromIntake(intake), diffDays(startDate, intake.dataCursa) / 7).paceSecKm,
@@ -8041,9 +8095,13 @@ async function buildMe(userId, today) {
   const workouts0 = await ensureSplit(userId, today, planLoad, user.sex ?? (forms.intake?.sex ?? null), user.goal ?? null).catch(() => planLoad.workouts);
   const restored = restoreExtraCuts(workouts0, today);
   if (restored.length && planLoad.planId) await upsert("workouts_planned", restored.map((w) => toWorkoutRow(w, userId, planLoad.planId)), "id").catch(() => void 0);
-  const byId = new Map(restored.map((w) => [w.id, w]));
-  const workouts = workouts0.map((w) => byId.get(w.id) ?? w);
   const activities = dedupeActivities(acts);
+  const restoredById = new Map(restored.map((w) => [w.id, w]));
+  const workouts1 = workouts0.map((w) => restoredById.get(w.id) ?? w);
+  const raised = raiseToDemonstrated(workouts1, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)));
+  if (raised.length && planLoad.planId) await upsert("workouts_planned", raised.map((w) => toWorkoutRow(w, userId, planLoad.planId)), "id").catch(() => void 0);
+  const byId = new Map(raised.map((w) => [w.id, w]));
+  const workouts = workouts1.map((w) => byId.get(w.id) ?? w);
   const planned = workouts.filter((w) => w.status !== "sters");
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
