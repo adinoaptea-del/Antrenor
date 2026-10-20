@@ -9,39 +9,56 @@ import { isNetworkError } from '../data/api';
 import { DAY_NAMES, fmtMinutes } from '../data/model';
 
 /**
- * Zi galbenă: aceeași idee ca sus („azi mai ușor”). Dacă antrenorul a pregătit varianta ușoară, ea e ședința de azi;
- * dacă ședința e deja ușoară, nu e nimic de schimbat; altfel butonul „Fă-o ușoară”.
+ * Varianta ușoară propusă. Zi galbenă: „azi mai ușor”. După un efort în plus (regula proprietarului, 20.10.2026):
+ * ședința rămâne în plan, iar varianta ușoară e doar o recomandare anti-suprasolicitare — alegi tu.
  */
-export function YellowDay({ w }: { w: PlannedWorkout }) {
+export function YellowDay({ w, yellow = true }: { w: PlannedWorkout; yellow?: boolean }) {
   const { submitForm, local } = useData();
   const [busy, setBusy] = useState(false);
   const intense = w.type === 'calitate' || w.type === 'brick' || w.type === 'lung' || w.targetZones.some((z) => z >= 3);
   const s = w.suggestion;
-  if (s && s.accepted === true) return <div className="wk-yellow">Zi galbenă: faci varianta ușoară, deja pusă în plan.</div>;
-  if (s && s.accepted == null)
+  const choose = async (accept: boolean) => {
+    setBusy(true);
+    try {
+      await submitForm('sugestie', { workoutId: w.id, accept });
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (s && s.accepted === true)
     return (
       <div className="wk-yellow">
-        <div>
-          Zi galbenă, deci azi: <b>{s.structure}</b> ({fmtMinutes(s.minutes)}) în loc de ce scrie mai sus.
-        </div>
-        {!local && (
-          <button
-            className="btn sm"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await submitForm('sugestie', { workoutId: w.id, accept: true });
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Pune varianta ușoară în plan
+        <div>{yellow ? 'Zi galbenă: faci varianta ușoară, deja pusă în plan.' : 'Faci varianta ușoară, aleasă de tine.'}</div>
+        {!yellow && !local && (
+          <button className="btn sm" disabled={busy} onClick={() => choose(false)}>
+            Revin la ședința din plan
           </button>
         )}
       </div>
     );
+  if (s && s.accepted == null)
+    return (
+      <div className="wk-yellow">
+        <div>
+          {yellow ? 'Zi galbenă, deci azi: ' : 'Ședința rămâne în plan. Recomandat, ca să eviți suprasolicitarea: '}
+          <b>{s.structure}</b>{/^\d+ min/.test(s.structure) ? '' : ` (${fmtMinutes(s.minutes)})`}{yellow ? ' în loc de ce scrie mai sus.' : '.'}
+          {!yellow && s.reason && <div className="tiny muted">{s.reason.replace(/; alegi tu$/, '')}</div>}
+        </div>
+        {!local && (
+          <div className="wk-btns">
+            <button className="btn sm" disabled={busy} onClick={() => choose(true)}>
+              Pune varianta ușoară în plan
+            </button>
+            {!yellow && (
+              <button className="btn sm" disabled={busy} onClick={() => choose(false)}>
+                Rămân pe plan
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  if (!yellow) return null;
   if (!intense) return <div className="wk-yellow">Zi galbenă: ședința e deja ușoară. O faci așa, fără să forțezi.</div>;
   return <div className="wk-yellow">Zi galbenă: apasă „Fă-o ușoară” și ședința rămâne, fără intensitate.</div>;
 }

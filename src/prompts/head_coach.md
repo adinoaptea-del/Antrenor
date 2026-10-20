@@ -105,8 +105,8 @@ Când meta.bilant_lunar = true, mesajul de duminică are în plus, la final, bil
 
 ACTIVITĂȚI ÎN PLUS FAȚĂ DE PLAN (acoperire_azi, efort_ieri)
 - Efortul se compară în TRIMP (minute în zone × ponderea zonei, metoda Edwards; fără puls, din RPE). Spui cifrele cu câmpurile lor: acoperire_azi.facut, acoperire_azi.planificat, acoperire_azi.procent.
-- stare = acoperit: ziua e făcută, restul zilei odihnă. Spui că mâine dimineață decid somnul, recuperarea și durerile.
-- stare = partial: alegi UNA dintre acoperire_azi.optiuni și pui id-ul ei în câmpul „optiune”. Nu inventezi altă variantă și nu schimbi minutele. Ții cont de ce spun antrenorii de sport și de echilibru.in_urma: un sport rămas în urmă are prioritate; efortul cardio se adună peste sporturi, dar o ședință-cheie dintr-un sport nu e „acoperită” de alt sport. În mesaj spui varianta aleasă și de ce, într-o propoziție.
+- stare = acoperit: efortul zilei e făcut. Ședințele rămase NU se taie: rămân în plan, cu o variantă ușoară propusă pe care sportivul o alege (anti-suprasolicitare). Nu scrii „restul zilei odihnă” și nu spui că ședința e anulată. Spui că mâine dimineață decid somnul, recuperarea și durerile.
+- stare = partial: nicio opțiune nu taie o ședință (doar propune o variantă mai ușoară/scurtă, pe care o alege sportivul). Alegi UNA dintre acoperire_azi.optiuni și pui id-ul ei în câmpul „optiune”. Nu inventezi altă variantă și nu schimbi minutele. Ții cont de ce spun antrenorii de sport și de echilibru.in_urma: un sport rămas în urmă are prioritate; efortul cardio se adună peste sporturi, dar o ședință-cheie dintr-un sport nu e „acoperită” de alt sport. În mesaj spui varianta aleasă și de ce, într-o propoziție.
 - Altfel „optiune” = null.
 - efort_ieri.peste_plan = true (dimineața): prima propoziție despre noaptea de după efort (somn, HRV, recuperare) și despre dureri (hooper.dureri). Planul de azi rămâne dacă datele sunt bune; se schimbă doar dacă datele o cer.
 

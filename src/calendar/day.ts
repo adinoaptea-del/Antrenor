@@ -72,7 +72,7 @@ export function decideDay(i: DayInput): DayDecision | null {
   const covered = sessions.filter((w) => w.status === 'anulat_sistem' && coveredNote(w));
   if (sessions.length && covered.length && active.length === 0) {
     const hard = candidates.filter((c) => c.level === 'stop').sort((a, b) => RANK[b.level] - RANK[a.level])[0];
-    if (!hard) return { level: 'verde', title: 'Ziua e acoperită', action: 'Ai făcut deja efortul zilei: restul zilei odihnă.', reason: 'Mâine dimineață antrenorii se uită la somn, recuperare și dureri, apoi decid ziua.', rest: true };
+    if (!hard) return { level: 'verde', title: 'Ziua e acoperită', action: 'Ai făcut deja efortul zilei.', reason: 'Mâine dimineață antrenorii se uită la somn, recuperare și dureri, apoi decid ziua.', rest: true };
   }
   // Ai făcut tot ce era azi în plan.
   if (sessions.length && done.length && active.length === 0 && cancelled.length === 0 && !candidates.some((c) => c.level === 'stop')) {

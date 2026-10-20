@@ -180,14 +180,17 @@ describe('organism viu · efortul peste plan: ziua se echivalează, mâine decid
     P({ id: 'luni', date: '2026-10-19', sport: 'bicicleta', type: 'z2', plannedMinutes: 60 }),
     P({ id: 'marti', date: '2026-10-20', sport: 'alergare', type: 'calitate', plannedMinutes: 50, targetZones: [4], key: true, intervals: { count: 5, minutes: 4, zone: 4 } }),
   ];
-  it('3 h 49 de munte: efortul (TRIMP) acoperă ziua → înotul se anulează; zilele următoare rămân cum sunt', () => {
+  it('3 h 49 de munte: efortul (TRIMP) acoperă ziua → înotul rămâne, cu sugestie ușoară; zilele următoare rămân cum sunt', () => {
     const { extra, coverage } = extraOn('2026-10-17', plan, [run as never]);
     assert.equal(extra, true, 'mult peste lunga planificată');
     assert.equal(coverage.stare, 'acoperit');
     assert.ok(coverage.facut > coverage.planificat);
     const r = adapt(plan, { kind: 'acoperit', date: '2026-10-17', facut: coverage.facut, planificat: coverage.planificat }, { today: '2026-10-17', freeBlocks: [], recentKeyScores: [], done: ['lung'] });
     assert.equal(r.plan.find((w) => w.id === 'lung')!.status, 'planificat');
-    assert.equal(r.plan.find((w) => w.id === 'inot')!.status, 'anulat_sistem');
+    const inot = r.plan.find((w) => w.id === 'inot')!;
+    assert.equal(inot.status, 'planificat', 'regula proprietarului: nu se taie');
+    assert.equal(inot.suggestion?.accepted, null);
+    assert.ok(inot.suggestion!.minutes < inot.plannedMinutes);
     assert.deepEqual(r.plan.find((w) => w.id === 'luni')!.targetZones, [2]);
     assert.equal(r.plan.find((w) => w.id === 'marti')!.type, 'calitate');
   });

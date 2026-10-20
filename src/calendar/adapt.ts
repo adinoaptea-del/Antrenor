@@ -70,6 +70,53 @@ export interface AdaptResult {
 const CHANGE_MIN = 10;
 // Formulat condiționat (auditul F55, F03): recuperarea nu e presupusă; ziua o decide chestionarul de dimineață.
 const FEVER_HALF_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: volum −50%, fără cheie; altfel pauză și reevaluare';
+/**
+ * Regula proprietarului (20.10.2026): un efort făcut în plus NU taie și nu scurtează o ședință propusă. Ședința rămâne
+ * în plan; primește cel mult o SUGESTIE mai ușoară (anti-suprasolicitare), iar sportivul alege. Anularea rămâne doar la
+ * semnale de sănătate (roșu/stop la recuperare, febră, durere) — nu la „ai făcut deja ceva azi”.
+ */
+export const EXTRA_CANCEL_NOTE = /^(acoperită|gata pe azi|efort mare azi|zi de cursă neplanificată)/;
+export const EXTRA_SHORT_NOTE = /^scurtat la \d+ min: a mai rămas atât din efortul zilei/;
+export function suggestLighter(x: PlannedWorkout, reason: string, minutes?: number): boolean {
+  if (x.type === 'odihna' || x.suggestion?.accepted != null) return false;
+  if (x.sport === 'forta') {
+    const sp = parseStrength(x.structure);
+    if (!sp) return false;
+    // Forța: aceleași exerciții și serii, greutăți mai mici; nu scade sub minimul de 45 de minute (regula 20).
+    const light = { ...sp, recovery: true };
+    const m = Math.max(MIN_STRENGTH_MINUTES, prescribe(light, MIN_STRENGTH_MINUTES).minutes);
+    x.suggestion = { minutes: m, zones: [], structure: strengthStructure(light), reason, accepted: null };
+    return true;
+  }
+  const hard = x.type === 'calitate' || x.type === 'lung' || x.type === 'brick' || x.targetZones.some((z) => z >= 3);
+  const m = Math.max(20, Math.min(x.plannedMinutes, minutes ?? Math.round((x.plannedMinutes * 0.7) / 5) * 5));
+  x.suggestion = { minutes: m, zones: [1, 2], structure: hard ? `${m} min ușor în Z1–Z2, fără intervale` : `${m} min ușor, pe vorbit`, reason, accepted: null };
+  return true;
+}
+
+/**
+ * Ședințele de azi și din viitor anulate sau scurtate de regulile vechi „efort în plus” revin în plan, cu sugestia ușoară.
+ * Întoarce doar ședințele schimbate.
+ */
+export function restoreExtraCuts(plan: PlannedWorkout[], today: string): PlannedWorkout[] {
+  const out: PlannedWorkout[] = [];
+  for (const w of plan) {
+    if (w.date < today) continue;
+    const note = w.note ?? '';
+    if (w.status === 'anulat_sistem' && EXTRA_CANCEL_NOTE.test(note)) {
+      const x: PlannedWorkout = { ...w, status: w.original?.status === 'mutat' ? 'mutat' : 'planificat', note: undefined };
+      suggestLighter(x, 'ai făcut deja efort azi: varianta ușoară previne suprasolicitarea; alegi tu');
+      out.push(x);
+    } else if (EXTRA_SHORT_NOTE.test(note) && w.original && w.original.plannedMinutes > w.plannedMinutes) {
+      const o = w.original;
+      const x: PlannedWorkout = { ...w, plannedMinutes: o.plannedMinutes, targetZones: o.targetZones, structure: o.structure ?? undefined, intervals: o.intervals ?? undefined, type: o.type, key: o.key, note: undefined };
+      suggestLighter(x, 'ai făcut deja efort azi: varianta scurtă previne suprasolicitarea; alegi tu', w.plannedMinutes);
+      out.push(x);
+    }
+  }
+  return out;
+}
+
 const FEVER_STRENGTH_NOTE = 'după febră, doar dacă dimineața nu mai ai febră: forță ușoară — aceleași 3 serii, greutăți mai mici; altfel pauză și reevaluare';
 const isFeverHalf = (n: string | null | undefined) => n === FEVER_HALF_NOTE || n === FEVER_STRENGTH_NOTE || n === 'prima săptămână după febră: volum −50%, fără cheie';
 
@@ -381,10 +428,8 @@ function applyUnplanned(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   // 1. Ziua cursei: restul ședințelor planificate se anulează (sportivul a făcut cursa în locul lor).
   if (isRace) {
     for (const x of plan) {
-      if (isActiveWorkout(x) && x.date === a.date) {
-        x.status = 'anulat_sistem';
-        x.note = `zi de cursă neplanificată (${a.sport} ${a.minutes} min)`;
-        changes.push(`${x.id}: anulat, zi de cursă`);
+      if (isActiveWorkout(x) && x.date === a.date && suggestLighter(x, `ai făcut azi o cursă (${a.sport} ${a.minutes} min): varianta ușoară previne suprasolicitarea; alegi tu`)) {
+        changes.push(`${x.id}: rămâne în plan, cu sugestie ușoară (zi de cursă)`);
       }
     }
   }
@@ -451,7 +496,7 @@ function applyProgress(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: '
 }
 
 /**
- * Organismul a primit azi un efort mare (≥ 90 min sau RPE ≥ 7): ce mai era de făcut azi se anulează, iar zilele
+ * Organismul a primit azi un efort mare (≥ 90 min sau RPE ≥ 7): ce mai era de făcut azi rămâne, cu sugestie ușoară; zilele
  * următoare se ușurează. Peste 3 ore (ca o cursă): 2 zile ușoare și cheile din 72 h la Z1–Z2, −25%.
  * Dacă activitatea a fost în afara planului, zilele următoare le-a ajustat deja regula „neplanificat”; aici doar ziua.
  */
@@ -461,9 +506,7 @@ function applyBigEffort(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 
   const what = `${a.sport} ${a.minutes} min`;
   for (const x of plan) {
     if (!isActiveWorkout(x) || x.date !== a.date || done.has(x.id)) continue;
-    x.status = 'anulat_sistem';
-    x.note = `efort mare azi (${what}): restul zilei odihnă`;
-    changes.push(`${x.id}: anulat, ai făcut deja azi un efort mare (${what})`);
+    if (suggestLighter(x, `ai făcut deja azi un efort mare (${what}): varianta ușoară previne suprasolicitarea; alegi tu`)) changes.push(`${x.id}: rămâne în plan, cu sugestie ușoară (efort mare azi: ${what})`);
   }
 }
 
@@ -522,14 +565,12 @@ function applyReview(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'bi
   changes.push(`săptămâna din ${monday}: fără creștere (bilanț: ${ev.motiv})`);
 }
 
-/** Efortul zilei e acoperit (TRIMP făcut ≥ planificat): ce mai era azi se anulează; mâine decid datele de dimineață. */
+/** Efortul zilei e acoperit (TRIMP făcut ≥ planificat): ce mai era azi rămâne, cu sugestie ușoară; mâine decid datele de dimineață. */
 function applyCovered(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind: 'acoperit' }>, ctx: AdaptContext, changes: string[]): void {
   const done = new Set(ctx.done ?? []);
   for (const x of plan) {
     if (!isActiveWorkout(x) || x.date !== ev.date || done.has(x.id) || x.type === 'odihna') continue;
-    x.status = 'anulat_sistem';
-    x.note = `acoperită: ai făcut deja efortul zilei (${ev.facut} din ${ev.planificat} TRIMP); restul zilei odihnă`;
-    changes.push(`${x.id}: anulat, ziua e acoperită (${ev.facut}/${ev.planificat} TRIMP)`);
+    if (suggestLighter(x, `ai făcut deja efortul zilei (${ev.facut} din ${ev.planificat} TRIMP): varianta ușoară previne suprasolicitarea; alegi tu`)) changes.push(`${x.id}: rămâne în plan, cu sugestie ușoară (ziua e deja acoperită: ${ev.facut}/${ev.planificat} TRIMP)`);
   }
 }
 
@@ -540,15 +581,9 @@ function applyCoverChoice(plan: PlannedWorkout[], ev: Extract<AdaptEvent, { kind
     const i = plan.findIndex((x) => x.id === c.workoutId);
     const x = plan[i];
     if (!x || !isActiveWorkout(x) || x.date !== ev.date || done.has(x.id)) continue;
-    if (c.action === 'anuleaza') {
-      x.status = 'anulat_sistem';
-      x.note = `gata pe azi: ${ev.optiune.text} (${ev.facut} din ${ev.planificat} TRIMP făcut)`;
-      changes.push(`${x.id}: anulat (${ev.optiune.text})`);
-    } else if (c.action === 'scurteaza' && c.minutes && c.minutes < x.plannedMinutes) {
-      const s = shortenWorkout(x, c.minutes);
-      plan[i] = { ...s, note: `scurtat la ${c.minutes} min: a mai rămas atât din efortul zilei (${ev.facut} din ${ev.planificat} TRIMP făcut)` };
-      changes.push(`${x.id}: scurtat la ${c.minutes} min (acoperire parțială)`);
-    }
+    // Nimic nu se taie: „anulează” devine sugestie ușoară, „scurtează” devine sugestie scurtă; sportivul alege.
+    const why = `ai făcut deja ${ev.facut} din ${ev.planificat} TRIMP azi: varianta ${c.action === 'scurteaza' ? 'scurtă' : 'ușoară'} previne suprasolicitarea; alegi tu`;
+    if (suggestLighter(x, why, c.action === 'scurteaza' ? c.minutes : undefined)) changes.push(`${x.id}: rămâne în plan, cu sugestie ${c.action === 'scurteaza' ? `scurtă (${c.minutes} min)` : 'ușoară'}`);
   }
 }
 

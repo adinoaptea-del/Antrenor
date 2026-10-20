@@ -125,13 +125,15 @@ describe('adapt', () => {
 describe('adapt · activitate în afara planului', () => {
   const race = { id: 'hm', date: '2026-11-07', sport: 'alergare' as const, minutes: 127, distanceKm: 21.4, avgHr: 165, maxHr: 187 };
 
-  it('semimaraton benevol sâmbătă: anulează ziua, duminica rămâne (o decide dimineața), oprește progresia săptămânii următoare', () => {
+  it('semimaraton benevol sâmbătă: ziua rămâne în plan cu sugestie ușoară (nu se taie), duminica rămâne (o decide dimineața), oprește progresia săptămânii următoare', () => {
     const r = adapt(plan(), { kind: 'neplanificat', activity: race, rpe: 9, tip: 'cursa' }, ctx);
     const b1 = r.plan.find((w) => w.id === 'b1')!; // tura lungă din ziua cursei
     const lr1 = r.plan.find((w) => w.id === 'lr1')!; // alergarea lungă de duminică
     const lr2 = r.plan.find((w) => w.id === 'lr2')!; // alergarea lungă de săptămâna viitoare
     const b2 = r.plan.find((w) => w.id === 'b2')!;
-    assert.equal(b1.status, 'anulat_sistem');
+    assert.equal(b1.status, 'planificat', 'un efort în plus nu taie ședința propusă');
+    assert.equal(b1.suggestion?.accepted, null, 'doar o sugestie ușoară, alege sportivul');
+    assert.deepEqual(b1.suggestion?.zones, [1, 2]);
     assert.equal(lr1.status, 'planificat');
     assert.equal(lr2.plannedMinutes, 70, 'nu progresează peste cheia săptămânii cursei');
     assert.equal(b2.plannedMinutes, 120, 'nici bicicleta nu progresează');
@@ -194,5 +196,44 @@ describe('adapt · trecutul nu se rescrie', () => {
     const r = adapt(plan(), { kind: 'febra', date: '2026-11-04' }, { ...ctx, today: '2026-11-05' });
     assert.equal(r.plan.find((w) => w.id === 'q1')!.status, 'planificat');
     assert.equal(r.plan.find((w) => w.id === 'r1')!.status, 'anulat_sistem');
+  });
+});
+
+describe('efort în plus: nu se taie nimic (regula proprietarului, 20.10.2026)', () => {
+  const swim: PlannedWorkout = { id: 'sw', date: '2026-10-20', sport: 'inot', type: 'tehnica', plannedMinutes: 45, targetZones: [2], key: false, status: 'planificat', structure: 'tehnică' };
+  const ctx0 = { today: '2026-10-20', freeBlocks: [], recentKeyScores: [], done: [] as string[] };
+  it('forță în afara planului dimineața acoperă efortul zilei: înotul de seară rămâne, cu sugestie ușoară', () => {
+    const r = adapt([swim], { kind: 'acoperit', date: '2026-10-20', facut: 80, planificat: 60 }, ctx0);
+    const x = r.plan[0]!;
+    assert.equal(x.status, 'planificat');
+    assert.equal(x.plannedMinutes, 45, 'durata din plan nu se schimbă');
+    assert.equal(x.suggestion?.accepted, null);
+    assert.ok(x.suggestion!.minutes < 45 && x.suggestion!.minutes >= 20);
+  });
+  it('varianta „gata pe azi” / „scurtează” a head coach-ului devine doar sugestie', () => {
+    const a = adapt([swim], { kind: 'acoperire', date: '2026-10-20', facut: 50, planificat: 60, optiune: { id: 'ajunge', text: 'x', changes: [{ workoutId: 'sw', action: 'anuleaza' }] } }, ctx0).plan[0]!;
+    assert.equal(a.status, 'planificat');
+    const b = adapt([swim], { kind: 'acoperire', date: '2026-10-20', facut: 50, planificat: 60, optiune: { id: 'scurt-sw', text: 'x', changes: [{ workoutId: 'sw', action: 'scurteaza', minutes: 25 }] } }, ctx0).plan[0]!;
+    assert.equal(b.plannedMinutes, 45);
+    assert.equal(b.suggestion?.minutes, 25);
+  });
+  it('efort mare (≥ 90 min / RPE ≥ 7): restul zilei rămâne, cu sugestie', () => {
+    const r = adapt([swim], { kind: 'efort', activity: { id: 'a', date: '2026-10-20', sport: 'bicicleta', minutes: 120 }, rpe: 8, planned: false }, ctx0);
+    assert.equal(r.plan[0]!.status, 'planificat');
+    assert.equal(r.plan[0]!.suggestion?.accepted, null);
+  });
+  it('ședințele tăiate de regula veche revin în plan (azi și viitor), cele trecute nu', async () => {
+    const { restoreExtraCuts } = await import('../src/calendar/adapt.js');
+    const cut: PlannedWorkout = { ...swim, status: 'anulat_sistem', note: 'acoperită: ai făcut deja efortul zilei (80 din 60 TRIMP); restul zilei odihnă' };
+    const old: PlannedWorkout = { ...cut, id: 'old', date: '2026-10-18' };
+    const sick: PlannedWorkout = { ...swim, id: 'sick', status: 'anulat_sistem', note: 'febră: odihnă' };
+    const back = restoreExtraCuts([cut, old, sick], '2026-10-20');
+    assert.deepEqual(back.map((w) => w.id), ['sw'], 'febra rămâne anulată; trecutul nu se rescrie');
+    assert.equal(back[0]!.status, 'planificat');
+    assert.equal(back[0]!.suggestion?.accepted, null);
+  });
+  it('roșu la recuperare încă anulează (sănătate, nu efort în plus)', () => {
+    const r = adapt([swim], { kind: 'readiness', date: '2026-10-20', verdict: 'rosu', reason: 'HRV mic' } as never, ctx0);
+    assert.equal(r.plan[0]!.status, 'anulat_sistem');
   });
 });

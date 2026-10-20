@@ -121,15 +121,16 @@ export function dayCoverage(input: {
     const per = full / Math.max(1, w.plannedMinutes);
     const fit = Math.floor(rest / per / 5) * 5;
     if (full <= rest * 1.1) optiuni.push({ id: `intreg-${w.id}`, text: `${SPORT[w.sport]} cum e în plan (${w.plannedMinutes} min)`, changes: [] });
-    else if (fit >= 20) optiuni.push({ id: `scurt-${w.id}`, text: `${SPORT[w.sport]} scurtat la ${fit} min (cât a mai rămas din efortul zilei)`, changes: [{ workoutId: w.id, action: 'scurteaza', minutes: fit }] });
+    else if (fit >= 20) optiuni.push({ id: `scurt-${w.id}`, text: `${SPORT[w.sport]} rămâne, cu varianta scurtă propusă: ${fit} min (cât a mai rămas din efortul zilei)`, changes: [{ workoutId: w.id, action: 'scurteaza', minutes: fit }] });
   }
-  optiuni.push({ id: 'ajunge', text: 'gata pe azi: ce ai făcut ajunge, restul zilei odihnă', changes: remaining.map((w) => ({ workoutId: w.id, action: 'anuleaza' as const })) });
-  // Fiecare opțiune care păstrează o ședință le anulează pe celelalte rămase azi (o singură ședință în plus).
+  optiuni.push({ id: 'ajunge', text: 'efortul zilei e făcut: ședințele rămase rămân în plan, cu variantă ușoară propusă', changes: remaining.map((w) => ({ workoutId: w.id, action: 'anuleaza' as const })) });
+  // Celelalte ședințe rămase azi nu se taie (regula proprietarului, 20.10.2026): primesc doar sugestia ușoară.
   for (const o of optiuni) {
     if (o.id === 'ajunge') continue;
     const keep = o.id.replace(/^(intreg|scurt)-/, '');
     for (const w of remaining) if (w.id !== keep) o.changes.push({ workoutId: w.id, action: 'anuleaza' });
   }
+  // „anuleaza” e aplicat în src/calendar/adapt.ts ca sugestie ușoară, nu ca anulare.
   // Implicit (fără agenți): ce a rămas e puțin (sub 20% din zi) → ajunge; altfel ședința din alt sport decât ce ai făcut
   // (cardio e făcut, dar sportul celălalt are nevoie de stimulul lui), apoi cea scurtată.
   const sportOf = (o: CoverOption) => remaining.find((w) => o.id.endsWith(w.id))?.sport as Sport | undefined;

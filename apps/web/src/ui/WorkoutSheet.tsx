@@ -143,7 +143,7 @@ export function WorkoutSheet({ w: first, list = [first], onClose, onOpen }: { w:
               )}
             </div>
           )}
-          {yellow && <YellowDay w={w} />}
+          {(yellow || (upcoming && w.suggestion && w.suggestion.accepted !== false && w.status !== 'anulat_sistem')) && <YellowDay w={w} yellow={yellow} />}
           {!upcoming && w.status !== 'anulat_sistem' && w.date <= me.today && <Missed w={w} done={done && !!act} />}
 
           <OldPlan off={w.status === 'anulat_sistem'}>

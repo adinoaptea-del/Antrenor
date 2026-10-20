@@ -118,7 +118,7 @@ export function WorkoutCard({ w, hero = false, onOpen }: { w: PlannedWorkout; he
         </div>
       )}
 
-      {yellow && <YellowDay w={w} />}
+      {(yellow || (upcoming && w.suggestion && w.suggestion.accepted !== false && w.status !== 'anulat_sistem')) && <YellowDay w={w} yellow={yellow} />}
 
       {!off && !done && (
         <button className="pill on wk-how" onClick={() => openSheet(w)}>

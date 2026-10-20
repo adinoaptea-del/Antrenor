@@ -8,8 +8,9 @@ import { targetSecFromIntake } from '../../src/goals/run-target.js';
 import type { RunResult } from '../../src/util/run.js';
 import type { Goal } from '../../src/calendar/phases.js';
 // /api/me: tot ce arată aplicația, într-un singur obiect, calculat pe server.
-import { one, select, update } from './db.js';
+import { one, select, update, upsert } from './db.js';
 import { ensureSplit } from './split.js';
+import { restoreExtraCuts } from '../../src/calendar/adapt.js';
 import { fitnessWithAttendance } from './plan.js';
 import { fitnessProfile, type FitnessIntake } from '../../src/strength/fitness.js';
 import { isFitnessGoal, isWalkGoal } from '../../src/calendar/phases.js';
@@ -21,7 +22,7 @@ import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
 import { overYesterday } from '../../src/calendar/load.js';
 import { ENV } from './env.js';
-import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, type UserRow } from './collect.js';
+import { loadActivities, loadForms, loadOthers, loadPlan, loadTotals, loadUser, phaseAt, toWorkoutRow, type UserRow } from './collect.js';
 import { connectedProviders, providerConfigured, PROVIDERS, type Provider } from './tokens.js';
 import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/api-types.js';
 import type { BarResult } from '../../src/bar/bar.js';
@@ -67,7 +68,12 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
 
   // Bărbații: forța viitoare trece la Push / Pull / Picioare (și pe planurile vechi); se salvează, ca agenții,
   // calendarul și ecranele să vadă aceeași ședință.
-  const workouts = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null), (user.goal as string | null) ?? null).catch(() => planLoad.workouts);
+  const workouts0 = await ensureSplit(userId, today, planLoad, user.sex ?? ((forms.intake as { sex?: string } | null)?.sex ?? null), (user.goal as string | null) ?? null).catch(() => planLoad.workouts);
+  // Regula proprietarului (20.10.2026): ce a tăiat un efort în plus revine în plan, cu sugestia ușoară; se salvează o dată.
+  const restored = restoreExtraCuts(workouts0, today);
+  if (restored.length && planLoad.planId) await upsert('workouts_planned', restored.map((w) => toWorkoutRow(w, userId, planLoad.planId!)), 'id').catch(() => undefined);
+  const byId = new Map(restored.map((w) => [w.id, w]));
+  const workouts = workouts0.map((w) => byId.get(w.id) ?? w);
   const activities = dedupeActivities(acts);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
