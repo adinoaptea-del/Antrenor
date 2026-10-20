@@ -342,3 +342,61 @@ describe('A104 / T76: zilele de picioare se recunosc din metadate (inclusiv fa /
         }
   });
 });
+
+describe('A59 / T36: ratarea repetată a ultimei zile de sală nu elimină aceeași categorie', () => {
+  /** Simulează săptămânile: toate ședințele în afară de ultima se fac, ultima se ratează; întoarce ce s-a făcut. */
+  const simulate = (plan0: PlannedWorkout[], weeks: string[], freeBlocks: FreeBlock[]) => {
+    let plan = plan0.map((w) => ({ ...w }));
+    const done: string[] = [];
+    const executed: SessionId[][] = [];
+    for (const ws of weeks) {
+      const end = new Date(Date.parse(`${ws}T12:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+      const gyms = plan.filter((w) => w.type === 'forta' && w.date >= ws && w.date < end && (w.status === 'planificat' || w.status === 'mutat')).sort((a, b) => (a.date < b.date ? -1 : 1));
+      const last = gyms.at(-1)!;
+      const made = gyms.slice(0, -1);
+      done.push(...made.map((w) => w.id));
+      executed.push(made.map((w) => parseStrength(w.structure)!.session));
+      const today = new Date(Date.parse(`${last.date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      plan = adapt(plan, { kind: 'forta-ratat', workoutId: last.id }, { today, freeBlocks, recentKeyScores: [], done }).plan;
+    }
+    return { executed, plan };
+  };
+
+  it('femeie, 3 zile (picioare, sus, picioare): partea de sus nu lipsește o lună', () => {
+    const FREE: FreeBlock[] = [0, 2, 4].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+    const r = generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: FREE, fitness: { goal: 'fit-tonifiere', days: 3, minutes: 60, beginner: false, activity: 'plimbari', unlocked: 3 } });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const weeks = r.weeks.slice(0, 6).map((w) => w.weekStart);
+    const { executed, plan } = simulate(r.weeks.flatMap((w) => w.workouts), weeks, FREE);
+    const kinds = executed.map((s) => s.map((x) => sessionKind(x)));
+    for (let i = 0; i + 1 < kinds.length; i++) {
+      const two = [...kinds[i]!, ...kinds[i + 1]!];
+      assert.ok(two.includes('U') && two.includes('L'), `săpt. ${i + 1}–${i + 2}: ${executed[i]!.join(',')} | ${executed[i + 1]!.join(',')}`);
+    }
+    // Nimic dublat: o singură ședință pe zi, același număr de ședințe.
+    assert.equal(plan.length, r.weeks.flatMap((w) => w.workouts).length);
+    const perDay = new Map<string, number>();
+    for (const w of plan) perDay.set(w.date, (perDay.get(w.date) ?? 0) + 1);
+    assert.ok([...perDay.values()].every((n) => n <= 1));
+  });
+
+  it('femeie, 2 zile (picioare, sus): ultima zi ratată 6 săptămâni la rând nu șterge partea de sus', () => {
+    const FREE: FreeBlock[] = [0, 3].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+    const r = generateFitnessPlan({ startDate: '2026-11-02', raceDate: '2027-05-03', freeBlocks: FREE, fitness: { goal: 'fit-tonifiere', days: 2, minutes: 60, beginner: true } });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const { executed } = simulate(r.weeks.flatMap((w) => w.workouts), r.weeks.slice(0, 6).map((w) => w.weekStart), FREE);
+    const kinds = executed.flat().map((x) => sessionKind(x));
+    assert.ok(kinds.filter((k) => k === 'U').length >= 2 && kinds.filter((k) => k === 'L').length >= 2, executed.map((s) => s.join(',')).join(' | '));
+  });
+
+  it('bărbat, PPL 3 zile: picioarele ratate nu dispar săptămână de săptămână', () => {
+    const DAYS = ['2026-11-02', '2026-11-04', '2026-11-06'];
+    const ws: WeekPlan[] = [0, 1, 2, 3, 4, 5].map((k) => ({ weekStart: new Date(Date.parse('2026-11-02T12:00:00Z') + k * 7 * 86_400_000).toISOString().slice(0, 10), phase: 'baza1', recovery: false, targetHours: 6, plannedHours: 6, notes: [], workouts: DAYS.map((d, i) => ({ id: `m${k}-${i}`, date: new Date(Date.parse(`${d}T12:00:00Z`) + k * 7 * 86_400_000).toISOString().slice(0, 10), sport: 'forta' as const, type: 'forta' as const, plannedMinutes: 60, targetZones: [], key: false, status: 'planificat' as const })) }));
+    assignStrengthDays(ws, undefined, 'ppl');
+    const FREE: FreeBlock[] = [0, 2, 4].map((d) => ({ day: d as 0, startMin: 17 * 60, endMin: 19 * 60 }));
+    const { executed } = simulate(ws.flatMap((w) => w.workouts), ws.map((w) => w.weekStart), FREE);
+    for (let i = 0; i + 1 < executed.length; i++) assert.ok([...executed[i]!, ...executed[i + 1]!].includes('legs'), `săpt. ${i + 1}–${i + 2}: ${executed[i]!.join(',')} | ${executed[i + 1]!.join(',')}`);
+  });
+});
