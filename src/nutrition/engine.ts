@@ -26,7 +26,7 @@
 
 import { FOODS, foodCost, foodValues, ALLERGEN_LABEL, type Allergen } from './foods.js';
 import { RECIPE, RECIPES, type Recipe, type Slot } from './recipes.js';
-import { loggedPicks, type MealLog } from './log.js';
+import { consumedSnapshots, loggedPicks, type MealLog, type MealSnapshot } from './log.js';
 import { addDays, diffDays } from '../util/dates.js';
 
 export const BASE_PAL = 1.4;
@@ -59,7 +59,11 @@ export interface NutritionPrefs {
   budget: number | null;
   /** Mesele principale dorite (1–4); 4 = cu gustare. Alimentarea din efort e separată. */
   meals: 1 | 2 | 3 | 4;
-  /** Orele aproximative ale meselor principale (minute de la miezul nopții), pentru 1–2 mese: decid slotul (A81). */
+  /**
+   * Orele aproximative ale meselor (minute de la miezul nopții), în ordinea sloturilor zilei. La 1–2 mese decid slotul
+   * (A81); la 3–4 mese leagă mesele de orele ședințelor (masa dinaintea / de după efort). Lipsă = orele implicite ale
+   * produsului (DEFAULT_MEAL_TIMES), spuse ca atare.
+   */
   mealTimes?: number[] | null;
   /** Câte mese mănâncă acum (obiceiul), separat de cele dorite. */
   currentMeals?: number | null;
@@ -101,8 +105,8 @@ export interface NutritionInput {
   prefs: NutritionPrefs;
   /** Identitatea sportivului: doi sportivi cu același profil nu primesc aceeași rotație de mese. */
   athleteId?: string | null;
-  /** Ce oprește deficitul: restricție de sănătate, oboseală declarată repetat, sarcină/postpartum, minor. */
-  blockers?: { restriction?: 'stop' | 'rosu' | 'galben' | null; fatigue?: boolean; pregnancy?: boolean; minor?: boolean };
+  /** Ce oprește deficitul: restricție de sănătate, oboseală declarată repetat, sarcină/postpartum, alăptare, minor. */
+  blockers?: { restriction?: 'stop' | 'rosu' | 'galben' | null; fatigue?: boolean; pregnancy?: boolean; lactation?: boolean; minor?: boolean };
   /** Indicații reale (analize sub intervalul laboratorului sau recomandarea medicului) — niciodată deduse din sex (A80). */
   indications?: { iron?: boolean; vitaminD?: boolean };
 }
@@ -128,9 +132,17 @@ export interface Meal {
   allergens: Allergen[];
   /** Energia din alimentele bogate în carbohidrați (cereale, cartofi, fructe, miere) — reper, nu grame de carbohidrați. */
   carbFoodKcal: number;
+  /** Carbohidrați / grăsimi / fibre (g) din ingrediente; null când un ingredient n-are valoarea în catalog (nu zero). */
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
+  /** Ingredientele fără carbohidrați/grăsimi în catalog (de ce totalul e incomplet). */
+  macrosUnknown: string[];
   why: string | null;
   /** Repetare peste regula de varietate (bibliotecă restrânsă de preferințe). */
   repeat?: boolean;
+  /** Masa a fost declarată mâncată: gramajele sunt cele din momentul declarației, nu se mai recalculează. */
+  consumed?: boolean;
 }
 
 export type DayLoad = 'repaus' | 'usor' | 'moderat' | 'mare' | 'foarte_mare';
@@ -152,6 +164,10 @@ export interface DayCheck {
   allergens: string[];
   budget: { limit: number | null; costKnown: number; complete: boolean; status: BudgetStatus | null; minKnown: number | null; conflict: string | null };
   meals: { promised: number; main: number; extra: number; slots: Slot[] };
+  /** Carbohidrații și grăsimile meselor față de ținte: doar când TOATE ingredientele au datele; altfel „incomplet”. */
+  macros: { status: 'complet' | 'incomplet'; carbs: { actual: number; target: [number, number]; inRange: boolean } | null; fat: { actual: number; target: [number, number]; inRange: boolean } | null; unknownFoods: string[] };
+  /** Ce s-a mâncat declarat azi (din jurnal): energia și proteinele cunoscute; nedeclarat = necunoscut, nu zero. */
+  consumed: { meals: number; kcal: number; protein: number; partial: boolean };
 }
 
 export interface NutritionDay {
@@ -168,8 +184,8 @@ export interface NutritionDay {
   /** Note de context fără gel (ex. două ședințe separate în aceeași zi). */
   fuelNotes: string[];
   meals: Meal[];
-  /** kcal = mesele; dayKcal = mesele + alimentarea din efort (numărată o singură dată). */
-  totals: { kcal: number; dayKcal: number; protein: number; cost: number | null; costKnown: number; costComplete: boolean };
+  /** kcal = mesele; dayKcal = mesele + alimentarea din efort (numărată o singură dată). carbs/fat: null = incomplet. */
+  totals: { kcal: number; dayKcal: number; protein: number; carbs: number | null; fat: number | null; cost: number | null; costKnown: number; costComplete: boolean };
   budgetNote: string | null;
   /** Validarea întregii zile, refăcută la fiecare calcul (inclusiv după „Schimbă”; A83). */
   check: DayCheck;
@@ -185,6 +201,7 @@ export interface NutritionDay {
 const SLOT_LABEL: Record<Slot, string> = { mic_dejun: 'Mic dejun', pranz: 'Prânz', cina: 'Cină', gustare: 'Gustare' };
 const SPORT_WORD: Record<string, string> = { inot: 'înot', bicicleta: 'bicicletă', alergare: 'alergare', forta: 'sală', mers: 'mers' };
 const r1 = (x: number) => Math.round(x * 10) / 10;
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const n0 = (x: number) => Math.round(x).toLocaleString('ro-RO');
 const sessionLabel = (s: DaySession) => `${SPORT_WORD[s.sport] ?? s.sport} ${s.minutes} min`;
 
@@ -275,6 +292,9 @@ export function ineligibleReason(r: Recipe, p: NutritionPrefs): string | null {
     const f = FOODS[i.food]!;
     const al = f.allergens.filter((a) => p.exclude.includes(a));
     if (al.length) return `conține un alergen exclus (${al.map((a) => ALLERGEN_LABEL[a]).join(', ')})`;
+    // „Poate conține” (urme, linie comună) nu intră într-un plan prezentat ca verificat pentru alergia declarată (ch. 12).
+    const may = (f.mayContain ?? []).filter((a) => p.exclude.includes(a));
+    if (may.length) return `poate conține urme de ${may.map((a) => ALLERGEN_LABEL[a]).join(', ')} (eticheta produsului)`;
     const t = (p.other ?? []).find((x) => fold(x).length >= 3 && fold(`${f.name} ${i.food}`).includes(fold(x)));
     if (t) return `conține ce ai exclus („${t}”)`;
     if (p.diet === 'vegan' && f.animal) return 'nu e vegană';
@@ -544,7 +564,10 @@ export function selectDays(from: string, to: string, prefs: NutritionPrefs, preS
       const base = tierOf[slot];
       const pre = preSlot(d) === slot;
       const carb = profile.carbFocusDate === d;
-      const tier = new Map<string, number>(cands.map((id) => [id, base.get(id)! + (pre && !RECIPE[id]!.preOk ? 2 : 0) + (carb && carbFoodShareOf(id) < carbMedian[slot] ? 1 : 0)]));
+      // Cu buget: rețetele cu toate prețurile cunoscute înaintea celor cu cost neverificabil (ch. 13: „exclude candidatul
+      // din optimizarea cu cost verificat sau livrează un draft cu buget neverificabil”) — aici le clasăm, nu le excludem,
+      // ca varietatea să nu dispară cu un catalog cu puține prețuri.
+      const tier = new Map<string, number>(cands.map((id) => [id, base.get(id)! + (pre && !RECIPE[id]!.preOk ? 2 : 0) + (carb && carbFoodShareOf(id) < carbMedian[slot] ? 1 : 0) + (budget != null && !knownCost(id, 1).complete ? 1 : 0)]));
       const lastUse = (id: string) => uses.get(id)?.at(-1) ?? '';
       const keep = budget != null && budgetOver.includes(slot);
       cands = cands.map((id, k) => ({ id, k })).sort((x, y) => (keep ? x.k - y.k : tier.get(x.id)! - tier.get(y.id)! || (lastUse(x.id) < lastUse(y.id) ? -1 : lastUse(x.id) > lastUse(y.id) ? 1 : x.k - y.k))).map((x) => x.id);
@@ -569,29 +592,63 @@ export function isProteinFood(id: string): boolean {
   return f.kcal >= 60 && (f.protein * 4) / f.kcal >= 0.3;
 }
 
-function mealOf(slot: Slot, r: Recipe, factor: number, proteinFactor = factor, carbFactor = factor): Omit<Meal, 'why' | 'repeat'> {
-  const items: MealItem[] = r.ingredients.map((i) => {
-    const f = FOODS[i.food]!;
-    const raw = i.qty * (isProteinFood(i.food) ? proteinFactor : CARB_FOODS.has(i.food) ? carbFactor : factor);
-    const qty = f.id === 'ulei' ? Math.max(1, Math.round(raw)) : Math.max(5, Math.round(raw / 5) * 5);
-    return { food: f.id, name: f.name, qty, unit: f.unit };
-  });
+/**
+ * Cantitatea finală a unui ingredient: porția de referință a rețetei rămâne cum a scris-o autorul (ex. „2 ouă mari” = 120 g);
+ * când se scalează, uleiul merge la 1 ml, ouăle la ouă întregi (pasul alimentului: 55 g ≈ 1 ou), restul la 5 g.
+ */
+export function roundQty(foodId: string, raw: number, ref?: number): number {
+  const f = FOODS[foodId]!;
+  if (ref != null && Math.abs(raw - ref) < 1e-9) return ref;
+  if (f.step) return Math.max(f.step, Math.round(raw / f.step) * f.step);
+  if (f.id === 'ulei') return Math.max(1, Math.round(raw));
+  return Math.max(5, Math.round(raw / 5) * 5);
+}
+
+/** Totalurile unei liste de cantități finale: energie, proteine, cost și macronutrienții cu statusul lor (complet / incomplet). */
+export function itemTotals(items: { food: string; qty: number }[]): { kcal: number; protein: number; cost: number; missingPrices: string[]; carbFoodKcal: number; carbs: number | null; fat: number | null; fiber: number | null; macrosUnknown: string[] } {
   let kcal = 0;
   let protein = 0;
   let cost = 0;
   let carbFoodKcal = 0;
+  let carbs: number | null = 0;
+  let fat: number | null = 0;
+  let fiber: number | null = 0;
   const missingPrices: string[] = [];
+  const macrosUnknown: string[] = [];
   for (const it of items) {
     const v = foodValues(it.food, it.qty);
     kcal += v.kcal;
     protein += v.protein;
     if (CARB_FOODS.has(it.food)) carbFoodKcal += v.kcal;
+    // null rămâne null: un ingredient fără date face totalul incomplet (ch. 10: zero doar când e declarat/măsurat).
+    carbs = carbs == null || v.carbs == null ? null : carbs + v.carbs;
+    fat = fat == null || v.fat == null ? null : fat + v.fat;
+    fiber = fiber == null || v.fiber == null ? null : fiber + v.fiber;
+    if (v.carbs == null || v.fat == null) macrosUnknown.push(FOODS[it.food]!.name.split(',')[0]!.toLowerCase());
     const c = foodCost(it.food, it.qty);
     if (c == null) missingPrices.push(FOODS[it.food]!.name.split(',')[0]!.toLowerCase());
     else cost += c;
   }
+  return { kcal, protein, cost: Math.round(cost * 100) / 100, missingPrices, carbFoodKcal, carbs, fat, fiber, macrosUnknown };
+}
+
+function mealOf(slot: Slot, r: Recipe, factor: number, proteinFactor = factor, carbFactor = factor): Omit<Meal, 'why' | 'repeat'> {
+  const items: MealItem[] = r.ingredients.map((i) => {
+    const f = FOODS[i.food]!;
+    const raw = i.qty * (isProteinFood(i.food) ? proteinFactor : CARB_FOODS.has(i.food) ? carbFactor : factor);
+    return { food: f.id, name: f.name, qty: roundQty(f.id, raw, i.qty), unit: f.unit };
+  });
+  const t = itemTotals(items);
   const allergens = [...new Set(items.flatMap((it) => FOODS[it.food]!.allergens))];
-  return { slot, label: SLOT_LABEL[slot], recipe: r, items, kcal, protein, cost: missingPrices.length ? null : cost, costKnown: cost, missingPrices, allergens, carbFoodKcal };
+  return { slot, label: SLOT_LABEL[slot], recipe: r, items, kcal: t.kcal, protein: t.protein, cost: t.missingPrices.length ? null : t.cost, costKnown: t.cost, missingPrices: t.missingPrices, allergens, carbFoodKcal: t.carbFoodKcal, carbs: t.carbs, fat: t.fat, fiber: t.fiber, macrosUnknown: t.macrosUnknown };
+}
+
+/** Masa declarată mâncată, din instantaneul din jurnal: aceleași cantități ca în momentul declarației. */
+function mealFromSnapshot(slot: Slot, r: Recipe, snap: MealSnapshot): Omit<Meal, 'why' | 'repeat'> {
+  const items: MealItem[] = snap.items.filter((i) => FOODS[i.food]).map((i) => ({ food: i.food, name: FOODS[i.food]!.name, qty: i.qty, unit: FOODS[i.food]!.unit }));
+  const t = itemTotals(items);
+  const allergens = [...new Set(items.flatMap((it) => FOODS[it.food]!.allergens))];
+  return { slot, label: SLOT_LABEL[slot], recipe: r, items, kcal: t.kcal, protein: t.protein, cost: t.missingPrices.length ? null : t.cost, costKnown: t.cost, missingPrices: t.missingPrices, allergens, carbFoodKcal: t.carbFoodKcal, carbs: t.carbs, fat: t.fat, fiber: t.fiber, macrosUnknown: t.macrosUnknown, consumed: true };
 }
 
 /** Valorile rețetei la porția de referință (pentru verificări și alternative). */
@@ -616,14 +673,49 @@ export function slotsFor(n: number, times?: number[] | null): Slot[] {
   return new Set(out).size === out.length ? out : def;
 }
 
-/** Slotul mesei dinaintea primei ședințe a zilei (dacă se știe ora): acolo nu punem fibre multe. */
+/** Orele implicite ale meselor (setare de produs), folosite doar când sportivul nu le-a declarat; se spune că sunt implicite. */
+export const DEFAULT_MEAL_TIMES: Record<Slot, number> = { mic_dejun: 7 * 60 + 30, pranz: 13 * 60, cina: 19 * 60 + 30, gustare: 16 * 60 + 30 };
+
+/** Ora fiecărei mese a zilei: declarată (în ordinea sloturilor) sau implicită; `declared` spune care sunt ale sportivului. */
+export function mealTimesFor(slots: Slot[], times?: number[] | null): { at: Record<string, number>; declared: boolean } {
+  const ts = (times ?? []).filter((t) => Number.isFinite(t) && t >= 0 && t < 24 * 60);
+  const at: Record<string, number> = {};
+  const ordered = [...slots].sort((a, b) => DEFAULT_MEAL_TIMES[a] - DEFAULT_MEAL_TIMES[b]);
+  const declared = ts.length === slots.length;
+  ordered.forEach((sl, i) => {
+    at[sl] = declared ? [...ts].sort((a, b) => a - b)[i]! : DEFAULT_MEAL_TIMES[sl];
+  });
+  return { at, declared };
+}
+
+/** Prima ședință nefăcută cu oră (forța doar de la 45 min), pentru legătura cu mesele. */
+function firstEffort(sessions: DaySession[]): DaySession | null {
+  return sessions.filter((s) => s.sport !== 'forta' || s.minutes >= 45).filter((s) => !s.done && s.startMin != null).sort((a, b) => a.startMin! - b.startMin!)[0] ?? null;
+}
+
+/**
+ * Masa dinaintea primei ședințe (ch. 08: pe orele reale ale meselor și ale ședinței, nu pe praguri fixe): ultima masă
+ * din cele 4 ore dinaintea startului (inclusiv una chiar înainte: atunci e mică și ușor de digerat). Fără ora ședinței →
+ * null (recomandare condițională, nu inventată). Acolo nu punem fibre multe.
+ */
 export function preEffortSlot(sessions: DaySession[], meals: number, times?: number[] | null): Slot | null {
-  const first = sessions.filter((s) => s.sport !== 'forta' || s.minutes >= 45).filter((s) => !s.done).map((s) => s.startMin).filter((x): x is number => x != null).sort((a, b) => a - b)[0];
-  if (first == null) return null;
-  const has = slotsFor(meals, times);
-  if (first < 11 * 60 && has.includes('mic_dejun')) return 'mic_dejun';
-  if (first < 17 * 60 && has.includes('pranz')) return 'pranz';
-  return has.includes('gustare') ? 'gustare' : has.includes('pranz') && first >= 11 * 60 ? 'pranz' : null;
+  const first = firstEffort(sessions);
+  if (!first) return null;
+  const slots = slotsFor(meals, times);
+  const { at } = mealTimesFor(slots, times);
+  const cands = slots.filter((sl) => at[sl]! <= first.startMin! && at[sl]! >= first.startMin! - 240).sort((a, b) => at[b]! - at[a]!);
+  return cands[0] ?? null;
+}
+
+/** Masa de după prima ședință: prima masă din cele 2 ore de după sfârșitul ei (proteine + carbohidrați la refacere). */
+export function postEffortSlot(sessions: DaySession[], meals: number, times?: number[] | null): Slot | null {
+  const first = firstEffort(sessions);
+  if (!first) return null;
+  const end = first.startMin! + first.minutes;
+  const slots = slotsFor(meals, times);
+  const { at } = mealTimesFor(slots, times);
+  const cands = slots.filter((sl) => at[sl]! >= end - 15 && at[sl]! <= end + 120).sort((a, b) => at[a]! - at[b]!);
+  return cands[0] ?? null;
 }
 
 /** Țintele de macronutrienți pentru energia și greutatea date (A78). */
@@ -655,11 +747,11 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   const b0 = input.blockers ?? {};
   // Auditul v93, A56/A79: formulele sunt pentru adulți fără sarcină. În afara domeniului nu se calculează automat o
   // țintă de energie (nici deficit, nici surplus); mesele rămân orientative.
-  const outOfDomain = b0.minor ? 'sub 18 ani' : b0.pregnancy ? 'sarcină sau primul an după naștere' : null;
+  const outOfDomain = b0.minor ? 'sub 18 ani' : b0.pregnancy ? 'sarcină sau primul an după naștere' : b0.lactation ? 'alăptare' : null;
   const personalized = missing.length === 0 && !outOfDomain;
   const sessions = input.sessions.filter((s) => s.minutes > 0);
   const warnings: string[] = [];
-  if (outOfDomain) warnings.push(`ținta de energie nu se calculează automat (${outOfDomain}): formula e pentru adulți fără sarcină; mesele sunt orientative, cantitățile se stabilesc cu medicul sau un nutriționist`);
+  if (outOfDomain) warnings.push(`ținta de energie nu se calculează automat (${outOfDomain}): formula e pentru adulți fără sarcină sau alăptare; mesele sunt orientative, cantitățile se stabilesc cu medicul sau un nutriționist`);
   if (a.weightKg != null && a.weightDate) {
     const age = diffDays(a.weightDate, input.date);
     if (age > WEIGHT_STALE_DAYS) warnings.push(`greutatea e din ${a.weightDate} (acum ${age} de zile): ținta se calculează cu ea; o cântărire nouă o actualizează`);
@@ -695,7 +787,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   let adjustPct = 0;
   let goalNote = 'menținere: mâncarea urmează antrenamentele';
   if (input.goal === 'fit-slabire') {
-    const block = b.pregnancy ? 'sarcină / postpartum' : b.minor ? 'sub 18 ani' : b.restriction === 'stop' || b.restriction === 'rosu' ? 'restricție de sănătate activă' : b.restriction === 'galben' ? 'zi galbenă (oboseală, durere sau recuperare la jumătate)' : b.fatigue ? 'oboseală declarată de mai multe ori' : null;
+    const block = b.pregnancy ? 'sarcină / postpartum' : b.lactation ? 'alăptare' : b.minor ? 'sub 18 ani' : b.restriction === 'stop' || b.restriction === 'rosu' ? 'restricție de sănătate activă' : b.restriction === 'galben' ? 'zi galbenă (oboseală, durere sau recuperare la jumătate)' : b.fatigue ? 'oboseală declarată de mai multe ori' : null;
     if (block) goalNote = `fără deficit azi: ${block}`;
     else if (!easyDay) goalNote = 'fără deficit azi: e zi de antrenament mai lung sau mai greu';
     else {
@@ -703,7 +795,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
       goalNote = 'deficit mic (~12%) doar în zilele ușoare';
     }
   } else if (input.goal === 'fit-masa') {
-    adjustPct = b.restriction === 'stop' || b.restriction === 'rosu' || b.pregnancy || b.minor ? 0 : 7;
+    adjustPct = b.restriction === 'stop' || b.restriction === 'rosu' || b.pregnancy || b.lactation || b.minor ? 0 : 7;
     goalNote = adjustPct ? 'surplus mic (~7%) pentru masă musculară; se ajustează după tendință' : 'fără surplus azi: restricție de sănătate';
   }
 
@@ -737,16 +829,28 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   // Mesele: selecția cu varietate (istoricul din jurnal sau calculat, ca ferestrele să fie reale), apoi porțiile.
   const wanted = slotsFor(prefs.meals, prefs.mealTimes);
   const pre = preEffortSlot(sessions, prefs.meals, prefs.mealTimes);
+  const post = postEffortSlot(sessions, prefs.meals, prefs.mealTimes);
+  const mt = mealTimesFor(wanted, prefs.mealTimes);
+  // Mesele declarate mâncate azi (jurnal, cu instantaneul cantităților): rămân cum au fost; se recalculează doar restul
+  // (specificația de nutriție, ch. 18: „Păstrează consumul; recalculează numai viitorul”).
+  const consumed = consumedSnapshots(prefs.log, input.date);
   // Profilul de alegere: aceeași energie de bază în fiecare zi (fără sport), ca istoricul de varietate să fie stabil; ziua
   // cu efort lung aduce în față rețetele cu mai mulți carbohidrați doar azi (A78).
   const pick: PickProfile = { seed: input.athleteId ?? null, goal: input.goal, sex: a.sex, age: a.age, dayKcal: energy ? energy.base * (1 + adjustPct / 100) : null, meals: prefs.meals, slots: wanted, ironFocus: !!input.indications?.iron, carbFocusDate: load === 'mare' || load === 'foarte_mare' ? input.date : null };
   const sel = selectDays(historyFrom(input.date), input.date, prefs, (d) => (d === input.date ? pre : null), pick).get(input.date)!;
   for (const x of sel.ignored) warnings.push(`alegerea „${RECIPE[x.id]!.name}” (${x.id}) pentru ${SLOT_LABEL[x.slot].toLowerCase()} nu intră: ${x.reason}`);
   if (prefs.meals === 1 && !(prefs.mealTimes ?? []).length) warnings.push('ora mesei nedeclarată: am pus-o seara (cină); spune la Preferințe la ce oră mănânci și o mut');
+  if ((pre || post) && !mt.declared) warnings.push(`legătura meselor cu antrenamentul folosește orele implicite ale meselor (${wanted.map((sl) => `${SLOT_LABEL[sl].toLowerCase()} ${hhmm(mt.at[sl]!)}`).join(', ')}): spune la Preferințe la ce ore mănânci`);
   let slots = Object.keys(sel.picks) as Slot[];
-  const base0 = slots.reduce((n, s) => n + recipeValues(sel.picks[s]!).kcal, 0);
-  const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
-  let factor = mealsTarget && base0 ? mealsTarget / base0 : 1;
+  // Mesele mâncate: porțiile sunt cele declarate; ținta rămasă pentru celelalte = ținta − efort − ce s-a mâncat.
+  const eatenSlots = slots.filter((sl) => consumed.has(sl));
+  const eatenKcal = eatenSlots.reduce((n, sl) => n + itemTotals(consumed.get(sl)!.items).kcal, 0);
+  const eatenProtein = eatenSlots.reduce((n, sl) => n + itemTotals(consumed.get(sl)!.items).protein, 0);
+  const openSlots = slots.filter((sl) => !consumed.has(sl));
+  const base0 = openSlots.reduce((n, s) => n + recipeValues(sel.picks[s]!).kcal, 0);
+  const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal - eatenKcal) : null;
+  if (energy && eatenKcal > 0 && eatenKcal + fuelKcal >= energy.target) warnings.push(`ce ai mâncat deja (~${n0(eatenKcal)} kcal) acoperă ținta estimată (~${n0(energy.target)} kcal): mesele rămase sunt la porțiile minime realiste; nu propun post sau compensare`);
+  let factor = mealsTarget != null && base0 ? mealsTarget / base0 : 1;
   const extra: Recipe[] = [];
   // Porții realiste: mai bine gustări în jurul antrenamentului decât farfurii de 1,7× (auditul M35, D: nu redistribui
   // mecanic toate caloriile în două porții uriașe). Gustările în plus (inclusiv cea cu proteine) au o limită comună și
@@ -777,7 +881,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   let pF = factor;
   let eF = factor;
   if (proteinT && mealsTarget) {
-    const all = [...slots.map((s) => RECIPE[sel.picks[s]!]!), ...extra];
+    const all = [...openSlots.map((s) => RECIPE[sel.picks[s]!]!), ...extra];
     let Kp = 0, Ko = 0, Pp = 0, Po = 0;
     for (const r of all)
       for (const i of r.ingredients) {
@@ -790,8 +894,8 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
           Po += v.protein;
         }
       }
-    // Ținta de proteine pe mese, apoi energia: pF·Pp + eF·Po = P, pF·Kp + eF·Ko = K.
-    const P = proteinT.target * 0.95;
+    // Ținta de proteine pe mese, apoi energia: pF·Pp + eF·Po = P, pF·Kp + eF·Ko = K (doar mesele încă nemâncate).
+    const P = Math.max(0, proteinT.target * 0.95 - eatenProtein);
     const det = Pp * Ko - Po * Kp;
     if (Pp > 0 && Ko > 0 && Math.abs(det) > 1e-6) {
       const p = (P * Ko - Po * mealsTarget) / det;
@@ -810,7 +914,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     let Kc = 0;
     let Kr = 0;
     let Kp = 0;
-    for (const r of [...slots.map((s) => RECIPE[sel.picks[s]!]!), ...extra])
+    for (const r of [...openSlots.map((s) => RECIPE[sel.picks[s]!]!), ...extra])
       for (const i of r.ingredients) {
         const v = foodValues(i.food, i.qty).kcal;
         if (isProteinFood(i.food)) Kp += v;
@@ -826,8 +930,17 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   const meals: Meal[] = [];
   const timeNote = sessions.some((s) => s.startSource === 'program') && !sessions.some((s) => s.startSource === 'activitate') ? ' (ora din programul declarat, nu ora reală a ședinței)' : '';
   for (const s of slots) {
-    const m = mealOf(s, RECIPE[sel.picks[s]!]!, oF, pF, cF);
-    const why = s === pre ? `înaintea ${sessions.length ? 'antrenamentului' : 'efortului'}: masă cu puține fibre, familiară${timeNote}` : s === 'gustare' && sessions.length ? 'gustarea ține energia între mese' : null;
+    const snap = consumed.get(s);
+    const m = snap ? mealFromSnapshot(s, RECIPE[snap.recipeId] ?? RECIPE[sel.picks[s]!]!, snap) : mealOf(s, RECIPE[sel.picks[s]!]!, oF, pF, cF);
+    const why = snap
+      ? 'mâncată: cantitățile declarate, nu se mai recalculează'
+      : s === pre
+        ? `înaintea ${sessions.length ? 'antrenamentului' : 'efortului'}: masă cu puține fibre, familiară${timeNote}`
+        : s === post
+          ? `după antrenament (în ~2 ore de la final): proteine și carbohidrați pentru refacere${timeNote}`
+          : s === 'gustare' && sessions.length
+            ? 'gustarea ține energia între mese'
+            : null;
     meals.push({ ...m, why, ...(sel.repeats.includes(s) ? { repeat: true } : {}) });
   }
   for (const g of extra) meals.push({ ...mealOf('gustare', g, oF, pF, cF), label: fewMeals ? 'Gustare în jurul antrenamentului' : 'Gustare în plus', why: `în plus față de ${prefs.meals === 1 ? 'masa aleasă' : `cele ${prefs.meals} mese alese`}, pentru că ai acceptat gustări: înainte sau după antrenament, ca porțiile să rămână realiste` });
@@ -849,6 +962,10 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
 
   const kcal = meals.reduce((n, m) => n + m.kcal, 0);
   const dayKcal = kcal + fuelKcal;
+  const sumOrNull = (f: (m: Meal) => number | null) => meals.reduce<number | null>((n, m) => (n == null || f(m) == null ? null : n + f(m)!), 0);
+  const carbsTotal = sumOrNull((m) => m.carbs);
+  const fatTotal = sumOrNull((m) => m.fat);
+  const unknownFoods = [...new Set(meals.flatMap((m) => m.macrosUnknown))];
   // Golul de energie: din valorile finale (mese după porții + efort), nu dintr-o estimare dinainte de porții (A86).
   if (energy && dayKcal < energy.low) {
     const gap = energy.target - dayKcal;
@@ -856,9 +973,10 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     warnings.push(`cu ${prefs.meals} ${prefs.meals === 1 ? 'masă' : 'mese'}${snacksAllowed ? '' : ' și fără gustări'}, ținta nu încape în porții realiste: lipsesc ~${n0(gap)} kcal. Nu tai din necesar: ziua iese la ~${n0(dayKcal)} kcal (mese ~${n0(kcal)} + efort ~${n0(fuelKcal)}) față de ținta de ~${n0(energy.target)} kcal (limita de jos ~${n0(energy.low)}); variante: ${options}`);
   }
 
-  const costKnown = meals.reduce((n, m) => n + m.costKnown, 0);
-  const costComplete = meals.every((m) => m.cost != null);
-  const missingP = [...new Set(meals.flatMap((m) => m.missingPrices))];
+  const costKnown = Math.round(meals.reduce((n, m) => n + m.costKnown, 0) * 100) / 100;
+  // Produsele din efort (geluri, băutură) n-au preț în catalog: o zi cu alimentare în efort nu are cost complet (N14).
+  const costComplete = meals.every((m) => m.cost != null) && fuel.length === 0;
+  const missingP = [...new Set([...meals.flatMap((m) => m.missingPrices), ...(fuel.length ? ['produsele din efort (geluri, băutură)'] : [])])];
 
   // Bugetul (A82): starea și, la depășire, constrângerea incompatibilă numită.
   let budgetStatus: BudgetStatus | null = null;
@@ -907,10 +1025,11 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
   if (energy && proteinT) {
     const t = macroTargets(energy.target, a.weightKg!, proteinT.gPerKg, load, fuelG);
     const c = t.carbs;
+    const mealCarbs = carbsTotal != null ? `carbohidrații meselor ~${n0(carbsTotal + fuelG)} g (mese ~${n0(carbsTotal)} + efort ${fuelG} g)${carbsTotal + fuelG < c.g[0] ? ', sub interval' : carbsTotal + fuelG > c.g[1] ? ', peste interval' : ', în interval'}; grăsimi ~${n0(fatTotal ?? 0)} g` : `carbohidrații și grăsimile meselor nu pot fi numărate în grame: lipsesc valorile din catalog pentru ${unknownFoods.slice(0, 6).join(', ')}${unknownFoods.length > 6 ? ` (+${unknownFoods.length - 6})` : ''}; mesele urmează ținta prin alegerea rețetelor și porții`;
     macros = {
       ...t,
       carbFoodShare: kcal ? carbFoodKcal / kcal : 0,
-      explain: `azi e ${LOAD_WORD[load]}: carbohidrați ${c.gPerKg[0]}–${c.gPerKg[1]} g/kg (~${n0(c.g[0])}–${n0(c.g[1])} g${fuelG ? `, din care ~${fuelG} g în efort` : ''}; ${c.source})${c.capped ? ', limitați de energia zilei' : ''}; proteine ~${n0(t.protein.g)} g (${t.protein.gPerKg.toLocaleString('ro-RO')} g/kg); grăsimi ~${n0(t.fat.g[0])}–${n0(t.fat.g[1])} g (${t.fat.source}). Carbohidrații din mese nu sunt încă numărați în grame (tabelul are doar energie și proteine): mesele urmează ținta prin alegerea rețetelor și porții`,
+      explain: `azi e ${LOAD_WORD[load]}: carbohidrați ${c.gPerKg[0]}–${c.gPerKg[1]} g/kg (~${n0(c.g[0])}–${n0(c.g[1])} g${fuelG ? `, din care ~${fuelG} g în efort` : ''}; ${c.source})${c.capped ? ', limitați de energia zilei' : ''}; proteine ~${n0(t.protein.g)} g (${t.protein.gPerKg.toLocaleString('ro-RO')} g/kg); grăsimi ~${n0(t.fat.g[0])}–${n0(t.fat.g[1])} g (${t.fat.source}). ${mealCarbs.charAt(0).toUpperCase()}${mealCarbs.slice(1)}`,
     };
   }
 
@@ -933,6 +1052,13 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     allergens: meals.filter((m) => !eligible(m.recipe, prefs)).map((m) => `${m.recipe.id}: ${ineligibleReason(m.recipe, prefs)}`),
     budget: { limit: prefs.budget, costKnown, complete: costComplete, status: budgetStatus, minKnown, conflict },
     meals: { promised, main: baseMeals, extra: meals.length - baseMeals, slots },
+    macros: {
+      status: carbsTotal != null && fatTotal != null ? 'complet' : 'incomplet',
+      carbs: macros && carbsTotal != null ? { actual: Math.round(carbsTotal + fuelG), target: [Math.round(macros.carbs.g[0]), Math.round(macros.carbs.g[1])], inRange: carbsTotal + fuelG >= macros.carbs.g[0] && carbsTotal + fuelG <= macros.carbs.g[1] } : null,
+      fat: macros && fatTotal != null ? { actual: Math.round(fatTotal), target: [Math.round(macros.fat.g[0]), Math.round(macros.fat.g[1])], inRange: fatTotal >= macros.fat.g[0] - 1 && fatTotal <= macros.fat.g[1] + 1 } : null,
+      unknownFoods,
+    },
+    consumed: { meals: eatenSlots.length, kcal: Math.round(eatenKcal), protein: Math.round(eatenProtein), partial: eatenSlots.length > 0 && eatenSlots.length < meals.length },
   };
 
   return {
@@ -947,7 +1073,7 @@ export function nutritionDay(input: NutritionInput): NutritionDay {
     fuel,
     fuelNotes,
     meals,
-    totals: { kcal, dayKcal, protein, cost: costComplete ? costKnown : null, costKnown, costComplete },
+    totals: { kcal, dayKcal, protein, carbs: carbsTotal, fat: fatTotal, cost: costComplete ? costKnown : null, costKnown, costComplete },
     budgetNote,
     check,
     supplements,
@@ -975,6 +1101,8 @@ export interface AltPreview {
  * Ordinea: întâi cele care țin ziua în țintă și în buget, apoi costul cunoscut (prețul necunoscut nu e „ieftin”).
  */
 export function alternatives(input: NutritionInput, slot: Slot, recent: string[] = [], max = 3): AltPreview[] {
+  // O masă declarată mâncată nu se mai schimbă (ch. 18): nicio alternativă.
+  if (consumedSnapshots(input.prefs.log, input.date).has(slot)) return [];
   const day = nutritionDay(input);
   const cur = day.meals.find((m) => m.slot === slot && m.label === SLOT_LABEL[slot]) ?? day.meals.find((m) => m.slot === slot);
   if (!cur) return [];
@@ -995,6 +1123,25 @@ export function alternatives(input: NutritionInput, slot: Slot, recent: string[]
   return out
     .sort((x, y) => bRank(x.day.budget) - bRank(y.day.budget) || Math.abs(x.day.gapKcal ?? 0) - Math.abs(y.day.gapKcal ?? 0) || (x.cost == null ? 1 : 0) - (y.cost == null ? 1 : 0) || (x.cost ?? 0) - (y.cost ?? 0))
     .slice(0, max);
+}
+
+/** Ce s-a mâncat declarat într-o zi (jurnal + instantanee): totaluri cunoscute; fără declarații → null (necunoscut, nu zero). */
+export function consumedTotals(log: MealLog | undefined, date: string): { meals: number; kcal: number; protein: number; carbs: number | null; fat: number | null } | null {
+  const snaps = [...consumedSnapshots(log, date).values()];
+  if (!snaps.length) return null;
+  const t = snaps.map((sn) => itemTotals(sn.items));
+  const sum = (f: (x: ReturnType<typeof itemTotals>) => number | null) => t.reduce<number | null>((n, x) => (n == null || f(x) == null ? null : n + f(x)!), 0);
+  return { meals: snaps.length, kcal: Math.round(t.reduce((n, x) => n + x.kcal, 0)), protein: Math.round(t.reduce((n, x) => n + x.protein, 0)), carbs: sum((x) => x.carbs), fat: sum((x) => x.fat) };
+}
+
+/**
+ * Pudra proteică după etichetă (N03): câte grame de PRODUS acoperă proteinele lipsă și câtă energie aduc. Gramele de
+ * proteine nu sunt grame de produs. Fără etichetă (proteine/100 g) nu se calculează.
+ */
+export function powderServing(label: { proteinPer100g: number; kcalPer100g: number }, neededProteinG: number): { productG: number; proteinG: number; kcal: number } | null {
+  if (!(label.proteinPer100g > 0) || !(neededProteinG > 0)) return null;
+  const productG = Math.round((neededProteinG / label.proteinPer100g) * 100);
+  return { productG, proteinG: Math.round(((productG * label.proteinPer100g) / 100) * 10) / 10, kcal: Math.round((productG * label.kcalPer100g) / 100) };
 }
 
 export const NUTRITION_DISCLAIMER = 'AIRON oferă sugestii de alimentație pentru antrenament. Nu este instrument medical. Valorile energetice și costurile sunt estimări.';

@@ -6,6 +6,11 @@
 //
 // Prețurile: verificate online la 19.10.2026 (Auchan), nu un bon și nu o ofertă pentru adresa sportivului. Un aliment fără
 // preț rămâne fără preț: costul zilei devine „incomplet”, nu zero.
+//
+// Carbohidrați, grăsimi, fibre (specificația de nutriție, 20.10.2026, ch. 10): câmpuri opționale, la 100 g/ml, FIECARE cu
+// sursa lui (`macroSource`); lipsă = necunoscut (null), niciodată zero. Un total de masă sau de zi cu un ingredient fără
+// date rămâne „incomplet” (subtotalul cunoscut se arată ca subtotal). Valorile se completează numai dintr-o sursă
+// verificabilă (CoFID / USDA FDC / eticheta producătorului), nu din memorie.
 
 export type Unit = 'g' | 'ml';
 
@@ -17,7 +22,19 @@ export interface Food {
   kcal: number;
   /** Proteine (g) la 100 g / 100 ml. */
   protein: number;
+  /** Carbohidrați (g, inclusiv fibre, convenția UE) la 100 g / 100 ml; lipsă = necunoscut. */
+  carbs?: number | null;
+  /** Grăsimi (g) la 100 g / 100 ml; lipsă = necunoscut. */
+  fat?: number | null;
+  /** Fibre (g) la 100 g / 100 ml; lipsă = necunoscut. */
+  fiber?: number | null;
+  /** Sursa fiecărui macronutrient completat (ex. „USDA FDC 171790”), separat de sursa energiei și a proteinelor. */
+  macroSource?: { carbs?: string; fat?: string; fiber?: string };
   source: string;
+  /** Pasul porției la scalare (g/ml): ouăle se numără întregi (1 ou ≈ 55 g), nu 37 g. */
+  step?: number;
+  /** Alergeni care POT fi prezenți (urme, linie comună), după eticheta produsului; „necunoscut” = lipsa câmpului. */
+  mayContain?: Allergen[];
   /** Alergeni / categorii: lapte, ou, gluten, pește, crustacee, nuci, arahide, soia, susan. */
   allergens: Allergen[];
   /** Produs animal (pentru vegan: inclusiv mierea) și carne/pește (pentru vegetarian). */
@@ -41,7 +58,7 @@ export const FOODS: Record<string, Food> = Object.fromEntries(
       { id: 'banana', name: 'Banană, fără coajă', unit: 'g', kcal: 81, protein: 1.2, source: 'D01 / 14-318', allergens: [] },
       { id: 'paine', name: 'Pâine integrală', unit: 'g', kcal: 217, protein: 9.4, source: 'D01 / 11-981', allergens: ['gluten'] },
       { id: 'pui', name: 'Carne albă de pui, crudă, fără piele', unit: 'g', kcal: 106, protein: 24, source: 'D01 / 18-290', allergens: [], animal: 'carne', price: { ronPerUnit: 33.09, source: 'P07 Auchan, piept de pui fără piele (listare)', checkedAt: CHECKED } },
-      { id: 'ou', name: 'Ou întreg, crud, fără coajă', unit: 'g', kcal: 131, protein: 12.6, source: 'D01 / 12-937', allergens: ['ou'], animal: 'ou' },
+      { id: 'ou', name: 'Ou întreg, crud, fără coajă', unit: 'g', kcal: 131, protein: 12.6, source: 'D01 / 12-937', allergens: ['ou'], animal: 'ou', step: 55 },
       { id: 'somon', name: 'Somon de crescătorie, crud, fără oase', unit: 'g', kcal: 217, protein: 20.4, source: 'D01 / 16-356', allergens: ['peste'], animal: 'peste' },
       { id: 'tofu', name: 'Tofu simplu, preparat la abur', unit: 'g', kcal: 73, protein: 8.1, source: 'D01 / 13-570', allergens: ['soia'] },
       { id: 'rosii', name: 'Roșii crude', unit: 'g', kcal: 14, protein: 0.5, source: 'D01 / 13-517', allergens: [] },
@@ -122,16 +139,46 @@ export const FOODS: Record<string, Food> = Object.fromEntries(
   ).map((f) => [f.id, f]),
 );
 
-/** Energie și proteine pentru o cantitate (g sau ml) dintr-un aliment. */
-export function foodValues(id: string, qty: number): { kcal: number; protein: number } {
-  const f = FOODS[id];
-  if (!f) throw new Error(`aliment necunoscut: ${id}`);
-  return { kcal: (f.kcal * qty) / 100, protein: (f.protein * qty) / 100 };
+export interface FoodAmounts {
+  kcal: number;
+  protein: number;
+  /** null = alimentul n-are valoarea în tabel (necunoscut, nu zero). */
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
 }
 
-/** Costul cantității consumate (RON), din prețul pe kg/L corectat cu partea comestibilă; null dacă lipsește prețul. */
+/** Energie, proteine și (când se știu) carbohidrați, grăsimi, fibre pentru o cantitate (g sau ml) dintr-un aliment. */
+export function foodValues(id: string, qty: number): FoodAmounts {
+  const f = FOODS[id];
+  if (!f) throw new Error(`aliment necunoscut: ${id}`);
+  const per = (v: number | null | undefined) => (v == null ? null : (v * qty) / 100);
+  return { kcal: (f.kcal * qty) / 100, protein: (f.protein * qty) / 100, carbs: per(f.carbs), fat: per(f.fat), fiber: per(f.fiber) };
+}
+
+/** Câte alimente din catalog au carbohidrați / grăsimi / fibre completate (raport de acoperire, ch. 10). */
+export function macroCoverage(): { total: number; carbs: number; fat: number; fiber: number } {
+  const all = Object.values(FOODS);
+  return { total: all.length, carbs: all.filter((f) => f.carbs != null).length, fat: all.filter((f) => f.fat != null).length, fiber: all.filter((f) => f.fiber != null).length };
+}
+
+/**
+ * Costul cantității consumate (RON), din prețul pe kg/L corectat cu partea comestibilă (cantitatea e partea comestibilă:
+ * 160 g măr curățat la 0,8 comestibil = 200 g cumpărate); null dacă lipsește prețul. Rotunjirea la ban se face pe total,
+ * nu pe fiecare ingredient (ca suma să nu adune erori de rotunjire).
+ */
 export function foodCost(id: string, qty: number): number | null {
   const p = FOODS[id]?.price;
   if (!p) return null;
   return ((qty / 1000) * p.ronPerUnit) / (p.edible ?? 1);
+}
+
+/**
+ * Coșul de cumpărături pentru un necesar net (g/ml): pachete întregi, rotunjite în sus, cu restul care rămâne în cămară
+ * (specificația de nutriție, N05). Prețul e pe pachet; fără preț sau fără mărimea pachetului → null.
+ */
+export function packagesFor(need: number, pack: { amount: number; price: number }): { packages: number; cost: number; left: number } | null {
+  if (!(pack.amount > 0) || !(pack.price >= 0) || !(need >= 0)) return null;
+  const packages = Math.ceil(need / pack.amount);
+  return { packages, cost: Math.round(packages * pack.price * 100) / 100, left: Math.round((packages * pack.amount - need) * 100) / 100 };
 }

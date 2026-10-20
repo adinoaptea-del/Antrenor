@@ -2775,7 +2775,8 @@ var init_sport_readiness = __esm({
 function foodValues(id, qty2) {
   const f = FOODS[id];
   if (!f) throw new Error(`aliment necunoscut: ${id}`);
-  return { kcal: f.kcal * qty2 / 100, protein: f.protein * qty2 / 100 };
+  const per = (v) => v == null ? null : v * qty2 / 100;
+  return { kcal: f.kcal * qty2 / 100, protein: f.protein * qty2 / 100, carbs: per(f.carbs), fat: per(f.fat), fiber: per(f.fiber) };
 }
 function foodCost(id, qty2) {
   const p = FOODS[id]?.price;
@@ -2796,7 +2797,7 @@ var init_foods = __esm({
         { id: "banana", name: "Banan\u0103, f\u0103r\u0103 coaj\u0103", unit: "g", kcal: 81, protein: 1.2, source: "D01 / 14-318", allergens: [] },
         { id: "paine", name: "P\xE2ine integral\u0103", unit: "g", kcal: 217, protein: 9.4, source: "D01 / 11-981", allergens: ["gluten"] },
         { id: "pui", name: "Carne alb\u0103 de pui, crud\u0103, f\u0103r\u0103 piele", unit: "g", kcal: 106, protein: 24, source: "D01 / 18-290", allergens: [], animal: "carne", price: { ronPerUnit: 33.09, source: "P07 Auchan, piept de pui f\u0103r\u0103 piele (listare)", checkedAt: CHECKED } },
-        { id: "ou", name: "Ou \xEEntreg, crud, f\u0103r\u0103 coaj\u0103", unit: "g", kcal: 131, protein: 12.6, source: "D01 / 12-937", allergens: ["ou"], animal: "ou" },
+        { id: "ou", name: "Ou \xEEntreg, crud, f\u0103r\u0103 coaj\u0103", unit: "g", kcal: 131, protein: 12.6, source: "D01 / 12-937", allergens: ["ou"], animal: "ou", step: 55 },
         { id: "somon", name: "Somon de cresc\u0103torie, crud, f\u0103r\u0103 oase", unit: "g", kcal: 217, protein: 20.4, source: "D01 / 16-356", allergens: ["peste"], animal: "peste" },
         { id: "tofu", name: "Tofu simplu, preparat la abur", unit: "g", kcal: 73, protein: 8.1, source: "D01 / 13-570", allergens: ["soia"] },
         { id: "rosii", name: "Ro\u0219ii crude", unit: "g", kcal: 14, protein: 0.5, source: "D01 / 13-517", allergens: [] },
@@ -3148,12 +3149,17 @@ function recordChoice(log, date, slot, recipeId, suggested, at = (/* @__PURE__ *
   else cur.push(next);
   return { ...log, [date]: cur };
 }
-function recordConsumed(log, date, slot, consumed, at = (/* @__PURE__ */ new Date()).toISOString()) {
+function recordConsumed(log, date, slot, consumed, at = (/* @__PURE__ */ new Date()).toISOString(), snapshot2 = null) {
   const cur = [...log[date] ?? []];
   const k = cur.findIndex((e) => e.slot === slot);
   if (k < 0) return log;
-  cur[k] = { ...cur[k], consumed, at };
+  cur[k] = { ...cur[k], consumed, at, snapshot: consumed === true ? snapshot2 : null };
   return { ...log, [date]: cur };
+}
+function consumedSnapshots(log, date) {
+  const out = /* @__PURE__ */ new Map();
+  for (const e of log?.[date] ?? []) if (e.consumed === true && e.snapshot?.items?.length) out.set(e.slot, e.snapshot);
+  return out;
 }
 function loggedPicks(log, date) {
   const day2 = log?.[date];
@@ -3224,6 +3230,8 @@ function ineligibleReason(r2, p) {
     const f = FOODS[i.food];
     const al = f.allergens.filter((a) => p.exclude.includes(a));
     if (al.length) return `con\u021Bine un alergen exclus (${al.map((a) => ALLERGEN_LABEL[a]).join(", ")})`;
+    const may = (f.mayContain ?? []).filter((a) => p.exclude.includes(a));
+    if (may.length) return `poate con\u021Bine urme de ${may.map((a) => ALLERGEN_LABEL[a]).join(", ")} (eticheta produsului)`;
     const t = (p.other ?? []).find((x) => fold(x).length >= 3 && fold(`${f.name} ${i.food}`).includes(fold(x)));
     if (t) return `con\u021Bine ce ai exclus (\u201E${t}\u201D)`;
     if (p.diet === "vegan" && f.animal) return "nu e vegan\u0103";
@@ -3383,7 +3391,7 @@ function selectDays(from, to, prefs, preSlot = () => null, profile = {}) {
       const base = tierOf[slot];
       const pre = preSlot(d) === slot;
       const carb = profile.carbFocusDate === d;
-      const tier = new Map(cands.map((id) => [id, base.get(id) + (pre && !RECIPE[id].preOk ? 2 : 0) + (carb && carbFoodShareOf(id) < carbMedian[slot] ? 1 : 0)]));
+      const tier = new Map(cands.map((id) => [id, base.get(id) + (pre && !RECIPE[id].preOk ? 2 : 0) + (carb && carbFoodShareOf(id) < carbMedian[slot] ? 1 : 0) + (budget != null && !knownCost(id, 1).complete ? 1 : 0)]));
       const lastUse = (id) => uses.get(id)?.at(-1) ?? "";
       const keep = budget != null && budgetOver.includes(slot);
       cands = cands.map((id, k) => ({ id, k })).sort((x, y) => keep ? x.k - y.k : tier.get(x.id) - tier.get(y.id) || (lastUse(x.id) < lastUse(y.id) ? -1 : lastUse(x.id) > lastUse(y.id) ? 1 : x.k - y.k)).map((x) => x.id);
@@ -3404,29 +3412,53 @@ function isProteinFood(id) {
   const f = FOODS[id];
   return f.kcal >= 60 && f.protein * 4 / f.kcal >= 0.3;
 }
-function mealOf(slot, r2, factor, proteinFactor = factor, carbFactor = factor) {
-  const items = r2.ingredients.map((i) => {
-    const f = FOODS[i.food];
-    const raw = i.qty * (isProteinFood(i.food) ? proteinFactor : CARB_FOODS.has(i.food) ? carbFactor : factor);
-    const qty2 = f.id === "ulei" ? Math.max(1, Math.round(raw)) : Math.max(5, Math.round(raw / 5) * 5);
-    return { food: f.id, name: f.name, qty: qty2, unit: f.unit };
-  });
+function roundQty(foodId, raw, ref) {
+  const f = FOODS[foodId];
+  if (ref != null && Math.abs(raw - ref) < 1e-9) return ref;
+  if (f.step) return Math.max(f.step, Math.round(raw / f.step) * f.step);
+  if (f.id === "ulei") return Math.max(1, Math.round(raw));
+  return Math.max(5, Math.round(raw / 5) * 5);
+}
+function itemTotals(items) {
   let kcal = 0;
   let protein = 0;
   let cost = 0;
   let carbFoodKcal = 0;
+  let carbs = 0;
+  let fat = 0;
+  let fiber = 0;
   const missingPrices = [];
+  const macrosUnknown = [];
   for (const it of items) {
     const v = foodValues(it.food, it.qty);
     kcal += v.kcal;
     protein += v.protein;
     if (CARB_FOODS.has(it.food)) carbFoodKcal += v.kcal;
+    carbs = carbs == null || v.carbs == null ? null : carbs + v.carbs;
+    fat = fat == null || v.fat == null ? null : fat + v.fat;
+    fiber = fiber == null || v.fiber == null ? null : fiber + v.fiber;
+    if (v.carbs == null || v.fat == null) macrosUnknown.push(FOODS[it.food].name.split(",")[0].toLowerCase());
     const c2 = foodCost(it.food, it.qty);
     if (c2 == null) missingPrices.push(FOODS[it.food].name.split(",")[0].toLowerCase());
     else cost += c2;
   }
+  return { kcal, protein, cost: Math.round(cost * 100) / 100, missingPrices, carbFoodKcal, carbs, fat, fiber, macrosUnknown };
+}
+function mealOf(slot, r2, factor, proteinFactor = factor, carbFactor = factor) {
+  const items = r2.ingredients.map((i) => {
+    const f = FOODS[i.food];
+    const raw = i.qty * (isProteinFood(i.food) ? proteinFactor : CARB_FOODS.has(i.food) ? carbFactor : factor);
+    return { food: f.id, name: f.name, qty: roundQty(f.id, raw, i.qty), unit: f.unit };
+  });
+  const t = itemTotals(items);
   const allergens = [...new Set(items.flatMap((it) => FOODS[it.food].allergens))];
-  return { slot, label: SLOT_LABEL[slot], recipe: r2, items, kcal, protein, cost: missingPrices.length ? null : cost, costKnown: cost, missingPrices, allergens, carbFoodKcal };
+  return { slot, label: SLOT_LABEL[slot], recipe: r2, items, kcal: t.kcal, protein: t.protein, cost: t.missingPrices.length ? null : t.cost, costKnown: t.cost, missingPrices: t.missingPrices, allergens, carbFoodKcal: t.carbFoodKcal, carbs: t.carbs, fat: t.fat, fiber: t.fiber, macrosUnknown: t.macrosUnknown };
+}
+function mealFromSnapshot(slot, r2, snap) {
+  const items = snap.items.filter((i) => FOODS[i.food]).map((i) => ({ food: i.food, name: FOODS[i.food].name, qty: i.qty, unit: FOODS[i.food].unit }));
+  const t = itemTotals(items);
+  const allergens = [...new Set(items.flatMap((it) => FOODS[it.food].allergens))];
+  return { slot, label: SLOT_LABEL[slot], recipe: r2, items, kcal: t.kcal, protein: t.protein, cost: t.missingPrices.length ? null : t.cost, costKnown: t.cost, missingPrices: t.missingPrices, allergens, carbFoodKcal: t.carbFoodKcal, carbs: t.carbs, fat: t.fat, fiber: t.fiber, macrosUnknown: t.macrosUnknown, consumed: true };
 }
 function recipeValues(id) {
   const m = mealOf("pranz", RECIPE[id], 1);
@@ -3440,13 +3472,35 @@ function slotsFor(n2, times) {
   const out = ts.map(slotAt);
   return new Set(out).size === out.length ? out : def;
 }
+function mealTimesFor(slots, times) {
+  const ts = (times ?? []).filter((t) => Number.isFinite(t) && t >= 0 && t < 24 * 60);
+  const at = {};
+  const ordered = [...slots].sort((a, b) => DEFAULT_MEAL_TIMES[a] - DEFAULT_MEAL_TIMES[b]);
+  const declared = ts.length === slots.length;
+  ordered.forEach((sl, i) => {
+    at[sl] = declared ? [...ts].sort((a, b) => a - b)[i] : DEFAULT_MEAL_TIMES[sl];
+  });
+  return { at, declared };
+}
+function firstEffort(sessions) {
+  return sessions.filter((s) => s.sport !== "forta" || s.minutes >= 45).filter((s) => !s.done && s.startMin != null).sort((a, b) => a.startMin - b.startMin)[0] ?? null;
+}
 function preEffortSlot(sessions, meals, times) {
-  const first2 = sessions.filter((s) => s.sport !== "forta" || s.minutes >= 45).filter((s) => !s.done).map((s) => s.startMin).filter((x) => x != null).sort((a, b) => a - b)[0];
-  if (first2 == null) return null;
-  const has = slotsFor(meals, times);
-  if (first2 < 11 * 60 && has.includes("mic_dejun")) return "mic_dejun";
-  if (first2 < 17 * 60 && has.includes("pranz")) return "pranz";
-  return has.includes("gustare") ? "gustare" : has.includes("pranz") && first2 >= 11 * 60 ? "pranz" : null;
+  const first2 = firstEffort(sessions);
+  if (!first2) return null;
+  const slots = slotsFor(meals, times);
+  const { at } = mealTimesFor(slots, times);
+  const cands = slots.filter((sl) => at[sl] <= first2.startMin && at[sl] >= first2.startMin - 240).sort((a, b) => at[b] - at[a]);
+  return cands[0] ?? null;
+}
+function postEffortSlot(sessions, meals, times) {
+  const first2 = firstEffort(sessions);
+  if (!first2) return null;
+  const end = first2.startMin + first2.minutes;
+  const slots = slotsFor(meals, times);
+  const { at } = mealTimesFor(slots, times);
+  const cands = slots.filter((sl) => at[sl] >= end - 15 && at[sl] <= end + 120).sort((a, b) => at[a] - at[b]);
+  return cands[0] ?? null;
 }
 function macroTargets(target, kg, proteinGPerKg, load, fuelG) {
   const P = proteinGPerKg * kg;
@@ -3472,11 +3526,11 @@ function nutritionDay(input) {
   if (a.age == null) missing.push("anul na\u0219terii (Profil)");
   if (a.sex == null) missing.push("parametrul ecua\u021Biei: b\u0103rbat / femeie (Profil)");
   const b0 = input.blockers ?? {};
-  const outOfDomain = b0.minor ? "sub 18 ani" : b0.pregnancy ? "sarcin\u0103 sau primul an dup\u0103 na\u0219tere" : null;
+  const outOfDomain = b0.minor ? "sub 18 ani" : b0.pregnancy ? "sarcin\u0103 sau primul an dup\u0103 na\u0219tere" : b0.lactation ? "al\u0103ptare" : null;
   const personalized = missing.length === 0 && !outOfDomain;
   const sessions = input.sessions.filter((s) => s.minutes > 0);
   const warnings = [];
-  if (outOfDomain) warnings.push(`\u021Binta de energie nu se calculeaz\u0103 automat (${outOfDomain}): formula e pentru adul\u021Bi f\u0103r\u0103 sarcin\u0103; mesele sunt orientative, cantit\u0103\u021Bile se stabilesc cu medicul sau un nutri\u021Bionist`);
+  if (outOfDomain) warnings.push(`\u021Binta de energie nu se calculeaz\u0103 automat (${outOfDomain}): formula e pentru adul\u021Bi f\u0103r\u0103 sarcin\u0103 sau al\u0103ptare; mesele sunt orientative, cantit\u0103\u021Bile se stabilesc cu medicul sau un nutri\u021Bionist`);
   if (a.weightKg != null && a.weightDate) {
     const age = diffDays(a.weightDate, input.date);
     if (age > WEIGHT_STALE_DAYS) warnings.push(`greutatea e din ${a.weightDate} (acum ${age} de zile): \u021Binta se calculeaz\u0103 cu ea; o c\xE2nt\u0103rire nou\u0103 o actualizeaz\u0103`);
@@ -3505,7 +3559,7 @@ function nutritionDay(input) {
   let adjustPct = 0;
   let goalNote = "men\u021Binere: m\xE2ncarea urmeaz\u0103 antrenamentele";
   if (input.goal === "fit-slabire") {
-    const block = b.pregnancy ? "sarcin\u0103 / postpartum" : b.minor ? "sub 18 ani" : b.restriction === "stop" || b.restriction === "rosu" ? "restric\u021Bie de s\u0103n\u0103tate activ\u0103" : b.restriction === "galben" ? "zi galben\u0103 (oboseal\u0103, durere sau recuperare la jum\u0103tate)" : b.fatigue ? "oboseal\u0103 declarat\u0103 de mai multe ori" : null;
+    const block = b.pregnancy ? "sarcin\u0103 / postpartum" : b.lactation ? "al\u0103ptare" : b.minor ? "sub 18 ani" : b.restriction === "stop" || b.restriction === "rosu" ? "restric\u021Bie de s\u0103n\u0103tate activ\u0103" : b.restriction === "galben" ? "zi galben\u0103 (oboseal\u0103, durere sau recuperare la jum\u0103tate)" : b.fatigue ? "oboseal\u0103 declarat\u0103 de mai multe ori" : null;
     if (block) goalNote = `f\u0103r\u0103 deficit azi: ${block}`;
     else if (!easyDay) goalNote = "f\u0103r\u0103 deficit azi: e zi de antrenament mai lung sau mai greu";
     else {
@@ -3513,7 +3567,7 @@ function nutritionDay(input) {
       goalNote = "deficit mic (~12%) doar \xEEn zilele u\u0219oare";
     }
   } else if (input.goal === "fit-masa") {
-    adjustPct = b.restriction === "stop" || b.restriction === "rosu" || b.pregnancy || b.minor ? 0 : 7;
+    adjustPct = b.restriction === "stop" || b.restriction === "rosu" || b.pregnancy || b.lactation || b.minor ? 0 : 7;
     goalNote = adjustPct ? "surplus mic (~7%) pentru mas\u0103 muscular\u0103; se ajusteaz\u0103 dup\u0103 tendin\u021B\u0103" : "f\u0103r\u0103 surplus azi: restric\u021Bie de s\u0103n\u0103tate";
   }
   const unknown = sessions.filter((s) => metFor(s) == null).map(sessionLabel);
@@ -3543,14 +3597,23 @@ function nutritionDay(input) {
   }
   const wanted = slotsFor(prefs.meals, prefs.mealTimes);
   const pre = preEffortSlot(sessions, prefs.meals, prefs.mealTimes);
+  const post = postEffortSlot(sessions, prefs.meals, prefs.mealTimes);
+  const mt = mealTimesFor(wanted, prefs.mealTimes);
+  const consumed = consumedSnapshots(prefs.log, input.date);
   const pick2 = { seed: input.athleteId ?? null, goal: input.goal, sex: a.sex, age: a.age, dayKcal: energy ? energy.base * (1 + adjustPct / 100) : null, meals: prefs.meals, slots: wanted, ironFocus: !!input.indications?.iron, carbFocusDate: load === "mare" || load === "foarte_mare" ? input.date : null };
   const sel = selectDays(historyFrom(input.date), input.date, prefs, (d) => d === input.date ? pre : null, pick2).get(input.date);
   for (const x of sel.ignored) warnings.push(`alegerea \u201E${RECIPE[x.id].name}\u201D (${x.id}) pentru ${SLOT_LABEL[x.slot].toLowerCase()} nu intr\u0103: ${x.reason}`);
   if (prefs.meals === 1 && !(prefs.mealTimes ?? []).length) warnings.push("ora mesei nedeclarat\u0103: am pus-o seara (cin\u0103); spune la Preferin\u021Be la ce or\u0103 m\u0103n\xE2nci \u0219i o mut");
+  if ((pre || post) && !mt.declared) warnings.push(`leg\u0103tura meselor cu antrenamentul folose\u0219te orele implicite ale meselor (${wanted.map((sl) => `${SLOT_LABEL[sl].toLowerCase()} ${hhmm(mt.at[sl])}`).join(", ")}): spune la Preferin\u021Be la ce ore m\u0103n\xE2nci`);
   let slots = Object.keys(sel.picks);
-  const base0 = slots.reduce((n2, s) => n2 + recipeValues(sel.picks[s]).kcal, 0);
-  const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal) : null;
-  let factor = mealsTarget && base0 ? mealsTarget / base0 : 1;
+  const eatenSlots = slots.filter((sl) => consumed.has(sl));
+  const eatenKcal = eatenSlots.reduce((n2, sl) => n2 + itemTotals(consumed.get(sl).items).kcal, 0);
+  const eatenProtein = eatenSlots.reduce((n2, sl) => n2 + itemTotals(consumed.get(sl).items).protein, 0);
+  const openSlots = slots.filter((sl) => !consumed.has(sl));
+  const base0 = openSlots.reduce((n2, s) => n2 + recipeValues(sel.picks[s]).kcal, 0);
+  const mealsTarget = energy ? Math.max(0, energy.target - fuelKcal - eatenKcal) : null;
+  if (energy && eatenKcal > 0 && eatenKcal + fuelKcal >= energy.target) warnings.push(`ce ai m\xE2ncat deja (~${n0(eatenKcal)} kcal) acoper\u0103 \u021Binta estimat\u0103 (~${n0(energy.target)} kcal): mesele r\u0103mase sunt la por\u021Biile minime realiste; nu propun post sau compensare`);
+  let factor = mealsTarget != null && base0 ? mealsTarget / base0 : 1;
   const extra = [];
   const fewMeals = prefs.meals <= 2;
   const snacksAllowed = prefs.snacksOk !== false;
@@ -3573,7 +3636,7 @@ function nutritionDay(input) {
   let pF = factor;
   let eF = factor;
   if (proteinT && mealsTarget) {
-    const all2 = [...slots.map((s) => RECIPE[sel.picks[s]]), ...extra];
+    const all2 = [...openSlots.map((s) => RECIPE[sel.picks[s]]), ...extra];
     let Kp = 0, Ko = 0, Pp = 0, Po = 0;
     for (const r2 of all2)
       for (const i of r2.ingredients) {
@@ -3586,7 +3649,7 @@ function nutritionDay(input) {
           Po += v.protein;
         }
       }
-    const P = proteinT.target * 0.95;
+    const P = Math.max(0, proteinT.target * 0.95 - eatenProtein);
     const det = Pp * Ko - Po * Kp;
     if (Pp > 0 && Ko > 0 && Math.abs(det) > 1e-6) {
       const p = (P * Ko - Po * mealsTarget) / det;
@@ -3602,7 +3665,7 @@ function nutritionDay(input) {
     let Kc = 0;
     let Kr = 0;
     let Kp = 0;
-    for (const r2 of [...slots.map((s) => RECIPE[sel.picks[s]]), ...extra])
+    for (const r2 of [...openSlots.map((s) => RECIPE[sel.picks[s]]), ...extra])
       for (const i of r2.ingredients) {
         const v = foodValues(i.food, i.qty).kcal;
         if (isProteinFood(i.food)) Kp += v;
@@ -3617,8 +3680,9 @@ function nutritionDay(input) {
   const meals = [];
   const timeNote = sessions.some((s) => s.startSource === "program") && !sessions.some((s) => s.startSource === "activitate") ? " (ora din programul declarat, nu ora real\u0103 a \u0219edin\u021Bei)" : "";
   for (const s of slots) {
-    const m = mealOf(s, RECIPE[sel.picks[s]], oF, pF, cF);
-    const why = s === pre ? `\xEEnaintea ${sessions.length ? "antrenamentului" : "efortului"}: mas\u0103 cu pu\u021Bine fibre, familiar\u0103${timeNote}` : s === "gustare" && sessions.length ? "gustarea \u021Bine energia \xEEntre mese" : null;
+    const snap = consumed.get(s);
+    const m = snap ? mealFromSnapshot(s, RECIPE[snap.recipeId] ?? RECIPE[sel.picks[s]], snap) : mealOf(s, RECIPE[sel.picks[s]], oF, pF, cF);
+    const why = snap ? "m\xE2ncat\u0103: cantit\u0103\u021Bile declarate, nu se mai recalculeaz\u0103" : s === pre ? `\xEEnaintea ${sessions.length ? "antrenamentului" : "efortului"}: mas\u0103 cu pu\u021Bine fibre, familiar\u0103${timeNote}` : s === post ? `dup\u0103 antrenament (\xEEn ~2 ore de la final): proteine \u0219i carbohidra\u021Bi pentru refacere${timeNote}` : s === "gustare" && sessions.length ? "gustarea \u021Bine energia \xEEntre mese" : null;
     meals.push({ ...m, why, ...sel.repeats.includes(s) ? { repeat: true } : {} });
   }
   for (const g of extra) meals.push({ ...mealOf("gustare", g, oF, pF, cF), label: fewMeals ? "Gustare \xEEn jurul antrenamentului" : "Gustare \xEEn plus", why: `\xEEn plus fa\u021B\u0103 de ${prefs.meals === 1 ? "masa aleas\u0103" : `cele ${prefs.meals} mese alese`}, pentru c\u0103 ai acceptat gust\u0103ri: \xEEnainte sau dup\u0103 antrenament, ca por\u021Biile s\u0103 r\u0103m\xE2n\u0103 realiste` });
@@ -3636,14 +3700,18 @@ function nutritionDay(input) {
   slots = meals.map((m) => m.slot);
   const kcal = meals.reduce((n2, m) => n2 + m.kcal, 0);
   const dayKcal = kcal + fuelKcal;
+  const sumOrNull = (f) => meals.reduce((n2, m) => n2 == null || f(m) == null ? null : n2 + f(m), 0);
+  const carbsTotal = sumOrNull((m) => m.carbs);
+  const fatTotal = sumOrNull((m) => m.fat);
+  const unknownFoods = [...new Set(meals.flatMap((m) => m.macrosUnknown))];
   if (energy && dayKcal < energy.low) {
     const gap = energy.target - dayKcal;
     const options = snacksAllowed ? "\xEEnc\u0103 o mas\u0103 sau o gustare \xEEn plus \xEEn jurul antrenamentului" : "o gustare \xEEn jurul antrenamentului (dac\u0103 vrei), \xEEnc\u0103 o mas\u0103 sau mai mul\u021Bi carbohidra\u021Bi \xEEn efort, dac\u0103 \xEEi tolerezi";
     warnings.push(`cu ${prefs.meals} ${prefs.meals === 1 ? "mas\u0103" : "mese"}${snacksAllowed ? "" : " \u0219i f\u0103r\u0103 gust\u0103ri"}, \u021Binta nu \xEEncape \xEEn por\u021Bii realiste: lipsesc ~${n0(gap)} kcal. Nu tai din necesar: ziua iese la ~${n0(dayKcal)} kcal (mese ~${n0(kcal)} + efort ~${n0(fuelKcal)}) fa\u021B\u0103 de \u021Binta de ~${n0(energy.target)} kcal (limita de jos ~${n0(energy.low)}); variante: ${options}`);
   }
-  const costKnown = meals.reduce((n2, m) => n2 + m.costKnown, 0);
-  const costComplete = meals.every((m) => m.cost != null);
-  const missingP = [...new Set(meals.flatMap((m) => m.missingPrices))];
+  const costKnown = Math.round(meals.reduce((n2, m) => n2 + m.costKnown, 0) * 100) / 100;
+  const costComplete = meals.every((m) => m.cost != null) && fuel.length === 0;
+  const missingP = [.../* @__PURE__ */ new Set([...meals.flatMap((m) => m.missingPrices), ...fuel.length ? ["produsele din efort (geluri, b\u0103utur\u0103)"] : []])];
   let budgetStatus = null;
   let minKnown = null;
   let conflict = null;
@@ -3676,10 +3744,11 @@ function nutritionDay(input) {
   if (energy && proteinT) {
     const t = macroTargets(energy.target, a.weightKg, proteinT.gPerKg, load, fuelG);
     const c2 = t.carbs;
+    const mealCarbs = carbsTotal != null ? `carbohidra\u021Bii meselor ~${n0(carbsTotal + fuelG)} g (mese ~${n0(carbsTotal)} + efort ${fuelG} g)${carbsTotal + fuelG < c2.g[0] ? ", sub interval" : carbsTotal + fuelG > c2.g[1] ? ", peste interval" : ", \xEEn interval"}; gr\u0103simi ~${n0(fatTotal ?? 0)} g` : `carbohidra\u021Bii \u0219i gr\u0103simile meselor nu pot fi num\u0103rate \xEEn grame: lipsesc valorile din catalog pentru ${unknownFoods.slice(0, 6).join(", ")}${unknownFoods.length > 6 ? ` (+${unknownFoods.length - 6})` : ""}; mesele urmeaz\u0103 \u021Binta prin alegerea re\u021Betelor \u0219i por\u021Bii`;
     macros = {
       ...t,
       carbFoodShare: kcal ? carbFoodKcal / kcal : 0,
-      explain: `azi e ${LOAD_WORD[load]}: carbohidra\u021Bi ${c2.gPerKg[0]}\u2013${c2.gPerKg[1]} g/kg (~${n0(c2.g[0])}\u2013${n0(c2.g[1])} g${fuelG ? `, din care ~${fuelG} g \xEEn efort` : ""}; ${c2.source})${c2.capped ? ", limita\u021Bi de energia zilei" : ""}; proteine ~${n0(t.protein.g)} g (${t.protein.gPerKg.toLocaleString("ro-RO")} g/kg); gr\u0103simi ~${n0(t.fat.g[0])}\u2013${n0(t.fat.g[1])} g (${t.fat.source}). Carbohidra\u021Bii din mese nu sunt \xEEnc\u0103 num\u0103ra\u021Bi \xEEn grame (tabelul are doar energie \u0219i proteine): mesele urmeaz\u0103 \u021Binta prin alegerea re\u021Betelor \u0219i por\u021Bii`
+      explain: `azi e ${LOAD_WORD[load]}: carbohidra\u021Bi ${c2.gPerKg[0]}\u2013${c2.gPerKg[1]} g/kg (~${n0(c2.g[0])}\u2013${n0(c2.g[1])} g${fuelG ? `, din care ~${fuelG} g \xEEn efort` : ""}; ${c2.source})${c2.capped ? ", limita\u021Bi de energia zilei" : ""}; proteine ~${n0(t.protein.g)} g (${t.protein.gPerKg.toLocaleString("ro-RO")} g/kg); gr\u0103simi ~${n0(t.fat.g[0])}\u2013${n0(t.fat.g[1])} g (${t.fat.source}). ${mealCarbs.charAt(0).toUpperCase()}${mealCarbs.slice(1)}`
     };
   }
   const promised = prefs.meals;
@@ -3691,7 +3760,14 @@ function nutritionDay(input) {
     protein: proteinT ? { target: Math.round(proteinT.target), actual: Math.round(protein), gap: Math.round(proteinT.target - protein) } : null,
     allergens: meals.filter((m) => !eligible(m.recipe, prefs)).map((m) => `${m.recipe.id}: ${ineligibleReason(m.recipe, prefs)}`),
     budget: { limit: prefs.budget, costKnown, complete: costComplete, status: budgetStatus, minKnown, conflict },
-    meals: { promised, main: baseMeals, extra: meals.length - baseMeals, slots }
+    meals: { promised, main: baseMeals, extra: meals.length - baseMeals, slots },
+    macros: {
+      status: carbsTotal != null && fatTotal != null ? "complet" : "incomplet",
+      carbs: macros && carbsTotal != null ? { actual: Math.round(carbsTotal + fuelG), target: [Math.round(macros.carbs.g[0]), Math.round(macros.carbs.g[1])], inRange: carbsTotal + fuelG >= macros.carbs.g[0] && carbsTotal + fuelG <= macros.carbs.g[1] } : null,
+      fat: macros && fatTotal != null ? { actual: Math.round(fatTotal), target: [Math.round(macros.fat.g[0]), Math.round(macros.fat.g[1])], inRange: fatTotal >= macros.fat.g[0] - 1 && fatTotal <= macros.fat.g[1] + 1 } : null,
+      unknownFoods
+    },
+    consumed: { meals: eatenSlots.length, kcal: Math.round(eatenKcal), protein: Math.round(eatenProtein), partial: eatenSlots.length > 0 && eatenSlots.length < meals.length }
   };
   return {
     date: input.date,
@@ -3705,7 +3781,7 @@ function nutritionDay(input) {
     fuel,
     fuelNotes,
     meals,
-    totals: { kcal, dayKcal, protein, cost: costComplete ? costKnown : null, costKnown, costComplete },
+    totals: { kcal, dayKcal, protein, carbs: carbsTotal, fat: fatTotal, cost: costComplete ? costKnown : null, costKnown, costComplete },
     budgetNote,
     check,
     supplements,
@@ -3715,7 +3791,14 @@ function nutritionDay(input) {
     warnings
   };
 }
-var BASE_PAL, MET, ENERGY_MARGIN, WEIGHT_STALE_DAYS, FUEL_WINDOW_GAP_MIN, FAT_MIN_PCT, DEFAULT_PREFS, SLOT_LABEL, SPORT_WORD2, r12, n0, sessionLabel, hard, fuelMinutes, CARB_G_PER_KG, LOAD_WORD, fold, eligible, kindOf, ROT_COL, EPOCH, dayIndex, historyFrom, gcd, dayNum, KIND_POOL, CARB_FOODS, IRON_FOODS, SLOT_SHARE, ENDURANCE, MAIN, mainOf, CARB_SHARE, REF_KCAL, refKcal, slotAt;
+function consumedTotals(log, date) {
+  const snaps = [...consumedSnapshots(log, date).values()];
+  if (!snaps.length) return null;
+  const t = snaps.map((sn) => itemTotals(sn.items));
+  const sum = (f) => t.reduce((n2, x) => n2 == null || f(x) == null ? null : n2 + f(x), 0);
+  return { meals: snaps.length, kcal: Math.round(t.reduce((n2, x) => n2 + x.kcal, 0)), protein: Math.round(t.reduce((n2, x) => n2 + x.protein, 0)), carbs: sum((x) => x.carbs), fat: sum((x) => x.fat) };
+}
+var BASE_PAL, MET, ENERGY_MARGIN, WEIGHT_STALE_DAYS, FUEL_WINDOW_GAP_MIN, FAT_MIN_PCT, DEFAULT_PREFS, SLOT_LABEL, SPORT_WORD2, r12, hhmm, n0, sessionLabel, hard, fuelMinutes, CARB_G_PER_KG, LOAD_WORD, fold, eligible, kindOf, ROT_COL, EPOCH, dayIndex, historyFrom, gcd, dayNum, KIND_POOL, CARB_FOODS, IRON_FOODS, SLOT_SHARE, ENDURANCE, MAIN, mainOf, CARB_SHARE, REF_KCAL, refKcal, slotAt, DEFAULT_MEAL_TIMES;
 var init_engine = __esm({
   "src/nutrition/engine.ts"() {
     "use strict";
@@ -3740,6 +3823,7 @@ var init_engine = __esm({
     SLOT_LABEL = { mic_dejun: "Mic dejun", pranz: "Pr\xE2nz", cina: "Cin\u0103", gustare: "Gustare" };
     SPORT_WORD2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "sal\u0103", mers: "mers" };
     r12 = (x) => Math.round(x * 10) / 10;
+    hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
     n0 = (x) => Math.round(x).toLocaleString("ro-RO");
     sessionLabel = (s) => `${SPORT_WORD2[s.sport] ?? s.sport} ${s.minutes} min`;
     hard = (s) => !!s.key || s.type === "calitate" || s.type === "brick";
@@ -3779,6 +3863,7 @@ var init_engine = __esm({
       return REF_KCAL.get(id);
     };
     slotAt = (min) => min < 11 * 60 ? "mic_dejun" : min < 16 * 60 ? "pranz" : "cina";
+    DEFAULT_MEAL_TIMES = { mic_dejun: 7 * 60 + 30, pranz: 13 * 60, cina: 19 * 60 + 30, gustare: 16 * 60 + 30 };
   }
 });
 
@@ -10352,11 +10437,22 @@ function verifyResponse(resp, packet) {
     else if (value != null) avertismente.push(`\u201Elipseste\u201D cu c\xE2mp care are valoare: ${f}`);
     else lipseste.push(f);
   }
+  let mese = [];
+  if (resp.agent === "nutritionist") {
+    const nut = packet.nutritie_azi;
+    const pool = new Set(nut ? numbersIn(JSON.stringify(nut)) : []);
+    const mealCount = nut?.mese?.length ?? 3;
+    for (const m of (resp.mese ?? []).slice(0, Math.max(1, mealCount))) {
+      const foreign = numbersIn(m).filter((n2) => ![...pool].some((v) => Math.abs(v - n2) < 0.051));
+      if (foreign.length) avertismente.push(`mas\u0103 scris\u0103 de model cu cifre care nu sunt \xEEn nutritie_azi (${foreign.join(", ")}): aruncat\u0103`);
+      else mese.push(m);
+    }
+  }
   return {
     agent: resp.agent,
     verdict: resp.verdict,
     ce: items,
-    mese: resp.agent === "nutritionist" ? (resp.mese ?? []).slice(0, 3) : [],
+    mese,
     pentru_viitor: typeof resp.pentru_viitor === "string" ? resp.pentru_viitor.split("\n").find((l) => l.trim()) ?? "-" : "-",
     lipseste,
     avertismente,
@@ -11804,7 +11900,11 @@ async function collect(userId, today, event) {
   const prefs = await loadPrefs(userId).catch(() => null);
   const program = (forms.intake?.program ?? []).filter((x) => x.day === weekday(today)).map((x) => x.startMin).sort((a, b) => a - b);
   const age = user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null;
-  const nutritionRestriction = activeRestriction({ today, morning: forms.morning, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) })?.verdict ?? null;
+  const healthRestriction = activeRestriction({ today, morning: forms.morning, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) })?.verdict ?? null;
+  const readyToday = await one("readiness_daily", { user_id: `eq.${userId}`, date: `eq.${today}` }, { select: "verdict" }).catch(() => null);
+  const SEV = { verde: 0, galben: 1, portocaliu: 1, rosu: 2, stop: 3 };
+  const readyVerdict = readyToday?.verdict === "portocaliu" ? "galben" : readyToday?.verdict ?? null;
+  const nutritionRestriction = [healthRestriction, readyVerdict].filter((v) => !!v && (SEV[v] ?? 0) > 0).sort((a, b) => (SEV[b] ?? 0) - (SEV[a] ?? 0))[0] ?? null;
   const tiredRows = await select("workout_outcomes", { user_id: `eq.${userId}`, motiv: "eq.oboseala", reported_at: `gte.${addDays(today, -7)}` }, { select: "workout_id", limit: 10 }).catch(() => []);
   const nutPrefs = { ...DEFAULT_PREFS, ...prefs?.nutritie ?? {} };
   const mealsToday = nutritionDay({
@@ -11820,12 +11920,14 @@ async function collect(userId, today, event) {
     indications: labIndications((labs?.in_afara_intervalului ?? []).map((x) => ({ nume: x.nume, sub: x.directie === "sub" })), nutPrefs.indications),
     // Auditul v93, A79: aceleași blocaje ca ecranul (restricția activă, oboseala repetată, sarcina, minorul), ca AI-ul să
     // nu vadă deficit într-o zi roșie sau galbenă.
-    blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: forms.intake?.fitness?.sarcina === "da" || forms.intake?.sarcina === "da", minor: age != null && age < 18 }
+    blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: forms.intake?.fitness?.sarcina === "da" || forms.intake?.sarcina === "da", lactation: forms.intake?.fitness?.sarcina === "alaptez" || forms.intake?.sarcina === "alaptez", minor: age != null && age < 18 }
   });
+  const eatenYesterday = consumedTotals(nutPrefs.log, addDays(today, -1));
   const walkLoad = walkGoal ? await loadWalkRows(userId, addDays(weekStart(today), -63)).catch(() => null) : null;
   const input = {
     walking: walkLoad && prefs ? walkingView({ rows: walkLoad.rows, tz: user.tz || "Europe/Bucharest", today, profile: prefs.mers, plan: planRes.workouts.filter((w) => w.status !== "sters"), schemaReady: walkLoad.schemaReady }) : null,
     mealsToday,
+    nutrition: eatenYesterday ? [{ date: addDays(today, -1), kcal: eatenYesterday.kcal, carbohidrati_g: eatenYesterday.carbs == null ? null : Math.round(eatenYesterday.carbs), proteine_g: eatenYesterday.protein, apa_l: null }] : void 0,
     others,
     today,
     event,
@@ -14400,7 +14502,9 @@ async function handler10(req, res) {
         const c2 = body.consumat;
         if (!isDate3(c2.date) || !SLOTS.includes(String(c2.slot))) throw new HttpError(400, "consumat gre\u0219it");
         if (String(c2.date) > today || String(c2.date) < addDays(today, -7)) throw new HttpError(400, "doar ultimele 7 zile");
-        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c2.date), String(c2.slot), c2.da === true ? true : c2.da === false ? false : null)) } });
+        const items = Array.isArray(c2.items) ? c2.items.filter((i) => FOODS[String(i.food)] && Number.isFinite(Number(i.qty)) && Number(i.qty) >= 1 && Number(i.qty) <= 2e3).slice(0, 20).map((i) => ({ food: String(i.food), qty: Math.round(Number(i.qty)) })) : [];
+        const snapshot2 = c2.da === true && items.length && RECIPE[String(c2.recipeId)] ? { recipeId: String(c2.recipeId), items } : null;
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c2.date), String(c2.slot), c2.da === true ? true : c2.da === false ? false : null, (/* @__PURE__ */ new Date()).toISOString(), snapshot2)) } });
         json(res, 200, { ok: true });
         return;
       }
@@ -14429,9 +14533,9 @@ async function handler10(req, res) {
       const meals = [1, 2, 3, 4].includes(mn) ? mn : 4;
       const cm = Number(body.currentMeals);
       const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
-      const mealTimes = Array.isArray(body.mealTimes) ? body.mealTimes.map(Number).filter((t) => Number.isInteger(t) && t >= 0 && t < 24 * 60).slice(0, 2) : cur.mealTimes ?? null;
+      const mealTimes = Array.isArray(body.mealTimes) ? body.mealTimes.map(Number).filter((t) => Number.isInteger(t) && t >= 0 && t < 24 * 60).slice(0, meals) : cur.mealTimes ?? null;
       const ind = body.indications ?? cur.indications ?? {};
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, mealTimes: meals <= 2 ? mealTimes : null, snacksOk: body.snacksOk !== false, proteinPowder: body.proteinPowder === true, indications: { iron: ind.iron === true, vitaminD: ind.vitaminD === true } } });
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, mealTimes: mealTimes && mealTimes.length ? mealTimes.slice(0, meals) : null, snacksOk: body.snacksOk !== false, proteinPowder: body.proteinPowder === true, indications: { iron: ind.iron === true, vitaminD: ind.vitaminD === true } } });
       json(res, 200, { ok: true });
       return;
     }

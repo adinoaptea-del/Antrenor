@@ -89,7 +89,7 @@ export function nutritionInputFromMe(me: Me, date = me.today): NutritionInput {
     sessions,
     prefs,
     indications: labIndications(labs, prefs.indications),
-    blockers: { restriction: date === me.today && (lvl === 'stop' || lvl === 'rosu' || lvl === 'galben') ? lvl : null, fatigue: tired, pregnancy: intake.fitness?.sarcina === 'da' || intake.sarcina === 'da', minor: age != null && age < 18 },
+    blockers: { restriction: date === me.today && (lvl === 'stop' || lvl === 'rosu' || lvl === 'galben') ? lvl : null, fatigue: tired, pregnancy: intake.fitness?.sarcina === 'da' || intake.sarcina === 'da', lactation: intake.fitness?.sarcina === 'alaptez' || intake.sarcina === 'alaptez', minor: age != null && age < 18 },
   };
 }
 

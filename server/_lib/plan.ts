@@ -53,7 +53,7 @@ export interface IntakeLike {
   /** Doar la fitness (femei): nivelul, zilele, minutele, accesul, mișcarea de acum și contextul opțional. */
   fitness?: FitnessIntake;
   /** Sarcină sau primul an după naștere (orice obiectiv, femei; opțional). Auditul v93, A56. */
-  sarcina?: 'nu' | 'da' | 'nu_spun' | null;
+  sarcina?: 'nu' | 'da' | 'alaptez' | 'nu_spun' | null;
   /** Doar la mers: ținta de la început, cât merge acum fără oprire, mersul alert. */
   mers?: { tinta?: number | null; capacitate?: number | null; alert?: 'da' | 'nu' | 'nu_stiu' | null };
 }

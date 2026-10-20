@@ -17,8 +17,14 @@ export interface MealLogEntry {
   replacedBy: string | null;
   /** true = mâncat, false = nemâncat, null = nedeclarat. */
   consumed: boolean | null;
+  /** Cantitățile din momentul „Am mâncat” (specificația de nutriție, ch. 18): masa mâncată nu se mai recalculează. */
+  snapshot?: MealSnapshot | null;
   /** Ultima schimbare (ISO). */
   at: string;
+}
+export interface MealSnapshot {
+  recipeId: string;
+  items: { food: string; qty: number }[];
 }
 export type MealLog = Record<string, MealLogEntry[]>;
 export type MealState = 'suggested' | 'accepted' | 'replaced' | 'consumed';
@@ -66,13 +72,20 @@ export function recordChoice(log: MealLog, date: string, slot: Slot, recipeId: s
   return { ...log, [date]: cur };
 }
 
-/** „Am mâncat” / „N-am mâncat” / null = retrage declarația. */
-export function recordConsumed(log: MealLog, date: string, slot: Slot, consumed: boolean | null, at = new Date().toISOString()): MealLog {
+/** „Am mâncat” (cu instantaneul cantităților) / „N-am mâncat” / null = retrage declarația (și instantaneul). */
+export function recordConsumed(log: MealLog, date: string, slot: Slot, consumed: boolean | null, at = new Date().toISOString(), snapshot: MealSnapshot | null = null): MealLog {
   const cur = [...(log[date] ?? [])];
   const k = cur.findIndex((e) => e.slot === slot);
   if (k < 0) return log;
-  cur[k] = { ...cur[k]!, consumed, at };
+  cur[k] = { ...cur[k]!, consumed, at, snapshot: consumed === true ? snapshot : null };
   return { ...log, [date]: cur };
+}
+
+/** Mesele mâncate azi care au instantaneu: slot → cantitățile declarate (fără instantaneu, masa se recalculează ca până acum). */
+export function consumedSnapshots(log: MealLog | undefined, date: string): Map<Slot, MealSnapshot> {
+  const out = new Map<Slot, MealSnapshot>();
+  for (const e of log?.[date] ?? []) if (e.consumed === true && e.snapshot?.items?.length) out.set(e.slot, e.snapshot);
+  return out;
 }
 
 /** Rețetele finale ale zilei din jurnal (pentru varietate), sau null dacă ziua nu e în jurnal. */

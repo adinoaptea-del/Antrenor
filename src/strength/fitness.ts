@@ -290,7 +290,8 @@ export interface FitnessIntake {
   minute?: number | null;
   acces?: 'sala' | 'acasa' | null;
   miscare?: 'sedentara' | 'plimbari' | 'activa' | null;
-  sarcina?: 'nu' | 'da' | 'nu_spun' | null;
+  /** „alaptez” = alăptare (distinct de sarcină/postpartum, ch. 09 din specificația de nutriție): nu blochează programul, blochează deficitul. */
+  sarcina?: 'nu' | 'da' | 'alaptez' | 'nu_spun' | null;
 }
 
 /**

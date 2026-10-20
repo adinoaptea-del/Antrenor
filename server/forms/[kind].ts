@@ -34,7 +34,7 @@ import { walkForm } from '../_lib/walk-forms.js';
 import type { WalkProfile } from '../../src/walking/plan.js';
 import { shortenWorkout } from '../../src/calendar/validate.js';
 import { outcomeFeedback, type Outcome, type OutcomeMotiv } from '../../src/calendar/outcomes.js';
-import { ALL_ALLERGENS } from '../../src/nutrition/foods.js';
+import { ALL_ALLERGENS, FOODS } from '../../src/nutrition/foods.js';
 import { RECIPE, type Slot } from '../../src/nutrition/recipes.js';
 import { LOG_KEEP_DAYS, pruneLog, recordChoice, recordConsumed, recordSuggested, type MealLog } from '../../src/nutrition/log.js';
 
@@ -561,10 +561,14 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         return;
       }
       if (body.consumat) {
-        const c = body.consumat as { date?: string; slot?: string; da?: boolean | null };
+        // „Am mâncat” vine cu instantaneul cantităților (rețeta și gramajele de pe ecran în acel moment): masa mâncată nu
+        // se mai recalculează (ch. 18). Instantaneul se validează: alimente din catalog, cantități 1–2000.
+        const c = body.consumat as { date?: string; slot?: string; da?: boolean | null; recipeId?: string; items?: { food?: string; qty?: number }[] };
         if (!isDate(c.date) || !SLOTS.includes(String(c.slot))) throw new HttpError(400, 'consumat greșit');
         if (String(c.date) > today || String(c.date) < addDays(today, -7)) throw new HttpError(400, 'doar ultimele 7 zile');
-        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c.date), String(c.slot) as Slot, c.da === true ? true : c.da === false ? false : null)) } });
+        const items = Array.isArray(c.items) ? c.items.filter((i) => FOODS[String(i.food)] && Number.isFinite(Number(i.qty)) && Number(i.qty) >= 1 && Number(i.qty) <= 2000).slice(0, 20).map((i) => ({ food: String(i.food), qty: Math.round(Number(i.qty)) })) : [];
+        const snapshot = c.da === true && items.length && RECIPE[String(c.recipeId)] ? { recipeId: String(c.recipeId), items } : null;
+        await savePrefs(u.id, { ...prefs, nutritie: { ...cur, log: keepLog(recordConsumed(cur.log ?? {}, String(c.date), String(c.slot) as Slot, c.da === true ? true : c.da === false ? false : null, new Date().toISOString(), snapshot)) } });
         json(res, 200, { ok: true });
         return;
       }
@@ -594,10 +598,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const meals = ([1, 2, 3, 4].includes(mn) ? mn : 4) as 1 | 2 | 3 | 4;
       const cm = Number(body.currentMeals);
       const currentMeals = [1, 2, 3, 4, 5].includes(cm) ? cm : null;
-      // Orele aproximative ale meselor (minute de la miezul nopții), doar pentru 1–2 mese (A81).
-      const mealTimes = Array.isArray(body.mealTimes) ? (body.mealTimes as unknown[]).map(Number).filter((t) => Number.isInteger(t) && t >= 0 && t < 24 * 60).slice(0, 2) : (cur.mealTimes ?? null);
+      // Orele aproximative ale meselor (minute de la miezul nopții), câte una pe masă (la 1–2 decid slotul, A81; la 3–4
+      // leagă mesele de orele ședințelor). Mai puține decât mesele = se folosesc orele implicite, spuse ca atare.
+      const mealTimes = Array.isArray(body.mealTimes) ? (body.mealTimes as unknown[]).map(Number).filter((t) => Number.isInteger(t) && t >= 0 && t < 24 * 60).slice(0, meals) : (cur.mealTimes ?? null);
       const ind = (body.indications ?? cur.indications ?? {}) as { iron?: unknown; vitaminD?: unknown };
-      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, mealTimes: meals <= 2 ? mealTimes : null, snacksOk: body.snacksOk !== false, proteinPowder: body.proteinPowder === true, indications: { iron: ind.iron === true, vitaminD: ind.vitaminD === true } } });
+      await savePrefs(u.id, { ...prefs, nutritie: { ...cur, diet, exclude: exclude as never, other, allergiesConfirmed: body.allergiesConfirmed === true, budget, meals, currentMeals, mealTimes: mealTimes && mealTimes.length ? mealTimes.slice(0, meals) : null, snacksOk: body.snacksOk !== false, proteinPowder: body.proteinPowder === true, indications: { iron: ind.iron === true, vitaminD: ind.vitaminD === true } } });
       json(res, 200, { ok: true });
       return;
     }

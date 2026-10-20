@@ -228,11 +228,24 @@ export function verifyResponse(resp: SpecialistResponse, packet: unknown): Verif
     else lipseste.push(f);
   }
 
+  // Mesele scrise de nutriționist (specificația de nutriție, ch. 20): fiecare număr din ele trebuie să existe în
+  // `nutritie_azi` (gramaje, kcal, proteine, ținte, efort); o masă cu cifre străine se aruncă. Numărul lor = mesele zilei.
+  let mese: string[] = [];
+  if (resp.agent === 'nutritionist') {
+    const nut = (packet as { nutritie_azi?: unknown }).nutritie_azi;
+    const pool = new Set<number>(nut ? numbersIn(JSON.stringify(nut)) : []);
+    const mealCount = (nut as { mese?: unknown[] } | null | undefined)?.mese?.length ?? 3;
+    for (const m of (resp.mese ?? []).slice(0, Math.max(1, mealCount))) {
+      const foreign = numbersIn(m).filter((n) => ![...pool].some((v) => Math.abs(v - n) < 0.051));
+      if (foreign.length) avertismente.push(`masă scrisă de model cu cifre care nu sunt în nutritie_azi (${foreign.join(', ')}): aruncată`);
+      else mese.push(m);
+    }
+  }
   return {
     agent: resp.agent,
     verdict: resp.verdict,
     ce: items,
-    mese: resp.agent === 'nutritionist' ? (resp.mese ?? []).slice(0, 3) : [],
+    mese,
     pentru_viitor: typeof resp.pentru_viitor === 'string' ? resp.pentru_viitor.split('\n').find((l) => l.trim()) ?? '-' : '-',
     lipseste,
     avertismente,

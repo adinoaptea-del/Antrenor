@@ -10,7 +10,7 @@ import type { CollectorInput, EveningForm, LabsInput, MorningForm, SourceActivit
 import type { IntensityAllowed, Phase, PlannedWorkout, Sport, Zone } from '../../src/types.js';
 import { addDays, labsExpired, weekStart, weekday } from '../../src/util/dates.js';
 import { loadPrefs } from './prefs.js';
-import { DEFAULT_PREFS, nutritionDay } from '../../src/nutrition/engine.js';
+import { DEFAULT_PREFS, consumedTotals, nutritionDay } from '../../src/nutrition/engine.js';
 import { daySessions, labIndications } from '../../src/nutrition/from-me.js';
 import type { OtherActivity } from '../../src/collector/other.js';
 import { targetSecFromIntake } from '../../src/goals/run-target.js';
@@ -356,7 +356,13 @@ export async function collect(userId: string, today: string, event: CollectorInp
   const prefs = await loadPrefs(userId).catch(() => null);
   const program = ((forms.intake?.program as { day: number; startMin: number }[] | undefined) ?? []).filter((x) => x.day === weekday(today)).map((x) => x.startMin).sort((a, b) => a - b);
   const age = user.birth_year ? Number(today.slice(0, 4)) - user.birth_year : null;
-  const nutritionRestriction = activeRestriction({ today, morning: forms.morning as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never })?.verdict ?? null;
+  // Același blocaj ca pe ecran (from-me.ts: culoarea zilei): restricția de sănătate SAU verdictul de recuperare de azi
+  // (galben/roșu/stop), cel mai sever — altfel AI-ul vedea deficit într-o zi galbenă din recuperare (ch. 09, S06).
+  const healthRestriction = activeRestriction({ today, morning: forms.morning as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never })?.verdict ?? null;
+  const readyToday = await one<{ verdict: string }>('readiness_daily', { user_id: `eq.${userId}`, date: `eq.${today}` }, { select: 'verdict' }).catch(() => null);
+  const SEV: Record<string, number> = { verde: 0, galben: 1, portocaliu: 1, rosu: 2, stop: 3 };
+  const readyVerdict = readyToday?.verdict === 'portocaliu' ? 'galben' : readyToday?.verdict ?? null;
+  const nutritionRestriction = ([healthRestriction, readyVerdict].filter((v): v is string => !!v && (SEV[v] ?? 0) > 0).sort((a, b) => (SEV[b] ?? 0) - (SEV[a] ?? 0))[0] ?? null) as 'stop' | 'rosu' | 'galben' | null;
   const tiredRows = await select<{ workout_id: string }>('workout_outcomes', { user_id: `eq.${userId}`, motiv: 'eq.oboseala', reported_at: `gte.${addDays(today, -7)}` }, { select: 'workout_id', limit: 10 }).catch(() => []);
   const nutPrefs = { ...DEFAULT_PREFS, ...(prefs?.nutritie ?? {}) };
   const mealsToday = nutritionDay({
@@ -372,12 +378,15 @@ export async function collect(userId: string, today: string, event: CollectorInp
     indications: labIndications((labs?.in_afara_intervalului ?? []).map((x) => ({ nume: x.nume, sub: x.directie === 'sub' })), nutPrefs.indications),
     // Auditul v93, A79: aceleași blocaje ca ecranul (restricția activă, oboseala repetată, sarcina, minorul), ca AI-ul să
     // nu vadă deficit într-o zi roșie sau galbenă.
-    blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da' || (forms.intake as { sarcina?: string } | null)?.sarcina === 'da', minor: age != null && age < 18 },
+    blockers: { restriction: nutritionRestriction, fatigue: tiredRows.length >= 2, pregnancy: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'da' || (forms.intake as { sarcina?: string } | null)?.sarcina === 'da', lactation: (forms.intake?.fitness as { sarcina?: string } | undefined)?.sarcina === 'alaptez' || (forms.intake as { sarcina?: string } | null)?.sarcina === 'alaptez', minor: age != null && age < 18 },
   });
+  // Ce s-a mâncat ieri, declarat (jurnal + instantanee): pentru AI, totalurile cunoscute; nedeclarat = necunoscut.
+  const eatenYesterday = consumedTotals(nutPrefs.log, addDays(today, -1));
   const walkLoad = walkGoal ? await loadWalkRows(userId, addDays(weekStart(today), -63)).catch(() => null) : null;
   const input: CollectorInput = {
     walking: walkLoad && prefs ? walkingView({ rows: walkLoad.rows, tz: user.tz || 'Europe/Bucharest', today, profile: prefs.mers!, plan: planRes.workouts.filter((w) => w.status !== 'sters'), schemaReady: walkLoad.schemaReady }) : null,
     mealsToday,
+    nutrition: eatenYesterday ? [{ date: addDays(today, -1), kcal: eatenYesterday.kcal, carbohidrati_g: eatenYesterday.carbs == null ? null : Math.round(eatenYesterday.carbs), proteine_g: eatenYesterday.protein, apa_l: null }] : undefined,
     others,
     today,
     event,

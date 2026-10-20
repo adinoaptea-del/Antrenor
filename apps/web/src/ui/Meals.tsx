@@ -12,6 +12,8 @@ import { isNetworkError } from '../data/api';
 const ALLERGENS: Allergen[] = ALL_ALLERGENS;
 const n0 = (x: number) => Math.round(x).toLocaleString('ro-RO');
 const ron = (x: number) => `${x.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON`;
+/** Orele sugerate în câmpurile goale (orele implicite ale produsului, în ordinea meselor). */
+const TIME_HINT: Record<number, string[]> = { 1: ['13:00'], 2: ['12:00', '19:00'], 3: ['07:30', '13:00', '19:30'], 4: ['07:30', '13:00', '16:30', '19:30'] };
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const toMin = (s: string) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
@@ -76,7 +78,8 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
     setBusy(true);
     setMsg(null);
     try {
-      await submitForm('nutritie', { consumat: { date: me.today, slot: m.slot, da } });
+      // Cu instantaneul cantităților de pe ecran: masa mâncată rămâne așa cum a fost mâncată, nu se recalculează.
+      await submitForm('nutritie', { consumat: { date: me.today, slot: m.slot, da, recipeId: m.recipe.id, items: m.items.map((it) => ({ food: it.food, qty: it.qty })) } });
     } catch (e) {
       setMsg(isNetworkError(e) ? 'Fără semnal: încearcă din nou.' : e instanceof Error ? e.message : String(e));
     } finally {
@@ -124,6 +127,16 @@ export function Meals({ onOpen }: { onOpen: (s: string) => void }) {
           <div className="tiny warn-line" style={{ marginTop: 4 }}>
             Diferența rămasă față de țintă: {c.energy.gap > 0 ? `lipsesc ~${n0(c.energy.gap)} kcal` : `~${n0(-c.energy.gap)} kcal peste`}
             {c.protein && c.protein.gap > 0 ? ` · proteine: lipsesc ~${n0(c.protein.gap)} g` : ''}
+          </div>
+        )}
+        {c.consumed.meals > 0 && (
+          <div className="tiny" style={{ marginTop: 4 }}>
+            Mâncat declarat: {c.consumed.meals} {c.consumed.meals === 1 ? 'masă' : 'mese'}, ~{n0(c.consumed.kcal)} kcal, ~{n0(c.consumed.protein)} g proteine{c.consumed.partial ? ' (consum înregistrat parțial: restul meselor nu sunt declarate)' : ''}. Mesele rămase sunt calculate pe ce mai lipsește.
+          </div>
+        )}
+        {mac && (
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            {c.macros.status === 'complet' && c.macros.carbs ? `Carbohidrați în mese + efort: ~${n0(c.macros.carbs.actual)} g din ${n0(c.macros.carbs.target[0])}–${n0(c.macros.carbs.target[1])} g${c.macros.carbs.inRange ? '' : c.macros.carbs.actual < c.macros.carbs.target[0] ? ' (sub)' : ' (peste)'}` : `Carbohidrații și grăsimile meselor nu sunt numărate în grame: catalogul n-are încă valorile pentru ${c.macros.unknownFoods.length} ${c.macros.unknownFoods.length === 1 ? 'aliment' : 'alimente'} din meniu`}
           </div>
         )}
         {day.budgetNote && <div className={`tiny ${c.budget.status === 'peste' ? 'warn-line' : 'muted'}`} style={{ marginTop: 4 }}>{day.budgetNote}</div>}
@@ -260,10 +273,12 @@ function MealCard({ m, open, onToggle, swapping, onSwap, alts, chosen, log, onCh
         </MealOpen>
       )}
       <div className="wk-btns" style={{ marginTop: 8 }}>
-        <button className="pill" onClick={onSwap} disabled={busy} aria-expanded={swapping}>
-          Schimbă
-        </button>
-        {chosen && (
+        {!m.consumed && (
+          <button className="pill" onClick={onSwap} disabled={busy} aria-expanded={swapping}>
+            Schimbă
+          </button>
+        )}
+        {chosen && !m.consumed && (
           <button className="pill" onClick={() => onChoose(null)} disabled={busy}>
             Înapoi la propunere
           </button>
@@ -305,7 +320,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
   const [confirmed, setConfirmed] = useState(cur.allergiesConfirmed);
   const [budget, setBudget] = useState(cur.budget != null ? String(cur.budget) : '');
   const [meals, setMeals] = useState<1 | 2 | 3 | 4>(cur.meals);
-  const [times, setTimes] = useState<string[]>([0, 1].map((i) => (cur.mealTimes?.[i] != null ? hhmm(cur.mealTimes[i]!) : '')));
+  const [times, setTimes] = useState<string[]>([0, 1, 2, 3].map((i) => (cur.mealTimes?.[i] != null ? hhmm(cur.mealTimes[i]!) : '')));
   const [currentMeals, setCurrentMeals] = useState<number | null>(cur.currentMeals ?? null);
   const [snacksOk, setSnacksOk] = useState(cur.snacksOk !== false);
   const [powder, setPowder] = useState(cur.proteinPowder === true);
@@ -314,9 +329,14 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const save = async () => {
-    const mt = times.slice(0, meals <= 2 ? meals : 0).map(toMin);
+    const mt = times.slice(0, meals).map(toMin);
     if (mt.some((t, i) => t == null && times[i]!.trim() !== '')) {
       setErr('Ora mesei: scrie-o ca 13:00.');
+      return;
+    }
+    // Ori toate orele, ori niciuna: cu jumătate din ele nu știm care masă e la ce oră.
+    if (mt.some((t) => t != null) && mt.some((t) => t == null)) {
+      setErr(`Scrie ora pentru toate cele ${meals} mese sau pentru niciuna.`);
       return;
     }
     setBusy(true);
@@ -376,14 +396,12 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
           </button>
         ))}
       </div>
-      {meals <= 2 && (
-        <div className="small" style={{ marginTop: 8 }}>
-          La ce oră mănânci, aproximativ{' '}
-          {Array.from({ length: meals }, (_, i) => (
-            <input key={i} inputMode="numeric" placeholder={meals === 1 ? '13:00' : i === 0 ? '12:00' : '19:00'} value={times[i]} onChange={(e) => setTimes(times.map((t, k) => (k === i ? e.target.value : t)))} style={{ width: 60, marginLeft: 6 }} aria-label={`ora mesei ${i + 1}`} />
-          ))}
-        </div>
-      )}
+      <div className="small" style={{ marginTop: 8 }}>
+        La ce oră mănânci, aproximativ (opțional; leagă mesele de antrenament){' '}
+        {Array.from({ length: meals }, (_, i) => (
+          <input key={i} inputMode="numeric" placeholder={TIME_HINT[meals]![i]} value={times[i]} onChange={(e) => setTimes(times.map((t, k) => (k === i ? e.target.value : t)))} style={{ width: 60, marginLeft: 6 }} aria-label={`ora mesei ${i + 1}`} />
+        ))}
+      </div>
       <label className="small" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
         <input type="checkbox" checked={snacksOk} onChange={(e) => setSnacksOk(e.target.checked)} /> Accept o gustare înainte sau după antrenament, dacă mesele nu ajung (debifat = nicio gustare în plus)
       </label>

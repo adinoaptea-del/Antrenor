@@ -508,7 +508,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
           <>
             {walk || (fit && a.sex === 'm') ? null : fit ? (
               <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, nu pornim programul de slăbire: alegem varianta de întreținere, iar recomandările se fac cu medicul.">
-                <Chips value={fx.sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => setFx({ sarcina })} />
+                <Chips value={fx.sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'alaptez', label: 'Alăptez', sub: 'programul merge; fără deficit la mese' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => setFx({ sarcina })} />
               </Q>
             ) : (
               <Q title="Ai făcut un test de efort?" hint="Cu un test, zonele sunt ale tale; fără test, folosim zone estimate din vârstă, marcate provizorii. Dacă ai raportul, îl urci după chestionar din Profil → Date de bază → Test de efort.">
@@ -517,7 +517,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             )}
             {!walk && !fit && a.sex === 'f' && (
               <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, AIRON nu generează automat un plan de anduranță: volumul și revenirea se stabilesc cu medicul sau moașa.">
-                <Chips value={(a as { sarcina?: string | null }).sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => set({ sarcina } as never)} />
+                <Chips value={(a as { sarcina?: string | null }).sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'alaptez', label: 'Alăptez', sub: 'planul merge; fără deficit la mese' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => set({ sarcina } as never)} />
               </Q>
             )}
             <Q title={fit || walk ? 'Dureri, accidentări sau restricții de la medic' : 'Accidentări sau dureri în ultimul an'} hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">
