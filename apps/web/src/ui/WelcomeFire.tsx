@@ -11,6 +11,7 @@ import {
   fireShake,
   fireState,
   fireTextAlpha,
+  gatherWeight,
   filamentPoint,
   erosionTime,
   grainCount,
@@ -24,7 +25,7 @@ import {
   warpAmp,
   type FireState,
 } from '@core/motion/fireStorm.js';
-import { makeOrbModel, orbCount, orbLink, orbParticle, orbRegistry, orbVisibleN } from './orbRender';
+import { makeOrbModel, membranePoint, orbCount, orbLink, orbParticle, orbRadius, orbRegistry, orbVisibleN } from './orbRender';
 
 /**
  * Întâmpinarea „Fire → Furtună → Home” (specificația aprobată, 20.10.2026). Logica e în src/motion/fireStorm.ts.
@@ -94,6 +95,15 @@ export function WelcomeFire({
   const skipAt = useRef<number | null>(null);
   const done = useRef(false);
   const geo = useRef({ cx: 0, cy: 0, R: 100 });
+  /** Culoarea fundalului de Acasă (din body), ținta fundalului cosmic la predare (G08). */
+  const homeBg = useRef<[number, number, number]>((() => {
+    try {
+      const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(getComputedStyle(document.body).backgroundColor);
+      return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [14, 17, 18];
+    } catch {
+      return [14, 17, 18];
+    }
+  })());
   const prevFocus = useRef<Element | null>(typeof document !== 'undefined' ? document.activeElement : null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -256,9 +266,13 @@ export function WelcomeFire({
     const g = makeGrains(n, fils, zones);
     const N = orbCount();
     const pts = makeOrbModel(N);
+    // Auditul grafic G01: praful care nu devine particulă a bulei se așază pe curbele membranei (5 straturi, aceeași
+    // formă ca drawOrbBody) sau în volumul ei (~20%), nu pe un cerc perfect — altfel apar două orbite suprapuse.
     const ringAng = Float32Array.from({ length: n }, (_, i) => (i * 2.39996323) % (Math.PI * 2));
-    const ringR = Float32Array.from({ length: n }, (_, i) => 0.93 + hash(i, 41) * 0.1);
+    const ringLayer = Uint8Array.from({ length: n }, (_, i) => Math.floor(hash(i, 41) * 5));
+    const ringIn = Float32Array.from({ length: n }, (_, i) => (hash(i, 43) < 0.2 ? 0.62 + hash(i, 44) * 0.25 : 0));
     let arrived = new Uint8Array(N);
+    const bucket = new Uint8Array(n);
     let simOut = 0;
     let orbAtt = 0;
     let ringAtt = 0;
@@ -326,11 +340,18 @@ export function WelcomeFire({
       const wa = reduce ? 0 : warpAmp(out);
       const warp = (x: number, y: number): [number, number] => (wa ? [x + wa * Math.sin(y * 0.013 + ts * 3), y + wa * Math.cos(x * 0.011 - ts * 2.4)] : [x, y]);
       const live = (t + (out ?? 0)) / 1000;
+      // G08: lumina verde a fundalului se stinge în aceeași cronologie cu transferul bulei; baza trece spre culoarea Acasă.
+      const toHome = out == null ? 0 : smooth(span(out, [FIRE.exit.gather[0], FIRE.exit.interface[1]]));
+      if (base.current) {
+        const [r0, g0, b0] = [7, 16, 18];
+        const [r1, g1, b1] = homeBg.current;
+        base.current.style.background = `rgb(${Math.round(r0 + (r1 - r0) * toHome)},${Math.round(g0 + (g1 - g0) * toHome)},${Math.round(b0 + (b1 - b0) * toHome)})`;
+      }
       for (const nb of nebulae) {
         const [nx, ny] = warp(nb.x * VW, nb.y * VH);
         const rr = nb.r * Math.max(VW, VH);
         const gr = ctx.createRadialGradient(nx, ny, 0, nx, ny, rr);
-        gr.addColorStop(0, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},${nb.a})`);
+        gr.addColorStop(0, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},${(nb.a * (1 - toHome)).toFixed(4)})`);
         gr.addColorStop(1, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},0)`);
         ctx.fillStyle = gr;
         ctx.fillRect(nx - rr, ny - rr, rr * 2, rr * 2);
@@ -385,7 +406,8 @@ export function WelcomeFire({
               any = true;
             }
             if (!any) continue;
-            const a = pass === 0 ? 0.1 * A : 0.82 * A * (1 + 0.4 * fray);
+            // G04: capătul care se rupe se stinge spre praf (nu se aprinde): fără dublarea luminii fir + granulă.
+            const a = pass === 0 ? 0.1 * A * (1 - 0.5 * fray) : 0.82 * A * (1 - 0.45 * fray);
             ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${Math.min(1, a).toFixed(3)})`;
             ctx.lineWidth = pass === 0 ? f.width * 4.5 : f.width;
             ctx.lineCap = 'round';
@@ -432,9 +454,15 @@ export function WelcomeFire({
             const q = orbParticle(pts[i]!, tt, home.x, home.y, home.R, 1, homeProg);
             if (q) return [q.x, q.y];
           }
-          const a = ringAng[i]! + tt * 0.05;
-          const r = home.R * ringR[i]!;
-          return [home.x + Math.cos(a) * r, home.y + Math.sin(a) * r * 0.98];
+          const q = ringAng[i]!;
+          const inner = ringIn[i]!;
+          if (inner > 0) {
+            const x = Math.cos(q),
+              y = Math.sin(q) * 0.85;
+            const r = inner * orbRadius(x, y, 0.4, tt) * home.R;
+            return [home.x + x * r, home.y + y * r];
+          }
+          return membranePoint(q, ringLayer[i]!, tt, home.x, home.y, home.R);
         };
         const onAttach = (i: number) => {
           if (i < homeN && i < N) {
@@ -454,20 +482,32 @@ export function WelcomeFire({
 
         // Desenul prafului: granule fine, pe trei straturi de adâncime, aditiv.
         const handoff = out >= FIRE.exit.handoff;
-        const noHomeFade = home ? 1 : 1 - smooth(span(out, [FIRE.exit.gather[0], FIRE.exit.gather[1] - 600]));
+        // Fără salt la predare: ce n-a ajuns încă se stinge în ultimele 250 ms, în loc să dispară dintr-un cadru în altul.
+        const noHomeFade = (home ? 1 : 1 - smooth(span(out, [FIRE.exit.gather[0], FIRE.exit.gather[1] - 600]))) * (1 - smooth(span(out, [FIRE.exit.handoff - 250, FIRE.exit.handoff])));
         if (!handoff && noHomeFade > 0) {
-          for (let ci = 0; ci < 3; ci++) {
-            const col = COLS[ci]!;
-            for (let bk = 0; bk < 3; bk++) {
-              const a = [0.32, 0.55, 0.85][bk]! * noHomeFade;
-              ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${a.toFixed(3)})`;
-              for (let i = 0; i < n; i++) {
-                if (!g.born[i] || g.attached[i] || g.col[i] !== ci) continue;
-                const d = g.depth[i]!;
-                if (Math.min(2, Math.floor(d * 3)) !== bk) continue;
-                const sz = g.size[i]!;
-                ctx.fillRect(g.x[i]! - sz, g.y[i]! - sz, sz * 2, sz * 2);
-              }
+          // G04: același material ca bula — granule moi, expunere controlată. Lumina scade pe măsură ce praful se
+          // strânge (zona densă de lângă membrană nu se mai aprinde până la alb), iar bula preia materia la atașare.
+          // Un singur calcul pe granulă și cadru: găleata (culoare × adâncime × cât s-a strâns), apoi 27 de treceri ieftine.
+          for (let i = 0; i < n; i++) {
+            if (!g.born[i] || g.attached[i]) {
+              bucket[i] = 255;
+              continue;
+            }
+            const w = gatherWeight(out, g.stagger[i]!);
+            bucket[i] = g.col[i]! * 9 + Math.min(2, Math.floor(g.depth[i]! * 3)) * 3 + (w < 0.33 ? 0 : w < 0.75 ? 1 : 2);
+          }
+          for (let key = 0; key < 27; key++) {
+            const col = COLS[Math.floor(key / 9)]!;
+            const a0 = [0.2, 0.36, 0.56][Math.floor(key / 3) % 3]! * [1, 0.7, 0.4][key % 3]! * noHomeFade;
+            ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${a0.toFixed(3)})`;
+            for (let i = 0; i < n; i++) {
+              if (bucket[i] !== key) continue;
+              const sz = g.size[i]!;
+              if (sz > 1.3) {
+                ctx.beginPath();
+                ctx.arc(g.x[i]!, g.y[i]!, sz, 0, Math.PI * 2);
+                ctx.fill();
+              } else ctx.fillRect(g.x[i]! - sz, g.y[i]! - sz, sz * 2, sz * 2);
             }
           }
         }

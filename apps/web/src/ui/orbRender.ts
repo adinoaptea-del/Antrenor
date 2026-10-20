@@ -133,6 +133,20 @@ export function drawOrbParticle(ctx: CanvasRenderingContext2D, q: OrbParticle, a
 }
 
 /**
+ * Punctul de pe membrana bulei (stratul k din 5, unghiul q), EXACT pe conturul pe care îl desenează drawOrbBody la
+ * momentul t — ținta prafului din întâmpinare (auditul grafic G01: praful se așază pe curbele reale ale bulei, nu pe un
+ * cerc perfect suprapus peste ea).
+ */
+export function membranePoint(q: number, k: number, t: number, cx: number, cy: number, R: number): [number, number] {
+  const sc = 1 - k * 0.028;
+  const ph = k * 1.9;
+  const x = Math.cos(q),
+    y = Math.sin(q);
+  const r = sc * orbRadius(x, y, 0.35 * Math.sin(q * 2 + t * 0.2 + ph), t + ph) * (1 + 0.012 * Math.sin(q * 7 + t * 0.9 + ph));
+  return [cx + x * r * R, cy + y * r * R];
+}
+
+/**
  * Corpul sferei fără particule: haloul, membrana (contururi deformate) și firele interioare.
  * `body` 0..1 = cât din volum e prezent (întâmpinarea îl pierde, bula de Acasă îl capătă).
  */

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { frontAt, meniscus } from '@core/motion/meniscus.js';
+import { fillTween, frontAt, meniscus } from '@core/motion/meniscus.js';
 
 /**
  * Tubul de pregătire: aceeași materie ca bula (particule lime-verde-turcoaz pe grafit), într-o capsulă orizontală care
@@ -41,7 +41,9 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
     ro.observe(c);
     const col = (k: number) => (k < 0.45 ? [80, 214, 205] : k < 0.8 ? [110, 236, 140] : [222, 252, 70]);
     let shown = 0; // umplerea animată spre valoarea reală
-    const draw = (t: number, dt: number) => {
+    // G07: umplerea ajunge la țintă în FILL_MS (easeOut), nu exponențial: eticheta și lichidul spun același lucru în ~350 ms.
+    let tw = { from: 0, to: 0, at: 0 };
+    const draw = (t: number, _dt: number) => {
       const W = w * dpr;
       const H = h * dpr;
       const r = H / 2;
@@ -49,9 +51,8 @@ export function Tube({ pct, size = 'big', label }: { pct: number | null; size?: 
       ctx.clearRect(0, 0, W, H);
       if (W < 4 || H < 4) return;
       const target = pctRef.current == null ? 0 : Math.max(0, Math.min(100, pctRef.current)) / 100;
-      shown += (target - shown) * Math.min(1, dt * 2.5);
-      // Se oprește exact pe valoare (altfel 100% n-ar închide niciodată tubul, doar s-ar apropia de el).
-      if (Math.abs(target - shown) < 0.002) shown = target;
+      if (target !== tw.to) tw = { from: shown, to: target, at: t };
+      shown = fillTween(tw.from, tw.to, (t - tw.at) * 1000);
       const capsule = () => {
         ctx.beginPath();
         ctx.moveTo(r, 1);

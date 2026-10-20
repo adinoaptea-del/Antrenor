@@ -28,3 +28,12 @@ export function frontAt(m: Meniscus, v: number): number {
   const round = m.bulge * Math.sqrt(Math.max(0, 1 - v * v));
   return m.fillW - m.bulge + round;
 }
+
+/** Durata umplerii tubului până la valoare (audit grafic G07: 250–400 ms). */
+export const FILL_MS = 350;
+/** Umplerea la `ms` după schimbarea valorii: de la `from` la `to` în FILL_MS, easeOut cubic; exact `to` la final. */
+export function fillTween(from: number, to: number, ms: number): number {
+  if (ms >= FILL_MS) return to;
+  const p = Math.max(0, ms) / FILL_MS;
+  return from + (to - from) * (1 - (1 - p) ** 3);
+}

@@ -36,7 +36,7 @@ test('16–28 de fire, fiecare o curbă care lasă centrul liber pentru text (la
   }
 });
 
-test('formarea: firele se desenează pe lungime, cu porniri decalate (40–100 ms), unele vin din afară', () => {
+test('formarea: firele se desenează pe lungime, cu porniri decalate, în 1,2 s; textul intră în timpul formării (G03)', () => {
   const fl = makeFilaments(7);
   const starts = fl.map((f) => f.start).sort((a, b) => a - b);
   for (let i = 1; i < starts.length; i++) assert.ok(starts[i]! - starts[i - 1]! <= 110);
@@ -44,7 +44,10 @@ test('formarea: firele se desenează pe lungime, cu porniri decalate (40–100 m
   assert.equal(buildOf(fl[0]!, FIRE.build[1]).reveal, 1);
   assert.ok(fl.some((f) => f.outside) && fl.some((f) => !f.outside));
   assert.ok(fl.every((f) => f.start + f.dur <= FIRE.build[1]), 'toate firele sunt formate până la sfârșitul formării');
-  assert.ok(fireTextAlpha(FIRE.textIn[0] - 1, null) === 0 && FIRE.textIn[0] >= Math.max(...fl.map((f) => f.start + f.dur)) - 100, 'mesajul vine după ce firele au definit forma');
+  // Auditul grafic G03: mesajul începe înainte de finalul formării (~60% din ea) și e lizibil când forma e gata.
+  const formed = Math.max(...fl.map((f) => f.start + f.dur));
+  assert.ok(fireTextAlpha(FIRE.textIn[0] - 1, null) === 0 && FIRE.textIn[0] >= formed * 0.5 && FIRE.textIn[0] < formed, 'mesajul pornește în timpul formării');
+  assert.ok(fireTextAlpha(FIRE.textIn[1], null) === 1 && FIRE.textIn[1] <= FIRE.build[1] && FIRE.ready === FIRE.textIn[1], 'lizibil și „Continuă” la sfârșitul formării');
 });
 
 test('ruperea începe din mai multe zone, decalat, și se termină în fereastra ei', () => {
@@ -120,5 +123,8 @@ test('ritmul: shake scurt (1–3 px, 150–250 ms), compresie slabă (2–6 px),
   assert.equal(fireContentAlpha(FIRE.exit.content[0]), 0);
   assert.equal(fireSceneOpacity(FIRE.exit.interface[0]), 1, 'Acasă ascuns până la dezvăluire');
   const ui = FIRE.exit.interface[1] - FIRE.exit.interface[0];
-  assert.ok(ui >= 500 && ui <= 800);
+  assert.ok(ui >= 300 && ui <= 800);
+  // Auditul grafic G02: fără pauză între text și rupere — ruperea începe cât textul încă se stinge.
+  assert.ok(FIRE.exit.erode[0] < FIRE.exit.textOut[1]);
+  assert.ok(FIRE.exit.interface[1] <= 2600, 'ieșirea întreagă sub ~2,5 s');
 });

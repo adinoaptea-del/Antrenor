@@ -4,24 +4,28 @@
 // Valorile sunt setări artistice de pornire, nu măsurători.
 
 export const FIRE = {
-  /** Formarea din fire (ms de la pornire). */
-  build: [0, 2200] as const,
-  /** Mesajul apare la 300–450 ms după ce firele au definit forma. */
-  textIn: [2050, 2450] as const,
-  /** „Continuă” devine disponibil. */
-  ready: 2450,
+  /** Formarea din fire (ms de la pornire). Auditul grafic (20.10.2026, G03): 0–1.200 ms. */
+  build: [0, 1200] as const,
+  /** Mesajul începe înainte ca formarea să fie completă (~700 ms) și e lizibil la 1.200 ms (G03). */
+  textIn: [700, 1200] as const,
+  /** „Continuă” devine disponibil odată cu lizibilitatea mesajului. */
+  ready: 1200,
+  /**
+   * Ieșirea (G02): fazele se suprapun, fără pauze — textul pleacă în 220 ms, ruperea începe la 100 ms (cât textul
+   * încă se stinge), transportul 300–1.500, reasamblarea 1.100–2.100, predarea către Acasă 1.900–2.500.
+   */
   exit: {
-    textOut: [0, 260] as const,
-    warp: [0, 750] as const,
-    shakeAt: 220,
-    shakeMs: 200,
+    textOut: [0, 220] as const,
+    warp: [0, 600] as const,
+    shakeAt: 160,
+    shakeMs: 180,
     shakePx: 2,
-    erode: [150, 1500] as const,
-    storm: [400, 2800] as const,
-    gather: [1800, 4300] as const,
-    handoff: 4400,
-    content: [4400, 4900] as const,
-    interface: [4800, 5500] as const,
+    erode: [100, 650] as const,
+    storm: [300, 1500] as const,
+    gather: [1000, 2100] as const,
+    handoff: 2100,
+    content: [1900, 2300] as const,
+    interface: [2100, 2500] as const,
   },
 };
 export const FIRE_EXIT_MS = FIRE.exit.interface[1];
@@ -105,8 +109,8 @@ export function makeFilaments(seed = 7, n = 22): Filament[] {
       rf: 0.94 + r() * 0.1,
       bw: (2 * Math.PI) / (5 + r() * 3), // respirație cu perioadă de 5–8 s, fază proprie
       bph: r() * Math.PI * 2,
-      start: j * 52 + r() * 30, // porniri decalate cu ~40–100 ms
-      dur: 700 + r() * 250,
+      start: j * 22 + r() * 20, // porniri decalate cu ~20–40 ms (formarea în 1,2 s, G03)
+      dur: 500 + r() * 180,
       s0: r() * Math.PI * 2,
       outside: r() < 0.3,
       col: k < 0.45 ? 0 : k < 0.88 ? 1 : 2, // lime folosit rar
@@ -155,7 +159,7 @@ export function makeZones(seed = 11, n = 4): Zone[] {
     const th = r() * Math.PI * 2;
     const z = r() * 2 - 1;
     const s = Math.sqrt(1 - z * z);
-    return { c: [s * Math.cos(th), s * Math.sin(th), z], o: FIRE.exit.erode[0] + i * 120 + r() * 80 };
+    return { c: [s * Math.cos(th), s * Math.sin(th), z], o: FIRE.exit.erode[0] + i * 70 + r() * 40 };
   });
 }
 /** Momentul în care se rupe punctul (direcția lui pe sferă, unitar): de la cea mai apropiată zonă, spre exterior. */
@@ -163,7 +167,7 @@ export function erosionTime(p: [number, number, number], zones: Zone[], jitter =
   let best = Infinity;
   for (const z of zones) {
     const d = Math.acos(Math.max(-1, Math.min(1, p[0] * z.c[0] + p[1] * z.c[1] + p[2] * z.c[2])));
-    best = Math.min(best, z.o + (d / Math.PI) * 1100);
+    best = Math.min(best, z.o + (d / Math.PI) * 300);
   }
   return Math.min(FIRE.exit.erode[1], best + jitter);
 }
@@ -173,7 +177,7 @@ export function erosionTime(p: [number, number, number], zones: Zone[], jitter =
 export function windAt(x: number, y: number, t: number): [number, number] {
   const dir = -0.28 + 0.32 * Math.sin(t * 0.37 + 0.8) + 0.12 * Math.sin(t * 1.1 + y * 0.004);
   const gust = 0.55 + 0.45 * Math.sin(t * 0.9 + x * 0.006 - y * 0.003) * Math.sin(t * 0.53 + 1.7);
-  const A = 115 * gust;
+  const A = 170 * gust; // ieșirea comprimată (auditul grafic G02): rafale mai puternice, același câmp
   return [Math.cos(dir) * A, Math.sin(dir) * A];
 }
 /** Turbulența: câmp coerent (rotorul unui potențial pe trei scări) — vârtejuri mici, locale, nu o circulație în jurul centrului. */
@@ -197,11 +201,11 @@ export function turbAt(x: number, y: number, t: number): [number, number] {
   return [vx, vy];
 }
 /** Atracția spre țintă: pornește eșalonat; resort critic amortizat (amortizare 2√k → fără oscilații ample). */
-export const SPRING_K = 36;
+export const SPRING_K = 160;
 export const SPRING_C = 2 * Math.sqrt(SPRING_K);
 export function gatherWeight(out: number, stagger: number): number {
-  const a = FIRE.exit.gather[0] + stagger * 900;
-  return smooth((out - a) / 900);
+  const a = FIRE.exit.gather[0] + stagger * 350;
+  return smooth((out - a) / 350);
 }
 /** Unda/compresia spațiului (doar decor), lată și slabă: amplitudinea în px. */
 export function warpAmp(out: number | null): number {
@@ -274,7 +278,7 @@ export function makeGrains(n: number, filaments: Filament[], zones: Zone[], seed
     const c = Math.cos(s);
     const sn = Math.sin(s);
     const dir: [number, number, number] = [c * fl.u[0] + sn * fl.v[0], c * fl.u[1] + sn * fl.v[1], c * fl.u[2] + sn * fl.v[2]];
-    g.emitAt[i] = erosionTime(dir, zones, (r() - 0.5) * 80) + r() * 60;
+    g.emitAt[i] = erosionTime(dir, zones, (r() - 0.5) * 60) + r() * 40;
     const d = r();
     g.depth[i] = d;
     // Praf îndepărtat: fin; apropiat: puțin mai mare (câteva granule până la 2 px).

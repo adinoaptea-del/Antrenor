@@ -4,7 +4,7 @@ import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, type PhaseName } from '@c
 import { FIRE, FIRE_EXIT_MS, FIRE_LABEL, type FireState } from '@core/motion/fireStorm.js';
 import { WelcomeFire } from './WelcomeFire';
 import { cheerFor } from '@core/cheers.js';
-import { CosmicMessage, type CosmicClock } from './Cosmic';
+import type { CosmicClock } from './Cosmic';
 import { Orb } from './Orb';
 import { GlassFX } from './Glass';
 import { Tube } from './Tube';
@@ -105,8 +105,10 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
     tl.current.closeAt = EXIT_PHASES.has(p) ? OPEN_END : null;
     setT(at, false);
   };
+  // Felicitarea folosește aceeași scenă ca întâmpinarea (audit grafic G05).
+  const fire = mode === 'intampinare' || mode === 'reusita';
   const jumps: [AnyPhase, number][] =
-    mode === 'intampinare'
+    fire
       ? JUMP_FIRE
       : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
@@ -117,7 +119,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   const closeNow = () => {
     if (tl.current.closeAt != null) return;
     const T = now();
-    if (T < (mode === 'intampinare' ? FIRE.ready : ENTRY_MS)) return;
+    if (T < (fire ? FIRE.ready : ENTRY_MS)) return;
     tl.current.closeAt = T;
     if (!tl.current.playing) setT(T, true);
   };
@@ -162,28 +164,15 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <small>trebuie să apară doar la final</small>
             </span>
           </div>
-          {!ended && mode === 'intampinare' && (
+          {!ended && fire && (
             <WelcomeFire
               key={`${mode}-${run}`}
-              inline
-              kicker="Ziua 12 din 342"
-              text={`Fiecare zonă 2 făcută cum trebuie e o cărămidă în plus${first ? `, ${first}` : ''}.`}
-              clock={clock}
-              onRequestContinue={closeNow}
-              onPhase={setPhase}
-              onClose={() => setEnded(true)}
-            />
-          )}
-          {!ended && mode === 'reusita' && (
-            <CosmicMessage
-              key={`${mode}-${run}`}
-              variant={mode}
               inline
               kicker={mode === 'reusita' ? 'Antrenament finalizat' : 'Ziua 12 din 342'}
               text={mode === 'reusita' ? (cheer?.text ?? 'Ai bifat ședința.') : `Fiecare zonă 2 făcută cum trebuie e o cărămidă în plus${first ? `, ${first}` : ''}.`}
               clock={clock}
               onRequestContinue={closeNow}
-              onPhase={(p) => setPhase(p as AnyPhase)}
+              onPhase={setPhase}
               onClose={() => setEnded(true)}
             />
           )}
@@ -205,7 +194,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <button className="pill" onClick={slow}>
                 {ui.speed === 1 ? 'Încet' : 'Normal'}
               </button>
-              <button className="pill" onClick={closeNow} disabled={ui.T < (mode === 'intampinare' ? FIRE.ready : ENTRY_MS)}>
+              <button className="pill" onClick={closeNow} disabled={ui.T < (fire ? FIRE.ready : ENTRY_MS)}>
                 Continuă (ieșire)
               </button>
             </div>

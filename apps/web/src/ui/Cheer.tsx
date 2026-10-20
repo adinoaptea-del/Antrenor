@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Me } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { addDays, diffDays } from '@core/util/dates.js';
-import { cheerFor, type CheerSport } from '@core/cheers.js';
-import { CosmicMessage } from './Cosmic';
+import { aggregateCheers, cheerFor, cheerKicker, type CheerSport } from '@core/cheers.js';
+import { WelcomeFire } from './WelcomeFire';
 import { activityFor, colorOf } from '../data/model';
 import { strengthOf } from './WorkoutSheet';
 
 /**
- * Felicitarea de după o ședință: mesajul cosmic, varianta „reușită” (ui/Cosmic.tsx), rămâne până la „Continuă”.
+ * Felicitarea de după o ședință: aceeași familie ca întâmpinarea (fire + particule, ui/WelcomeFire.tsx; audit grafic
+ * G05), rămâne până la „Continuă”. Mai multe ședințe confirmate deodată = UN singur mesaj („2 antrenamente finalizate”,
+ * textul celei mai recente), iar „Continuă” le marchează pe toate ca văzute (G06): fără felicitări înlănțuite.
  * Doar pentru ședințele de azi și ieri CONFIRMATE (activitate importată și legată de ședință, sau jurnalul de forță
  * trimis) și executate cel puțin 60% (src/cheers.ts). O singură dată pe ședință: cheia e id-ul ședinței din plan, așa
  * că sincronizarea, reîncărcarea sau un import duplicat nu o mai declanșează. Deschiderea detaliilor nu felicită nimic.
@@ -48,11 +50,12 @@ export function executionOf(me: Me, w: PlannedWorkout): { ratio: number | null; 
   return { ratio: pct != null ? pct / 100 : act.minutes / w.plannedMinutes, minutes: act.minutes, km: act.distanceKm ?? null };
 }
 
-function nextCheer(me: Me, seen: string[]) {
+function allCheers(me: Me, seen: string[]) {
   const from = addDays(me.today, -1);
   const list = me.plan
     .filter((w) => w.date >= from && w.date <= me.today && w.type !== 'odihna' && w.status !== 'sters' && w.status !== 'anulat_sistem' && !seen.includes(w.id))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const out: { w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>> }[] = [];
   for (const w of list) {
     if (colorOf(me, w) === 'rosu') continue;
     const ex = executionOf(me, w);
@@ -78,10 +81,11 @@ function nextCheer(me: Me, seen: string[]) {
       // Durerea raportată seara: peste plan cu durere ≥ 3 nu se felicită (src/cheers.ts).
       pain: me.scores[w.id]?.pain ?? me.forms.evening[act?.id ?? `plan-${w.id}`]?.durere?.scor ?? null,
     });
-    if (c) return { w, c };
+    if (c) out.push({ w, c });
   }
-  return null;
+  return out;
 }
+
 
 /** Previzualizarea (Administrare): arată felicitarea pentru un sport, cu numele tău, fără să depindă de o ședință. */
 export function previewCheer(sport: CheerSport, tier: 'fix' | 'bine' = 'fix') {
@@ -90,7 +94,7 @@ export function previewCheer(sport: CheerSport, tier: 'fix' | 'bine' = 'fix') {
 
 /** Există o felicitare de arătat acum? (App o folosește ca să nu mai arate și întâmpinarea: una singură.) */
 export function pendingCheer(me: Me): boolean {
-  return !!nextCheer(me, readSeen(me.user.id ?? 'eu'));
+  return allCheers(me, readSeen(me.user.id ?? 'eu')).length > 0;
 }
 
 export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onShow?: () => void }) {
@@ -98,7 +102,7 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
   const [seen, setSeen] = useState<string[]>(() => readSeen(uid));
   const [demo, setDemo] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>> } | null>(null);
   // Scena în curs nu se resetează: o sincronizare sau o altă ședință confirmată între timp așteaptă rândul ei.
-  const [cur, setCur] = useState<{ w: PlannedWorkout; c: NonNullable<ReturnType<typeof cheerFor>>; demo: boolean } | null>(null);
+  const [cur, setCur] = useState<{ ids: string[]; text: string; n: number; demo: boolean } | null>(null);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent<{ sport: CheerSport; tier: 'fix' | 'bine' }>).detail;
@@ -109,10 +113,10 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
     window.addEventListener('airon-cheer-preview', on);
     return () => window.removeEventListener('airon-cheer-preview', on);
   }, [me.user.name, me.today]);
-  const real = useMemo(() => (blocked ? null : nextCheer(me, seen)), [me, seen, blocked]);
+  const real = useMemo(() => (blocked ? null : aggregateCheers(allCheers(me, seen))), [me, seen, blocked]);
   useEffect(() => {
     if (cur) return;
-    const next = demo ? { ...demo, demo: true } : real ? { ...real, demo: false } : null;
+    const next = demo ? { ids: [demo.w.id], text: demo.c.text, n: 1, demo: true } : real ? { ...real, demo: false } : null;
     if (next) {
       setCur(next);
       onShow?.();
@@ -123,11 +127,11 @@ export function Cheer({ me, blocked, onShow }: { me: Me; blocked: boolean; onSho
   const done = () => {
     if (cur.demo) setDemo(null);
     else {
-      const next = [...seen, cur.w.id];
+      const next = [...seen, ...cur.ids];
       writeSeen(uid, next);
       setSeen(next);
     }
     setCur(null);
   };
-  return <CosmicMessage key={cur.w.id} variant="reusita" kicker="Antrenament finalizat" text={cur.c.text} seed={cur.w.id.length + 3} onClose={done} />;
+  return <WelcomeFire key={cur.ids.join('|')} kicker={cheerKicker(cur.n)} text={cur.text} onClose={done} />;
 }

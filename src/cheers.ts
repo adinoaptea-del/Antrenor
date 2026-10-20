@@ -154,3 +154,10 @@ export function cheerFor(x: CheerInput): { title: string; text: string; tier: Ch
 
 /** Câte mesaje sunt în total (pentru raport/teste). */
 export const CHEER_COUNT = Object.values(CHEERS).reduce((n, s) => n + s.fix.length + s.bine.length + s.peste.length, 0) + 3;
+
+/** Felicitările în așteptare strânse într-una: textul celei mai recente, toate id-urile de marcat. */
+export function aggregateCheers<T extends { w: { id: string }; c: { text: string } }>(list: T[]): { ids: string[]; text: string; n: number } | null {
+  const first = list[0];
+  return first ? { ids: list.map((x) => x.w.id), text: first.c.text, n: list.length } : null;
+}
+export const cheerKicker = (n: number) => (n <= 1 ? 'Antrenament finalizat' : `${n} antrenamente finalizate`);
