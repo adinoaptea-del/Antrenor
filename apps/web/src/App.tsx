@@ -42,6 +42,24 @@ const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))
 const MAIN: { id: Screen }[] = [{ id: 'acasa' }];
 const ALL: Screen[] = ['mese', 'progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne', 'mers'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
+/** Ieșirea din aplicație (alt app, ecran blocat) mai lungă de atât = la revenire, Acasă cu întâmpinarea (cererea lui Cuza, 20.10.2026). */
+const RESUME_HOME_MS = 60 * 1000;
+const FORM_SCREENS: Screen[] = ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'];
+
+/**
+ * Ecranul de pornire: întotdeauna Acasă. Excepție doar revenirile cu parametri (#profil?conectat=oura / ?eroare=…),
+ * pe care ecranul respectiv le citește după încărcare.
+ */
+function startScreen(): Screen {
+  const hasQuery = location.hash.includes('?');
+  if (hasQuery) return readScreen();
+  try {
+    if (location.hash && location.hash !== '#acasa') history.replaceState(null, '', '#acasa');
+  } catch {
+    /* fără istoric */
+  }
+  return 'acasa';
+}
 
 function readScreen(): Screen {
   const h = location.hash.replace('#', '').split('?')[0] ?? '';
@@ -65,12 +83,24 @@ const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator
 
 function Shell() {
   const { status, me, error, refresh, local, sync, offline } = useData();
-  const [screen, setScreen] = useState<Screen>(readScreen);
+  const [screen, setScreen] = useState<Screen>(startScreen);
+  const screenRef = useRef<Screen>(screen);
+  screenRef.current = screen;
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>(() => (goalSports(me?.user.goal ?? null)[0] ?? 'inot'));
   const [eveningFor, setEveningFor] = useState<string | null>(null);
   // Întâmpinarea: la intrare, dar nu la o reîncărcare sau revenire în mai puțin de 30 de minute.
-  const [memento, setMemento] = useState(welcomeDue);
+  // Deschiderea aplicației arată mereu întâmpinarea; doar o reîncărcare (ex. cea automată după o actualizare) ține
+  // pragul de 30 de minute, ca să nu se repete.
+  const [memento, setMemento] = useState(() => {
+    try {
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+      if (nav && nav.type !== 'reload') return true;
+    } catch {
+      /* */
+    }
+    return welcomeDue();
+  });
   const [countdown, setCountdown] = useState(false);
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
@@ -223,7 +253,25 @@ function Shell() {
     const stop = startAutoSync(sync);
     const onVis = () => {
       if (document.visibilityState === 'hidden') hiddenAt.current = Date.now();
-      else if (hiddenAt.current && Date.now() - hiddenAt.current > RETURN_AFTER_MS && welcomeDue()) setMemento(true);
+      else if (hiddenAt.current) {
+        const away = Date.now() - hiddenAt.current;
+        hiddenAt.current = null;
+        // Revenirea în aplicație: Acasă, cu întâmpinarea. Un formular început rămâne deschis (nu pierzi ce ai scris)
+        // dacă lipsa a fost scurtă (sub 30 de minute).
+        const inForm = FORM_SCREENS.includes(screenRef.current);
+        if (away > RESUME_HOME_MS && (!inForm || away > RETURN_AFTER_MS)) {
+          if (screenRef.current !== 'acasa') {
+            try {
+              history.replaceState(null, '', '#acasa');
+            } catch {
+              /* */
+            }
+            setNavDir('none');
+            setScreen('acasa');
+          }
+          setMemento(true);
+        }
+      }
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {

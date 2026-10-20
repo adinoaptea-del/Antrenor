@@ -112,7 +112,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // RPE ≥ 7 sau tipul ales (cursă / altceva) schimbă reacția calendarului imediat.
       await reactToActivities(u.id, today).catch(() => undefined);
       let agents = null;
-      if (body.tip_neplanificat && body.tip_neplanificat !== 'altceva') agents = await runAgents(u.id, today, 'dupa_antrenament', true).catch((e: Error) => ({ error: e.message }));
+      // Antrenorul (activitate în afara planului) nu mai ține formularul deschis: aplicația îl pornește separat,
+      // după ce fereastra s-a închis (apelul la model poate dura până la un minut).
+      if (body.tip_neplanificat && body.tip_neplanificat !== 'altceva' && body.agentiSincron === true) agents = await runAgents(u.id, today, 'dupa_antrenament', true).catch((e: Error) => ({ error: e.message }));
       json(res, 200, { ok: true, agents });
       return;
     }

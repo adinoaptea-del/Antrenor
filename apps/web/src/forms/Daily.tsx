@@ -16,6 +16,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   const saved = me.forms.morning as MorningForm | null;
   const [m, setM] = useState<MorningForm>(saved && saved.date === date ? saved : emptyMorning(date));
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const setH = (k: keyof MorningForm['hooper'], v: number) => setM({ ...m, hooper: { ...m.hooper, [k]: v } });
   const setS = (k: keyof MorningForm['semnale'], v: boolean) => setM({ ...m, semnale: { ...m.semnale, [k]: v } });
   // Contează și răspunsurile parțiale; totalul apare de la 3 din 4 răspunsuri (cu mai puține nu inventăm restul).
@@ -77,15 +78,19 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{safety ? `${safety.verdict === 'stop' ? 'Stop' : safety.verdict === 'rosu' ? 'Zi roșie' : 'Zi galbenă'}: ${safety.verdict === 'stop' ? stopAction(safety.reason) : safety.reason}` : suma == null ? (raspunse > 0 ? `Cum te simți: ${raspunse} din 4 răspunsuri, prea puține pentru un total; contează fiecare în parte` : 'Cum te simți: –') : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
+        <div className="small muted">{err ? <span style={{ color: 'var(--red, #e5484d)' }}>Nu s-a trimis: {err}. Încearcă din nou.</span> : null}{safety ? `${safety.verdict === 'stop' ? 'Stop' : safety.verdict === 'rosu' ? 'Zi roșie' : 'Zi galbenă'}: ${safety.verdict === 'stop' ? stopAction(safety.reason) : safety.reason}` : suma == null ? (raspunse > 0 ? `Cum te simți: ${raspunse} din 4 răspunsuri, prea puține pentru un total; contează fiecare în parte` : 'Cum te simți: –') : `Cum te simți: ${suma}/28${raspunse < 4 ? ` (din ${raspunse} răspunsuri)` : ''} · ${suma >= 24 ? 'roșu' : suma >= 22 ? 'portocaliu' : suma >= 20 ? 'galben' : 'în regulă'}`}</div>
         <button
           className="btn"
           disabled={!anyAnswer || busy}
           onClick={() => {
             setBusy(true);
+            setErr(null);
             submitForm('dimineata', m)
               .then(() => onDone())
-              .finally(() => setBusy(false));
+              .catch((x: unknown) => {
+                setErr(x instanceof Error ? x.message : String(x));
+                setBusy(false);
+              });
           }}
         >
           {busy ? 'Trimit…' : 'Gata'} {Icons.check}
@@ -101,10 +106,11 @@ const PAIN_LOC = ['gambă', 'tibie', 'tendon ahilean', 'genunchi', 'șold', 'spa
 export function Evening({ workout, activityId, unplanned, onBack, onDone }: { workout: PlannedWorkout | null; activityId: string; unplanned?: { date: string; sport: string; minutes: number; distanceKm?: number | null } | null; onBack: () => void; onDone: () => void }) {
   const date = workout?.date ?? unplanned?.date ?? new Date().toISOString().slice(0, 10);
   const me = useMe();
-  const { submitForm } = useData();
+  const { submitForm, runAgents } = useData();
   const saved = me.forms.evening[activityId];
   const [e, setE] = useState<EveningForm>(saved ?? emptyEvening(date, activityId));
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const complete = e.rpe != null && e.fata_de_asteptari != null && e.durere.scor != null && (!unplanned || e.tip_neplanificat != null);
   const title = workout ? `${SPORT_LABEL[workout.sport]}${workout.type === 'forta' ? '' : ` ${TYPE_LABEL[workout.type]}`} · ${fmtMinutes(workout.plannedMinutes)}` : unplanned ? `${unplanned.sport} · ${fmtMinutes(unplanned.minutes)}${unplanned.distanceKm ? ` · ${unplanned.distanceKm.toLocaleString('ro-RO')} km` : ''}` : 'Antrenament';
 
@@ -157,15 +163,23 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{complete ? 'Intră în pachet diseară' : 'RPE, așteptări și durere sunt necesare'}</div>
+        <div className="small muted">{err ? <span style={{ color: 'var(--red, #e5484d)' }}>Nu s-a trimis: {err}. Încearcă din nou.</span> : complete ? 'Intră în pachet diseară' : 'RPE, așteptări și durere sunt necesare'}</div>
         <button
           className="btn"
           disabled={!complete || busy}
           onClick={() => {
             setBusy(true);
+            setErr(null);
             submitForm('seara', e)
-              .then(() => onDone())
-              .finally(() => setBusy(false));
+              .then(() => {
+                // Salvat: fereastra se închide acum. Antrenorul (activitate în afara planului) rulează în fundal.
+                onDone();
+                if (unplanned && e.tip_neplanificat && e.tip_neplanificat !== 'altceva') void runAgents('dupa_antrenament', true).catch(() => undefined);
+              })
+              .catch((x: unknown) => {
+                setErr(x instanceof Error ? x.message : String(x));
+                setBusy(false);
+              });
           }}
         >
           {busy ? 'Trimit…' : 'Trimite'} {Icons.check}
@@ -184,6 +198,7 @@ export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBac
   const own = saved && saved.weekStart === weekStart ? saved : null;
   const [w, setW] = useState<WeeklyForm>({ weekStart, energie: own?.energie ?? null, aMers: own?.aMers ?? '', aOprit: own?.aOprit ?? null });
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   return (
     <>
       <header className="top">
@@ -214,15 +229,19 @@ export function Weekly({ weekStart, onBack, onDone }: { weekStart: string; onBac
         </Q>
       </div>
       <div className="wizard-nav">
-        <div />
+        <div className="small muted">{err ? <span style={{ color: 'var(--red, #e5484d)' }}>Nu s-a trimis: {err}. Încearcă din nou.</span> : null}</div>
         <button
           className="btn"
           disabled={w.energie == null || w.aOprit == null || busy}
           onClick={() => {
             setBusy(true);
+            setErr(null);
             submitForm('saptamanal', w)
               .then(() => onDone())
-              .finally(() => setBusy(false));
+              .catch((x: unknown) => {
+                setErr(x instanceof Error ? x.message : String(x));
+                setBusy(false);
+              });
           }}
         >
           {busy ? 'Trimit…' : 'Gata'} {Icons.check}

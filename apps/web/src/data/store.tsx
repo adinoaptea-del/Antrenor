@@ -127,7 +127,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const submitForm = useCallback<Data['submitForm']>(
     async (kind, body) => {
       const r = await backend.form(kind, body);
-      await load();
+      // Formularele zilnice se închid imediat ce serverul a salvat; datele se reîncarcă în fundal (o reîncărcare
+      // lentă sau căzută nu mai ține fereastra deschisă). Chestionarul de intrare așteaptă planul, ca înainte.
+      if (kind === 'intrare') await load();
+      else void load().catch(() => undefined);
       const plan = r.plan as { ok?: boolean; reason?: string; budgetHours?: number; weeks?: number } | undefined;
       if (kind === 'intrare' && plan) return { ok: !!plan.ok, info: plan.ok ? `Plan pe ${plan.weeks} săptămâni, ${plan.budgetHours} h/săpt.` : plan.reason };
       return { ok: true, data: r as unknown as Record<string, unknown> };

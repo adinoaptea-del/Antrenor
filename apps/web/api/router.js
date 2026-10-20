@@ -13360,7 +13360,7 @@ async function handler10(req, res) {
       await rescore(u.id, today, goal);
       await reactToActivities(u.id, today).catch(() => void 0);
       let agents = null;
-      if (body.tip_neplanificat && body.tip_neplanificat !== "altceva") agents = await runAgents(u.id, today, "dupa_antrenament", true).catch((e) => ({ error: e.message }));
+      if (body.tip_neplanificat && body.tip_neplanificat !== "altceva" && body.agentiSincron === true) agents = await runAgents(u.id, today, "dupa_antrenament", true).catch((e) => ({ error: e.message }));
       json(res, 200, { ok: true, agents });
       return;
     }
