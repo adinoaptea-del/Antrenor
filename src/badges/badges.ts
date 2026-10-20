@@ -8,7 +8,7 @@
 // Reguli: totul din date măsurate (ceas, plan, formulare), nimic declarat. Nimic nu răsplătește volumul cu orice preț:
 // fără insigne pentru „cele mai multe ore” sau pentru zile de antrenament la rând (ar împinge peste zilele roșii).
 
-import type { Activity, PlannedWorkout, Sport } from '../types.js';
+import type { Activity, ActivityBlock, PlannedWorkout, Sport } from '../types.js';
 import { matchActivities } from '../scoring/match.js';
 import { addDays, weekStart } from '../util/dates.js';
 import { SWIM_DISTANCE_M, goalKind, isSwimGoal } from '../calendar/phases.js';
@@ -115,6 +115,20 @@ function tiered(base: string, category: BadgeCategory, title: string, how: (t: n
     earnedAt: have >= t ? reachedAt(t) : null,
     progress: { have: Math.min(have, t), target: t, unit },
   }));
+}
+
+/**
+ * Protocolul 4×4 din blocurile reale: cel puțin patru blocuri de lucru de ~4 min (≥ 3,5), fiecare cu cel puțin jumătate
+ * din minutele cu puls în Z4–Z5 (latența pulsului e deja exclusă la aliniere, src/scoring/score.ts blocksFromStream).
+ */
+export function is4x4(blocks: ActivityBlock[] | null | undefined): boolean {
+  const reps = (blocks ?? []).filter((b) => b.kind === 'lucru' && b.minutes >= 3.5 && b.zonesMin);
+  const hard = reps.filter((b) => {
+    const z = b.zonesMin!;
+    const total = (z[1] ?? 0) + (z[2] ?? 0) + (z[3] ?? 0) + (z[4] ?? 0) + (z[5] ?? 0);
+    return total > 0 && ((z[4] ?? 0) + (z[5] ?? 0)) / total >= 0.5;
+  });
+  return hard.length >= 4;
 }
 
 /** Data la care un șir de evenimente (sortate) a atins al n-lea element. */
@@ -233,8 +247,10 @@ export function computeBadges(i: BadgesInput): BadgesResult {
   // ——— Progres măsurat ———
   const eff = Math.max(-100, ...i.efficiencyPct);
   badges.push({ id: 'eficient', category: 'progres', title: 'Mai eficient', how: 'Cu 5% mai rapid la același puls față de acum 6 săptămâni (ședințe ușoare, pe plat)', tier: null, earnedAt: eff >= 5 ? today : null, progress: { have: Math.max(0, Math.round(eff)), target: 5, unit: '%' } });
-  const fourByFour = m.matches.filter((x) => /4\s*×\s*4/.test(x.planned.structure ?? '') && x.activity?.timeInZonesMin && ((x.activity.timeInZonesMin[4] ?? 0) + (x.activity.timeInZonesMin[5] ?? 0)) >= 12).map((x) => x.planned.date).sort()[0] ?? null;
-  badges.push({ id: '4x4', category: 'progres', title: 'Primul 4×4 complet', how: 'Cele patru repetări în Z4 (cel puțin 12 min în Z4+, după ceas). Doar cu avizul cardiologului', tier: null, earnedAt: fourByFour, progress: { have: fourByFour ? 1 : 0, target: 1, unit: '' } });
+  // 4×4: din blocurile reale ale ședinței (telemetria aliniată pe repetări), nu din minutele în zonă pe toată ședința —
+  // 12 min de Z4 într-o alergare tempo nu dovedesc protocolul (auditul v93, A75). Fără blocuri, insigna nu se dă.
+  const fourByFour = m.matches.filter((x) => /4\s*×\s*4/.test(x.planned.structure ?? '') && x.activity && !x.activity.mainSetAbandoned && is4x4(x.activity.blocks)).map((x) => x.planned.date).sort()[0] ?? null;
+  badges.push({ id: '4x4', category: 'progres', title: 'Primul 4×4 complet', how: 'Patru repetări reale de ~4 min, fiecare cu cel puțin jumătate din timp în Z4+ (după latența pulsului), din blocurile ședinței. Doar cu avizul cardiologului', tier: null, earnedAt: fourByFour, progress: { have: fourByFour ? 1 : 0, target: 1, unit: '' } });
   badges.push({ id: 'zone', category: 'progres', title: 'Știi unde ești', how: 'Testul de teren făcut: zonele de puls sunt ale tale, nu din formulă', tier: null, earnedAt: i.zonesTested ? today : null, progress: { have: i.zonesTested ? 1 : 0, target: 1, unit: '' } });
 
   // ——— Drumul până la cursă: fazele încheiate cu cel puțin 75% din ședințe ———
@@ -256,11 +272,14 @@ export function computeBadges(i: BadgesInput): BadgesResult {
     }
     const start = i.raceDate <= today && acts.some((a) => a.date === i.raceDate) ? i.raceDate : null;
     badges.push({ id: 'start', category: 'drum', title: 'Linia de start', how: 'Ziua cursei, cu activitate înregistrată', tier: null, earnedAt: start, progress: { have: start ? 1 : 0, target: 1, unit: '' } });
-    const raceDay = acts.filter((a) => a.date === i.raceDate);
+    // „Finisher” cere cursa declarată (activitățile marcate „cursă” în formularul de seară), nu simpla coincidență cu
+    // data cursei: un antrenament în ziua aceea nu e o cursă terminată (auditul v93, A75).
+    const declared = new Set(i.raceActivityIds);
+    const raceDay = acts.filter((a) => a.date === i.raceDate && declared.has(a.id));
     const sports = new Set(raceDay.map((a) => a.sport));
     const mainSport = goalKind(i.goal) === 'swim' ? 'inot' : goalKind(i.goal) === 'bike' ? 'bicicleta' : 'alergare';
     const finisher = start && (TRI(i.goal) ? sports.has('inot') && sports.has('bicicleta') && sports.has('alergare') : sports.has(mainSport)) ? i.raceDate : null;
-    badges.push({ id: 'finisher', category: 'drum', title: 'Finisher', how: TRI(i.goal) ? 'Toate trei probele înregistrate în ziua cursei' : `${{ inot: 'Înotul', bicicleta: 'Tura', alergare: 'Alergarea' }[mainSport]} înregistrat${mainSport === 'bicicleta' || mainSport === 'alergare' ? 'ă' : ''} în ziua obiectivului`, tier: null, earnedAt: finisher, progress: { have: finisher ? 1 : 0, target: 1, unit: '' } });
+    badges.push({ id: 'finisher', category: 'drum', title: 'Finisher', how: TRI(i.goal) ? 'Toate trei probele înregistrate în ziua cursei și marcate „cursă” de tine' : `${{ inot: 'Înotul', bicicleta: 'Tura', alergare: 'Alergarea' }[mainSport]} din ziua obiectivului, marcat${mainSport === 'bicicleta' || mainSport === 'alergare' ? 'ă' : ''} „cursă” de tine`, tier: null, earnedAt: finisher, progress: { have: finisher ? 1 : 0, target: 1, unit: '' } });
   }
 
   // ——— Provocarea lunii: sportul rămas cel mai mult în urmă luna asta ———

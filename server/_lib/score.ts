@@ -3,17 +3,12 @@ import type { Goal } from '../../src/calendar/phases.js';
 import { select, upsert } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadZones } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
-import { scoreWorkout, zoneDirection, type Direction } from '../../src/scoring/score.js';
+import { scoreMatches, type ScoreFlags, type ScoreMetrics } from '../../src/scoring/score.js';
 import { computeBar, type BarResult, type ScoredActivity } from '../../src/bar/bar.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
-import type { Activity, Color, EveningQuestionnaire } from '../../src/types.js';
-import type { EveningForm } from '../../src/collector/types.js';
+import type { EveningForm, StoredScore } from '../../src/collector/types.js';
+import type { Activity, Color } from '../../src/types.js';
 import { addDays } from '../../src/util/dates.js';
-
-function toQuestionnaire(e: EveningForm | undefined): EveningQuestionnaire | null {
-  if (!e) return null;
-  return { rpe: e.rpe, vsExpected: e.fata_de_asteptari, painScore: e.durere.scor, painLoc: e.durere.loc, whatInterfered: e.ce_a_incurcat, fuelingOk: e.fueling_conform, comment: e.comentariu };
-}
 
 export interface ScoreSummary {
   scored: number;
@@ -30,15 +25,10 @@ export async function rescore(userId: string, today: string, goal: Goal): Promis
   const { matches, unplanned } = matchActivities(planned, activities, today);
 
   const colors = new Map<string, Color>();
-  // Prima trecere: direcția fiecărei ședințe făcute (pentru compensarea între sporturi în aceeași zi).
-  const dirs = new Map<string, Direction>();
-  for (const m of matches) if (m.activity) dirs.set(m.planned.id, zoneDirection(m.planned, m.activity, m.extraActivity ?? null));
-  const rows = matches.map((m) => {
-    const sameDay = matches
-      .filter((o) => o !== m && o.activity && o.planned.date === m.planned.date)
-      .map((o) => ({ sport: o.planned.sport, directie: dirs.get(o.planned.id) ?? null }));
-    const evening = forms.evenings.find((e) => e.activityId && m.activity && (e.activityId === m.activity.id || e.activityId === (m.activity as { externalId?: string }).externalId)) ?? forms.evenings.find((e) => e.date === m.planned.date);
-    const r = scoreWorkout({ planned: m.planned, activity: m.activity, extraActivity: m.extraActivity, questionnaire: toQuestionnaire(evening), systemCancelled: m.planned.status === 'anulat_sistem', today, sameDay });
+  // O singură funcție de scor (src/scoring/score.ts scoreMatches), aceeași ca în pachetul AI: formularul de seară cu
+  // motivul scurtării, compensarea în aceeași zi (auditul v93, T51).
+  const rows = scoreMatches(matches, forms.evenings, today).map((m) => {
+    const r = m.result;
     colors.set(m.planned.id, r.color);
     return {
       workout_id: m.planned.id,
@@ -47,7 +37,8 @@ export async function rescore(userId: string, today: string, goal: Goal): Promis
       extra_activity_id: m.extraActivity?.id ?? null,
       color: r.color,
       reasons: r.reasons,
-      metrics: r.metrics,
+      // Evaluarea (făcut / conform scopului / bine tolerat) stă lângă metrice, fără coloană nouă în tabel.
+      metrics: { ...r.metrics, evaluare: r.evaluare ?? null },
       flags: r.flags,
       is_final: r.final,
       scored_at: new Date().toISOString(),
@@ -67,6 +58,22 @@ export async function rescore(userId: string, today: string, goal: Goal): Promis
   const bar = computeBar({ today, activities: scored, plannedColorsLast4Weeks: last4, cssSecPer100m: zones?.inot.css ?? null, ctl: null, ctlTarget: null, openFlags, goal });
   await upsert('bar_daily', { user_id: userId, date: today, total: bar.total, blocked: bar.blocked, basis: bar.basis, components: bar.components }, 'user_id,date');
   return { scored: rows.length, unplanned: unplanned.map((a) => a.id), bar };
+}
+
+/** Scorurile salvate, pe ședință: pachetul AI le citește pe acestea, nu recalculează altă culoare (auditul v93, T51). */
+export async function loadStoredScores(userId: string): Promise<Record<string, StoredScore>> {
+  const rows = await select<{ workout_id: string; activity_id: string | null; color: Color; reasons: string[]; metrics: (ScoreMetrics & { evaluare?: StoredScore['evaluare'] }) | null; flags: ScoreFlags }>(
+    'scores',
+    { user_id: `eq.${userId}` },
+    { select: 'workout_id,activity_id,color,reasons,metrics,flags', order: 'scored_at.desc', limit: 400 },
+  ).catch(() => []);
+  const out: Record<string, StoredScore> = {};
+  for (const r of rows) {
+    if (!r.metrics) continue;
+    const { evaluare, ...metrics } = r.metrics;
+    out[r.workout_id] = { activityId: r.activity_id, color: r.color, reasons: r.reasons, metrics, flags: r.flags, evaluare: evaluare ?? null };
+  }
+  return out;
 }
 
 /** Semnale deschise care blochează bara: durere ≥ 5 netratată în ultimele 7 zile, febră azi. */

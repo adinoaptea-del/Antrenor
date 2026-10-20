@@ -12,7 +12,9 @@ describe('computeBar', () => {
     assert.equal(r.basis, 'pe baza a 0 din 5 componente');
   });
 
-  it('calculează doar din componentele cu date și spune pe câte se bazează', () => {
+  // Auditul v93, A74: înainte totalul se renormaliza pe cele 3 componente cu date (40,4); acum, cât lipsesc 2 din 5,
+  // totalul e necunoscut — renormalizarea umfla rezultatul. Componentele își păstrează valorile.
+  it('componentele cu date își păstrează valoarea; cu componente lipsă totalul e null (fără renormalizare)', () => {
     const r = computeBar({
       today: '2027-05-10',
       activities: [a({ id: 'r1', distanceKm: 9, color: 'verde' }), a({ id: 'k1', sport: 'bicicleta', distanceKm: 45, color: 'galben' })],
@@ -24,7 +26,7 @@ describe('computeBar', () => {
     assert.equal(r.components.find((c) => c.name === 'alergare')!.value, 30); // 0,6 × 9/18
     assert.equal(r.components.find((c) => c.name === 'bicicleta')!.value, 30); // 0,6 × 45/90, fără brick
     assert.equal(r.components.find((c) => c.name === 'consistenta')!.value, 75); // 3 din 4 (gri nu se numără)
-    assert.equal(r.total, 40.4);
+    assert.equal(r.total, null);
   });
 
   it('activitățile roșii sau neplanificate nu contează; fereastra e de 6 săptămâni', () => {

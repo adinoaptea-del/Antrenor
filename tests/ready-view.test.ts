@@ -9,7 +9,8 @@ test('complet: indicele întreg', () => {
 });
 test('o probă fără date: parțial pe probele măsurate, cu proba lipsă numită', () => {
   const v = readyView({ ...base, ready: null, coverage: { withData: 2, total: 3, missing: ['Înot'] }, links: [{ name: 'Înot', pct: null }, { name: 'Bicicletă', pct: 61 }, { name: 'Alergare', pct: 74 }, { name: 'Cumul', pct: 50 }] } as never);
-  assert.deepEqual([v.pct, v.partial, v.missing], [50, true, ['Înot']]);
+  // „Cumul” nu e o probă: parțialul e minimul probelor măsurate (61), nu al cumulului (50) — auditul v93, A74.
+  assert.deepEqual([v.pct, v.partial, v.missing], [61, true, ['Înot']]);
 });
 test('nicio probă cu date: fără cifră', () => {
   assert.equal(readyView({ ...base, ready: null, coverage: { withData: 0, total: 3, missing: ['Înot', 'Bicicletă', 'Alergare'] }, links: [{ name: 'Înot', pct: null }] } as never).pct, null);

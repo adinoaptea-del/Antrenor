@@ -15,7 +15,7 @@ import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
 import { Orb } from './Orb';
 import { useMetOnce, walkOrb } from './Walking';
-import { readyView } from '@core/bar/ready-view.js';
+import { readyLabel, readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
 import { fmtTime } from '@core/goals/run-target.js';
@@ -181,7 +181,7 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
         <p className="azi-k">{eyebrow}</p>
         {!fit && !walkV && me.user.raceDate && (
           <button className="azi-ready" onClick={() => onOpen('progres')}>
-            {rv.pct == null ? 'Pregătirea: îți evaluăm nivelul' : `Pregătit: ${rv.pct}%${rv.partial ? ` (parțial, fără ${rv.missing.join(', ').toLowerCase()})` : ''}`}
+            {readyLabel(rv, { restrictedToday: paused })}
             {days != null ? ` · ${days} zile` : ''}
           </button>
         )}

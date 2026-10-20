@@ -1,5 +1,7 @@
 // Bara de pregătire: cât din cerințele cursei ai demonstrat în antrenament, pe date din ultimele 6 săptămâni.
 // Nu prezice timpul de cursă. O componentă fără date arată „fără date”, nu 0 și nu o estimare.
+// Registrul indicatorilor (src/bar/metrics.ts): „bara_interna” — scrisă în bar_daily pentru istoric, neafișată ca
+// pregătire; pe ecrane și la AI indicele e „pregatire_cursa” (race-ready.ts) și „pregatire_proba” (sport-readiness.ts).
 
 import type { Activity, Color } from '../types.js';
 import { diffDays } from '../util/dates.js';
@@ -217,7 +219,9 @@ export function computeBar(input: BarInput): BarResult {
   if (input.openFlags.length > 0) {
     return { blocked: input.openFlags.join('; '), total: null, basis, components };
   }
-  if (withData.length === 0) return { blocked: null, total: null, basis, components };
+  // Fără renormalizare pe componentele cu date (auditul v93, A74): ponderile împărțite doar pe ce există ar ridica
+  // artificial totalul. Cât lipsește o componentă, totalul e necunoscut (null) și `basis` spune pe câte se bazează.
+  if (withData.length < components.length) return { blocked: null, total: null, basis, components };
   const wsum = withData.reduce((s, c) => s + c.weight, 0);
   const total = withData.reduce((s, c) => s + (c.value! * c.weight) / wsum, 0);
   return { blocked: null, total: r(total), basis, components };

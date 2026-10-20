@@ -164,6 +164,21 @@ export interface CollectorInput {
   hiddenSources?: string[];
   /** Totaluri de la începutul pregătirii (data planului), pe sport. */
   totals?: { since: string; bySport: Record<Sport, { km: number; ore: number; sedinte: number }> } | null;
+  /**
+   * Scorurile salvate în tabelul `scores`, pe ședința din plan (server/_lib/score.ts loadStoredScores). Pachetul le
+   * folosește pe acestea când activitatea e aceeași, ca AI-ul să vadă aceeași culoare ca ecranele (auditul v93, T51).
+   */
+  storedScores?: Record<string, StoredScore> | null;
+}
+
+/** Un scor salvat: aceeași formă ca rezultatul lui scoreWorkout, legat de activitatea pe care a fost calculat. */
+export interface StoredScore {
+  activityId: string | null;
+  color: import('../types.js').Color;
+  reasons: string[];
+  metrics: import('../scoring/score.js').ScoreMetrics;
+  flags: import('../scoring/score.js').ScoreFlags;
+  evaluare: import('../scoring/score.js').Evaluation | null;
 }
 
 export interface WeatherDay {

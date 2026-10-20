@@ -11,6 +11,7 @@ import { collect, loadActivities, loadUser, toWorkoutRow } from './collect.js';
 import { dedupeActivities } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import { buildPacket, type Packet } from '../../src/collector/packet.js';
+import { loadStoredScores } from './score.js';
 import { anthropicClient, runMainCoach, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
 import { PROMPTS } from '../../src/prompts/bundle.js';
 import { adapt, eventKey, type AdaptContext, type AdaptEvent } from '../../src/calendar/adapt.js';
@@ -63,6 +64,8 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
     if (existing) return null;
   }
   const { input, planId } = await collect(userId, today, event);
+  // Scorurile salvate (aceleași ca pe ecrane): pachetul nu calculează altă culoare pentru aceeași ședință (auditul v93, T51).
+  input.storedScores = await loadStoredScores(userId).catch(() => null);
   const packet: Packet = buildPacket(input);
   // Aplicația și antrenorul se pun de acord: antrenorul primește decizia zilei luată de aplicație din toate datele.
   const me = await buildMe(userId, today).catch(() => null);
