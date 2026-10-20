@@ -3872,7 +3872,7 @@ var RUN_MODULES = {
 var fmtMin = (m) => Number.isInteger(m) ? `${m} min` : m < 1 ? `${Math.round(m * 60)} s` : `${Math.floor(m)}:${String(Math.round(m % 1 * 60)).padStart(2, "0")} min`;
 var fmtPace3 = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}/km`;
 function moduleMinutes(m) {
-  return m.warm + m.count * (m.work + m.rest) + m.cool;
+  return m.warm + m.count * m.work + Math.max(0, m.count - 1) * m.rest + m.cool;
 }
 function moduleStructure(id, minutes, paceSecKm) {
   const base = RUN_MODULES[id];
@@ -5164,7 +5164,7 @@ function weekTemplate(pw, input, prog) {
   if (p === "evaluare" || p === "baza1") {
     s.push({ sport: "bicicleta", type: "lung", minutes: prog.longRide, zones: [2], key: true, priority: 1 });
   } else if (p === "taper" && pw.weekInPhase > 0) {
-    s.push({ sport: "bicicleta", type: "calitate", minutes: 40, zones: [3, 4], key: false, priority: 3, structure: "3 \xD7 5 min la pace de curs\u0103" });
+    s.push({ sport: "bicicleta", type: "calitate", minutes: 40, zones: [2, 3], key: false, priority: 3, structure: "3 \xD7 5 min la ritm de curs\u0103, 3 min u\u0219or \xEEntre", intervals: { count: 3, minutes: 5, zone: 3 } });
   } else {
     s.push({
       sport: "bicicleta",

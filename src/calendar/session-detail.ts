@@ -176,8 +176,12 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
       { label: 'Plafon', text: hrRun ? `alergarea sub ${hrRun.up[1]} bpm.` : 'alergarea să rămână conversațională.' },
     ]);
   }
-  if (w.type === 'calitate' && w.intervals) {
-    const iv = w.intervals;
+  // Auditul v93, A37: o ședință de calitate fără câmpul de intervale, dar cu „N × M min” în text, se construiește ca
+  // intervale; nu mai cade în ramura ușoară care punea tot principalul în zona maximă.
+  const textIv = w.type === 'calitate' && !w.intervals ? /(\d+)\s*[×x]\s*(\d+)\s*min/.exec(w.structure ?? '') : null;
+  const ivFallback = textIv ? { count: Number(textIv[1]), minutes: Number(textIv[2]), zone: (w.targetZones.length ? Math.max(...w.targetZones) : 3) as Zone } : null;
+  if (w.type === 'calitate' && (w.intervals || ivFallback)) {
+    const iv = w.intervals ?? ivFallback!;
     const restMatch = /(\d+)\s*min ușor între/.exec(w.structure ?? '');
     const rest = restMatch ? Number(restMatch[1]) : Math.max(1, Math.round(iv.minutes / 2));
     let count = iv.count;
@@ -203,16 +207,23 @@ export function detailSteps(w: PlannedWorkout, ctx: DetailContext = {}): Step[] 
   const planned = w.sport === 'alergare' ? parseStrides(w.structure) : null;
   const strides = fitStrides(m, planned);
   const sMin = strides ? stridesMinutes(strides) : 0;
-  const main = m - warm - cool - sMin;
-  const target: Zone = (w.targetZones.length ? Math.max(...w.targetZones) : 2) as Zone;
+  const main0 = m - warm - cool - sMin;
+  // Auditul v93, A33: partea ușoară stă în zona ușoară; zona mai mare apare DOAR în blocul de final prevăzut
+  // („ultimele X min”), nu pe toată ședința.
+  const top: Zone = (w.targetZones.length ? Math.max(...w.targetZones) : 2) as Zone;
+  const finalM = top >= 3 ? /ultimele\s+(\d+)(?:\s*[–-]\s*\d+)?\s*min/i.exec(w.structure ?? '') : null;
+  const finalMin = finalM ? Math.min(Number(finalM[1]), Math.max(0, main0 - 10)) : 0;
+  const main = main0 - finalMin;
+  const target: Zone = (top >= 3 ? 2 : top) as Zone;
   const talk = target <= 2 ? ' — poți vorbi în propoziții întregi' : '';
   const run = w.sport === 'alergare';
   return withNote([
     { label: 'Încălzire', text: run ? `${warm} min alergare foarte ușoară în ${z(1)}${strides ? ' (primele 2–3 min pot fi mobilitate dinamică, în aceleași minute)' : ''}` : `${warm} min pedalat ușor în ${z(1)}, cadență 85–95` },
     { label: 'Principal', text: `${main} min în ${z(target)}${w.type === 'lung' ? (m > 75 ? ', constant; apă și 30–60 g carbohidrați pe oră, din prima jumătate de oră' : ', constant') : ''}${talk}` },
+    ...(finalMin ? [{ label: 'Final', text: `${finalMin} min crescând progresiv până în ${z(top)} (efort de cursă), fără sprint la sfârșit` }] : []),
     ...(planned && !strides ? [{ label: 'Accelerări', text: 'azi fără: ședința e prea scurtă ca să încapă și partea ușoară; le faci data viitoare.' }] : []),
     ...(strides && sMin ? [{ label: 'Accelerări', text: `${strides.n} × ${strides.sec} s rapid dar relaxat (nu sprint), pe teren drept, cu ~1 min mers sau trap între ele (${sMin} min)${planned && planned.n !== strides.n ? `; azi ${strides.n}, nu ${planned.n}: ședința e scurtă și partea ușoară are prioritate` : ''}` }] : []),
     { label: 'Revenire', text: run && cool >= 5 ? `${cool} min mers și întinderi ușoare (gambe, coapse, fesieri)` : `${cool} min foarte ușor` },
-    { label: 'Plafon', text: strides && sMin ? `${capFor(target)} În accelerări pulsul poate urca scurt peste: e normal, contează să fie relaxate.` : capFor(target) },
+    { label: 'Plafon', text: finalMin ? `${capFor(target)} În finalul de ${finalMin} min: ${capFor(top)}` : strides && sMin ? `${capFor(target)} În accelerări pulsul poate urca scurt peste: e normal, contează să fie relaxate.` : capFor(target) },
   ]);
 }

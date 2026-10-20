@@ -100,9 +100,10 @@ export function coherenceIssues(w: PlannedWorkout, steps: Step[], swimCap?: numb
     if (sum !== m) out.push(`${w.id}: test ${sum} min în structură ≠ ${m} min în calendar`);
   }
   // Ținta unui segment nu trece de plafon.
-  const cap = /nu trece de (\d+) bpm/.exec(steps.find((s) => s.label === 'Plafon')?.text ?? '');
-  if (cap) {
-    const lim = Number(cap[1]);
+  // Cu bloc de final (auditul v93, A33) plafonul are două valori: ușor și final; segmentele nu trec de cel mai mare.
+  const caps = [...(steps.find((s) => s.label === 'Plafon')?.text ?? '').matchAll(/nu trece de (\d+) bpm/g)].map((c) => Number(c[1]));
+  if (caps.length) {
+    const lim = Math.max(...caps);
     for (const s of steps) {
       if (s.label === 'Plafon' || s.label === 'Puls') continue;
       for (const r of s.text.matchAll(/(\d{2,3})–(\d{2,3}) bpm/g)) if (Number(r[2]) > lim) out.push(`${w.id}: ținta ${r[1]}–${r[2]} bpm peste plafonul de ${lim} bpm`);

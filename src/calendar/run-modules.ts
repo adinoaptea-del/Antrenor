@@ -44,8 +44,9 @@ export const RUN_MODULES: Record<RunModuleId, RunModule> = {
 const fmtMin = (m: number) => (Number.isInteger(m) ? `${m} min` : m < 1 ? `${Math.round(m * 60)} s` : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, '0')} min`);
 const fmtPace = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/km`;
 
+/** Totalul exact (auditul v93, A34): pauzele sunt DOAR între repetări (N − 1), ca în pași și în text. */
 export function moduleMinutes(m: Pick<RunModule, 'warm' | 'count' | 'work' | 'rest' | 'cool'>): number {
-  return m.warm + m.count * (m.work + m.rest) + m.cool;
+  return m.warm + m.count * m.work + Math.max(0, m.count - 1) * m.rest + m.cool;
 }
 
 /**
