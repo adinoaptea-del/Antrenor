@@ -24,7 +24,15 @@ import {
   span,
   stateAt,
   textAlpha,
+  TRANSFER,
+  TRANSFER_MS,
+  contentAlpha,
+  transferPhaseAt,
+  transferSceneOpacity,
+  travel,
+  travelDur,
   type PhaseName,
+  type TransferPhase,
 } from '@core/motion/teleport.js';
 
 /**
@@ -61,6 +69,13 @@ const budget = () => {
 /** Margine suplimentară a decorului: shake-ul nu descoperă nimic la capetele ecranului. */
 const MARGIN = 16;
 
+/** Bula de pe Acasă (componenta reală), dacă e montată și are mărime. */
+const homeOrb = () => {
+  const el = document.querySelector<HTMLElement>('.azi .orb');
+  const r = el?.getBoundingClientRect();
+  return el && r && r.width > 20 ? el : null;
+};
+
 /** Cardul ședinței (orice element cu data-wid). Păstrat pentru alte ecrane; scena v2 nu mai pornește din el (Acasă e ascuns). */
 export const workoutRect = (id: string) => {
   const el = document.querySelector(`[data-wid="${CSS.escape(id)}"]`);
@@ -89,13 +104,23 @@ export function CosmicMessage({
   inline?: boolean;
   /** În laborator, „Continuă” pornește ieșirea pe ceasul laboratorului. */
   onRequestContinue?: () => void;
-  onPhase?: (p: PhaseName) => void;
+  onPhase?: (p: PhaseName | TransferPhase) => void;
   onClose: () => void;
 }) {
   const cv = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const goBtn = useRef<HTMLButtonElement>(null);
+  const base = useRef<HTMLDivElement>(null);
+  /** Bula reală de Acasă, când întâmpinarea o construiește (transferul). */
+  const orbT = useRef<{ el: HTMLElement; inner: HTMLElement | null } | null>(null);
+  const restoreOrb = () => {
+    const o = orbT.current;
+    if (!o) return;
+    delete o.el.dataset.build;
+    if (o.inner) o.inner.style.opacity = '';
+    orbT.current = null;
+  };
   const reduce = reducedMotion();
   const [ready, setReady] = useState(reduce);
   const [leaving, setLeaving] = useState(false);
@@ -125,6 +150,7 @@ export function CosmicMessage({
   const finish = () => {
     if (done.current) return;
     done.current = true;
+    restoreOrb();
     setHomeInert(false);
     document.body.style.overflow = '';
     const el = prevFocus.current as HTMLElement | null;
@@ -161,6 +187,7 @@ export function CosmicMessage({
   const skip = () => {
     if (skipAt.current != null) return;
     skipAt.current = performance.now();
+    restoreOrb();
     setLeaving(true);
     window.setTimeout(() => finishRef.current(), reduce ? REDUCED_MS : SKIP_MS);
   };
@@ -180,6 +207,18 @@ export function CosmicMessage({
   useLayoutEffect(() => {
     if (reduce || !wrap.current) return;
     wrap.current.style.opacity = '1';
+    // Întâmpinarea, când există bula de Acasă: mesajul stă mai jos, ca transferul să traverseze spațiul până la ea.
+    const orb = variant === 'intampinare' ? homeOrb() : null;
+    const b = box.current;
+    if (orb && b) {
+      const vh = window.innerHeight;
+      const r = orb.getBoundingClientRect();
+      const bh = b.getBoundingClientRect().height;
+      const want = Math.max(vh * 0.6, r.bottom + bh / 2 + 24);
+      const max = vh - (bh / 2 + 64 + 46 + 64);
+      b.style.top = `${Math.round(Math.max(vh * 0.44, Math.min(want, max)))}px`;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reduce]);
 
   useEffect(() => {
@@ -298,15 +337,33 @@ export function CosmicMessage({
       return { x: x + jx * jit, y: y + jy * jit, z };
     };
 
-    let lastPhase: PhaseName | null = null;
+    let lastPhase: PhaseName | TransferPhase | null = null;
     let raf = 0;
     let readyFired = false;
 
+    let decided = false;
     const draw = () => {
       const now = performance.now();
       const { t, out } = clockRef.current();
       const live = (t + (out ?? 0)) / 1000;
-      const phase = phaseAt(t, out);
+      // La „Continuă”, întâmpinarea alege: dacă bula de Acasă există, materia se transferă în ea (o construiește);
+      // altfel, dizolvarea „03”.
+      if (out != null && !decided) {
+        decided = true;
+        const el = variant === 'intampinare' && skipAt.current == null ? homeOrb() : null;
+        if (el) {
+          el.dataset.build = '0';
+          const inner = el.querySelector<HTMLElement>('.orb-in');
+          if (inner) inner.style.opacity = '0';
+          orbT.current = { el, inner };
+        }
+      }
+      if (out == null && decided) {
+        decided = false;
+        restoreOrb();
+      }
+      const tr = out != null ? orbT.current : null;
+      const phase = tr && out != null ? transferPhaseAt(out) : phaseAt(t, out);
       if (phase !== lastPhase) {
         lastPhase = phase;
         onPhaseRef.current?.(phase);
@@ -318,13 +375,14 @@ export function CosmicMessage({
       }
       // Scena (fundal opac + tot ce e în ea): 100% până la revealHome; apoi Acasă apare. „Sari peste”: 200 ms.
       const skipP = skipAt.current == null ? 0 : clamp01((now - skipAt.current) / SKIP_MS);
-      const op = sceneOpacity(out) * (1 - skipP);
+      const op = (tr && out != null ? transferSceneOpacity(out) : sceneOpacity(out)) * (1 - skipP);
+      const showing = tr && out != null ? out >= TRANSFER.interfata[0] : st === 'revealHome';
       if (wrap.current) {
         wrap.current.style.opacity = op.toFixed(3);
-        wrap.current.style.pointerEvents = st === 'revealHome' || skipP > 0 ? 'none' : '';
+        wrap.current.style.pointerEvents = showing || skipP > 0 ? 'none' : '';
       }
-      if (st === 'revealHome') setHomeInert(false);
-      const ta = textAlpha(t, out);
+      if (showing) setHomeInert(false);
+      const ta = tr && out != null ? textAlpha(t, null) * (1 - span(out, TRANSFER.estompare)) : textAlpha(t, out);
       if (box.current) box.current.style.opacity = ta.toFixed(3);
 
       const W = (VW + 2 * MARGIN) * dpr;
@@ -425,7 +483,17 @@ export function CosmicMessage({
       ctx.globalCompositeOperation = 'source-over';
 
       // 4 · Materia. Membrana: la ieșire rămân doar segmentele încă nedesfăcute (o zonă de sticlă recognoscibilă).
-      const proj = (x: number, y: number) => (x - cx) * flow.x + (y - cy) * flow.y;
+      // Transferul: forma cedează dinspre bula de Acasă; altfel, dinspre dreapta-sus (03).
+      const orbR = tr ? tr.el.getBoundingClientRect() : null;
+      const oc2 = orbR ? { x: orbR.left + orbR.width / 2, y: orbR.top + orbR.height / 2, R: Math.min(orbR.width, orbR.height) * 0.37 } : null;
+      const fl = oc2 ? (() => {
+        const dx = oc2.x - cx;
+        const dy = oc2.y - cy;
+        const d = Math.hypot(dx, dy) || 1;
+        return { x: dx / d, y: dy / d };
+      })() : flow;
+      const range = tr ? TRANSFER.desprindere : EXIT.deschidere;
+      const proj = (x: number, y: number) => (x - cx) * fl.x + (y - cy) * fl.y;
       const P: { x: number; y: number; th: number; open: number }[] = [];
       for (let i = 0; i < N; i++) {
         const th = (i / N) * Math.PI * 2;
@@ -433,7 +501,7 @@ export function CosmicMessage({
         const x = cx + Math.cos(th) * rr;
         const y = cy + Math.sin(th) * rr;
         // Marginea se rupe neregulat: mici decalaje între segmente vecine.
-        P.push({ x, y, th, open: releaseAt(proj(x, y), R) + 40 * Math.sin(i * 2.3 + ph[3]!) });
+        P.push({ x, y, th, open: releaseAt(proj(x, y), R, range) + 40 * Math.sin(i * 2.3 + ph[3]!) });
       }
       const pres = membranePresence(t);
       const kept = out == null ? P.map(() => true) : P.map((p) => out < p.open);
@@ -521,8 +589,8 @@ export function CosmicMessage({
         }
         ctx2.restore();
         if (out != null) {
-          const b = openFront(out, R);
-          const g = ctx2.createLinearGradient(cx + flow.x * (b + 55), cy + flow.y * (b + 55), cx + flow.x * (b - 55), cy + flow.y * (b - 55));
+          const b = openFront(out, R, range);
+          const g = ctx2.createLinearGradient(cx + fl.x * (b + 55), cy + fl.y * (b + 55), cx + fl.x * (b - 55), cy + fl.y * (b - 55));
           g.addColorStop(0, 'rgba(0,0,0,0)');
           g.addColorStop(1, 'rgba(0,0,0,1)');
           ctx2.save();
@@ -562,7 +630,7 @@ export function CosmicMessage({
             const th = c0 - len / 2 + (len * j) / 16;
             const rx = cx + Math.cos(th) * shellAt(th);
             const ry = cy + Math.sin(th) * shellAt(th);
-            if (out != null && out >= releaseAt(proj(rx, ry), R)) {
+            if (out != null && out >= releaseAt(proj(rx, ry), R, range)) {
               started = false;
               continue;
             }
@@ -648,6 +716,71 @@ export function CosmicMessage({
         else dot(p.x, p.y, Math.max(0.45, size * 0.5), col, a * 0.8, false);
         return true;
       };
+      /**
+       * Transferul unei bucăți de materie în bula de Acasă: pleacă cu viteza pe care o avea (spre exterior și spre bulă),
+       * se arcuiește prin spațiu (fire: vecinii au aceeași curbură) și intră tangent în orbita bulei, unde mai face un
+       * scurt drum pe orbită și se topește în bula reală. Întoarce progresul drumului (0..1), din care se construiește bula.
+       */
+      let built = 0;
+      let builtN = 0;
+      const transferred = (x0: number, y0: number, th: number, rel: number, baseDur: number, rad: number, col: [number, number, number], a0: number, sa: number, sb: number, depth: number) => {
+        builtN++;
+        if (!oc2 || out == null) return false;
+        if (out < rel) return false;
+        const dur = travelDur(rel, baseDur);
+        const u = travel(out, rel, dur);
+        built += u;
+        const ang = sa * Math.PI * 2;
+        const sg = sb < 0.5 ? -1 : 1;
+        const orr = oc2.R * (0.93 + 0.1 * sb);
+        const Tx = oc2.x + Math.cos(ang) * orr;
+        const Ty = oc2.y + Math.sin(ang) * orr;
+        const tx = -Math.sin(ang) * sg;
+        const ty = Math.cos(ang) * sg;
+        let vx = 0.6 * Math.cos(th) + 0.9 * fl.x;
+        let vy = 0.6 * Math.sin(th) + 0.9 * fl.y;
+        const vl = Math.hypot(vx, vy) || 1;
+        vx /= vl;
+        vy /= vl;
+        const d = Math.hypot(Tx - x0, Ty - y0);
+        const c1x = x0 + vx * d * 0.45;
+        const c1y = y0 + vy * d * 0.45;
+        const c2x = Tx - tx * d * 0.4;
+        const c2y = Ty - ty * d * 0.4;
+        const px = -(Ty - y0) / (d || 1);
+        const py = (Tx - x0) / (d || 1);
+        const amp = (28 + 46 * Math.abs(Math.sin(th * 2 + ph[1]!))) * (Math.sin(th * 3 + ph[2]!) < 0 ? -1 : 1);
+        const at = (v: number): [number, number] => {
+          const w = 1 - v;
+          const bx = w * w * w * x0 + 3 * w * w * v * c1x + 3 * w * v * v * c2x + v * v * v * Tx;
+          const by = w * w * w * y0 + 3 * w * w * v * c1y + 3 * w * v * v * c2y + v * v * v * Ty;
+          const bulge = Math.sin(Math.PI * v) * amp;
+          return [bx + px * bulge, by + py * bulge];
+        };
+        const z = 0.75 + 0.25 * Math.sin(u * 3.4 + th * 2 + depth);
+        if (u < 1) {
+          const [x, y] = at(u);
+          const pts2 = [Math.max(0, u - 0.08), Math.max(0, u - 0.05), Math.max(0, u - 0.025), u].map(at);
+          const a = a0 * Math.min(1, (out - rel) / 120) * z;
+          for (let i = 1; i < pts2.length; i++) {
+            ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${(a * 0.7 * (i / 3)).toFixed(3)})`;
+            ctx.lineWidth = Math.max(0.6, rad * (0.5 + 0.3 * i));
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pts2[i - 1]![0], pts2[i - 1]![1]);
+            ctx.lineTo(pts2[i]![0], pts2[i]![1]);
+            ctx.stroke();
+          }
+          dot(x, y, rad, col, a, rad > 1.6);
+        } else {
+          // Ajunsă: continuă puțin pe orbită, încetinind, și se topește în bula reală.
+          const extra = out - rel - dur;
+          const ang2 = ang + sg * 0.9 * (1 - Math.exp(-extra / 600));
+          const fade = 1 - easeInOut(clamp01(extra / 600));
+          dot(oc2.x + Math.cos(ang2) * orr, oc2.y + Math.sin(ang2) * orr, rad, col, a0 * fade * z, false);
+        }
+        return true;
+      };
       for (const q of matter) {
         // Poziția în formă (repaus): pe membrană, în inel sau în norul din jur.
         const slot = (lv: number): [number, number] => {
@@ -663,6 +796,12 @@ export function CosmicMessage({
         };
         const [sx0, sy0] = slot(breathe);
         const thNow = Math.atan2(sy0 - cy, sx0 - cx);
+        if (out != null && oc2) {
+          const rel = releaseAt(proj(sx0, sy0), R, range) + (q.kind === 'rim' ? 0 : 80 + q.cdelay * 120);
+          if (transferred(sx0, sy0, thNow, rel, 1100 + q.speed * 500, q.r, q.col, q.a, q.fx, q.fy, q.depth)) continue;
+          dot(sx0, sy0, q.r, q.col, q.a * (0.7 + 0.3 * Math.sin(live * 0.9 + q.ph)), q.depth === 2);
+          continue;
+        }
         if (out != null) {
           const rel = releaseAt(proj(sx0, sy0), R) + (q.kind === 'rim' ? 0 : 60 + q.cdelay * 80);
           if (released(sx0, sy0, thNow, rel, q.L, q.dur, q.r, q.col, q.a, q.jx, q.jy, q.zph, q.depth, q.echo)) continue;
@@ -714,19 +853,35 @@ export function CosmicMessage({
           const y0 = top + sd.uy * (cy + B - top) * 0.85;
           const th = Math.atan2(y0 - cy, x0 - cx);
           if (Math.hypot(x0 - cx, y0 - cy) > shellAt(th) - 4) continue;
-          const rel = releaseAt(proj(x0, y0), R) + 90;
-          if (!released(x0, y0, th, rel, sd.L, sd.dur, sd.r, sd.col, sd.a, sd.jx, sd.jy, sd.zph, 1, sd.echo)) continue;
+          const rel = releaseAt(proj(x0, y0), R, range) + 90;
+          if (oc2) transferred(x0, y0, th, rel, 1200 + sd.uy * 400, sd.r, sd.col, sd.a, sd.ux, sd.zph / 6.28, 1);
+          else released(x0, y0, th, rel, sd.L, sd.dur, sd.r, sd.col, sd.a, sd.jx, sd.jy, sd.zph, 1, sd.echo);
         }
         for (const sd of wallSeeds) {
           const p = P[sd.i]!;
           const x0 = cx + Math.cos(p.th) * (Math.hypot(p.x - cx, p.y - cy) - sd.inset);
           const y0 = cy + Math.sin(p.th) * (Math.hypot(p.x - cx, p.y - cy) - sd.inset);
-          released(x0, y0, p.th, p.open, sd.L, sd.dur, 1.1, sd.col, 0.75, sd.jx, sd.jy, sd.zph, 1, sd.echo);
+          if (oc2) transferred(x0, y0, p.th, p.open, 1150 + sd.inset * 30, 1.1, sd.col, 0.75, (sd.zph / 6.28 + sd.i / N) % 1, sd.jx + 0.5, 1);
+          else released(x0, y0, p.th, p.open, sd.L, sd.dur, 1.1, sd.col, 0.75, sd.jx, sd.jy, sd.zph, 1, sd.echo);
         }
       }
       ctx.globalCompositeOperation = 'source-over';
 
-      if (skipAt.current == null && out != null && out >= EXIT_MS && !clock) {
+      // Bula reală se construiește din ce a ajuns; fundalul se deschide doar peste ea, cât crește.
+      if (tr && oc2 && out != null && skipAt.current == null) {
+        const build = builtN ? Math.min(1, built / builtN / 0.97) : 0;
+        tr.el.dataset.build = build.toFixed(3);
+        if (tr.inner) tr.inner.style.opacity = contentAlpha(out).toFixed(3);
+        if (base.current) {
+          // Fereastra stă în cercul bulei (fără textul sau cardurile din jur) și crește odată cu volumul ei.
+          const hole = Math.min(orbR!.width, orbR!.height) * 0.5 * (0.3 + 0.7 * easeOut(build));
+          const m = `radial-gradient(circle at ${Math.round(oc2.x)}px ${Math.round(oc2.y)}px, transparent ${Math.round(hole * 0.8)}px, #000 ${Math.round(hole)}px)`;
+          base.current.style.webkitMaskImage = m;
+          base.current.style.maskImage = m;
+        }
+      }
+      const endAt = tr ? TRANSFER_MS : EXIT_MS;
+      if (skipAt.current == null && out != null && out >= endAt && !clock) {
         finishRef.current();
         return;
       }
@@ -736,6 +891,7 @@ export function CosmicMessage({
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', fit);
+      restoreOrb();
     };
     // Scena pornește o singură dată pe mesaj.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -743,7 +899,8 @@ export function CosmicMessage({
 
   const label = variant === 'reusita' ? 'Antrenament finalizat' : 'Mesajul zilei';
   const scene = (
-    <div ref={wrap} className={`cosmic cosmic-${variant} ${reduce ? 'still' : ''} ${leaving ? 'leaving' : ''} ${inline ? 'inline' : ''}`} role="dialog" aria-modal="true" aria-label={label} style={{ background: BASE }}>
+    <div ref={wrap} className={`cosmic cosmic-${variant} ${reduce ? 'still' : ''} ${leaving ? 'leaving' : ''} ${inline ? 'inline' : ''}`} role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={base} className="cosmic-base" style={{ background: BASE }} />
       {!reduce && <canvas ref={cv} className="cosmic-cv" aria-hidden="true" />}
       <div className={`cosmic-box ${reduce ? 'glass' : ''}`} ref={box} style={{ opacity: reduce ? undefined : 0 }}>
         <div className="cosmic-k">{kicker}</div>

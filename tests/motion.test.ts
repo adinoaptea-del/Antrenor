@@ -77,3 +77,24 @@ test('tubul: fără date ≠ 0, 0 fără umplere, 100 închide complet, la proce
   assert.equal(meniscus(150, W, r)!.fillW, W);
   assert.equal(meniscus(-3, W, r)!.fillW, 0);
 });
+
+test('transferul în bula Acasă: textul se stinge înainte, toată materia ajunge, apoi antrenamentele, apoi restul', async () => {
+  const m = await import('../src/motion/teleport.js');
+  const { TRANSFER: T } = m;
+  assert.ok(T.estompare[1] <= T.desprindere[0], 'mesajul se stinge înaintea transferului');
+  // Orice particulă eliberată în fereastra de desprindere ajunge până la sfârșitul transferului (fără resturi în aer).
+  for (const rel of [T.desprindere[0], 800, T.desprindere[1] + 200]) {
+    for (const base of [900, 1500, 2400]) {
+      const dur = m.travelDur(rel, base);
+      assert.equal(m.travel(T.transfer[1], rel, dur), 1, `rel ${rel}, dur ${base}`);
+    }
+  }
+  // Accelerare și încetinire line: viteza e mică la plecare și la sosire, mare la mijloc.
+  const v = (x: number) => m.travel(x + 10, 0, 1000) - m.travel(x, 0, 1000);
+  assert.ok(v(0) < v(495) / 5 && v(990) < v(495) / 5);
+  assert.equal(m.contentAlpha(T.continut[0] - 1), 0, 'antrenamentele apar doar după ce bula e formată');
+  assert.equal(m.contentAlpha(T.continut[1]), 1);
+  assert.equal(m.transferSceneOpacity(T.continut[1]), 1, 'cardurile și navigația nu se văd înainte');
+  assert.equal(m.transferSceneOpacity(m.TRANSFER_MS), 0);
+  assert.deepEqual([100, 600, 2000, 3000, 3600].map(m.transferPhaseAt), ['estompare', 'desprindere', 'transfer', 'continut', 'interfata']);
+});

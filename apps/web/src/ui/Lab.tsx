@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, type PhaseName } from '@core/motion/teleport.js';
+import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, TRANSFER, TRANSFER_LABEL, TRANSFER_MS, type PhaseName, type TransferPhase } from '@core/motion/teleport.js';
 import { cheerFor } from '@core/cheers.js';
 import { CosmicMessage, type CosmicClock } from './Cosmic';
 import { Orb } from './Orb';
@@ -24,7 +24,7 @@ const MODES: [Mode, string][] = [
 ];
 /** Pe cursor: 0–3400 ms scena deschisă (intrare ~2,5 s + repaus), apoi ieșirea „03” și dezvăluirea Acasă. */
 const OPEN_END = 3400;
-const TOTAL = OPEN_END + EXIT_MS;
+const TOTAL = OPEN_END + Math.max(EXIT_MS, TRANSFER_MS);
 const mid = (r: readonly [number, number]) => Math.round((r[0] + r[1]) / 2);
 const JUMP: Record<PhaseName, number> = {
   liniste: mid(PHASES.liniste),
@@ -40,13 +40,24 @@ const JUMP: Record<PhaseName, number> = {
   ecou: OPEN_END + mid(EXIT.ecou),
   dezvaluire: OPEN_END + mid(EXIT.dezvaluire),
 };
-const EXIT_PHASES = new Set<PhaseName>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire']);
+const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'desprindere', 'transfer', 'continut', 'interfata']);
+/** Întâmpinarea: ieșirea e transferul în bula de Acasă (aici, bula din laborator). */
+const JUMP_TRANSFER: Record<TransferPhase, number> = {
+  estompare: OPEN_END + mid(TRANSFER.estompare),
+  desprindere: OPEN_END + mid(TRANSFER.desprindere),
+  transfer: OPEN_END + 2100,
+  continut: OPEN_END + mid(TRANSFER.continut),
+  interfata: OPEN_END + mid(TRANSFER.interfata),
+};
+type AnyPhase = PhaseName | TransferPhase;
+const labelOf = (p: AnyPhase) => (p in TRANSFER_LABEL && !(p in PHASE_LABEL) ? TRANSFER_LABEL[p as TransferPhase] : PHASE_LABEL[p as PhaseName]);
 
 export function GraphicsLab({ name, onClose }: { name: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('intampinare');
   const [run, setRun] = useState(0);
-  const [phase, setPhase] = useState<PhaseName>('liniste');
+  const [phase, setPhase] = useState<AnyPhase>('liniste');
   const [ended, setEnded] = useState(false);
+  const [compact, setCompact] = useState(false);
   const [ui, setUi] = useState({ playing: true, speed: 1, T: 0 });
   const tl = useRef({ T0: 0, base: performance.now(), playing: true, speed: 1, closeAt: null as number | null });
   const now = () => {
@@ -87,10 +98,14 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
     tl.current.speed = tl.current.speed === 1 ? 0.25 : 1;
     setT(T, tl.current.playing);
   };
-  const jump = (p: PhaseName) => {
+  const jump = (p: AnyPhase, at: number) => {
     tl.current.closeAt = EXIT_PHASES.has(p) ? OPEN_END : null;
-    setT(JUMP[p], false);
+    setT(at, false);
   };
+  const jumps: [AnyPhase, number][] =
+    mode === 'intampinare'
+      ? [...(Object.entries(JUMP) as [PhaseName, number][]).filter(([p]) => !['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire'].includes(p)), ...(Object.entries(JUMP_TRANSFER) as [TransferPhase, number][])]
+      : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
     tl.current.closeAt = v > OPEN_END ? OPEN_END : null;
     setT(v, false);
@@ -157,9 +172,9 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               onClose={() => setEnded(true)}
             />
           )}
-          <div className="gfx-bar">
+          <div className={`gfx-bar ${compact ? 'compact' : ''}`}>
             <div className="gfx-phase">
-              {PHASE_LABEL[phase]} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
+              {labelOf(phase)} · {Math.round(ui.T)} ms{ui.speed !== 1 ? ' · încetinit 4×' : ''}
             </div>
             <input type="range" min={0} max={TOTAL} value={Math.round(ui.T)} onChange={(e) => scrub(Number(e.target.value))} aria-label="Momentul scenei" />
             <div className="wk-btns">
@@ -169,6 +184,9 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <button className="pill" onClick={pause}>
                 {ui.playing ? 'Pauză' : 'Pornește'}
               </button>
+              <button className="pill" onClick={() => setCompact(!compact)} aria-expanded={!compact}>
+                {compact ? 'Arată controalele' : 'Ascunde controalele'}
+              </button>
               <button className="pill" onClick={slow}>
                 {ui.speed === 1 ? 'Încet' : 'Normal'}
               </button>
@@ -177,9 +195,9 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               </button>
             </div>
             <div className="wk-btns gfx-jumps">
-              {(Object.keys(JUMP) as PhaseName[]).map((p) => (
-                <button key={p} className={`pill ${phase === p ? 'on' : ''}`} onClick={() => jump(p)}>
-                  {PHASE_LABEL[p]}
+              {jumps.map(([p, at]) => (
+                <button key={p} className={`pill ${phase === p ? 'on' : ''}`} onClick={() => jump(p, at)}>
+                  {labelOf(p)}
                 </button>
               ))}
             </div>

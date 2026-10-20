@@ -1462,3 +1462,9 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .gfx-bar .wk-btns { gap: 6px; }
 .gfx-bar .tiny { display: none; }
 @media (min-height: 800px) { .gfx-bar .tiny { display: block; } }
+/* Transferul: fundalul cosmic e un strat separat (cu fereastră peste bula de Acasă cât se construiește); scena e transparentă. */
+.cosmic { background: transparent; }
+.cosmic-base { position: absolute; inset: 0; pointer-events: none; }
+.cosmic.still .cosmic-base { background: #071012; }
+.gfx-bar.compact input[type='range'], .gfx-bar.compact .gfx-jumps, .gfx-bar.compact .tiny { display: none; }
+.gfx-bar.compact { background: linear-gradient(to top, rgba(6, 10, 10, 0.8) 60%, transparent); }

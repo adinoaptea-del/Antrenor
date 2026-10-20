@@ -157,11 +157,55 @@ export const BREATH_PERIOD_S = 10;
  * direcția de deschidere, -R…+R): punctele de pe latura deschisă (s ≈ +R) se eliberează la ~250 ms, cele de pe partea
  * opusă la ~900 ms. Același front decide sticla, conturul și particulele (o singură simulare).
  */
-export function releaseAt(s: number, R: number): number {
-  const [a, b] = EXIT.deschidere;
+export function releaseAt(s: number, R: number, range: readonly [number, number] = EXIT.deschidere): number {
+  const [a, b] = range;
   return a + (b - a) * clamp01((1.15 * R - s) / (2.3 * R));
 }
 /** Poziția frontului la momentul out (aceeași axă ca releaseAt). */
-export function openFront(out: number, R: number): number {
-  return 1.15 * R - 2.3 * R * span(out, EXIT.deschidere);
+export function openFront(out: number, R: number, range: readonly [number, number] = EXIT.deschidere): number {
+  return 1.15 * R - 2.3 * R * span(out, range);
+}
+
+// ——— Transferul spre bula Acasă (cererea proprietarului, 20.10.2026) ———
+// La încheierea întâmpinării, dacă bula de Acasă există: textul se stinge, forma se descompune dintr-o parte (cea
+// dinspre bulă), iar particulele desprinse curg pe arce spre orbita bulei reale și o construiesc. Descompunerea și
+// construcția sunt simultane: construcția = cât din materie a ajuns. Apoi apar antrenamentele din bulă, apoi restul.
+export const TRANSFER = {
+  estompare: [0, 300],
+  desprindere: [300, 1300],
+  transfer: [300, 2900],
+  continut: [2900, 3400],
+  interfata: [3400, 3900],
+} as const;
+export const TRANSFER_MS = TRANSFER.interfata[1];
+export type TransferPhase = keyof typeof TRANSFER;
+export const TRANSFER_LABEL: Record<TransferPhase, string> = {
+  estompare: 'Mesajul se stinge',
+  desprindere: 'Forma se desprinde',
+  transfer: 'Transfer spre bulă',
+  continut: 'Antrenamentele apar',
+  interfata: 'Restul interfeței',
+};
+export function transferPhaseAt(out: number): TransferPhase {
+  if (out < TRANSFER.estompare[1]) return 'estompare';
+  if (out < TRANSFER.desprindere[1]) return 'desprindere';
+  if (out < TRANSFER.transfer[1]) return 'transfer';
+  if (out < TRANSFER.continut[1]) return 'continut';
+  return 'interfata';
+}
+/** Drumul unei particule (0..1): pleacă la rel, ajunge după dur, cu accelerare și încetinire line. */
+export function travel(out: number, rel: number, dur: number): number {
+  return easeInOut(clamp01((out - rel) / dur));
+}
+/** Durata drumului: ajunge cel târziu la sfârșitul transferului, oricând ar pleca. */
+export function travelDur(rel: number, base: number): number {
+  return Math.max(500, Math.min(base, TRANSFER.transfer[1] - rel));
+}
+/** Conținutul bulei (antrenamentele zilei): 0 până e formată, apoi apare lin. */
+export function contentAlpha(out: number): number {
+  return easeInOut(span(out, TRANSFER.continut));
+}
+/** Fundalul cosmic: opac până se arată restul interfeței; apoi se ridică lin. */
+export function transferSceneOpacity(out: number): number {
+  return 1 - easeInOut(span(out, TRANSFER.interfata));
 }

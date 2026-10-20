@@ -91,10 +91,21 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
       return c.map((v, i) => Math.round(v * 0.5 + to[i]! * 0.5));
     };
 
+    // Construcția bulei (transferul de la întâmpinare, ui/Cosmic.tsx): data-build 0..1 pe elementul bulei = cât din
+    // materie a ajuns. Lipsă = bula întreagă (comportamentul obișnuit). Aceeași componentă, nu o copie.
+    const buildOf = () => {
+      const v = cv.parentElement?.dataset.build;
+      if (v == null) return 1;
+      const b = Number(v);
+      return Number.isFinite(b) ? Math.max(0, Math.min(1, b)) : 1;
+    };
     const draw = (t: number) => {
       const prog = progRef.current;
+      const build = buildOf();
       // Particulele vizibile: proporțional cu minutele rămase (un rest discret rămâne, ca bula să nu dispară).
-      const visibleN = prog == null ? N : Math.round(N * (0.06 + 0.94 * (1 - prog)));
+      const visibleN = Math.round((prog == null ? N : Math.round(N * (0.06 + 0.94 * (1 - prog)))) * build);
+      // Membrana și ceața se închid după ce s-au adunat particulele (volumul vine din materie, nu invers).
+      const shellK = Math.pow(build, 1.6);
       // Scurta animație la atingerea țintei: o pulsație de ~1,6 s (nu și la „mișcare redusă”).
       const bAt = burstRef.current;
       const bT = bAt != null && !reduce ? (performance.now() - bAt) / 1600 : 2;
@@ -119,8 +130,10 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
       g.addColorStop(0.45, 'rgba(150,240,110,0.09)');
       g.addColorStop(0.7, 'rgba(120,230,150,0.03)');
       g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = build;
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = shellK;
 
       ctx.globalCompositeOperation = 'lighter';
       // Membrana: câteva contururi deformate diferit, de la larg și slab la fin și luminos.
@@ -174,6 +187,7 @@ export function Orb({ children, onPress, label, paused = false, dim = false, pro
         ctx.stroke();
       }
 
+      ctx.globalAlpha = 1;
       // Particule: rotite în volum, apoi deformate în coordonatele vederii (la fel ca membrana).
       for (let i = 0; i < visibleN; i++) {
         const p = pts[i]!;
