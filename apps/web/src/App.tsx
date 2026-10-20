@@ -1,7 +1,7 @@
 import { Cheer, pendingCheer } from './ui/Cheer';
 import { WalkPage } from './ui/Walking';
 import { BadgesScreen } from './ui/Badges';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Sport } from '@core/types.js';
 import { goalKind, goalSports } from '@core/calendar/phases.js';
 import { Home } from './ui/Home';
@@ -12,6 +12,7 @@ import { Meals } from './ui/Meals';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
 import { Memento, welcomeDue } from './ui/Memento';
+import { Dissolve, reducedMotion, type DissolveShot } from './ui/Dissolve';
 import { Countdown } from './ui/Countdown';
 import { Admin } from './ui/Admin';
 import { LabsGate } from './ui/LabsGate';
@@ -102,6 +103,7 @@ function Shell() {
     return welcomeDue();
   });
   const [countdown, setCountdown] = useState(false);
+  const [shot, setShot] = useState<DissolveShot | null>(null);
   const [labsGate, setLabsGate] = useState(false);
   const [tour, setTour] = useState(false);
   const [ambient, setAmbient] = useState(ambientOn);
@@ -280,6 +282,8 @@ function Shell() {
     };
   }, [status, sync]);
 
+  const clearShot = useCallback(() => setShot(null), []);
+
   if (status === 'boot' || status === 'loading') return <Loading />;
   if (status === 'unconfigured') return <Unconfigured reason={error} />;
   if (status === 'setup') return <Setup />;
@@ -298,6 +302,24 @@ function Shell() {
     // Direcția animației: mai „adânc” = intră din dreapta; înapoi = din stânga; între taburi = fade.
     const depth = (x: Screen) => (MAIN.some((m) => m.id === x) ? 0 : x === 'prieteni' || ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'].includes(x) ? 2 : 1);
     setNavDir(t === screen ? 'none' : depth(t) > depth(screen) ? 'fwd' : depth(t) < depth(screen) ? 'back' : 'fade');
+    // Întoarcerea pe Acasă (înapoi, „Trimite” într-un formular): ecranul care pleacă se dizolvă în praf care intră în
+    // bulă (cererea lui Cuza, 20.10.2026). Acasă apare dedesubt fără alunecare.
+    if (t === 'acasa' && screen !== 'acasa' && !reducedMotion()) {
+      try {
+        const el = document.querySelector('.screen') as HTMLElement | null;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          const node = el.cloneNode(true) as HTMLElement;
+          node.style.left = `${r.left}px`;
+          node.style.top = `${r.top}px`;
+          node.style.width = `${r.width}px`;
+          setShot({ id: Date.now(), node, rect: { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } });
+          setNavDir('none');
+        }
+      } catch {
+        /* fără copie: navigarea obișnuită */
+      }
+    }
     setScreen(t);
     try {
       const deepNow = history.state?.airon === 'deep';
@@ -376,6 +398,7 @@ function Shell() {
       {/* Mesajele cosmice: felicitarea are prioritate (fără două ferestre la rând); niciuna peste formulare, ghid,
           numărătoare, analize sau un semnal de oprire (avertismentul are prioritate). */}
       {showWelcome && <Memento onClose={() => setMemento(false)} />}
+      {shot && <Dissolve key={shot.id} shot={shot} onDone={clearShot} />}
       {me.intakeComplete && !local && <Cheer me={me} blocked={!!countdown || tour || isForm || quiet || showWelcome} onShow={() => setMemento(false)} />}
       {ambient && <Ambient level={level} />}
       {local && screen !== 'acasa' && !isForm && (
