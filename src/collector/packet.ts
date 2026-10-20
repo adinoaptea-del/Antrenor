@@ -631,13 +631,11 @@ export function buildPacket(input: CollectorInput): Packet {
       .filter((a) => (input.event === 'dimineata' ? diffDays(a.date, today) >= 1 : true))
       .sort((a, b) => diffDays(a.date, b.date) || (b.startLocal ?? '').localeCompare(a.startLocal ?? ''))[0] ?? null;
   const evening = lastAct ? (input.evenings.find((e) => e.activityId === lastAct.externalId) ?? input.evenings.find((e) => e.date === lastAct.date) ?? null) : null;
-  const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && Math.abs(diffDays(w.date, lastAct.date)) <= 1 && w.status !== 'sters') : false;
+  const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && w.date === lastAct.date && w.status !== 'sters') : false;
 
-  // Ședința propusă de care se leagă o activitate (același sport, ±1 zi, cea mai apropiată).
+  // Ședința propusă de care se leagă o activitate: același sport, ACEEAȘI zi (regula 28, ca src/scoring/match.ts).
   const plannedFor = (a: SourceActivity): PlannedWorkout | null =>
-    input.plan
-      .filter((w) => w.sport === a.sport && Math.abs(diffDays(w.date, a.date)) <= 1 && w.status !== 'sters' && w.status !== 'anulat_sistem')
-      .sort((x, y) => Math.abs(diffDays(x.date, a.date)) - Math.abs(diffDays(y.date, a.date)))[0] ?? null;
+    input.plan.find((w) => w.sport === a.sport && w.date === a.date && w.status !== 'sters' && w.status !== 'anulat_sistem') ?? null;
   const execution = (a: SourceActivity, ev: EveningForm | null): Execution | null => {
     const w = plannedFor(a);
     if (!w) return null;

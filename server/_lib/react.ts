@@ -1,7 +1,7 @@
 // Reacția calendarului la fiecare activitate nouă, imediat după sincronizare (cron la 15 min, buton, webhook),
 // fără să aștepte agenții de seară. Determinist și o singură dată pe activitate (cheile din agent_events).
 //  - ceva în plus față de plan azi (activitate neplanificată sau mult peste ședința ei): efortul se echivalează (TRIMP)
-//    cu ziua planificată; dacă a acoperit-o, restul zilei odihnă. Dacă nu, variantele le aleg agenții (mesajul de
+//    cu ziua planificată; dacă a acoperit-o, ce mai e azi rămâne, cu sugestie ușoară (regula 29). Dacă nu, variantele le aleg agenții (mesajul de
 //    după antrenament), dintre cele calculate de cod. Zilele următoare NU se ușurează din prima: decid datele de dimineață;
 //  - cursă neplanificată: săptămâna următoare nu progresează.
 // Agenții (mesajul după antrenament) rulează separat, din cron, când apare o activitate nouă azi.

@@ -5622,8 +5622,8 @@ function buildPacket(input) {
   const sedinte7 = acts.filter((a) => diffDays(addDays(today, -7), a.date) >= 0 && diffDays(a.date, yesterday) >= 0).length;
   const lastAct = [...acts].filter((a) => input.event === "dimineata" ? diffDays(a.date, today) >= 1 : true).sort((a, b) => diffDays(a.date, b.date) || (b.startLocal ?? "").localeCompare(a.startLocal ?? ""))[0] ?? null;
   const evening = lastAct ? input.evenings.find((e) => e.activityId === lastAct.externalId) ?? input.evenings.find((e) => e.date === lastAct.date) ?? null : null;
-  const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && Math.abs(diffDays(w.date, lastAct.date)) <= 1 && w.status !== "sters") : false;
-  const plannedFor = (a) => input.plan.filter((w) => w.sport === a.sport && Math.abs(diffDays(w.date, a.date)) <= 1 && w.status !== "sters" && w.status !== "anulat_sistem").sort((x, y) => Math.abs(diffDays(x.date, a.date)) - Math.abs(diffDays(y.date, a.date)))[0] ?? null;
+  const inPlan = lastAct ? input.plan.some((w) => w.sport === lastAct.sport && w.date === lastAct.date && w.status !== "sters") : false;
+  const plannedFor = (a) => input.plan.find((w) => w.sport === a.sport && w.date === a.date && w.status !== "sters" && w.status !== "anulat_sistem") ?? null;
   const execution = (a, ev) => {
     const w = plannedFor(a);
     if (!w) return null;
@@ -8785,7 +8785,7 @@ function fallbackMessage(p, decision, specialists) {
   if (c2?.stare === "partial" && (decision === "verde" || decision === "galben")) {
     const o = c2.optiuni.find((x) => x.id === c2.implicit);
     if (o) lines.push(`Ai f\u0103cut azi ${c2.facut} din ${c2.planificat} TRIMP planificat (${c2.procent}%). Pentru restul zilei: ${o.text}.`);
-  } else if (c2?.stare === "acoperit") lines.push(`Ai f\u0103cut azi ${c2.facut} TRIMP, peste cele ${c2.planificat} planificate: restul zilei odihn\u0103. M\xE2ine diminea\u021B\u0103 decid recuperarea \u0219i durerile.`);
+  } else if (c2?.stare === "acoperit") lines.push(`Ai f\u0103cut azi ${c2.facut} TRIMP, peste cele ${c2.planificat} planificate. Ce mai e azi \xEEn plan r\u0103m\xE2ne; \u021Bi-am propus o variant\u0103 u\u0219oar\u0103, alegi tu. M\xE2ine diminea\u021B\u0103 decid recuperarea \u0219i durerile.`);
   for (const s of specialists) for (const item of s.ce) if (item.stare === "acceptat") lines.push(`${s.agent}: ${item.text}`);
   return lines.slice(0, 12).join("\n");
 }
