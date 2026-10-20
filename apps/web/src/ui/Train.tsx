@@ -13,6 +13,7 @@ import type { Me, SportTotal } from '@core/api-types.js';
 import type { PlannedWorkout } from '@core/types.js';
 import { SessionDetails } from './SessionDetails';
 import { useWorkoutSheet } from './WorkoutSheet';
+import { METRICS } from '@core/bar/metrics.js';
 import { DAY_NAMES, SPORT_LABEL, TYPE_LABEL, colorOf, fmtMinutes, thisWeekDates, workoutsOn } from '../data/model';
 
 const SPORTS: { id: Sport; icon: keyof typeof Icons }[] = [
@@ -275,10 +276,10 @@ function ReadyCard({ sport }: { sport: Sport }) {
   const endurance = r.parts[0];
   return (
     <Card tight>
-      <Label>Indice față de reperele probei</Label>
+      <Label>{METRICS.pregatire_proba.short} (față de reperele probei)</Label>
       <div className="ready-head">
         <span className="num ready-num">{r.value == null ? '—' : r.value}</span>
-        {r.value != null && <span className="unit">%</span>}
+        {r.value != null && <span className="unit">/100</span>}
         <span className="ready-leg">proba: {r.leg}</span>
       </div>
       <div className="ready-bar">

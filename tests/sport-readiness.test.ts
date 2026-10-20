@@ -34,9 +34,10 @@ describe('pregătirea pe probă — algoritmul', () => {
     assert.equal(part(run, /Volum/).pct, Math.round((49.5 / 4 / 31.65) * 100));
     assert.equal(part(run, /după bicicletă/).pct, 0);
   });
-  it('bicicletă fără nicio tură: null (nedemonstrat), iar media cursei o numără 0', () => {
+  // Auditul v93, A74: înainte media cursei număra proba lipsă ca 0; acum capacitatea necunoscută rămâne necunoscută.
+  it('bicicletă fără nicio tură: null (nedemonstrat), iar media cursei e necunoscută (null), nu numărată cu 0', () => {
     assert.equal(r.find((x) => x.sport === 'bicicleta')!.value, null);
-    assert.ok(overallReady(r)! < 35);
+    assert.equal(overallReady(r), null);
   });
   it('fără ture de la ceas (Apple Health): se folosește ce a declarat, marcat „declarat”, nu 0', () => {
     const marius = sportReadiness('70.3', [a({ id: 'm', source: 'apple', date: '2026-10-10', sport: 'inot', minutes: 45, distanceKm: 1.6 })], today, { swimContinuousM: 400 });

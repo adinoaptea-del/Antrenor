@@ -2,7 +2,8 @@
 // făcut, cu numele sportivului. Apare DOAR când ședința a fost executată cel puțin 60% (minutele față de plan; la forță,
 // exercițiile notate față de cele propuse). Afirmațiile din mesaj sunt adevărate: „fix cât trebuia” doar la 90–115%,
 // „din ce în ce mai bine” doar cu dovadă (ritm mai bun decât media ultimelor ședințe), „începi să înveți” doar la primele
-// ședințe de înot. Sub 60% nu apare nimic: o felicitare nemeritată ar fi falsă.
+// ședințe de înot. Sub 60% nu apare nimic: o felicitare nemeritată ar fi falsă. Peste plan cu durere raportată (≥ 3)
+// nu se laudă depășirea (auditul v93, A72/A92; nu schimbă pragurile regulii 26, doar nu felicită cantitatea cu durere).
 
 export type CheerSport = 'alergare' | 'bicicleta' | 'inot' | 'forta' | 'mers';
 export type CheerTier = 'fix' | 'bine' | 'peste';
@@ -22,7 +23,12 @@ export interface CheerInput {
   improving?: boolean;
   /** Pentru alegerea stabilă (același mesaj la redeschidere). */
   seed: string;
+  /** Durerea raportată seara pentru ședința asta (0–10); null = neraportată. */
+  pain?: number | null;
 }
+
+/** De la durerea asta în sus nu se laudă depășirea planului (auditul v93, A72/A92). */
+export const CHEER_PAIN_NO_PRAISE = 3;
 
 export const CHEER_MIN_RATIO = 0.6;
 
@@ -126,6 +132,9 @@ function hash(s: string): number {
 export function cheerFor(x: CheerInput): { title: string; text: string; tier: CheerTier } | null {
   const tier = cheerTier(x.ratio);
   if (!tier) return null;
+  // Peste plan cu durere raportată (≥ 3/10): nicio laudă pentru depășire. Nu e un „fix”/„bine” fals (regula 26: mesajele
+  // sunt adevărate), ci fără felicitare: cantitatea în plus cu durere nu e succes (auditul v93, A72/A92).
+  if (tier === 'peste' && x.pain != null && x.pain >= CHEER_PAIN_NO_PRAISE) return null;
   const first = (x.name ?? '').trim().split(/\s+/)[0] ?? '';
   const n = first ? `, ${first}` : '';
   const h = hash(x.seed);

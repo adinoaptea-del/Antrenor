@@ -4,6 +4,7 @@ import type { Me } from '@core/api-types.js';
 import { Icons, fmtDayMonth } from './common';
 import { useMe } from '../data/store';
 import { fmtTime } from '@core/goals/run-target.js';
+import { METRICS } from '@core/bar/metrics.js';
 
 const fmtPaceKm = (secKm: number) => `${Math.floor(secKm / 60)}:${String(Math.round(secKm % 60)).padStart(2, '0')}/km`;
 
@@ -21,7 +22,8 @@ function headline(r: RR, goalName: string): { title: string; sub: string } {
       sub: `${r.coverage.withData} din ${r.coverage.total} probe au date${miss.length ? ` · lipsește ${miss.join(', ').toLowerCase()}` : ''}. Nu afișăm un procent global.`,
     };
   }
-  return { title: `Gata de ${goalName}: ${r.ready}%`, sub: `Cea mai slabă verigă: ${(r.weakest ?? '').toLowerCase()}. ${r.target ? 'Indice față de reperele probei și de ținta ta de timp, nu o promisiune.' : 'Indice față de reperele probei, nu probabilitate de a termina.'}` };
+  // Indice intern din registru (src/bar/metrics.ts), scris „/100”: nu procent de reușită (auditul v93, A74).
+  return { title: `${METRICS.pregatire_cursa.short} (${goalName}): ${r.ready}/100`, sub: `Cea mai slabă verigă: ${(r.weakest ?? '').toLowerCase()}. ${r.target ? 'Indice față de reperele probei și de ținta ta de timp, nu o promisiune.' : 'Indice față de reperele probei, nu probabilitate de a termina.'}` };
 }
 
 function Legs({ r }: { r: RR }) {
@@ -32,7 +34,7 @@ function Legs({ r }: { r: RR }) {
         <div key={l.name} className={`leg ${l.pct == null ? 'none' : ''}`}>
           <div className="leg-v">
             {l.pct == null ? '—' : l.pct}
-            {l.pct != null && <small>%</small>}
+            {l.pct != null && <small>/100</small>}
           </div>
           <div className="leg-n">{l.name}</div>
           <div className="leg-s">{l.pct == null ? 'fără date' : (l.measured ?? '')}</div>
@@ -125,7 +127,7 @@ export function RaceDetail({ goalName, onOpen }: { goalName: string; onOpen: (s:
                 <b>{l.name}</b>
                 <small>{l.pct == null ? 'fără date în ultimele 8 săptămâni' : l.detail}</small>
               </span>
-              <span className="rb-v">{l.pct == null ? '—' : `${l.pct}%`}</span>
+              <span className="rb-v">{l.pct == null ? '—' : `${l.pct}/100`}</span>
             </button>
           ))}
         </div>

@@ -5,6 +5,7 @@ import { BackHeader } from './Shell';
 import { Icons } from './common';
 import { Tube } from './Tube';
 import { readyView } from '@core/bar/ready-view.js';
+import { METRICS } from '@core/bar/metrics.js';
 import { fitnessWeekOf } from './FitnessProgress';
 import { colorOf, dayOf } from '../data/model';
 
@@ -49,8 +50,8 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
       <div className="prog">
         <section className="prog-main">
           <div className="prog-row">
-            <b>{fit ? `Programul de ${FITNESS_WEEKS} de săptămâni` : `Pregătit pentru ${me.user.raceName ?? goalName}`}</b>
-            <span>{goalPct == null ? 'îți evaluăm nivelul' : `${goalPct}%${!fit && rv.partial ? '*' : ''}`}</span>
+            <b>{fit ? `Programul de ${FITNESS_WEEKS} de săptămâni` : `${METRICS[rv.metricId].short} · ${me.user.raceName ?? goalName}`}</b>
+            <span>{goalPct == null ? 'îți evaluăm nivelul' : fit ? `${goalPct}%` : `${goalPct}/100${rv.partial ? '*' : ''}`}</span>
           </div>
           <Tube pct={goalPct} label={fit ? 'Programul de fitness' : `Pregătirea pentru ${goalName}`} />
           <p className="prog-note">
@@ -59,8 +60,8 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
               : goalPct == null
                 ? `Tubul se umple pe măsură ce ceasul înregistrează ședințe la fiecare probă (${r ? `${r.coverage.withData} din ${r.coverage.total} au date` : 'încă fără date'}).`
                 : rv.partial
-                  ? `* Parțial: pe ${rv.withData} din ${rv.total} probe. Fără date în ultimele 8 săptămâni: ${rv.missing.join(', ').toLowerCase()}; prima ședință înregistrată completează indicele (și îl poate coborî).`
-                : 'Plin = ai demonstrat reperele probei. Contează veriga cea mai slabă; e un indice, nu o promisiune.'}
+                  ? `* Parțial: pe ${rv.withData} din ${rv.total} probe. Fără date în ultimele 8 săptămâni: ${rv.missing.join(', ').toLowerCase()}. Prima ședință înregistrată adaugă proba în evaluare: dacă indicele scade atunci, e pentru că acum se vede și proba aceea, nu un regres fizic.`
+                : 'Plin = ai demonstrat reperele probei. Contează veriga cea mai slabă; e un indice intern, nu o probabilitate și nici o promisiune.'}
           </p>
         </section>
 
@@ -70,7 +71,7 @@ export function Progress({ onBack, onOpen }: { onBack: () => void; onOpen: (s: s
               <div key={l.name} className="prog-leg">
                 <div className="prog-row small">
                   <span>{l.name}</span>
-                  <span>{l.pct == null ? 'fără date' : `${l.pct}%`}</span>
+                  <span>{l.pct == null ? 'fără date' : `${l.pct}/100`}</span>
                 </div>
                 <Tube pct={l.pct} size="small" label={l.name} />
               </div>
