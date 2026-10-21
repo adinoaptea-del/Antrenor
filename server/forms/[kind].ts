@@ -420,6 +420,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const op = String(body.op ?? '');
       const row = await one<{ date: string }>('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: 'date' });
       if (!row) throw new HttpError(404, 'ședință inexistentă');
+      if (op === 'vreme-ok') {
+        // „OK” pe cardul „Vremea: am inversat…” (cererea proprietarului, 21.10.2026): sportivul a luat la cunoștință;
+        // se notează pe cont (ambele ședințe ale perechii) și în jurnal, cardul dispare pe toate telefoanele.
+        // Merge și pentru o ședință deja făcută sau trecută: nu schimbă planul.
+        const all = (await loadPlan(u.id, addDays(today, -7), addDays(today, 10))).workouts;
+        const w = all.find((x) => x.id === id);
+        const partner = w ? all.find((x) => x.id !== w.id && (x.note ?? '').startsWith('vremea') && x.original?.date === w.date && x.date === w.original?.date) : null;
+        const prefsOk = await loadPrefs(u.id);
+        const ids = [id, ...(partner ? [partner.id] : [])].filter((x) => !(prefsOk.vremeOk ?? []).includes(x));
+        if (ids.length) await savePrefs(u.id, { ...prefsOk, vremeOk: [...(prefsOk.vremeOk ?? []), ...ids].slice(-40) });
+        const WHAT: Record<string, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'sala', mers: 'mersul' };
+        await insert('journal', { user_id: u.id, date: today, entry: `calendar (sportivul): a confirmat inversarea după vreme${w ? ` (${WHAT[w.sport] ?? w.sport}${partner ? ` ↔ ${WHAT[partner.sport] ?? partner.sport}` : ''})` : ''}` }).catch(() => undefined);
+        json(res, 200, { ok: true, note: 'confirmat' });
+        return;
+      }
       if (row.date < today) throw new HttpError(409, 'ședința e în trecut');
       const ws = weekStart(row.date);
       // Vecinii reali, inclusiv peste granița săptămânii (duminică–luni): planul se citește cu o zi înainte și după

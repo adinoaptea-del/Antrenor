@@ -957,6 +957,9 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .row-card small { color: var(--muted); font-size: 13px; }
 .row-card .i { width: 18px; height: 18px; color: var(--muted); flex: none; }
 .row-card.todo { border-color: var(--accent); }
+/* Cardul „Vremea: am inversat…”: butoanele unul sub altul, în dreapta (OK deasupra). */
+.row-card .vreme-btns { display: grid; gap: 6px; flex: none; justify-items: stretch; }
+.row-card .vreme-btns .pill { height: 36px; white-space: nowrap; }
 .note-card b { font-size: 15px; }
 .note-card p { margin: 6px 0 0; }
 

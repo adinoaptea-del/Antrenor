@@ -2,6 +2,7 @@
 import type { Goal } from '../../src/calendar/phases.js';
 import { select, upsert } from './db.js';
 import { loadActivities, loadForms, loadPlan, loadZones } from './collect.js';
+import { reclaimWeatherSwapsFor } from './weather-swap.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import { scoreMatches, type ScoreFlags, type ScoreMetrics } from '../../src/scoring/score.js';
 import { computeBar, type BarResult, type ScoredActivity } from '../../src/bar/bar.js';
@@ -19,9 +20,12 @@ export interface ScoreSummary {
 /** Potrivește activitățile cu antrenamentele propuse din ultimele 42 de zile, scrie scorurile și bara zilei. */
 export async function rescore(userId: string, today: string, goal: Goal): Promise<ScoreSummary> {
   const from = addDays(today, -42);
-  const [{ workouts }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, today), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
+  // Planul se citește și o săptămână înainte: o ședință mutată de vreme în viitor, făcută oricum în ziua ei din plan,
+  // revine în ziua aceea înainte de potrivire (regula 36). Scorul se scrie doar pentru ședințele de până azi.
+  const [{ planId, workouts: all }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, addDays(today, 7)), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
   const activities: Activity[] = dedupeActivities(acts);
-  const planned = workouts.filter((w) => w.status !== 'sters');
+  const reclaimed = await reclaimWeatherSwapsFor(userId, planId, all, activities, today).catch(() => all);
+  const planned = reclaimed.filter((w) => w.status !== 'sters' && w.date <= today);
   const { matches, unplanned } = matchActivities(planned, activities, today);
 
   const colors = new Map<string, Color>();

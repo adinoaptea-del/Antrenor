@@ -5,8 +5,9 @@
 // Determinist, fără AI. Prognoza: Open-Meteo (server/_lib/weather.ts).
 
 import type { WeatherDay } from '../collector/types.js';
-import type { PlannedWorkout, Sport } from '../types.js';
+import type { Activity, PlannedWorkout, Sport } from '../types.js';
 import { addDays, weekday } from '../util/dates.js';
+import { matchActivities } from '../scoring/match.js';
 import { dayBlock, withOriginal, type FixedMeet, type MoveCtx } from './actions.js';
 
 export type WeatherVerdict = 'bun' | 'rau' | 'neutru';
@@ -116,4 +117,28 @@ export function undoWeatherSwap(plan: PlannedWorkout[], id: string, today: strin
     return withOriginal(x, { ...x, date: x.original!.date, note: 'pusă înapoi în ziua din plan' }, at);
   };
   return partner ? [back(w), back(partner)] : [back(w)];
+}
+
+export const RECLAIM_NOTE = 'făcută în ziua din plan (vremea o mutase)';
+/**
+ * Ai făcut oricum ședința în ziua ei din plan, deși vremea o mutase (corecția proprietarului, 21.10.2026: „deja am
+ * făcut antrenamentul ăla și nu l-ai echivalat”): o activitate rămasă „în afara planului” în ziua D, din sportul unei
+ * ședințe mutate de vreme DIN ziua D și încă nefăcută, aduce ședința înapoi în D — potrivirea (aceeași zi, același
+ * sport) o leagă apoi de activitate. Perechea ei (ședința adusă în D de vreme) rămâne unde e: dacă ai făcut-o și pe
+ * ea, e făcută; dacă nu, rămâne propusă. Întoarce doar ședințele schimbate; fără activitate potrivită, nimic.
+ */
+export function reclaimWeatherSwaps(plan: PlannedWorkout[], activities: Activity[], today: string, at: string): PlannedWorkout[] {
+  const live = plan.filter((w) => w.status === 'planificat' || w.status === 'mutat');
+  const m = matchActivities(live.filter((w) => w.date <= today), activities, today);
+  const doneIds = new Set(m.matches.filter((x) => x.activity).map((x) => x.planned.id));
+  const out: PlannedWorkout[] = [];
+  const taken = new Set<string>();
+  for (const a of m.unplanned) {
+    if (a.date > today) continue;
+    const w = live.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && (x.note ?? '').startsWith(WEATHER_NOTE) && x.original?.date === a.date && x.date !== a.date);
+    if (!w) continue;
+    taken.add(w.id);
+    out.push(withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at));
+  }
+  return out;
 }

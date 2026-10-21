@@ -9,7 +9,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
-import { cssOf, swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
+import { activityFor, cssOf, swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
@@ -323,18 +323,22 @@ function PainClear({ reason }: { reason: string }) {
  * „Pune-o înapoi azi” — programul s-a schimbat și antrenamentul se mai poate face azi.
  */
 /**
- * Inversarea după vreme (src/calendar/weather-swap.ts): cardul o anunță pe Acasă cât timp ședințele urmează, cu
- * „Lasă-le cum erau” (le pune pe amândouă în zilele din plan).
+ * Inversarea după vreme (src/calendar/weather-swap.ts): cardul o anunță pe Acasă cât timp ședințele urmează, cu „OK”
+ * (am luat la cunoștință: se notează pe cont și cardul dispare; cererea proprietarului, 21.10.2026) și, cât se mai
+ * poate, „Lasă-le cum erau” (le pune pe amândouă în zilele din plan). O ședință deja făcută sau din trecut nu se mai
+ * poate pune înapoi: rămâne doar „OK”.
  */
 function WeatherSwapped() {
   const me = useMe();
   const { submitForm, local } = useData();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [okLocal, setOkLocal] = useState<string[]>([]);
   if (local) return null;
+  const acked = new Set([...(me.prefs?.vremeOk ?? []), ...okLocal]);
   const swapped = me.plan.filter((w) => (w.note ?? '').startsWith(WEATHER_NOTE) && w.original && w.date >= me.today && (w.status === 'planificat' || w.status === 'mutat'));
   // Perechea: ședința de afară (bicicletă/alergare) și cea de înăuntru care i-a luat locul.
-  const out = swapped.filter((w) => w.sport === 'bicicleta' || w.sport === 'alergare');
+  const out = swapped.filter((w) => (w.sport === 'bicicleta' || w.sport === 'alergare') && !acked.has(w.id));
   if (!out.length && !msg) return null;
   const WHAT: Record<string, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'sala' };
   return (
@@ -343,6 +347,12 @@ function WeatherSwapped() {
         const i = swapped.find((x) => x.id !== o.id && x.original?.date === o.date && x.date === o.original!.date);
         const reason = (o.note ?? '').replace(/^vremea:\s*/, '').split(';')[0];
         const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+        // „Lasă-le cum erau” doar cât timp niciuna n-a fost făcută și zilele din plan n-au trecut.
+        const canUndo = !activityFor(me, o) && (!i || !activityFor(me, i)) && o.original!.date >= me.today && (!i || (i.original?.date ?? me.today) >= me.today);
+        const ack = () => {
+          setOkLocal((l) => [...l, o.id]);
+          submitForm('actiune', { workoutId: o.id, op: 'vreme-ok' }).catch(() => undefined);
+        };
         return (
           <div key={o.id} className="row-card" role="status">
             <span>
@@ -351,20 +361,27 @@ function WeatherSwapped() {
                 {cap(WHAT[o.sport]!)} {dayWord(o.date, me.today)}{i ? `, ${WHAT[i.sport]} ${dayWord(i.date, me.today)}` : ''}, ca să prinzi vremea bună ({reason}).
               </small>
             </span>
-            <button
-              className="pill"
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setMsg(null);
-                submitForm('actiune', { workoutId: o.id, op: 'vreme-inapoi' })
-                  .then(() => setMsg('Gata: ședințele sunt în zilele din plan.'))
-                  .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
-                  .finally(() => setBusy(false));
-              }}
-            >
-              Lasă-le cum erau
-            </button>
+            <span className="wk-btns vreme-btns">
+              <button className="pill on" onClick={ack} aria-label="OK, am înțeles">
+                OK
+              </button>
+              {canUndo && (
+                <button
+                  className="pill"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    setMsg(null);
+                    submitForm('actiune', { workoutId: o.id, op: 'vreme-inapoi' })
+                      .then(() => setMsg('Gata: ședințele sunt în zilele din plan.'))
+                      .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
+                      .finally(() => setBusy(false));
+                  }}
+                >
+                  Lasă-le cum erau
+                </button>
+              )}
+            </span>
           </div>
         );
       })}

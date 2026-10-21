@@ -2,7 +2,9 @@
 // bazinul/sala; aceleași reguli ca „Mută”; sportivul poate lăsa totul cum era.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { undoWeatherSwap, weatherSwap, weatherVerdict } from '../src/calendar/weather-swap.js';
+import { RECLAIM_NOTE, reclaimWeatherSwaps, undoWeatherSwap, weatherSwap, weatherVerdict } from '../src/calendar/weather-swap.js';
+import { matchActivities } from '../src/scoring/match.js';
+import type { Activity } from '../src/types.js';
 import type { WeatherDay } from '../src/collector/types.js';
 import type { PlannedWorkout } from '../src/types.js';
 
@@ -83,5 +85,46 @@ describe('inversarea', () => {
     assert.equal(back.find((x) => x.id === 'swim')!.date, '2026-10-21');
     const again = after.map((x) => back.find((c) => c.id === x.id) ?? x);
     assert.equal(weatherSwap(again, { date: '2026-10-21', w: SUN }, { date: '2026-10-22', w: RAIN }, TODAY, AT), null);
+  });
+});
+
+describe('ai făcut oricum ședința mutată de vreme, în ziua ei din plan (corecția proprietarului, 21.10.2026)', () => {
+  const act = (id: string, date: string, sport: Activity['sport'], minutes: number): Activity => ({ id, date, sport, minutes });
+  const swapped = () => {
+    const plan = [w('swim', '2026-10-21', 'inot', 'tehnica', 45, [1, 2]), w('bike', '2026-10-22', 'bicicleta', 'z2', 75), w('run', '2026-10-24', 'alergare', 'lung', 80)];
+    const r = weatherSwap(plan, { date: '2026-10-21', w: SUN }, { date: '2026-10-22', w: RAIN }, TODAY, AT)!;
+    return plan.map((x) => r.changed.find((c) => c.id === x.id) ?? x); // bicicleta miercuri, înotul joi
+  };
+  it('miercuri ai înotat (în afara planului) → înotul revine miercuri și se leagă de activitate; bicicleta făcută miercuri rămâne făcută', () => {
+    const today = '2026-10-21';
+    const acts = [act('a-bike', today, 'bicicleta', 70), act('a-swim', today, 'inot', 40)];
+    const before = matchActivities(swapped().filter((x) => x.date <= today), acts, today);
+    assert.equal(before.unplanned.length, 1, 'înainte: înotul e în afara planului');
+    const changed = reclaimWeatherSwaps(swapped(), acts, today, AT);
+    assert.equal(changed.length, 1);
+    assert.equal(changed[0]!.id, 'swim');
+    assert.equal(changed[0]!.date, today);
+    assert.equal(changed[0]!.note, RECLAIM_NOTE);
+    assert.equal(changed[0]!.original, null, 'e iar în forma din plan: nimic de pus înapoi');
+    const after = swapped().map((x) => changed.find((c) => c.id === x.id) ?? x);
+    assert.equal(after.find((x) => x.id === 'bike')!.date, today, 'perechea nu se atinge');
+    const m = matchActivities(after.filter((x) => x.date <= today), acts, today);
+    assert.equal(m.unplanned.length, 0);
+    assert.equal(m.matches.find((x) => x.planned.id === 'swim')!.activity!.id, 'a-swim');
+    assert.equal(m.matches.find((x) => x.planned.id === 'bike')!.activity!.id, 'a-bike');
+    assert.deepEqual(reclaimWeatherSwaps(after, acts, today, AT), [], 'o singură dată');
+  });
+  it('fără activitate din sportul mutat: nimic; activitatea în altă zi decât cea din plan: nimic', () => {
+    assert.deepEqual(reclaimWeatherSwaps(swapped(), [act('a-bike', '2026-10-21', 'bicicleta', 70)], '2026-10-21', AT), []);
+    assert.deepEqual(reclaimWeatherSwaps(swapped(), [act('a-swim', '2026-10-20', 'inot', 40)], '2026-10-21', AT), []);
+  });
+  it('înotul făcut joi, unde l-a mutat vremea: rămâne joi (potrivirea obișnuită), nu se aduce nimic înapoi', () => {
+    const today = '2026-10-22';
+    const acts = [act('a-swim', today, 'inot', 40)];
+    assert.deepEqual(reclaimWeatherSwaps(swapped(), acts, today, AT), []);
+  });
+  it('o ședință mutată de sportiv (nu de vreme) nu revine singură', () => {
+    const plan = [{ ...w('swim', '2026-10-23', 'inot', 'tehnica', 45, [1, 2]), note: 'mutată de tine de miercuri pe vineri', original: { date: '2026-10-21', type: 'tehnica', minutes: 45, sport: 'inot' } as never }];
+    assert.deepEqual(reclaimWeatherSwaps(plan, [act('a-swim', '2026-10-21', 'inot', 40)], '2026-10-21', AT), []);
   });
 });

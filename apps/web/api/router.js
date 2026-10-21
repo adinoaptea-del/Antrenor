@@ -3871,7 +3871,7 @@ var init_engine = __esm({
 async function loadPrefs(userId) {
   const row = await one("users", { id: `eq.${userId}` }, { select: "calendar_prefs" }).catch(() => null);
   const p = row?.calendar_prefs ?? {};
-  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === "ape" ? "ape" : "bazin", apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d) => typeof d === "string").slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...p.nutritie ?? {} }, mers: walkProfileOf(p.mers), migrari: p.migrari && typeof p.migrari === "object" ? p.migrari : {} };
+  return { plecari: Array.isArray(p.plecari) ? p.plecari : [], fixe: Array.isArray(p.fixe) ? p.fixe : [], mediuInot: p.mediuInot === "ape" ? "ape" : "bazin", apeConfirmat: Array.isArray(p.apeConfirmat) ? p.apeConfirmat.filter((d) => typeof d === "string").slice(-30) : [], nutritie: { ...DEFAULT_PREFS, ...p.nutritie ?? {} }, mers: walkProfileOf(p.mers), migrari: p.migrari && typeof p.migrari === "object" ? p.migrari : {}, vremeOk: Array.isArray(p.vremeOk) ? p.vremeOk.filter((d) => typeof d === "string").slice(-40) : [] };
 }
 function walkProfileOf(x) {
   const d = DEFAULT_WALK_PROFILE;
@@ -8584,6 +8584,164 @@ var init_adapt = __esm({
   }
 });
 
+// src/calendar/weather-swap.ts
+function weatherVerdict(d) {
+  if (!d || d.ploaie_mm == null || d.tmax == null) return null;
+  const rain = d.ploaie_mm;
+  const prob = d.prob_ploaie ?? null;
+  const wind = d.vant_kmh ?? 0;
+  const feel = d.resimtita_max ?? d.tmax;
+  if (rain >= 3 || rain >= 1 && prob != null && prob >= 70 || wind >= 40 || d.tmax <= 2 || feel >= 34) return "rau";
+  if (rain < 1 && (prob == null || prob < 40) && wind < 30 && d.tmax >= 8 && d.tmax <= 30 && feel < 31) return "bun";
+  return "neutru";
+}
+function dayWord(d, today) {
+  return d === today ? "azi" : d === addDays(today, 1) ? "m\xE2ine" : d === addDays(today, 2) ? "poim\xE2ine" : DAY3[weekday(d)];
+}
+function weatherSwap(plan, a, b, today, at, ctx = {}) {
+  const va = weatherVerdict(a.w);
+  const vb = weatherVerdict(b.w);
+  if (!va || !vb) return null;
+  const bad = va === "rau" && vb === "bun" ? a : vb === "rau" && va === "bun" ? b : null;
+  const good = bad === a ? b : bad === b ? a : null;
+  if (!bad || !good || bad.date < today || good.date < today) return null;
+  const outs = plan.filter((w) => w.date === bad.date && touchable(w, ctx) && outdoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
+  const ins = plan.filter((w) => w.date === good.date && touchable(w, ctx) && indoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
+  for (const o of outs) {
+    for (const i of ins) {
+      const after2 = plan.map((w) => w.id === o.id ? { ...w, date: good.date } : w.id === i.id ? { ...w, date: bad.date } : w);
+      const oNew = after2.find((w) => w.id === o.id);
+      const iNew = after2.find((w) => w.id === i.id);
+      if (dayBlock(after2.filter((w) => w.id !== o.id), oNew, good.date, ctx)) continue;
+      if (dayBlock(after2.filter((w) => w.id !== i.id), iNew, bad.date, ctx)) continue;
+      const why = `${DAY3[weekday(good.date)]} frumos (${describe(good.w, "bun")}), ${DAY3[weekday(bad.date)]} ${describe(bad.w, "rau")}`;
+      const changed = [
+        withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[i.sport]}` }, at),
+        withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[o.sport]}` }, at)
+      ];
+      const G = dayWord(good.date, today);
+      const B = dayWord(bad.date, today);
+      const place2 = i.sport === "inot" ? "\xEEnotul din bazin" : "sala";
+      const text = `${G[0].toUpperCase()}${G.slice(1)} e vreme frumoas\u0103 (${describe(good.w, "bun")}), iar ${B} se anun\u021B\u0103 ${describe(bad.w, "rau")}: am inversat ${place2} cu ${WHAT[o.sport]}, ca s\u0103 te po\u021Bi bucura de vremea bun\u0103. ${WHAT[o.sport][0].toUpperCase()}${WHAT[o.sport].slice(1)} e ${G}, ${place2} ${B}.`;
+      return { changed, text };
+    }
+  }
+  return null;
+}
+function undoWeatherSwap(plan, id, today, at) {
+  const w = plan.find((x) => x.id === id);
+  if (!w || !(w.note ?? "").startsWith(WEATHER_NOTE) || !w.original) throw new Error("\u0219edin\u021Ba n-a fost mutat\u0103 de vreme");
+  const partner = plan.find((x) => x.id !== w.id && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === w.date && x.date === w.original.date);
+  const back = (x) => {
+    if (x.original.date < today) throw new Error("ziua ini\u021Bial\u0103 a trecut");
+    return withOriginal(x, { ...x, date: x.original.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan" }, at);
+  };
+  return partner ? [back(w), back(partner)] : [back(w)];
+}
+function reclaimWeatherSwaps(plan, activities, today, at) {
+  const live2 = plan.filter((w) => w.status === "planificat" || w.status === "mutat");
+  const m = matchActivities(live2.filter((w) => w.date <= today), activities, today);
+  const doneIds = new Set(m.matches.filter((x) => x.activity).map((x) => x.planned.id));
+  const out = [];
+  const taken = /* @__PURE__ */ new Set();
+  for (const a of m.unplanned) {
+    if (a.date > today) continue;
+    const w = live2.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === a.date && x.date !== a.date);
+    if (!w) continue;
+    taken.add(w.id);
+    out.push(withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at));
+  }
+  return out;
+}
+var WEATHER_NOTE, DAY3, WHAT, live, touchable, outdoor, indoor, describe, RECLAIM_NOTE;
+var init_weather_swap = __esm({
+  "src/calendar/weather-swap.ts"() {
+    "use strict";
+    init_dates();
+    init_match();
+    init_actions();
+    WEATHER_NOTE = "vremea";
+    DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
+    WHAT = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
+    live = (w) => w.status === "planificat" || w.status === "mutat";
+    touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !/^(mutată de tine|pusă înapoi|vremea)/.test(w.note ?? "") && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
+    outdoor = (w, ctx) => w.sport === "bicicleta" && !ctx.noOutdoorBike || w.sport === "alergare";
+    indoor = (w, ctx) => w.sport === "forta" || w.sport === "inot" && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? "");
+    describe = (d, v) => {
+      const t = d.tmax != null ? `${Math.round(d.tmax)}\xB0` : "";
+      if (v === "bun") return `${t}, f\u0103r\u0103 ploaie`;
+      const bits = [d.ploaie_mm != null && d.ploaie_mm >= 1 ? `ploaie (${Math.round(d.ploaie_mm)} mm)` : null, d.vant_kmh != null && d.vant_kmh >= 40 ? `v\xE2nt puternic (${Math.round(d.vant_kmh)} km/h)` : null, d.tmax != null && d.tmax <= 2 ? `frig (${t})` : null, (d.resimtita_max ?? -99) >= 34 ? `canicul\u0103 (${Math.round(d.resimtita_max)}\xB0 resim\u021Bit)` : null].filter(Boolean);
+      return bits.join(" \u0219i ") || "vreme rea";
+    };
+    RECLAIM_NOTE = "f\u0103cut\u0103 \xEEn ziua din plan (vremea o mutase)";
+  }
+});
+
+// server/_lib/weather-swap.ts
+async function weatherSwapFor(userId, today, from) {
+  const u = await loadUser(userId);
+  if (u.lat == null || u.lon == null || !u.city) return [];
+  const fc = await forecast(u.city, u.lat, u.lon, u.tz || "Europe/Bucharest");
+  const start = from === "azi" ? today : addDays(today, 1);
+  const days = (fc?.zile ?? []).filter((d) => d.date >= start && d.date <= addDays(today, 4));
+  if (days.length < 2) return [];
+  const { planId, workouts } = await loadPlan(userId, addDays(today, -3), addDays(today, 10));
+  if (!planId) return [];
+  const [done, forms, prefs] = await Promise.all([executedIds(userId, today, workouts), loadForms(userId, today), loadPrefs(userId)]);
+  const intake = forms.intake;
+  const ctx = {
+    done,
+    fixed: prefs.fixe,
+    away: currentAway(prefs, today),
+    freeBlocks: Array.isArray(intake?.program) ? intake.program : void 0,
+    swimOutdoors: prefs.mediuInot === "ape",
+    noOutdoorBike: intake?.bicicleta?.tip === "nu_am"
+  };
+  const pairs = [];
+  for (const gap of [1, 2, 3]) for (let i = 0; i + gap < days.length; i++) pairs.push([i, i + gap]);
+  let plan = workouts;
+  const texts = [];
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const [i, j] of pairs) {
+    const a = days[i];
+    const b = days[j];
+    if (diffDays(a.date, b.date) > 3) continue;
+    const r2 = weatherSwap(plan, a, b, today, at, ctx);
+    if (!r2) continue;
+    const fresh = await insertIgnore("agent_events", { user_id: userId, event_key: `vreme:${a.date}:${b.date}` }, "user_id,event_key");
+    if (!fresh.length) continue;
+    await upsert("workouts_planned", r2.changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+    await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${r2.text}` }).catch(() => void 0);
+    plan = plan.map((w) => r2.changed.find((c2) => c2.id === w.id) ?? w);
+    texts.push(r2.text);
+  }
+  return texts;
+}
+async function reclaimWeatherSwapsFor(userId, planId, workouts, activities, today) {
+  if (!planId) return workouts;
+  const changed = reclaimWeatherSwaps(workouts, activities, today, (/* @__PURE__ */ new Date()).toISOString());
+  if (!changed.length) return workouts;
+  await upsert("workouts_planned", changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
+  const WHAT2 = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
+  for (const w of changed) {
+    const prev = workouts.find((x) => x.id === w.id);
+    await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${WHAT2[w.sport] ?? w.sport} \u2014 ${RECLAIM_NOTE}: f\u0103cut\u0103 pe ${w.date}, fusese mutat\u0103 pe ${prev?.date ?? "?"}; a revenit \xEEn ziua din plan \u0219i s-a legat de activitate` }).catch(() => void 0);
+  }
+  return workouts.map((w) => changed.find((c2) => c2.id === w.id) ?? w);
+}
+var init_weather_swap2 = __esm({
+  "server/_lib/weather-swap.ts"() {
+    "use strict";
+    init_dates();
+    init_weather_swap();
+    init_agents();
+    init_collect();
+    init_db();
+    init_prefs();
+    init_weather();
+  }
+});
+
 // src/badges/badges.ts
 function tiered(base, category, title, how, unit, targets, have, reachedAt) {
   return targets.map((t, i) => ({
@@ -9496,6 +9654,7 @@ async function buildMe(userId, today) {
   }).catch(() => workouts);
   workouts = await runOnce(userId, pid, today, MIGRATIONS.restoreExtraCuts, workouts, (plan) => restoreExtraCuts(plan, today)).catch(() => workouts);
   workouts = await runOnce(userId, pid, today, MIGRATIONS.raiseDemonstrated, workouts, (plan) => raiseToDemonstrated(plan, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)))).catch(() => workouts);
+  workouts = await reclaimWeatherSwapsFor(userId, pid, workouts, activities, today).catch(() => workouts);
   const planned = workouts.filter((w) => w.status !== "sters");
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
@@ -9784,6 +9943,7 @@ var init_me = __esm({
     init_walking();
     init_view();
     init_prefs();
+    init_weather_swap2();
     init_recovery();
     init_badges2();
     init_day();
@@ -10023,9 +10183,10 @@ var init_bar = __esm({
 // server/_lib/score.ts
 async function rescore(userId, today, goal) {
   const from = addDays(today, -42);
-  const [{ workouts }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, today), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
+  const [{ planId, workouts: all2 }, acts, forms, zones] = await Promise.all([loadPlan(userId, from, addDays(today, 7)), loadActivities(userId, from), loadForms(userId, today), loadZones(userId)]);
   const activities = dedupeActivities(acts);
-  const planned = workouts.filter((w) => w.status !== "sters");
+  const reclaimed = await reclaimWeatherSwapsFor(userId, planId, all2, activities, today).catch(() => all2);
+  const planned = reclaimed.filter((w) => w.status !== "sters" && w.date <= today);
   const { matches, unplanned } = matchActivities(planned, activities, today);
   const colors = /* @__PURE__ */ new Map();
   const rows = scoreMatches(matches, forms.evenings, today).map((m) => {
@@ -10085,6 +10246,7 @@ var init_score2 = __esm({
     "use strict";
     init_db();
     init_collect();
+    init_weather_swap2();
     init_match();
     init_score();
     init_bar();
@@ -12310,125 +12472,7 @@ init_db();
 init_agents();
 init_plan2();
 init_dates();
-
-// server/_lib/weather-swap.ts
-init_dates();
-
-// src/calendar/weather-swap.ts
-init_dates();
-init_actions();
-function weatherVerdict(d) {
-  if (!d || d.ploaie_mm == null || d.tmax == null) return null;
-  const rain = d.ploaie_mm;
-  const prob = d.prob_ploaie ?? null;
-  const wind = d.vant_kmh ?? 0;
-  const feel = d.resimtita_max ?? d.tmax;
-  if (rain >= 3 || rain >= 1 && prob != null && prob >= 70 || wind >= 40 || d.tmax <= 2 || feel >= 34) return "rau";
-  if (rain < 1 && (prob == null || prob < 40) && wind < 30 && d.tmax >= 8 && d.tmax <= 30 && feel < 31) return "bun";
-  return "neutru";
-}
-var WEATHER_NOTE = "vremea";
-var DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
-var WHAT = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
-var live = (w) => w.status === "planificat" || w.status === "mutat";
-var touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !/^(mutată de tine|pusă înapoi|vremea)/.test(w.note ?? "") && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
-var outdoor = (w, ctx) => w.sport === "bicicleta" && !ctx.noOutdoorBike || w.sport === "alergare";
-var indoor = (w, ctx) => w.sport === "forta" || w.sport === "inot" && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? "");
-function dayWord(d, today) {
-  return d === today ? "azi" : d === addDays(today, 1) ? "m\xE2ine" : d === addDays(today, 2) ? "poim\xE2ine" : DAY3[weekday(d)];
-}
-var describe = (d, v) => {
-  const t = d.tmax != null ? `${Math.round(d.tmax)}\xB0` : "";
-  if (v === "bun") return `${t}, f\u0103r\u0103 ploaie`;
-  const bits = [d.ploaie_mm != null && d.ploaie_mm >= 1 ? `ploaie (${Math.round(d.ploaie_mm)} mm)` : null, d.vant_kmh != null && d.vant_kmh >= 40 ? `v\xE2nt puternic (${Math.round(d.vant_kmh)} km/h)` : null, d.tmax != null && d.tmax <= 2 ? `frig (${t})` : null, (d.resimtita_max ?? -99) >= 34 ? `canicul\u0103 (${Math.round(d.resimtita_max)}\xB0 resim\u021Bit)` : null].filter(Boolean);
-  return bits.join(" \u0219i ") || "vreme rea";
-};
-function weatherSwap(plan, a, b, today, at, ctx = {}) {
-  const va = weatherVerdict(a.w);
-  const vb = weatherVerdict(b.w);
-  if (!va || !vb) return null;
-  const bad = va === "rau" && vb === "bun" ? a : vb === "rau" && va === "bun" ? b : null;
-  const good = bad === a ? b : bad === b ? a : null;
-  if (!bad || !good || bad.date < today || good.date < today) return null;
-  const outs = plan.filter((w) => w.date === bad.date && touchable(w, ctx) && outdoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
-  const ins = plan.filter((w) => w.date === good.date && touchable(w, ctx) && indoor(w, ctx)).sort((x, y) => y.plannedMinutes - x.plannedMinutes);
-  for (const o of outs) {
-    for (const i of ins) {
-      const after2 = plan.map((w) => w.id === o.id ? { ...w, date: good.date } : w.id === i.id ? { ...w, date: bad.date } : w);
-      const oNew = after2.find((w) => w.id === o.id);
-      const iNew = after2.find((w) => w.id === i.id);
-      if (dayBlock(after2.filter((w) => w.id !== o.id), oNew, good.date, ctx)) continue;
-      if (dayBlock(after2.filter((w) => w.id !== i.id), iNew, bad.date, ctx)) continue;
-      const why = `${DAY3[weekday(good.date)]} frumos (${describe(good.w, "bun")}), ${DAY3[weekday(bad.date)]} ${describe(bad.w, "rau")}`;
-      const changed = [
-        withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[i.sport]}` }, at),
-        withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[o.sport]}` }, at)
-      ];
-      const G = dayWord(good.date, today);
-      const B = dayWord(bad.date, today);
-      const place2 = i.sport === "inot" ? "\xEEnotul din bazin" : "sala";
-      const text = `${G[0].toUpperCase()}${G.slice(1)} e vreme frumoas\u0103 (${describe(good.w, "bun")}), iar ${B} se anun\u021B\u0103 ${describe(bad.w, "rau")}: am inversat ${place2} cu ${WHAT[o.sport]}, ca s\u0103 te po\u021Bi bucura de vremea bun\u0103. ${WHAT[o.sport][0].toUpperCase()}${WHAT[o.sport].slice(1)} e ${G}, ${place2} ${B}.`;
-      return { changed, text };
-    }
-  }
-  return null;
-}
-function undoWeatherSwap(plan, id, today, at) {
-  const w = plan.find((x) => x.id === id);
-  if (!w || !(w.note ?? "").startsWith(WEATHER_NOTE) || !w.original) throw new Error("\u0219edin\u021Ba n-a fost mutat\u0103 de vreme");
-  const partner = plan.find((x) => x.id !== w.id && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === w.date && x.date === w.original.date);
-  const back = (x) => {
-    if (x.original.date < today) throw new Error("ziua ini\u021Bial\u0103 a trecut");
-    return withOriginal(x, { ...x, date: x.original.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan" }, at);
-  };
-  return partner ? [back(w), back(partner)] : [back(w)];
-}
-
-// server/_lib/weather-swap.ts
-init_agents();
-init_collect();
-init_db();
-init_prefs();
-init_weather();
-async function weatherSwapFor(userId, today, from) {
-  const u = await loadUser(userId);
-  if (u.lat == null || u.lon == null || !u.city) return [];
-  const fc = await forecast(u.city, u.lat, u.lon, u.tz || "Europe/Bucharest");
-  const start = from === "azi" ? today : addDays(today, 1);
-  const days = (fc?.zile ?? []).filter((d) => d.date >= start && d.date <= addDays(today, 4));
-  if (days.length < 2) return [];
-  const { planId, workouts } = await loadPlan(userId, addDays(today, -3), addDays(today, 10));
-  if (!planId) return [];
-  const [done, forms, prefs] = await Promise.all([executedIds(userId, today, workouts), loadForms(userId, today), loadPrefs(userId)]);
-  const intake = forms.intake;
-  const ctx = {
-    done,
-    fixed: prefs.fixe,
-    away: currentAway(prefs, today),
-    freeBlocks: Array.isArray(intake?.program) ? intake.program : void 0,
-    swimOutdoors: prefs.mediuInot === "ape",
-    noOutdoorBike: intake?.bicicleta?.tip === "nu_am"
-  };
-  const pairs = [];
-  for (const gap of [1, 2, 3]) for (let i = 0; i + gap < days.length; i++) pairs.push([i, i + gap]);
-  let plan = workouts;
-  const texts = [];
-  const at = (/* @__PURE__ */ new Date()).toISOString();
-  for (const [i, j] of pairs) {
-    const a = days[i];
-    const b = days[j];
-    if (diffDays(a.date, b.date) > 3) continue;
-    const r2 = weatherSwap(plan, a, b, today, at, ctx);
-    if (!r2) continue;
-    const fresh = await insertIgnore("agent_events", { user_id: userId, event_key: `vreme:${a.date}:${b.date}` }, "user_id,event_key");
-    if (!fresh.length) continue;
-    await upsert("workouts_planned", r2.changed.map((w) => toWorkoutRow(w, userId, planId)), "id");
-    await insert("journal", { user_id: userId, date: today, entry: `calendar (vremea): ${r2.text}` }).catch(() => void 0);
-    plan = plan.map((w) => r2.changed.find((c2) => c2.id === w.id) ?? w);
-    texts.push(r2.text);
-  }
-  return texts;
-}
+init_weather_swap2();
 
 // server/_lib/feasibility.ts
 init_me();
@@ -12910,6 +12954,7 @@ init_migrations();
 init_split();
 init_collect();
 init_dates();
+init_weather_swap2();
 async function handler6(req, res) {
   try {
     requireCron(req);
@@ -13871,6 +13916,7 @@ async function ingestAndroid(user, body, opts = {}) {
 init_consent();
 init_tokens();
 init_env();
+init_weather_swap();
 init_collect();
 init_plan2();
 init_score2();
@@ -14372,6 +14418,18 @@ async function handler10(req, res) {
       const op = String(body.op ?? "");
       const row = await one("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { select: "date" });
       if (!row) throw new HttpError(404, "\u0219edin\u021B\u0103 inexistent\u0103");
+      if (op === "vreme-ok") {
+        const all2 = (await loadPlan(u.id, addDays(today, -7), addDays(today, 10))).workouts;
+        const w2 = all2.find((x) => x.id === id);
+        const partner = w2 ? all2.find((x) => x.id !== w2.id && (x.note ?? "").startsWith("vremea") && x.original?.date === w2.date && x.date === w2.original?.date) : null;
+        const prefsOk = await loadPrefs(u.id);
+        const ids = [id, ...partner ? [partner.id] : []].filter((x) => !(prefsOk.vremeOk ?? []).includes(x));
+        if (ids.length) await savePrefs(u.id, { ...prefsOk, vremeOk: [...prefsOk.vremeOk ?? [], ...ids].slice(-40) });
+        const WHAT2 = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
+        await insert("journal", { user_id: u.id, date: today, entry: `calendar (sportivul): a confirmat inversarea dup\u0103 vreme${w2 ? ` (${WHAT2[w2.sport] ?? w2.sport}${partner ? ` \u2194 ${WHAT2[partner.sport] ?? partner.sport}` : ""})` : ""}` }).catch(() => void 0);
+        json(res, 200, { ok: true, note: "confirmat" });
+        return;
+      }
       if (row.date < today) throw new HttpError(409, "\u0219edin\u021Ba e \xEEn trecut");
       const ws = weekStart(row.date);
       const { planId, workouts } = await loadPlan(u.id, addDays(ws, -1), addDays(ws, 7));

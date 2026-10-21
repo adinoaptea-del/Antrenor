@@ -21,6 +21,7 @@ import { isFitnessGoal, isWalkGoal } from '../../src/calendar/phases.js';
 import { loadWalkRows } from './walking.js';
 import { walkingView } from '../../src/walking/view.js';
 import { loadPrefs } from './prefs.js';
+import { reclaimWeatherSwapsFor } from './weather-swap.js';
 import { recoverySummary } from '../../src/recovery/recovery.js';
 import { loadBadges } from './badges.js';
 import { decideDay, messageMatches } from '../../src/calendar/day.js';
@@ -86,6 +87,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   }).catch(() => workouts);
   workouts = await runOnce(userId, pid, today, MIGRATIONS.restoreExtraCuts, workouts, (plan) => restoreExtraCuts(plan, today)).catch(() => workouts);
   workouts = await runOnce(userId, pid, today, MIGRATIONS.raiseDemonstrated, workouts, (plan) => raiseToDemonstrated(plan, today, demonstrated(activities, today)).map((w) => normalizeWorkout(fitStructure(w)))).catch(() => workouts);
+  // Ședința mutată de vreme, făcută oricum în ziua ei din plan, revine acolo și se leagă de activitate (regula 36).
+  workouts = await reclaimWeatherSwapsFor(userId, pid, workouts, activities, today).catch(() => workouts);
   const planned = workouts.filter((w) => w.status !== 'sters');
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);

@@ -4,8 +4,8 @@
 // ploioase la rând, nimic de inversat, regulile planului), totul rămâne cum e. O singură încercare pe pereche
 // (agent_events „vreme:a:b”); sportivul vede inversarea pe Acasă (cardul „Vremea”), cu „Lasă-le cum erau”.
 import { addDays, diffDays } from '../../src/util/dates.js';
-import { weatherSwap } from '../../src/calendar/weather-swap.js';
-import type { PlannedWorkout } from '../../src/types.js';
+import { RECLAIM_NOTE, reclaimWeatherSwaps, weatherSwap } from '../../src/calendar/weather-swap.js';
+import type { Activity, PlannedWorkout } from '../../src/types.js';
 import { executedIds } from './agents.js';
 import { loadForms, loadPlan, loadUser, toWorkoutRow } from './collect.js';
 import { insert, insertIgnore, upsert } from './db.js';
@@ -53,4 +53,22 @@ export async function weatherSwapFor(userId: string, today: string, from: 'azi' 
     texts.push(r.text);
   }
   return texts;
+}
+
+/**
+ * Ședința mutată de vreme pe care sportivul a făcut-o oricum în ziua ei din plan revine în ziua aceea (src/calendar/
+ * weather-swap.ts reclaimWeatherSwaps), se scrie în plan și în jurnal; întoarce planul actualizat. Rulează la fiecare
+ * citire a contului și la fiecare recalculare a scorului; fără nimic de adus înapoi, nu scrie nimic.
+ */
+export async function reclaimWeatherSwapsFor(userId: string, planId: string | null, workouts: PlannedWorkout[], activities: Activity[], today: string): Promise<PlannedWorkout[]> {
+  if (!planId) return workouts;
+  const changed = reclaimWeatherSwaps(workouts, activities, today, new Date().toISOString());
+  if (!changed.length) return workouts;
+  await upsert('workouts_planned', changed.map((w) => toWorkoutRow(w, userId, planId)), 'id');
+  const WHAT: Record<string, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'sala', mers: 'mersul' };
+  for (const w of changed) {
+    const prev = workouts.find((x) => x.id === w.id);
+    await insert('journal', { user_id: userId, date: today, entry: `calendar (vremea): ${WHAT[w.sport] ?? w.sport} — ${RECLAIM_NOTE}: făcută pe ${w.date}, fusese mutată pe ${prev?.date ?? '?'}; a revenit în ziua din plan și s-a legat de activitate` }).catch(() => undefined);
+  }
+  return workouts.map((w) => changed.find((c) => c.id === w.id) ?? w);
 }
