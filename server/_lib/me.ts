@@ -37,7 +37,8 @@ import { dayVerdict, hooperSum, objectiveReadiness } from '../../src/collector/r
 import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color, FreeBlock } from '../../src/types.js';
-import type { EveningForm, MorningForm, SourceDaily } from '../../src/collector/types.js';
+import type { EveningForm, MorningForm, SourceActivity, SourceDaily } from '../../src/collector/types.js';
+import { eveningForActivity } from '../../src/collector/evening.js';
 import { addDays, labsExpired, localDayStartUtc, weekStart } from '../../src/util/dates.js';
 import { activeRestriction, pendingCardiac, stricter, withIncidents, type Restriction } from '../../src/calendar/safety.js';
 import { aerobicEfficiency } from '../../src/collector/efficiency.js';
@@ -93,8 +94,17 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const { unplanned, matches } = matchActivities(planned.filter((w) => w.date <= today), activities, today);
   const doneToday = matches.filter((m) => m.activity && m.planned.date === today).map((m) => m.planned.id);
   const unplannedIds = new Set(unplanned.map((a) => a.id));
+  // Răspunsul de seară se ține minte pe ACTIVITATE, oricare i-ar fi id-ul curent (corecția proprietarului, 21.10.2026:
+  // „am răspuns de două ori și tot nu dispare”): aceeași ședință văzută de două brățări e contopită, iar id-ul păstrat
+  // se poate schimba când sosește a doua înregistrare (ex. WHOOP întâi, Strava cu distanța după). Răspunsul dat sub
+  // oricare din id-urile ei (id, externalId, id-urile contopite) rămâne al ei și se publică și sub id-ul curent.
   const eveningByActivity: Record<string, EveningForm> = {};
   for (const e of forms.evenings) if (e.activityId) eveningByActivity[e.activityId] = e;
+  const evFor = (a: SourceActivity): EveningForm | undefined => eveningForActivity(a, eveningByActivity);
+  for (const a of activities) {
+    const e = evFor(a);
+    if (e && !eveningByActivity[a.id]) eveningByActivity[a.id] = e;
+  }
 
   const meActivities: MeActivity[] = activities.map((a) => ({
     id: a.id,
@@ -113,7 +123,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     watts: a.avgWatts ?? null,
     details: a.details ?? null,
     unplanned: unplannedIds.has(a.id),
-    tipNeplanificat: eveningByActivity[a.id]?.tip_neplanificat ?? eveningByActivity[a.externalId]?.tip_neplanificat ?? null,
+    tipNeplanificat: evFor(a)?.tip_neplanificat ?? null,
   }));
 
   const merged = mergeWellness(
@@ -145,9 +155,9 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
-  const restriction = activeRestriction({ today, morning: mf as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
+  const restriction = activeRestriction({ today, morning: mf as never, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings) as never, savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: evFor(a)?.rpe ?? null })) });
   // Ieri a fost efort peste plan? Atunci azi contează și durerile musculare (brățara nu vede oboseala musculară).
-  const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
+  const withRpe = activities.map((a) => ({ ...a, rpe: evFor(a)?.rpe ?? null }));
   const ieri = overYesterday(today, planned, withRpe);
   const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
   // Fără date de la brățări și fără răspuns: nu ghicim o culoare, îl întrebăm pe sportiv.

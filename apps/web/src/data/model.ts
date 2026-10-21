@@ -1,3 +1,5 @@
+import { eveningComplete } from '../forms/types';
+import { sameWindow } from '@core/collector/evening.js';
 import { prepDay } from '@core/calendar/prep-day.js';
 import { walkKindOf, walkSpec } from '@core/walking/plan.js';
 import { MODULE_PURPOSE, parseModule } from '@core/calendar/run-modules.js';
@@ -63,6 +65,15 @@ export function lastDoneWorkout(me: Me): PlannedWorkout | null {
 /** Activitatea de care s-a legat un antrenament propus: aceeași zi și același sport (regula din src/scoring/match.ts). */
 export function activityFor(me: Me, w: PlannedWorkout): MeActivity | null {
   return me.activities.find((a) => a.sport === w.sport && !a.unplanned && a.date === w.date) ?? null;
+}
+
+/**
+ * Aceeași ședință văzută de altă brățară, cu răspunsul de seară deja dat (corecția proprietarului, 21.10.2026: „am
+ * răspuns de două ori și tot nu dispare”): o activitate din același sport, aceeași zi, suprapusă în timp cu una deja
+ * completată nu mai cere alt răspuns (src/collector/evening.ts sameWindow). Două ședințe reale, la ore diferite, rămân două întrebări.
+ */
+export function sameSessionAnswered(me: Me, a: MeActivity): boolean {
+  return me.activities.some((b) => eveningComplete(me.forms.evening[b.id]) && sameWindow(a, b));
 }
 
 export function unplannedActivities(me: Me): MeActivity[] {

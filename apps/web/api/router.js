@@ -9636,6 +9636,23 @@ var init_tokens = __esm({
   }
 });
 
+// src/collector/evening.ts
+function activityIds(a) {
+  return [...new Set([a.id, a.externalId ?? null, ...a.mergedIds ?? []].filter((x) => !!x))];
+}
+function eveningForActivity(a, byId) {
+  for (const id of activityIds(a)) {
+    const e = byId[id];
+    if (e) return e;
+  }
+  return void 0;
+}
+var init_evening = __esm({
+  "src/collector/evening.ts"() {
+    "use strict";
+  }
+});
+
 // server/_lib/me.ts
 async function buildMe(userId, today) {
   const user = await loadUser(userId);
@@ -9683,6 +9700,11 @@ async function buildMe(userId, today) {
   const unplannedIds = new Set(unplanned.map((a) => a.id));
   const eveningByActivity = {};
   for (const e of forms.evenings) if (e.activityId) eveningByActivity[e.activityId] = e;
+  const evFor = (a) => eveningForActivity(a, eveningByActivity);
+  for (const a of activities) {
+    const e = evFor(a);
+    if (e && !eveningByActivity[a.id]) eveningByActivity[a.id] = e;
+  }
   const meActivities = activities.map((a) => ({
     id: a.id,
     source: a.source,
@@ -9700,7 +9722,7 @@ async function buildMe(userId, today) {
     watts: a.avgWatts ?? null,
     details: a.details ?? null,
     unplanned: unplannedIds.has(a.id),
-    tipNeplanificat: eveningByActivity[a.id]?.tip_neplanificat ?? eveningByActivity[a.externalId]?.tip_neplanificat ?? null
+    tipNeplanificat: evFor(a)?.tip_neplanificat ?? null
   }));
   const merged = mergeWellness(
     wellnessRows.map(
@@ -9728,8 +9750,8 @@ async function buildMe(userId, today) {
   const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
   const mf = forms.morning;
   const hs = hooperSum(mf?.hooper).suma;
-  const restriction = activeRestriction({ today, morning: mf, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings), savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null })) });
-  const withRpe = activities.map((a) => ({ ...a, rpe: (eveningByActivity[a.id] ?? eveningByActivity[a.externalId])?.rpe ?? null }));
+  const restriction = activeRestriction({ today, morning: mf, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings), savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: evFor(a)?.rpe ?? null })) });
+  const withRpe = activities.map((a) => ({ ...a, rpe: evFor(a)?.rpe ?? null }));
   const ieri = overYesterday(today, planned, withRpe);
   const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
   const ask = !!verdict0.intrebare;
@@ -9978,6 +10000,7 @@ var init_me = __esm({
     init_readiness();
     init_collect();
     init_match();
+    init_evening();
     init_dates();
     init_safety();
     init_efficiency();

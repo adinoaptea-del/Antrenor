@@ -9,7 +9,7 @@ import { addDays, weekday } from '@core/util/dates.js';
 import { Icons, fmtDayMonth } from './common';
 import { SyncButton } from './SyncButton';
 import { useData, useMe } from '../data/store';
-import { activityFor, cssOf, swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
+import { activityFor, sameSessionAnswered, cssOf, swimCapOf, swimRecentMaxOf, DAY_NAMES, SPORT_LABEL, colorOf, dayOf, daysToRace, fmtMinutes, isUpcoming, lastDoneWorkout, workoutsOn } from '../data/model';
 import { eveningComplete, morningComplete } from '../forms/types';
 import type { MorningForm } from '../forms/types';
 import { AptQuestion, StateLine } from './Today';
@@ -54,14 +54,15 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
   const lastDoneAct = lastDone ? me.activities.find((a) => a.sport === lastDone.sport && a.date === lastDone.date && !a.unplanned) : null;
   // Întrebarea „Cum a fost…?” merge la ultima ședință făcută cu adevărat: din plan sau în afara lui (azi/ieri).
   const offPlan = me.activities
-    .filter((a) => a.unplanned && (a.date === me.today || a.date === addDays(me.today, -1)) && !eveningComplete(me.forms.evening[a.id]))
+    .filter((a) => a.unplanned && (a.date === me.today || a.date === addDays(me.today, -1)) && !eveningComplete(me.forms.evening[a.id]) && !sameSessionAnswered(me, a))
     .sort((a, b) => (a.date + (a.startLocal ?? '')).localeCompare(b.date + (b.startLocal ?? '')))
     .pop();
   const askOff = !!offPlan && (!lastDone || offPlan.date >= lastDone.date);
   const askSport = askOff ? offPlan!.sport : lastDone?.sport;
   const askDate = askOff ? offPlan!.date : lastDone?.date;
   const lastDoneId = askOff ? offPlan!.id : (lastDoneAct?.id ?? (lastDone ? `plan-${lastDone.id}` : null));
-  const evening = lastDoneId ? me.forms.evening[lastDoneId] : undefined;
+  // Răspunsul dat pentru ședința din plan înainte să sosească activitatea (cheia „plan-…”) rămâne valabil și după.
+  const evening = lastDoneId ? (me.forms.evening[lastDoneId] ?? (lastDone ? me.forms.evening[`plan-${lastDone.id}`] : undefined)) : undefined;
   // Ședințele făcute azi în afara planului apar azi, în bulă (nu se lipesc de o ședință ratată ieri).
   const todayOff = me.activities.filter((a) => a.unplanned && a.date === me.today && a.sport !== 'mers');
   const days = daysToRace(me);
