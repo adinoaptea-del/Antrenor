@@ -14,6 +14,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
   const [out, setOut] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<string | null>(null);
+  const [strava, setStrava] = useState<{ athletes: number; configured: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const load = () =>
     server.adminList().then(
@@ -21,6 +22,7 @@ export function Admin({ onBack }: { onBack: () => void }) {
         setUsers(r.users);
         setCost({ month: r.costMonth ?? 0, today: r.costToday ?? 0, tracking: !!r.tracking });
         setInvite(r.inviteUrl ?? null);
+        setStrava(r.strava ?? null);
         setUsageReady(r.usageReady !== false);
       },
       (e: Error) => setErr(e.message),
@@ -83,6 +85,21 @@ export function Admin({ onBack }: { onBack: () => void }) {
               >
                 Link nou
               </button>
+            </div>
+          </Card>
+        )}
+        {strava?.configured && (
+          <Card tight>
+            <Label>Strava (Garmin prin Strava)</Label>
+            <div>
+              <span className="num md">{strava.athletes}</span>
+              <div className="tiny muted">{strava.athletes === 1 ? 'sportiv conectat' : 'sportivi conectați'} prin Strava</div>
+            </div>
+            <div className="small muted" style={{ marginTop: 8 }}>
+              Aplicația Strava a lui AIRON pornește în „Single Player Mode”: doar contul tău (dezvoltatorul) se poate conecta — un prieten primește eroare la
+              autorizare. Ridici capacitatea la 10 sportivi singur, din <b>strava.com/settings/api</b> (contul tău de developer are nevoie de abonament Strava, cerut
+              de Strava din 2026). Peste 10 sportivi: trimiți aplicația la review pe developers.strava.com (formularul Developer Program; capturi cu butonul „Connect
+              with Strava” și cu locurile unde apar datele Strava). Până la aprobare, al 11-lea nu se poate conecta.
             </div>
           </Card>
         )}

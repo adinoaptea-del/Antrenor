@@ -42,8 +42,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       ]);
       const today = todayIn('Europe/Bucharest');
       const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0), 0) * 100) / 100;
+      // Strava: câți sportivi au aplicația Strava conectată. Aplicația Strava a lui AIRON pornește în „Single Player Mode”
+      // (1 sportiv = dezvoltatorul); se ridică la 10 din strava.com/settings/api, peste 10 cere review (developers.strava.com).
+      const stravaAthletes = new Set(tokens.filter((t) => t.provider === 'strava').map((t) => t.user_id)).size;
       json(res, 200, {
         inviteUrl: `${ENV.appUrl()}/?invite=${await inviteCode(true)}`,
+        strava: { athletes: stravaAthletes, configured: !!process.env.STRAVA_CLIENT_ID },
         costMonth: cost(usage),
         costToday: cost(usage.filter((r) => r.created_at.slice(0, 10) === today)),
         tracking: usage.length > 0,

@@ -279,7 +279,7 @@ export const server = {
   form: (kind: string, body: unknown) => api<{ ok: boolean; plan?: unknown; agents?: unknown }>(`/api/forms/${kind}`, { method: 'POST', body: JSON.stringify(body) }),
   oauthStart: (provider: 'whoop' | 'strava' | 'oura') => api<{ url: string }>(`/api/oauth/${provider}/start`),
   runAgents: (event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = true) => api<{ decision?: string; message?: string; memento?: string; changes?: string[]; skipped?: string }>('/api/agents/run', { method: 'POST', body: JSON.stringify({ event, force }) }),
-  adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; usageReady?: boolean; inviteUrl?: string }>('/api/admin'),
+  adminList: () => api<{ users: AdminUser[]; costMonth?: number; costToday?: number; tracking?: boolean; usageReady?: boolean; inviteUrl?: string; strava?: { athletes: number; configured: boolean } }>('/api/admin'),
   newInvite: () => api<{ ok: boolean; inviteUrl: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'invitatie' }) }),
   adminAction: (action: 'sync' | 'plan' | 'parola' | 'detalii', userId: string) => api<{ ok: boolean; text: string }>('/api/admin', { method: 'POST', body: JSON.stringify({ action, userId }) }),
   regeneratePlan: (preview = false, expect?: string) =>

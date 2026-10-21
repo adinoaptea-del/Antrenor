@@ -14772,7 +14772,9 @@ async function handler12(req, res) {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
     if (q(req, "error")) {
-      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent([q(req, "error"), q(req, "error_description")].filter(Boolean).join(": "))}`);
+      const raw = [q(req, "error"), q(req, "error_description")].filter(Boolean).join(": ");
+      const text = q(req, "error") === "access_denied" ? "autorizarea a fost anulat\u0103 la produc\u0103tor (n-ai ap\u0103sat \u201EAuthorize\u201D)." : friendlyOAuthError(provider, raw);
+      redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(text)}`);
       return;
     }
     const userId = verifyState(q(req, "state"));
@@ -14787,8 +14789,16 @@ async function handler12(req, res) {
   } catch (e) {
     const msg2 = e instanceof Error ? e.message : String(e);
     console.error("oauth callback", q(req, "provider"), msg2, "parametri primi\u021Bi:", Object.keys(req.query).join(","), "url:", (req.url ?? "").split("?")[0]);
-    redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(msg2)}`);
+    redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(friendlyOAuthError(q(req, "provider"), msg2))}`);
   }
+}
+function friendlyOAuthError(provider, raw) {
+  const code = /token (\d{3})/.exec(raw)?.[1];
+  const short = raw.replace(/\s+/g, " ").slice(0, 140);
+  if (provider === "strava" && (code === "400" || code === "401" || code === "403" || /invalid|unauthorized|forbidden|capacity|athlete/i.test(raw))) {
+    return `Strava a refuzat conectarea (${code ? `cod ${code}` : short}). De obicei aplica\u021Bia Strava a lui AIRON e la limita de sportivi conecta\u021Bi (Strava porne\u0219te cu 1, apoi 10) \u2014 spune-i administratorului s\u0103 ridice capacitatea din strava.com/settings/api, apoi \xEEncearc\u0103 din nou.`;
+  }
+  return short;
 }
 
 // server/oauth/[provider]/start.ts
@@ -15284,8 +15294,10 @@ async function handler16(req, res) {
       ]);
       const today = todayIn("Europe/Bucharest");
       const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0), 0) * 100) / 100;
+      const stravaAthletes = new Set(tokens.filter((t) => t.provider === "strava").map((t) => t.user_id)).size;
       json(res, 200, {
         inviteUrl: `${ENV.appUrl()}/?invite=${await inviteCode(true)}`,
+        strava: { athletes: stravaAthletes, configured: !!process.env.STRAVA_CLIENT_ID },
         costMonth: cost(usage),
         costToday: cost(usage.filter((r2) => r2.created_at.slice(0, 10) === today)),
         tracking: usage.length > 0,
