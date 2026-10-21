@@ -21,9 +21,8 @@ export const WM = {
   bg: '#061010',
   ink: '#EAF2E7',
   inkRgb: [234, 242, 231] as const,
-  /** Grosimea tușei și spațiul dintre litere, în unități de înălțime a majusculei (H = 1). */
-  stroke: 0.13,
-  gap: 0.26,
+  /** Grosimea de referință a tușei (unități de H; literele au grosimile lor măsurate, 0,149–0,17). */
+  stroke: 0.165,
   /** Lățimea cuvântului: ~64% din lățimea utilă (ghid: 60–68%; la 390 px ≈ 234–265 px), fără să iasă din sferă. */
   widthFrac: 0.64,
   widthRange: [0.6, 0.68] as const,
@@ -87,86 +86,160 @@ export function introWobble(T: number, k: number, frac: number): [number, number
   return [Math.sin(ts * 1.9 + ph + frac * 1.6), Math.cos(ts * 1.5 + ph * 1.7 + frac * 1.3)];
 }
 
-// ——— Literele (linia mediană, H = 1, y în jos; tușa 0,13 H; marginea exterioară a tușei atinge exact cutia literei) ———
+// ——— Literele: construcția din imaginea de referință a ghidului (măsurată pe pixeli; H = 1 = înălțimea majusculei, y în jos) ———
+// Tușe drepte (capete tăiate, îmbinări ascuțite), fiecare literă decupată în cutia ei: vârful lui A e retezat de linia
+// majusculei, picioarele și tălpile sunt tăiate drept de linia de bază, diagonala lui N taie colțurile trunchiurilor.
+// Semnele distinctive: A fără bară — o bară scurtă pe piciorul stâng (capăt liber) cu o tăietură orizontală subțire sub
+// ea; O e un inel deschis printr-o fantă oblică (≈ 28°) în stânga, puțin deasupra mijlocului; N are diagonala la ≈ 43°.
+export type Letter = 'A' | 'I' | 'R' | 'O' | 'N';
 type Seg = { kind: 'L'; to: [number, number] } | { kind: 'A'; c: [number, number]; r: number; a0: number; a1: number };
+export type Poly = [number, number][];
 export interface StrokeDef {
-  letter: 'A' | 'I' | 'R' | 'O' | 'N';
+  letter: Letter;
   from: [number, number];
   segs: Seg[];
+  /** Grosimea tușei (unități de H). */
+  w: number;
+  /** Decuparea (evenodd): primul poligon = zona vizibilă, următoarele = găuri (fantele). Coordonate absolute. */
+  clip: Poly[];
 }
-const h = WM.stroke / 2;
-const LETTERS: { letter: StrokeDef['letter']; adv: number; strokes: Omit<StrokeDef, 'letter'>[] }[] = (() => {
-  // A: două picioare cu vârf comun și bara la 0,64 H (geometric, ferm).
-  const ax = 0.86;
-  const ay = 0.64;
-  const k = (ay - h) / (1 - 2 * h);
-  const axl = ax / 2 + (h - ax / 2) * k;
-  // R: trunchi, bulă semicirculară în jumătatea de sus, picior drept oblic.
-  const rw = 0.7;
-  const rb = 0.23;
-  const rx = rw - h - rb;
-  // O: cerc adevărat (nu zero, nu elipsă îngustă).
-  const or = 0.5 - h;
-  // N: două trunchiuri și diagonala.
-  const nw = 0.8;
+interface LetterDef {
+  letter: Letter;
+  /** Lățimea cutiei (marginile exterioare ale tușelor). */
+  w: number;
+  strokes: Omit<StrokeDef, 'letter'>[];
+}
+const rect = (x0: number, y0: number, x1: number, y1: number): Poly => [
+  [x0, y0],
+  [x1, y0],
+  [x1, y1],
+  [x0, y1],
+];
+/** Dreptunghi rotit: centrul, direcția (unghi, rad), jumătatea lungimii și jumătatea lățimii. */
+const band = (cx: number, cy: number, ang: number, hl: number, hw: number): Poly => {
+  const ux = Math.cos(ang);
+  const uy = Math.sin(ang);
+  const nx = -uy;
+  const ny = ux;
   return [
-    {
-      letter: 'A',
-      adv: ax,
-      strokes: [
-        { from: [h, 1 - h], segs: [{ kind: 'L', to: [ax / 2, h] }, { kind: 'L', to: [ax - h, 1 - h] }] },
-        { from: [axl, ay], segs: [{ kind: 'L', to: [ax - axl, ay] }] },
-      ],
-    },
-    { letter: 'I', adv: 0.14, strokes: [{ from: [0.07, h], segs: [{ kind: 'L', to: [0.07, 1 - h] }] }] },
-    {
-      letter: 'R',
-      adv: rw,
-      strokes: [
-        { from: [h, h], segs: [{ kind: 'L', to: [h, 1 - h] }] },
-        { from: [h, h], segs: [{ kind: 'L', to: [rx, h] }, { kind: 'A', c: [rx, h + rb], r: rb, a0: -Math.PI / 2, a1: Math.PI / 2 }, { kind: 'L', to: [h, h + 2 * rb] }] },
-        { from: [0.34, h + 2 * rb], segs: [{ kind: 'L', to: [rw - h, 1 - h] }] },
-      ],
-    },
-    {
-      letter: 'O',
-      adv: 1,
-      strokes: [
-        {
-          from: [0.5, h],
-          segs: [
-            { kind: 'A', c: [0.5, 0.5], r: or, a0: -Math.PI / 2, a1: Math.PI / 2 },
-            { kind: 'A', c: [0.5, 0.5], r: or, a0: Math.PI / 2, a1: (3 * Math.PI) / 2 },
-          ],
-        },
-      ],
-    },
-    { letter: 'N', adv: nw, strokes: [{ from: [h, 1 - h], segs: [{ kind: 'L', to: [h, h] }, { kind: 'L', to: [nw - h, 1 - h] }, { kind: 'L', to: [nw - h, h] }] }] },
+    [cx - ux * hl - nx * hw, cy - uy * hl - ny * hw],
+    [cx + ux * hl - nx * hw, cy + uy * hl - ny * hw],
+    [cx + ux * hl + nx * hw, cy + uy * hl + ny * hw],
+    [cx - ux * hl + nx * hw, cy - uy * hl + ny * hw],
   ];
-})();
+};
+/** Tăierea unui poligon convex cu semiplanul a·x + b·y ≤ c (Sutherland–Hodgman, o singură muchie). */
+const halfPlane = (poly: Poly, a: number, b: number, c: number): Poly => {
+  const out: Poly = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % poly.length]!;
+    const fp = a * p[0] + b * p[1] - c;
+    const fq = a * q[0] + b * q[1] - c;
+    if (fp <= 0) out.push(p);
+    if ((fp < 0 && fq > 0) || (fp > 0 && fq < 0)) {
+      const t = fp / (fp - fq);
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+    }
+  }
+  return out;
+};
 
-/** Lățimea totală a cuvântului, în unități de H (litere + spații). */
-export const WORDMARK_W = LETTERS.reduce((w, l) => w + l.adv, 0) + WM.gap * (LETTERS.length - 1);
+const LETTERS: LetterDef[] = (() => {
+  // A: cutia 1,00 H; picioare la 22,4° (tușă 0,16), vârful la linia majusculei (capul plat ≈ 0,17 H), tălpile la
+  // x = 0,087 și 0,913; bara scurtă pe piciorul stâng la y ∈ [0,577; 0,731], capăt liber la x = 0,567; tăietura
+  // orizontală a piciorului stâng chiar sub bară, y ∈ [0,722; 0,781].
+  const aw = 0.16;
+  const slope = 0.413;
+  const ext = 0.1; // prelungire dincolo de linia majusculei / de bază: decuparea taie drept
+  const A: LetterDef = {
+    letter: 'A',
+    w: 1,
+    strokes: [
+      { from: [0.087 - slope * ext, 1 + ext], segs: [{ kind: 'L', to: [0.5 + slope * ext, -ext] }], w: aw, clip: [rect(0, 0, 1, 1), rect(-0.05, 0.722, 0.42, 0.781)] },
+      { from: [0.913 + slope * ext, 1 + ext], segs: [{ kind: 'L', to: [0.5 - slope * ext, -ext] }], w: aw, clip: [rect(0, 0, 1, 1)] },
+      { from: [0.23, 0.654], segs: [{ kind: 'L', to: [0.567, 0.654] }], w: aw, clip: [rect(0, 0, 1, 1)] },
+    ],
+  };
+  // I: un trunchi de 0,17.
+  const I: LetterDef = { letter: 'I', w: 0.17, strokes: [{ from: [0.085, -ext], segs: [{ kind: 'L', to: [0.085, 1 + ext] }], w: 0.17, clip: [rect(0, 0, 0.17, 1)] }] };
+  // R: cutia 0,787; trunchi; bula = linie dreaptă sus, semicerc (r = 0,2265) în dreapta, linie dreaptă înapoi la
+  // y = 0,538; piciorul pleacă de pe linia de jos a bulei (x = 0,375) la 33,7°, tăiat drept de linia de bază.
+  const rw = 0.17;
+  const rb = 0.2265;
+  const rx = 0.401;
+  const R: LetterDef = {
+    letter: 'R',
+    w: 0.787,
+    strokes: [
+      { from: [0.085, -ext], segs: [{ kind: 'L', to: [0.085, 1 + ext] }], w: rw, clip: [rect(0, 0, 0.787, 1)] },
+      {
+        from: [0.085, 0.085],
+        segs: [{ kind: 'L', to: [rx, 0.085] }, { kind: 'A', c: [rx, 0.085 + rb], r: rb, a0: -Math.PI / 2, a1: Math.PI / 2 }, { kind: 'L', to: [0.085, 0.085 + 2 * rb] }],
+        w: rw,
+        clip: [rect(0, 0, 0.787, 1)],
+      },
+      { from: [0.375, 0.085 + 2 * rb], segs: [{ kind: 'L', to: [0.683 + 0.667 * ext, 1 + ext] }], w: rw, clip: [rect(0, 0, 0.787, 1)] },
+    ],
+  };
+  // O: inel (raza exterioară 0,521, tușă 0,17, raza mediană 0,435), centrat la 0,5 (depășește puțin liniile), deschis
+  // printr-o fantă oblică (28°, lată 0,178) centrată pe inel, în stânga, la 0,048 deasupra mijlocului.
+  const orc = 0.435;
+  const ocx = 0.521;
+  const gapAng = Math.asin(0.048 / orc);
+  const O: LetterDef = {
+    letter: 'O',
+    w: 1.042,
+    strokes: [
+      {
+        from: [ocx + orc * Math.cos(Math.PI + 0.23), 0.5 + orc * Math.sin(Math.PI + 0.23)],
+        segs: [{ kind: 'A', c: [ocx, 0.5], r: orc, a0: Math.PI + 0.23, a1: 3 * Math.PI - 0.01 }],
+        w: 0.17,
+        clip: [rect(-0.05, -0.08, 1.09, 1.08), band(ocx - orc * Math.cos(gapAng), 0.5 - 0.048, (28 * Math.PI) / 180, 0.3, 0.089)],
+      },
+    ],
+  };
+  // N: cutia 0,788; trunchiuri de 0,155; diagonala (0,149) pe linia x = 0,922·y − 0,0505 — marginea ei de jos trece prin
+  // (0,051; 0) și taie vârful trunchiului stâng, marginea de sus prin (0,77; 1) și taie baza trunchiului drept.
+  const nb = 0.788;
+  const nw = 0.155;
+  const nbox = rect(0, 0, nb, 1);
+  const N: LetterDef = {
+    letter: 'N',
+    w: nb,
+    strokes: [
+      // trunchiul stâng: doar la stânga marginii de jos a diagonalei (x − 0,922·y ≤ 0,051)
+      { from: [nw / 2, -ext], segs: [{ kind: 'L', to: [nw / 2, 1 + ext] }], w: nw, clip: [halfPlane(nbox, 1, -0.922, 0.051)] },
+      { from: [0.922 * -ext - 0.0505, -ext], segs: [{ kind: 'L', to: [0.922 * (1 + ext) - 0.0505, 1 + ext] }], w: 0.149, clip: [nbox] },
+      // trunchiul drept: doar la dreapta marginii de sus a diagonalei (x − 0,922·y ≥ −0,152)
+      { from: [nb - nw / 2, -ext], segs: [{ kind: 'L', to: [nb - nw / 2, 1 + ext] }], w: nw, clip: [halfPlane(nbox, -1, 0.922, 0.152)] },
+    ],
+  };
+  return [A, I, R, O, N];
+})();
+/** Poziția fiecărei litere (marginea stângă a cutiei), măsurată în imaginea de referință: spațiere optică, nu uniformă. */
+const LETTER_X: Record<Letter, number> = { A: 0, I: 1.54, R: 2.327, O: 3.556, N: 5.135 };
+
+/** Lățimea totală a cuvântului, în unități de H. */
+export const WORDMARK_W = LETTER_X.N + LETTERS[4]!.w;
 /** Litera și cutia ei (x de start, lățimea), în ordinea cuvântului. */
-export function wordmarkBoxes(): { letter: StrokeDef['letter']; x: number; w: number }[] {
-  let x = 0;
-  return LETTERS.map((l) => {
-    const b = { letter: l.letter, x, w: l.adv };
-    x += l.adv + WM.gap;
-    return b;
-  });
+export function wordmarkBoxes(): { letter: Letter; x: number; w: number }[] {
+  return LETTERS.map((l) => ({ letter: l.letter, x: LETTER_X[l.letter], w: l.w }));
 }
 
+const shift = (p: [number, number], dx: number): [number, number] => [p[0] + dx, p[1]];
 /** Tușele cuvântului, cu literele așezate la locul lor (coordonate absolute, în unități de H). */
 export function wordmarkStrokes(): StrokeDef[] {
   const out: StrokeDef[] = [];
-  for (const b of wordmarkBoxes()) {
-    const l = LETTERS.find((x) => x.letter === b.letter)!;
+  for (const l of LETTERS) {
+    const dx = LETTER_X[l.letter];
     for (const s of l.strokes) {
       out.push({
         letter: l.letter,
-        from: [s.from[0] + b.x, s.from[1]],
-        segs: s.segs.map((g) => (g.kind === 'L' ? { kind: 'L', to: [g.to[0] + b.x, g.to[1]] } : { ...g, c: [g.c[0] + b.x, g.c[1]] })),
+        from: shift(s.from, dx),
+        segs: s.segs.map((g) => (g.kind === 'L' ? { kind: 'L', to: shift(g.to, dx) } : { ...g, c: shift(g.c, dx) })),
+        w: s.w,
+        clip: s.clip.map((poly) => poly.map((p) => shift(p, dx))),
       });
     }
   }
@@ -174,34 +247,42 @@ export function wordmarkStrokes(): StrokeDef[] {
 }
 
 const f = (x: number, scale: number) => String(Math.round(x * scale * 1000) / 1000);
-/** Căile SVG ale literelor (o cale pe literă), scalate (implicit ×100: viewBox „0 0 454 100”, stroke-width 13). */
-export function wordmarkPaths(scale = 100): { letter: StrokeDef['letter']; d: string }[] {
-  const byLetter = new Map<StrokeDef['letter'], string[]>();
-  for (const s of wordmarkStrokes()) {
-    let d = `M${f(s.from[0], scale)} ${f(s.from[1], scale)}`;
-    for (const g of s.segs) {
-      if (g.kind === 'L') d += ` L${f(g.to[0], scale)} ${f(g.to[1], scale)}`;
-      else {
-        const ex = g.c[0] + g.r * Math.cos(g.a1);
-        const ey = g.c[1] + g.r * Math.sin(g.a1);
-        const large = Math.abs(g.a1 - g.a0) > Math.PI ? 1 : 0;
-        const sweep = g.a1 > g.a0 ? 1 : 0;
-        d += ` A${f(g.r, scale)} ${f(g.r, scale)} 0 ${large} ${sweep} ${f(ex, scale)} ${f(ey, scale)}`;
-      }
+const polyD = (poly: Poly, scale: number) => `M${poly.map((p) => `${f(p[0], scale)} ${f(p[1], scale)}`).join(' L')} Z`;
+/** Calea SVG a unei tușe (linia mediană), scalată. */
+export function strokePath(s: StrokeDef, scale = 100): string {
+  let d = `M${f(s.from[0], scale)} ${f(s.from[1], scale)}`;
+  for (const g of s.segs) {
+    if (g.kind === 'L') d += ` L${f(g.to[0], scale)} ${f(g.to[1], scale)}`;
+    else {
+      const ex = g.c[0] + g.r * Math.cos(g.a1);
+      const ey = g.c[1] + g.r * Math.sin(g.a1);
+      const large = Math.abs(g.a1 - g.a0) > Math.PI ? 1 : 0;
+      const sweep = g.a1 > g.a0 ? 1 : 0;
+      d += ` A${f(g.r, scale)} ${f(g.r, scale)} 0 ${large} ${sweep} ${f(ex, scale)} ${f(ey, scale)}`;
     }
-    const arr = byLetter.get(s.letter) ?? [];
-    arr.push(d);
-    byLetter.set(s.letter, arr);
   }
-  return Array.from(byLetter, ([letter, ds]) => ({ letter, d: ds.join(' ') }));
+  return d;
+}
+/** Calea SVG a decupării (evenodd), scalată. */
+export function clipPath(s: StrokeDef, scale = 100): string {
+  return s.clip.map((poly) => polyD(poly, scale)).join(' ');
+}
+/**
+ * Căile SVG ale cuvântului: fiecare tușă cu grosimea și decuparea ei (implicit ×100: viewBox „0 0 592 100”).
+ * Se desenează cu stroke-linecap="butt", stroke-linejoin="miter", fill="none".
+ */
+export function wordmarkPaths(scale = 100): { letter: Letter; d: string; width: number; clip: string }[] {
+  return wordmarkStrokes().map((s) => ({ letter: s.letter, d: strokePath(s, scale), width: s.w * scale, clip: clipPath(s, scale) }));
 }
 
 /** Tușa ca polilinie (arcele discretizate), cu lungimile cumulate: pentru eșantionare uniformă pe lungime. */
 export interface Polyline {
-  letter: StrokeDef['letter'];
+  letter: Letter;
   pts: [number, number][];
   cum: number[];
   length: number;
+  w: number;
+  clip: Poly[];
 }
 export function wordmarkPolylines(): Polyline[] {
   return wordmarkStrokes().map((s) => {
@@ -209,7 +290,7 @@ export function wordmarkPolylines(): Polyline[] {
     for (const g of s.segs) {
       if (g.kind === 'L') pts.push(g.to);
       else {
-        const n = Math.max(8, Math.ceil((Math.abs(g.a1 - g.a0) / (Math.PI * 2)) * 64));
+        const n = Math.max(8, Math.ceil((Math.abs(g.a1 - g.a0) / (Math.PI * 2)) * 96));
         for (let i = 1; i <= n; i++) {
           const a = g.a0 + ((g.a1 - g.a0) * i) / n;
           pts.push([g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)]);
@@ -218,7 +299,7 @@ export function wordmarkPolylines(): Polyline[] {
     }
     const cum = [0];
     for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1]! + Math.hypot(pts[i]![0] - pts[i - 1]![0], pts[i]![1] - pts[i - 1]![1]));
-    return { letter: s.letter, pts, cum, length: cum[cum.length - 1]! };
+    return { letter: s.letter, pts, cum, length: cum[cum.length - 1]!, w: s.w, clip: s.clip };
   });
 }
 /** Punctul la distanța d (pe lungime) de-a lungul poliliniei. */
@@ -237,7 +318,7 @@ export function polylineAt(p: Polyline, d: number): [number, number] {
 /** Bucata de literă a unui fir: tușa și intervalul ei de lungime. Nicio bucată nu trece de la o tușă la alta. */
 export interface Chunk {
   stroke: number;
-  letter: StrokeDef['letter'];
+  letter: Letter;
   from: number;
   to: number;
 }
@@ -267,6 +348,8 @@ export function wordmarkChunks(n: number, polys = wordmarkPolylines()): Chunk[] 
   return out;
 }
 
+/** Bucățile vecine se suprapun puțin (unități de H): la îmbinările capetelor drepte nu rămâne o linie subțire de fundal. */
+export const CHUNK_OVERLAP = 0.02;
 /** Eșantioanele S ale firului k (samples + 1 puncte, uniforme pe lungime), în unități de H: [x0, y0, x1, y1, …]. */
 export function wordmarkSamples(n: number, samples: number): Float32Array[] {
   const polys = wordmarkPolylines();
@@ -276,8 +359,10 @@ export function wordmarkSamples(n: number, samples: number): Float32Array[] {
     const c = chunks[k];
     if (!c) return out;
     const p = polys[c.stroke]!;
+    const from = Math.max(0, c.from - CHUNK_OVERLAP);
+    const to = Math.min(p.length, c.to + CHUNK_OVERLAP);
     for (let j = 0; j <= samples; j++) {
-      const [x, y] = polylineAt(p, c.from + ((c.to - c.from) * j) / samples);
+      const [x, y] = polylineAt(p, from + ((to - from) * j) / samples);
       out[2 * j] = x;
       out[2 * j + 1] = y;
     }

@@ -25,7 +25,7 @@ import {
   warpAmp,
   type FireState,
 } from '@core/motion/fireStorm.js';
-import { WM, introAmbient, introArc, introBlend, introDelay, introPhase, introTextAlpha, introWobble, wordmarkAlpha, wordmarkChunkLengths, wordmarkFit, wordmarkSamples, type IntroPhase } from '@core/motion/wordmark.js';
+import { WM, introAmbient, introArc, introBlend, introDelay, introPhase, introTextAlpha, introWobble, wordmarkAlpha, wordmarkChunks, wordmarkFit, wordmarkPolylines, wordmarkSamples, type IntroPhase } from '@core/motion/wordmark.js';
 import { makeOrbModel, membranePoint, orbCount, orbLink, orbParticle, orbRadius, orbRegistry, orbVisibleN } from './orbRender';
 
 /**
@@ -265,10 +265,26 @@ export function WelcomeFire({
     const fils = makeFilaments();
     const zones = makeZones();
     // Intro: bucata de literă a fiecărui fir (eșantioane S, în unități de H) și întârzierea cu care se desprinde.
-    const wm = intro && !reduce ? wordmarkSamples(fils.length, SAMPLES) : null;
-    const wmLen = wordmarkChunkLengths(fils.length);
-    const wmDelay = fils.map((_, k) => introDelay(k, fils.length));
+    // Bucățile sunt în ordinea cuvântului (A → N); firul k primește bucata chunkOf[k]: firele sunt ordonate după culoare
+    // (turcoaz → verde → lime), ca în imaginea ghidului — A se desprinde în turcoaz, N în lime.
+    const wmPolys = intro && !reduce ? wordmarkPolylines() : null;
+    const wmChunks = wmPolys ? wordmarkChunks(fils.length, wmPolys) : null;
+    const wmS = wmPolys ? wordmarkSamples(fils.length, SAMPLES) : null;
+    const order = fils.map((_, k) => k).sort((a, b) => fils[a]!.col - fils[b]!.col || fils[a]!.start - fils[b]!.start);
+    const chunkOf = new Int16Array(fils.length);
+    order.forEach((k, c) => (chunkOf[k] = c));
+    const wm = wmS ? fils.map((_, k) => wmS[chunkOf[k]!]!) : null;
+    const wmLen = Float32Array.from(fils, (_, k) => (wmChunks ? wmChunks[chunkOf[k]!]!.to - wmChunks[chunkOf[k]!]!.from : 0));
+    const wmDelay = fils.map((_, k) => introDelay(chunkOf[k]!, fils.length));
+    /** Grosimea tușei bucății firului k (unități de H) și tușa (pentru decupare). */
+    const wmW = Float32Array.from(fils, (_, k) => (wmChunks && wmPolys ? wmPolys[wmChunks[chunkOf[k]!]!.stroke]!.w : WM.stroke));
+    const wmStroke = Int16Array.from(fils, (_, k) => (wmChunks ? wmChunks[chunkOf[k]!]!.stroke : 0));
     const INK = WM.inkRgb;
+    // Literele încă întregi se desenează pe un canvas separat (decupate exact în cutia literei), apoi se așază pe scenă
+    // de două ori: o dată estompate (strălucirea moale din ghid), o dată clare.
+    const off = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+    const offCtx = off?.getContext('2d') ?? null;
+    const canBlur = !!offCtx && 'filter' in offCtx;
     // Momentul ruperii fiecărui eșantion de fir (aceeași formulă ca nașterea prafului).
     const erodeAt = fils.map((f) =>
       Float32Array.from({ length: SAMPLES + 1 }, (_, j) => {
@@ -443,42 +459,91 @@ export function WelcomeFire({
           pd[j] = q.depth;
         }
       }
-      // 2) Intro, stilul literei: aceeași geometrie desenată în alb cald (#EAF2E7), tușă 0,13 H, halou slab, opac, cu
-      //    intensitatea 1 − s; firele care încă n-au plecat formează o singură cale (fără noduri la îmbinări).
-      if (wfit && wAlpha > 0) {
-        const lw0 = wfit.H * WM.stroke;
+      // 2) Intro, stilul literei: bucățile încă neplecate se desenează exact ca literele din ghid — tușe drepte (capete
+      //    tăiate, îmbinări ascuțite), fiecare decupată în cutia literei ei (fantele lui A și O, colțurile lui N) — pe
+      //    canvas-ul separat, apoi pe scenă estompate (strălucire moale) și clare. Bucățile care pleacă se desenează pe
+      //    scenă în același alb, cu intensitatea 1 − s: lumina trece treptat de la literă la fir pe aceeași linie.
+      if (wfit && wAlpha > 0 && wmPolys && wmChunks) {
+        const Hh = wfit.H;
+        const m = Math.ceil(0.45 * Hh);
+        const ox = Math.floor(wfit.x0 - m);
+        const oy = Math.floor(wfit.y0 - m);
+        const ow = Math.ceil(wfit.W + 2 * m);
+        const oh = Math.ceil(Hh + 2 * m);
         ctx.globalCompositeOperation = 'source-over';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        const strokeLetter = (alpha: number, lw: number) => {
-          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${(0.1 * alpha).toFixed(3)})`;
-          ctx.lineWidth = lw * 2.4;
-          ctx.stroke();
-          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${alpha.toFixed(3)})`;
-          ctx.lineWidth = lw;
-          ctx.stroke();
-        };
-        ctx.beginPath();
-        let anyStill = false;
-        for (let k = 0; k < fils.length; k++) {
-          if (jEndK[k]! < 0 || sK[k]! > 0) continue;
-          const px = PX[k]!;
-          const py = PY[k]!;
-          ctx.moveTo(px[0]!, py[0]!);
-          for (let j = 1; j <= jEndK[k]!; j++) ctx.lineTo(px[j]!, py[j]!);
-          anyStill = true;
+        if (off && offCtx) {
+          if (off.width !== Math.ceil(ow * dpr) || off.height !== Math.ceil(oh * dpr)) {
+            off.width = Math.ceil(ow * dpr);
+            off.height = Math.ceil(oh * dpr);
+          }
+          offCtx.setTransform(1, 0, 0, 1, 0, 0);
+          offCtx.clearRect(0, 0, off.width, off.height);
+          offCtx.setTransform(dpr, 0, 0, dpr, -ox * dpr, -oy * dpr);
+          offCtx.lineCap = 'butt';
+          offCtx.lineJoin = 'miter';
+          offCtx.miterLimit = 12;
+          offCtx.strokeStyle = `rgb(${INK[0]},${INK[1]},${INK[2]})`;
+          let any = false;
+          for (let si = 0; si < wmPolys.length; si++) {
+            const poly = wmPolys[si]!;
+            offCtx.save();
+            offCtx.beginPath();
+            for (const ring of poly.clip) {
+              ring.forEach((pt, i) => (i === 0 ? offCtx.moveTo(wfit.x0 + pt[0] * Hh, wfit.y0 + pt[1] * Hh) : offCtx.lineTo(wfit.x0 + pt[0] * Hh, wfit.y0 + pt[1] * Hh)));
+              offCtx.closePath();
+            }
+            offCtx.clip('evenodd');
+            offCtx.beginPath();
+            let anyHere = false;
+            for (let k = 0; k < fils.length; k++) {
+              if (wmStroke[k] !== si || jEndK[k]! < 0 || sK[k]! > 0) continue;
+              const px = PX[k]!;
+              const py = PY[k]!;
+              offCtx.moveTo(px[0]!, py[0]!);
+              for (let j = 1; j <= jEndK[k]!; j++) offCtx.lineTo(px[j]!, py[j]!);
+              anyHere = true;
+            }
+            if (anyHere) {
+              offCtx.lineWidth = poly.w * Hh;
+              offCtx.stroke();
+              any = true;
+            }
+            offCtx.restore();
+          }
+          if (any) {
+            ctx.save();
+            if (canBlur) {
+              ctx.globalAlpha = 0.5 * wAlpha;
+              ctx.filter = `blur(${(0.12 * Hh).toFixed(1)}px)`;
+              ctx.drawImage(off, ox, oy, ow, oh);
+              ctx.filter = 'none';
+            }
+            ctx.globalAlpha = wAlpha;
+            ctx.drawImage(off, ox, oy, ow, oh);
+            ctx.restore();
+          }
         }
-        if (anyStill) strokeLetter(wAlpha, lw0);
+        // Bucățile care pleacă: fără decupare (sunt deja în mișcare), capete drepte, îmbinări rotunde (fără vârfuri).
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'round';
         for (let k = 0; k < fils.length; k++) {
           const sMix = sK[k]!;
           if (jEndK[k]! < 0 || sMix <= 0 || sMix >= 1) continue;
           const px = PX[k]!;
           const py = PY[k]!;
+          const la = (1 - sMix) * wAlpha;
+          const lw = wmW[k]! * Hh * (1 - sMix) + fils[k]!.width * sMix;
           ctx.beginPath();
           ctx.moveTo(px[0]!, py[0]!);
           for (let j = 1; j <= jEndK[k]!; j++) ctx.lineTo(px[j]!, py[j]!);
-          strokeLetter((1 - sMix) * wAlpha, lw0 * (1 - sMix) + fils[k]!.width * sMix);
+          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${(0.1 * la).toFixed(3)})`;
+          ctx.lineWidth = lw * 2.4;
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${la.toFixed(3)})`;
+          ctx.lineWidth = lw;
+          ctx.stroke();
         }
+        ctx.lineJoin = 'miter';
         ctx.globalCompositeOperation = 'lighter';
       }
       // 3) Stilul firului (culoarea lui, subțire, aditiv), cu intensitatea s în intro: lumina trece treptat de la literă la
