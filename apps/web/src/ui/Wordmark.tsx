@@ -12,12 +12,17 @@ const VB_W = Math.round(WORDMARK_W * 100 * 1000) / 1000;
  */
 export function Wordmark({ height = 14, className = '' }: { height?: number; className?: string }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const width = Math.round(height * WORDMARK_W * 100) / 100;
+  // Mărimea e dată explicit (atribute + stil inline), nu lăsată pe „auto”: un <svg> cu lățime automată e tratat de unele
+  // versiuni de WebKit (iOS) ca 100% din container și împinge butoanele din antet în afara ecranului.
   return (
     <svg
       className={`wordmark ${className}`.trim()}
       viewBox={`0 0 ${VB_W} 100`}
+      preserveAspectRatio="xMinYMid meet"
       height={height}
-      width={Math.round(height * WORDMARK_W * 100) / 100}
+      width={width}
+      style={{ width, height, flex: 'none' }}
       role="img"
       aria-label="AIRON"
       fill="none"

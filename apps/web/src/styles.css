@@ -209,7 +209,7 @@ body::before {
 /* Butoane */
 .btn {
   appearance: none; border: 0; border-radius: 14px; height: 48px; padding: 0 20px; white-space: nowrap;
-  font: 700 15px var(--font-ui); background: var(--accent); color: var(--accent-ink); width: 100%; cursor: pointer;
+  font: 700 15px var(--font-ui); background: var(--accent); color: var(--accent-ink); width: 100%; max-width: 100%; min-width: 0; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn .i { color: var(--accent-ink); }
@@ -903,9 +903,12 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
    AIRON · sistemul nou (dosarul de redesign): wordmark, antet, taburi egale, Acasă, repere, lumină ambientală
    ========================================================================== */
 /* Wordmark-ul AIRON (ui/Wordmark.tsx): vector monoline, același în antet, la autentificare și în intro; culoarea literelor din ghid (#EAF2E7). */
-.wordmark { display: block; flex: none; height: 14px; width: auto; color: #eaf2e7; }
-.app-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0 6px; min-height: 52px; }
-.app-head-r { display: flex; align-items: center; gap: 8px; }
+.wordmark { display: block; flex: none; color: #eaf2e7; }
+/* Antetul: cuvântul în prima coloană (poate fi oricât de îngustă), butoanele în a doua, mereu lipite de marginea dreaptă a
+   ecranului — indiferent de telefon, niciun element nu poate împinge avatarul și citirea brățării în afara ecranului. */
+.app-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 0 6px; min-height: 52px; width: 100%; }
+.app-head > .wordmark { justify-self: start; max-width: 100%; }
+.app-head-r { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; white-space: nowrap; }
 .avatar-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--fg); font: 700 15px var(--font-ui); display: grid; place-items: center; cursor: pointer; }
 .back-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; padding: 8px 0 10px; }
 .back-head h1 { margin: 0; font: 700 17px/1.2 var(--font-display); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1057,11 +1060,11 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
-.login-head { text-align: center; padding: 48px 0 8px; display: grid; justify-items: center; gap: 10px; }
+.login-head { text-align: center; padding: 48px 0 8px; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 10px; }
 .login-head .sub { color: var(--muted); font-size: 14px; }
 .brand-lg { display: grid; justify-items: center; gap: 12px; }
 .brand-lg img { border-radius: 18px; }
-.brand-lg .wordmark { height: 22px; }
+.brand-lg .wordmark { margin: 0 auto; }
 /* Verdictul asupra țintei (realist / ambițios / nerealist / necunoscut): etichetă + text, nu doar culoare. */
 .verdict { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border-left: 3px solid var(--line-2); display: grid; gap: 6px; font-size: 14px; line-height: 1.45; }
 .verdict b { font-size: 15px; }
@@ -1112,7 +1115,10 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 @media (prefers-reduced-motion: reduce) { .sheet, .sheet-wrap { animation: none; } }
 
 /* Azi: bula cu ședințele zilei. Bula e identitate (lime/verde pe grafit), nu culoarea recuperării și nu procent. */
-.azi { display: grid; justify-items: center; gap: 10px; padding-top: 4px; }
+/* O singură coloană care nu depășește niciodată lățimea ecranului (minmax(0, 1fr)): pe telefoanele înguste (344–360 px) un
+   rând lung (ex. indicele de pregătire) nu mai lărgește coloana și nu mai împinge bula și butoanele în afara ecranului. */
+.azi { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 10px; padding-top: 4px; }
+.azi > * { max-width: 100%; min-width: 0; }
 .azi-k { margin: 6px 0 0; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); text-align: center; text-wrap: balance; }
 .orb { position: relative; width: min(100%, 360px); aspect-ratio: 1; max-width: 100%; border: 0; padding: 0; background: transparent; color: var(--fg); cursor: pointer; border-radius: 50%; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; transition: transform 0.18s ease; }
 .orb::before { content: ''; position: absolute; inset: 6%; border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(10, 14, 14, 0.85) 0 38%, rgba(10, 14, 14, 0.4) 55%, transparent 70%); pointer-events: none; }
@@ -1150,8 +1156,9 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .azi .azi-adapt { justify-self: center; color: var(--fg); font-weight: 500; font-size: 15px; }
 
 /* O singură pagină: sub bulă, două butoane egale (Planul complet, Progresul tău) și o legătură către antrenor. */
-.azi-btns { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
-.azi-btn { justify-content: center; gap: 8px; background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); min-height: 52px; font-weight: 600; }
+.azi-btns { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 4px; }
+/* Butoanele pot fi oricât de înguste cere ecranul (telefoane de 344–360 px): textul se strânge sau trece pe două rânduri, nu iese din ecran. */
+.azi-btn { justify-content: center; gap: 8px; min-width: 0; padding: 0 10px; background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); min-height: 52px; height: auto; font-weight: 600; white-space: normal; line-height: 1.2; text-align: center; }
 .azi-btn svg { width: 18px; height: 18px; color: var(--accent); stroke: var(--accent); opacity: 1; }
 .azi .azi-form { justify-self: center; color: var(--accent); font-size: 15px; font-weight: 600; }
 .azi .azi-coach { justify-self: center; color: var(--muted); font-weight: 500; font-size: 14px; }
@@ -1182,7 +1189,7 @@ button.str-row { width: 100%; text-align: left; font: inherit; color: inherit; c
 .prog-tips p { margin: 0; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
 .prog .prog-more { justify-self: start; }
 
-.azi-ready { margin: -4px 0 0; border: 0; background: transparent; color: var(--fg); font: 600 15px/1.3 var(--font-ui); text-align: center; text-wrap: balance; cursor: pointer; padding: 4px 8px; }
+.azi-ready { margin: -4px 0 0; border: 0; background: transparent; color: var(--fg); font: 600 15px/1.3 var(--font-ui); text-align: center; text-wrap: balance; white-space: normal; max-width: 100%; cursor: pointer; padding: 4px 8px; }
 
 /* Jurnalul de forță */
 .str-hint { display: block; margin-top: 4px; font-size: 12.5px; color: var(--accent, #c8f04a); opacity: 0.9; }

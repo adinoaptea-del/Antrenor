@@ -10,5 +10,6 @@
     "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src", "tests", "scripts"]
+  "include": ["src", "tests", "scripts"],
+  "exclude": ["scripts/layout-audit"]
 }
