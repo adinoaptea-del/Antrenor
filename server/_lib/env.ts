@@ -53,7 +53,8 @@ export const ENV = {
   cronSecret: () => first(['CRON_SECRET'], true) || derived('cron'),
   modelKey: () => env('ANTHROPIC_API_KEY'),
   modelSpecialist: () => env('MODEL_SPECIALIST', true) || 'claude-sonnet-5-5',
-  modelHead: () => env('MODEL_HEAD', true) || 'claude-sonnet-5-5',
+  /** Antrenorul principal pe Opus 5.5 (decizia proprietarului, 21.10.2026); specialiștii și extragerile rămân pe Sonnet 5.5. */
+  modelHead: () => env('MODEL_HEAD', true) || 'claude-opus-5-5',
   /** AGENT_MODE=piramida readuce specialiștii + head coach (pentru comparație); implicit Main Coach. */
   agentMode: (): 'main' | 'piramida' => (env('AGENT_MODE', true) === 'piramida' ? 'piramida' : 'main'),
   /** Câte conturi se pot crea din aplicație (WHOOP dă acces de dezvoltator pentru 10 membri). */

@@ -67,7 +67,8 @@ var init_env = __esm({
       cronSecret: () => first(["CRON_SECRET"], true) || derived("cron"),
       modelKey: () => env("ANTHROPIC_API_KEY"),
       modelSpecialist: () => env("MODEL_SPECIALIST", true) || "claude-sonnet-5-5",
-      modelHead: () => env("MODEL_HEAD", true) || "claude-sonnet-5-5",
+      /** Antrenorul principal pe Opus 5.5 (decizia proprietarului, 21.10.2026); specialiștii și extragerile rămân pe Sonnet 5.5. */
+      modelHead: () => env("MODEL_HEAD", true) || "claude-opus-5-5",
       /** AGENT_MODE=piramida readuce specialiștii + head coach (pentru comparație); implicit Main Coach. */
       agentMode: () => env("AGENT_MODE", true) === "piramida" ? "piramida" : "main",
       /** Câte conturi se pot crea din aplicație (WHOOP dă acces de dezvoltator pentru 10 membri). */
@@ -10008,8 +10009,12 @@ var init_me = __esm({
 });
 
 // server/_lib/usage.ts
-function costUsd(input, output, cacheWrite = 0, cacheRead = 0) {
-  return (input * PRICE_IN + cacheWrite * PRICE_IN * 1.25 + cacheRead * PRICE_IN * 0.1 + output * PRICE_OUT) / 1e6;
+function priceOf(model) {
+  return model && PRICES[model] || (model && /sonnet/.test(model) ? PRICES["claude-sonnet-5-5"] : PRICES["claude-opus-5-5"]);
+}
+function costUsd(input, output, cacheWrite = 0, cacheRead = 0, model = "claude-sonnet-5-5") {
+  const [pin, pout] = priceOf(model);
+  return (input * pin + cacheWrite * pin * 1.25 + cacheRead * pin * 0.1 + output * pout) / 1e6;
 }
 async function recordUsage(userId, kind, model, u) {
   if (!u) return;
@@ -10018,13 +10023,15 @@ async function recordUsage(userId, kind, model, u) {
     await insert("ai_usage", { user_id: userId, kind, model, input_tokens: row.input_tokens + row.cache_write_tokens + row.cache_read_tokens, output_tokens: row.output_tokens }).catch((e) => console.error("ai_usage", e instanceof Error ? e.message : e));
   });
 }
-var PRICE_IN, PRICE_OUT;
+var PRICES;
 var init_usage = __esm({
   "server/_lib/usage.ts"() {
     "use strict";
     init_db();
-    PRICE_IN = 2;
-    PRICE_OUT = 10;
+    PRICES = {
+      "claude-sonnet-5-5": [2, 10],
+      "claude-opus-5-5": [4, 20]
+    };
   }
 });
 
@@ -15339,7 +15346,7 @@ async function handler16(req, res) {
         select("app_feedback", {}, { select: "user_id,date,score,note", order: "date.desc", limit: 1e3 }).catch(() => [])
       ]);
       const today = todayIn("Europe/Bucharest");
-      const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0), 0) * 100) / 100;
+      const cost = (rows) => Math.round(rows.reduce((s, r2) => s + costUsd(r2.input_tokens, r2.output_tokens, r2.cache_write_tokens ?? 0, r2.cache_read_tokens ?? 0, r2.model ?? null), 0) * 100) / 100;
       const stravaAthletes = new Set(tokens.filter((t) => t.provider === "strava").map((t) => t.user_id)).size;
       json(res, 200, {
         inviteUrl: `${ENV.appUrl()}/?invite=${await inviteCode(true)}`,

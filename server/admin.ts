@@ -31,7 +31,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<{ user_id: string }>('questionnaires', { kind: 'eq.intrare' }, { select: 'user_id' }),
         select<{ user_id: string; start_date: string }>('plans', { active: 'eq.true' }, { select: 'user_id,start_date' }),
         select<{ user_id: string; created_at: string; kind: string }>('messages', {}, { select: 'user_id,created_at,kind', order: 'created_at.desc', limit: 300 }),
-        select<{ user_id: string | null; input_tokens: number; output_tokens: number; cache_write_tokens?: number; cache_read_tokens?: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: '*', limit: 20000 }).catch(() => []),
+        select<{ user_id: string | null; model?: string | null; input_tokens: number; output_tokens: number; cache_write_tokens?: number; cache_read_tokens?: number; created_at: string }>('ai_usage', { created_at: `gte.${monthStart}T00:00:00Z` }, { select: '*', limit: 20000 }).catch(() => []),
         select<{ user_id: string; date: string; sport: string; source: string; name: string | null; minutes: number; distance_km: number | null }>('activities', {}, { select: 'user_id,date,sport,source,name,minutes,distance_km', order: 'date.desc', limit: 400 }),
         select<{ user_id: string }>('wellness_daily', { source: 'eq.manual', weight_kg: 'not.is.null' }, { select: 'user_id' }).catch(() => []),
         // Bicicleta pe 6 săptămâni (ce intră în „pregătirea pe probe”), ca să vezi de unde vine o tură nefăcută.
@@ -42,7 +42,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         select<FeedbackRow & { user_id: string }>('app_feedback', {}, { select: 'user_id,date,score,note', order: 'date.desc', limit: 1000 }).catch(() => []),
       ]);
       const today = todayIn('Europe/Bucharest');
-      const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0), 0) * 100) / 100;
+      const cost = (rows: typeof usage) => Math.round(rows.reduce((s, r) => s + costUsd(r.input_tokens, r.output_tokens, r.cache_write_tokens ?? 0, r.cache_read_tokens ?? 0, r.model ?? null), 0) * 100) / 100;
       // Strava: câți sportivi au aplicația Strava conectată. Aplicația Strava a lui AIRON pornește în „Single Player Mode”
       // (1 sportiv = dezvoltatorul); se ridică la 10 din strava.com/settings/api, peste 10 cere review (developers.strava.com).
       const stravaAthletes = new Set(tokens.filter((t) => t.provider === 'strava').map((t) => t.user_id)).size;
