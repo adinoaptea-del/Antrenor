@@ -1,20 +1,15 @@
 import { useEffect, type ReactNode } from 'react';
 import { Icons } from './common';
+import { Wordmark } from './Wordmark';
 
-/** Cuvântul AIRON, cu I-ul în lime (ca pe iconiță). */
-export function Wordmark() {
-  return (
-    <span className="wordmark" aria-label="AIRON">
-      A<i>I</i>RON
-    </span>
-  );
-}
+/** Cuvântul AIRON: același vector ca în intro (ui/Wordmark.tsx), uniform în toată aplicația. */
+export { Wordmark };
 
 /** Bara de sus pe ecranele principale: AIRON stânga, avatarul (Profil) dreapta. */
 export function AppHeader({ name, onProfile, right }: { name: string; onProfile: () => void; right?: ReactNode }) {
   return (
     <header className="app-head">
-      <Wordmark />
+      <Wordmark height={14} />
       <div className="app-head-r">
         {right}
         <button className="avatar-btn" onClick={onProfile} aria-label="Profil" title="Profil">

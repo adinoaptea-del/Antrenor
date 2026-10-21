@@ -902,8 +902,8 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 /* ==========================================================================
    AIRON · sistemul nou (dosarul de redesign): wordmark, antet, taburi egale, Acasă, repere, lumină ambientală
    ========================================================================== */
-.wordmark { font: 800 17px/1 var(--font-display); letter-spacing: 0.18em; color: var(--fg); }
-.wordmark i { font-style: normal; color: var(--accent); }
+/* Wordmark-ul AIRON (ui/Wordmark.tsx): vector monoline, același în antet, la autentificare și în intro; culoarea literelor din ghid (#EAF2E7). */
+.wordmark { display: block; flex: none; height: 14px; width: auto; color: #eaf2e7; }
 .app-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0 6px; min-height: 52px; }
 .app-head-r { display: flex; align-items: center; gap: 8px; }
 .avatar-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--fg); font: 700 15px var(--font-ui); display: grid; place-items: center; cursor: pointer; }
@@ -1058,7 +1058,7 @@ circle.route-end { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
 .login-head .sub { color: var(--muted); font-size: 14px; }
 .brand-lg { display: grid; justify-items: center; gap: 12px; }
 .brand-lg img { border-radius: 18px; }
-.brand-lg .wordmark { font-size: 26px; }
+.brand-lg .wordmark { height: 22px; }
 /* Verdictul asupra țintei (realist / ambițios / nerealist / necunoscut): etichetă + text, nu doar culoare. */
 .verdict { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border-left: 3px solid var(--line-2); display: grid; gap: 6px; font-size: 14px; line-height: 1.45; }
 .verdict b { font-size: 15px; }

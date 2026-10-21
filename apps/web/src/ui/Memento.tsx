@@ -39,5 +39,6 @@ export function Memento({ onClose }: { onClose: () => void }) {
     markWelcome();
     onClose();
   };
-  return <WelcomeFire kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} onClose={close} />;
+  // Intro-ul AIRON (wordmark → fire → sferă) doar aici: la deschidere și la revenirea după pauza de 30 de minute, nu la felicitări.
+  return <WelcomeFire intro kicker={d ? `Ziua ${d.day} din ${d.total}` : (me.user.raceName ?? 'AIRON')} text={msg} onClose={close} />;
 }

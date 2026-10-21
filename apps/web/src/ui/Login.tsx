@@ -30,7 +30,7 @@ export function Login() {
   return (
     <div className="login">
       <div className="login-head">
-        <div className="brand-lg"><img src="./icon-192.png" alt="" width={72} height={72} /><Wordmark /></div>
+        <div className="brand-lg"><img src="./icon-192.png" alt="" width={72} height={72} /><Wordmark height={22} /></div>
         <div className="sub">antrenorul AI pentru triatlon</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>
@@ -68,7 +68,7 @@ export function Unconfigured({ reason }: { reason?: string | null }) {
   return (
     <div className="login">
       <div className="login-head">
-        <div className="brand-lg"><img src="./icon-192.png" alt="" width={56} height={56} /><Wordmark /></div>
+        <div className="brand-lg"><img src="./icon-192.png" alt="" width={56} height={56} /><Wordmark height={22} /></div>
         <div className="sub">serverul nu e gata încă</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>
@@ -102,7 +102,7 @@ export function Setup() {
   return (
     <div className="login">
       <div className="login-head">
-        <div className="brand-lg"><img src="./icon-192.png" alt="" width={72} height={72} /><Wordmark /></div>
+        <div className="brand-lg"><img src="./icon-192.png" alt="" width={72} height={72} /><Wordmark height={22} /></div>
         <div className="sub">prima pornire</div>
       </div>
       <div className="q" style={{ marginTop: 24 }}>

@@ -25,6 +25,7 @@ import {
   warpAmp,
   type FireState,
 } from '@core/motion/fireStorm.js';
+import { WM, introAmbient, introArc, introBlend, introDelay, introPhase, introTextAlpha, introWobble, wordmarkAlpha, wordmarkChunkLengths, wordmarkFit, wordmarkSamples, type IntroPhase } from '@core/motion/wordmark.js';
 import { makeOrbModel, membranePoint, orbCount, orbLink, orbParticle, orbRadius, orbRegistry, orbVisibleN } from './orbRender';
 
 /**
@@ -40,6 +41,13 @@ import { makeOrbModel, membranePoint, orbCount, orbLink, orbParticle, orbRadius,
  * o eroare de desen → Acasă imediat (SAFE_HOME); „mișcare redusă” → sferă statică și o estompare scurtă.
  * Un singur ceas al scenei (avansat cu cel mult 50 ms pe cadru: fără recuperări uriașe după fundal) și un pas fix de
  * simulare de 1/60 s; laboratorul derulează cu ceasul lui și resimulează determinist.
+ *
+ * Intro-ul (`intro`, ghidul vizual-tehnic din 21.10.2026; doar întâmpinarea din Memento, nu felicitările): pe același
+ * ceas, înainte de sferă, wordmark_in (0–0,3 s) → wordmark_hold (0,3–1,5 s) → wordmark_to_orb (1,5–3,3 s) →
+ * welcome_reveal (3,3–3,7 s) → welcome_idle → ieșirea existentă. Literele AIRON sunt desenate chiar de cele 22 de fire
+ * ale sferei (fiecare fir e o bucată de literă), care se desprind decalat și se așază pe sferă cu
+ * P = (1 − s)·S + s·B(t) + a·F; la 3,3 s poziția e exact B(t), adică sfera formată — nu există un cadru de trecere.
+ * Ceasul intern al întâmpinării e t = T − 2.100 ms. Mișcare redusă: direct întâmpinarea lizibilă, cu estomparea scurtă.
  */
 
 type Clock = () => { t: number; out: number | null };
@@ -70,6 +78,7 @@ export function WelcomeFire({
   text,
   clock,
   inline = false,
+  intro = false,
   onRequestContinue,
   onPhase,
   onClose,
@@ -78,8 +87,10 @@ export function WelcomeFire({
   text: string;
   clock?: Clock;
   inline?: boolean;
+  /** Intro-ul AIRON înaintea sferei (wordmark → fire → bulă); ceasul `t` e atunci ceasul intro-ului (T). */
+  intro?: boolean;
   onRequestContinue?: () => void;
-  onPhase?: (p: FireState) => void;
+  onPhase?: (p: FireState | IntroPhase) => void;
   onClose: () => void;
 }) {
   const cv = useRef<HTMLCanvasElement>(null);
@@ -90,8 +101,8 @@ export function WelcomeFire({
   const reduce = reducedMotion();
   const [ready, setReady] = useState(reduce);
   const [leaving, setLeaving] = useState(false);
-  /** Ceasul scenei: t = intrarea (ms), out = ieșirea (ms de la „Continuă”). */
-  const scene = useRef<{ t: number; out: number | null }>({ t: reduce ? FIRE.ready : 0, out: null });
+  /** Ceasul scenei: t = intrarea (ms; cu intro, ceasul intro-ului), out = ieșirea (ms de la „Continuă”). */
+  const scene = useRef<{ t: number; out: number | null }>({ t: reduce ? (intro ? WM.ready : FIRE.ready) : 0, out: null });
   const skipAt = useRef<number | null>(null);
   const done = useRef(false);
   const geo = useRef({ cx: 0, cy: 0, R: 100 });
@@ -253,6 +264,11 @@ export function WelcomeFire({
 
     const fils = makeFilaments();
     const zones = makeZones();
+    // Intro: bucata de literă a fiecărui fir (eșantioane S, în unități de H) și întârzierea cu care se desprinde.
+    const wm = intro && !reduce ? wordmarkSamples(fils.length, SAMPLES) : null;
+    const wmLen = wordmarkChunkLengths(fils.length);
+    const wmDelay = fils.map((_, k) => introDelay(k, fils.length));
+    const INK = WM.inkRgb;
     // Momentul ruperii fiecărui eșantion de fir (aceeași formulă ca nașterea prafului).
     const erodeAt = fils.map((f) =>
       Float32Array.from({ length: SAMPLES + 1 }, (_, j) => {
@@ -262,6 +278,13 @@ export function WelcomeFire({
         return erosionTime([cs * f.u[0] + sn * f.v[0], cs * f.u[1] + sn * f.v[1], cs * f.u[2] + sn * f.v[2]], zones, (hash(j, f.start) - 0.5) * 80);
       }),
     );
+    // Tampoanele firelor (fără alocări pe cadru): pozițiile proiectate, adâncimea, capătul desenat și amestecul intro.
+    const PX = fils.map(() => new Float32Array(SAMPLES + 1));
+    const PY = fils.map(() => new Float32Array(SAMPLES + 1));
+    const PD = fils.map(() => new Float32Array(SAMPLES + 1));
+    const jEndK = new Int16Array(fils.length);
+    /** Amestecul de stil al firului k (0 = literă, 1 = fir); în afara intro-ului 1. */
+    const sK = new Float32Array(fils.length).fill(1);
     const n = grainCount(VW, typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 8) : 8);
     const g = makeGrains(n, fils, zones);
     const N = orbCount();
@@ -290,7 +313,7 @@ export function WelcomeFire({
 
     let raf = 0;
     let last = performance.now();
-    let lastState: FireState | null = null;
+    let lastState: FireState | IntroPhase | null = null;
     let readyFired = reduce;
     const onVis = () => {
       last = performance.now(); // la revenire: fără recuperare
@@ -306,13 +329,17 @@ export function WelcomeFire({
         if (!reduce) scene.current = s.out == null ? { t: s.t + d, out: null } : { t: s.t, out: s.out + d };
       }
       last = now;
-      const { t, out } = clockRef.current();
-      const st = fireState(t, out);
+      const { t: T, out } = clockRef.current();
+      // Cu intro, ceasul scenei e T; întâmpinarea rulează pe t = T − 2.100 ms (sfera formată exact la 3.300 ms).
+      const t = intro ? T - WM.offset : T;
+      /** Intro în desfășurare (literele încă nu sunt toate pe sferă). */
+      const inIntro = intro && !reduce && out == null && T < WM.morph[1];
+      const st: FireState | IntroPhase = intro && out == null && T < WM.reveal[1] ? introPhase(T, out) : fireState(t, out);
       if (st !== lastState) {
         lastState = st;
         onPhaseRef.current?.(st);
       }
-      if (!readyFired && t >= FIRE.ready) {
+      if (!readyFired && (intro ? T >= WM.ready : t >= FIRE.ready)) {
         readyFired = true;
         setReady(true);
       }
@@ -324,7 +351,7 @@ export function WelcomeFire({
         wrap.current.style.pointerEvents = showing || skipP > 0 ? 'none' : '';
       }
       if (showing) setHomeInert(false);
-      if (box.current) box.current.style.opacity = (reduce ? 1 : fireTextAlpha(t, out)).toFixed(3);
+      if (box.current) box.current.style.opacity = (reduce ? 1 : intro && out == null ? introTextAlpha(T) : fireTextAlpha(t, out)).toFixed(3);
       if (goBtn.current && out != null) goBtn.current.style.opacity = (1 - smooth(span(out, FIRE.exit.textOut))).toFixed(3);
 
       const W = (VW + 2 * MARGIN) * dpr;
@@ -340,18 +367,21 @@ export function WelcomeFire({
       const wa = reduce ? 0 : warpAmp(out);
       const warp = (x: number, y: number): [number, number] => (wa ? [x + wa * Math.sin(y * 0.013 + ts * 3), y + wa * Math.cos(x * 0.011 - ts * 2.4)] : [x, y]);
       const live = (t + (out ?? 0)) / 1000;
+      // Intro: fundal #061010 curat cât stă cuvântul; decorul întâmpinării se aprinde cât literele devin fire (complet la 3,3 s).
+      const amb = inIntro ? introAmbient(T) : 1;
       // G08: lumina verde a fundalului se stinge în aceeași cronologie cu transferul bulei; baza trece spre culoarea Acasă.
       const toHome = out == null ? 0 : smooth(span(out, [FIRE.exit.gather[0], FIRE.exit.interface[1]]));
       if (base.current) {
-        const [r0, g0, b0] = [7, 16, 18];
+        const [r0, g0, b0] = inIntro ? [6 + amb, 16, 16 + 2 * amb] : [7, 16, 18];
         const [r1, g1, b1] = homeBg.current;
         base.current.style.background = `rgb(${Math.round(r0 + (r1 - r0) * toHome)},${Math.round(g0 + (g1 - g0) * toHome)},${Math.round(b0 + (b1 - b0) * toHome)})`;
       }
       for (const nb of nebulae) {
+        if (amb <= 0) break;
         const [nx, ny] = warp(nb.x * VW, nb.y * VH);
         const rr = nb.r * Math.max(VW, VH);
         const gr = ctx.createRadialGradient(nx, ny, 0, nx, ny, rr);
-        gr.addColorStop(0, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},${(nb.a * (1 - toHome)).toFixed(4)})`);
+        gr.addColorStop(0, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},${(nb.a * amb * (1 - toHome)).toFixed(4)})`);
         gr.addColorStop(1, `rgba(${nb.col[0]},${nb.col[1]},${nb.col[2]},0)`);
         ctx.fillStyle = gr;
         ctx.fillRect(nx - rr, ny - rr, rr * 2, rr * 2);
@@ -360,35 +390,111 @@ export function WelcomeFire({
       const FW = VW + 2 * MARGIN;
       const FH = VH + 2 * MARGIN;
       for (const f of field) {
+        if (amb <= 0) break;
         const x0 = ((((f.x * FW + Math.cos(f.ang) * f.sp * live) % FW) + FW) % FW) - MARGIN;
         const y0 = ((((f.y * FH + Math.sin(f.ang) * f.sp * live) % FH) + FH) % FH) - MARGIN;
         const [x, y] = warp(x0, y0);
-        ctx.fillStyle = `rgba(${f.col[0]},${f.col[1]},${f.col[2]},${f.a.toFixed(3)})`;
+        ctx.fillStyle = `rgba(${f.col[0]},${f.col[1]},${f.col[2]},${(f.a * amb).toFixed(3)})`;
         ctx.fillRect(x - f.r, y - f.r, f.r * 2, f.r * 2);
       }
 
       // Firele: arc continuu, halou + miez; spatele sferei mai stins decât fața. La ieșire, eșantioanele se rup.
-      const px = new Float32Array(SAMPLES + 1);
-      const py = new Float32Array(SAMPLES + 1);
-      const pd = new Float32Array(SAMPLES + 1);
-      const tBuild = reduce ? FIRE.build[1] + 1000 : t;
+      // Intro: firele nu se „desenează pe lungime” (formarea e înlocuită de desprinderea din litere): B(t) e sfera formată.
+      const tBuild = reduce || inIntro ? FIRE.build[1] + 1000 : t;
+      const wfit = inIntro ? wordmarkFit(VW, cx, cy, R) : null;
+      const wAlpha = inIntro ? wordmarkAlpha(T) : 1;
+      const wobbleAmp = 0.035 * R;
+      // 1) Geometria fiecărui fir: P = (1 − s)·S + s·B(t) + a·F (intro) sau B(t) cu formarea existentă.
       for (let k = 0; k < fils.length; k++) {
         const f = fils[k]!;
         const { reveal, scale } = buildOf(f, tBuild);
+        jEndK[k] = reveal <= 0 ? -1 : Math.min(SAMPLES, Math.ceil(reveal * SAMPLES));
         if (reveal <= 0) continue;
-        const jEnd = Math.min(SAMPLES, Math.ceil(reveal * SAMPLES));
-        for (let j = 0; j <= jEnd; j++) {
-          const s = f.s0 + (Math.min(j / SAMPLES, reveal) * Math.PI * 2);
+        const bl = wfit && wm ? introBlend(T, wmDelay[k]!) : null;
+        sK[k] = bl ? bl.style : 1;
+        const px = PX[k]!;
+        const py = PY[k]!;
+        const pd = PD[k]!;
+        // Intro: firul se derulează din literă — arcul desfășurat crește de la lungimea bucății la tot cercul.
+        const arc = bl && wfit ? introArc(bl.s, wmLen[k]! * wfit.H, 2 * Math.PI * R * f.rf) : 1;
+        for (let j = 0; j <= jEndK[k]!; j++) {
+          const s = f.s0 + (Math.min(j / SAMPLES, reveal) * Math.PI * 2 * arc);
+          if (bl && wfit && wm) {
+            const S = wm[k]!;
+            const sx = wfit.x0 + S[2 * j]! * wfit.H;
+            const sy = wfit.y0 + S[2 * j + 1]! * wfit.H;
+            if (bl.s <= 0) {
+              px[j] = sx;
+              py[j] = sy;
+              pd[j] = 1;
+              continue;
+            }
+            const q = project(filamentPoint(f, s, ts, R), cx, cy, R);
+            const [fx, fy] = bl.a > 0 ? introWobble(T, k, j / SAMPLES) : [0, 0];
+            px[j] = (1 - bl.s) * sx + bl.s * q.x + bl.a * wobbleAmp * fx;
+            py[j] = (1 - bl.s) * sy + bl.s * q.y + bl.a * wobbleAmp * fy;
+            pd[j] = 1 - bl.s + bl.s * q.depth;
+            continue;
+          }
           const p = filamentPoint(f, s, ts, R);
           const q = project([p[0] * scale, p[1] * scale, p[2] * scale], cx, cy, R);
           px[j] = q.x;
           py[j] = q.y;
           pd[j] = q.depth;
         }
+      }
+      // 2) Intro, stilul literei: aceeași geometrie desenată în alb cald (#EAF2E7), tușă 0,13 H, halou slab, opac, cu
+      //    intensitatea 1 − s; firele care încă n-au plecat formează o singură cale (fără noduri la îmbinări).
+      if (wfit && wAlpha > 0) {
+        const lw0 = wfit.H * WM.stroke;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        const strokeLetter = (alpha: number, lw: number) => {
+          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${(0.1 * alpha).toFixed(3)})`;
+          ctx.lineWidth = lw * 2.4;
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${alpha.toFixed(3)})`;
+          ctx.lineWidth = lw;
+          ctx.stroke();
+        };
+        ctx.beginPath();
+        let anyStill = false;
+        for (let k = 0; k < fils.length; k++) {
+          if (jEndK[k]! < 0 || sK[k]! > 0) continue;
+          const px = PX[k]!;
+          const py = PY[k]!;
+          ctx.moveTo(px[0]!, py[0]!);
+          for (let j = 1; j <= jEndK[k]!; j++) ctx.lineTo(px[j]!, py[j]!);
+          anyStill = true;
+        }
+        if (anyStill) strokeLetter(wAlpha, lw0);
+        for (let k = 0; k < fils.length; k++) {
+          const sMix = sK[k]!;
+          if (jEndK[k]! < 0 || sMix <= 0 || sMix >= 1) continue;
+          const px = PX[k]!;
+          const py = PY[k]!;
+          ctx.beginPath();
+          ctx.moveTo(px[0]!, py[0]!);
+          for (let j = 1; j <= jEndK[k]!; j++) ctx.lineTo(px[j]!, py[j]!);
+          strokeLetter((1 - sMix) * wAlpha, lw0 * (1 - sMix) + fils[k]!.width * sMix);
+        }
+        ctx.globalCompositeOperation = 'lighter';
+      }
+      // 3) Stilul firului (culoarea lui, subțire, aditiv), cu intensitatea s în intro: lumina trece treptat de la literă la
+      //    fir pe aceeași linie — nicio copie a cuvântului nu rămâne în urmă.
+      for (let k = 0; k < fils.length; k++) {
+        const f = fils[k]!;
+        const jEnd = jEndK[k]!;
+        const sMix = sK[k]!;
+        if (jEnd < 0 || sMix <= 0) continue;
+        const px = PX[k]!;
+        const py = PY[k]!;
+        const pd = PD[k]!;
         const ea = erodeAt[k]!;
         const col = COLS[f.col]!;
         for (let bk = 0; bk < 3; bk++) {
-          const A = [0.3, 0.62, 1][bk]!;
+          const A = [0.3, 0.62, 1][bk]! * sMix;
           for (let pass = 0; pass < 2; pass++) {
             ctx.beginPath();
             let any = false;
@@ -415,7 +521,7 @@ export function WelcomeFire({
           }
         }
         // Capătul care desenează, cât timp firul se lungește.
-        if (out == null && reveal < 1) {
+        if (out == null && jEnd < SAMPLES) {
           ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.85)`;
           ctx.beginPath();
           ctx.arc(px[jEnd]!, py[jEnd]!, 1.6, 0, Math.PI * 2);
@@ -563,8 +669,8 @@ export function WelcomeFire({
   }, []);
 
   const sceneEl = (
-    <div ref={wrap} className={`cosmic welcome-fire ${reduce ? 'still' : ''} ${leaving ? 'leaving' : ''}`} role="dialog" aria-modal="true" aria-label="Mesajul zilei">
-      <div ref={base} className="cosmic-base" style={{ background: BASE }} />
+    <div ref={wrap} className={`cosmic welcome-fire ${intro ? 'with-intro' : ''} ${reduce ? 'still' : ''} ${leaving ? 'leaving' : ''}`} role="dialog" aria-modal="true" aria-label={intro ? 'AIRON — mesajul zilei' : 'Mesajul zilei'}>
+      <div ref={base} className="cosmic-base" style={{ background: intro && !reduce ? WM.bg : BASE }} />
       <canvas ref={cv} className="cosmic-cv" aria-hidden="true" />
       <div className="cosmic-box wf-box" ref={box} style={{ opacity: reduce ? 1 : 0 }}>
         <div className="cosmic-k">{kicker}</div>

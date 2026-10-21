@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ENTRY_MS, EXIT, EXIT_MS, PHASES, PHASE_LABEL, type PhaseName } from '@core/motion/teleport.js';
 import { FIRE, FIRE_EXIT_MS, FIRE_LABEL, type FireState } from '@core/motion/fireStorm.js';
+import { INTRO_LABEL, WM, type IntroPhase } from '@core/motion/wordmark.js';
 import { WelcomeFire } from './WelcomeFire';
 import { cheerFor } from '@core/cheers.js';
 import type { CosmicClock } from './Cosmic';
@@ -43,6 +44,18 @@ const JUMP: Record<PhaseName, number> = {
   dezvaluire: OPEN_END + mid(EXIT.dezvaluire),
 };
 const EXIT_PHASES = new Set<string>(['estompare', 'deschidere', 'fragmentare', 'ecou', 'dezvaluire', 'BREAKUP', 'STORM', 'REFORM', 'HOME_IDLE']);
+/** Întâmpinarea cu intro (ca în aplicație): AIRON apare și stă, literele devin fire, mesajul apare, apoi ieșirea existentă. */
+const JUMP_INTRO: [IntroPhase | FireState, number][] = [
+  ['wordmark_in', 150],
+  ['wordmark_hold', 900],
+  ['wordmark_to_orb', 2400],
+  ['welcome_reveal', 3500],
+  ['welcome_idle', 4300],
+  ['BREAKUP', OPEN_END + 450],
+  ['STORM', OPEN_END + 1400],
+  ['REFORM', OPEN_END + 3000],
+  ['HOME_IDLE', OPEN_END + FIRE_EXIT_MS],
+];
 /** Întâmpinarea „Fire → Furtună → Home”: formarea din fire, ruperea, furtuna și reconstrucția bulei (aici, bula din laborator). */
 const JUMP_FIRE: [FireState, number][] = [
   ['LINE_BUILD', 1100],
@@ -52,13 +65,13 @@ const JUMP_FIRE: [FireState, number][] = [
   ['REFORM', OPEN_END + 3000],
   ['HOME_IDLE', OPEN_END + FIRE_EXIT_MS],
 ];
-type AnyPhase = PhaseName | FireState;
-const labelOf = (p: AnyPhase) => FIRE_LABEL[p] ?? PHASE_LABEL[p as PhaseName] ?? p;
+type AnyPhase = PhaseName | FireState | IntroPhase;
+const labelOf = (p: AnyPhase) => INTRO_LABEL[p as IntroPhase] ?? FIRE_LABEL[p] ?? PHASE_LABEL[p as PhaseName] ?? p;
 
 export function GraphicsLab({ name, onClose }: { name: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('intampinare');
   const [run, setRun] = useState(0);
-  const [phase, setPhase] = useState<AnyPhase>('LINE_BUILD');
+  const [phase, setPhase] = useState<AnyPhase>('wordmark_in');
   const [ended, setEnded] = useState(false);
   const [compact, setCompact] = useState(false);
   const [ui, setUi] = useState({ playing: true, speed: 1, T: 0 });
@@ -107,10 +120,10 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   };
   // Felicitarea folosește aceeași scenă ca întâmpinarea (audit grafic G05).
   const fire = mode === 'intampinare' || mode === 'reusita';
-  const jumps: [AnyPhase, number][] =
-    fire
-      ? JUMP_FIRE
-      : (Object.entries(JUMP) as [PhaseName, number][]);
+  const intro = mode === 'intampinare';
+  /** „Continuă” e disponibil când mesajul e lizibil: după intro (3.700 ms) la întâmpinare, după formare la felicitare. */
+  const readyAt = intro ? WM.ready : fire ? FIRE.ready : ENTRY_MS;
+  const jumps: [AnyPhase, number][] = intro ? JUMP_INTRO : fire ? JUMP_FIRE : (Object.entries(JUMP) as [PhaseName, number][]);
   const scrub = (v: number) => {
     tl.current.closeAt = v > OPEN_END ? OPEN_END : null;
     setT(v, false);
@@ -119,7 +132,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
   const closeNow = () => {
     if (tl.current.closeAt != null) return;
     const T = now();
-    if (T < (fire ? FIRE.ready : ENTRY_MS)) return;
+    if (T < readyAt) return;
     tl.current.closeAt = T;
     if (!tl.current.playing) setT(T, true);
   };
@@ -168,6 +181,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
             <WelcomeFire
               key={`${mode}-${run}`}
               inline
+              intro={intro}
               kicker={mode === 'reusita' ? 'Antrenament finalizat' : 'Ziua 12 din 342'}
               text={mode === 'reusita' ? (cheer?.text ?? 'Ai bifat ședința.') : `Fiecare zonă 2 făcută cum trebuie e o cărămidă în plus${first ? `, ${first}` : ''}.`}
               clock={clock}
@@ -194,7 +208,7 @@ export function GraphicsLab({ name, onClose }: { name: string | null; onClose: (
               <button className="pill" onClick={slow}>
                 {ui.speed === 1 ? 'Încet' : 'Normal'}
               </button>
-              <button className="pill" onClick={closeNow} disabled={ui.T < (fire ? FIRE.ready : ENTRY_MS)}>
+              <button className="pill" onClick={closeNow} disabled={ui.T < readyAt}>
                 Continuă (ieșire)
               </button>
             </div>
