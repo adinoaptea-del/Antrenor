@@ -12,7 +12,7 @@ import { Calendar } from './ui/Calendar';
 import { Meals } from './ui/Meals';
 import { Coach } from './ui/Coach';
 import { Profile } from './ui/Profile';
-import { Memento, welcomeDue } from './ui/Memento';
+import { Memento, welcomeDue, welcomeDueOnResume } from './ui/Memento';
 import { Dissolve, reducedMotion, type DissolveShot } from './ui/Dissolve';
 import { snapshotScreen } from './ui/snapshot';
 import { Countdown } from './ui/Countdown';
@@ -45,7 +45,7 @@ const tabOf = (s: Screen): Tab | null => TABS.find((t) => t.screens.includes(s))
 const MAIN: { id: Screen }[] = [{ id: 'acasa' }];
 const ALL: Screen[] = ['mese', 'progres', 'antrenament', 'acasa', 'recuperare', 'obiectiv', 'calendar', 'antrenor', 'profil', 'prieteni', 'intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp', 'insigne', 'mers'];
 const RETURN_AFTER_MS = 30 * 60 * 1000;
-/** Ieșirea din aplicație (alt app, ecran blocat) mai lungă de atât = la revenire, Acasă cu întâmpinarea (cererea lui Cuza, 20.10.2026). */
+/** Ieșirea din aplicație (alt app, ecran blocat) mai lungă de atât = la revenire, Acasă (cererea lui Cuza, 20.10.2026); fără întâmpinare (21.10.2026). */
 const RESUME_HOME_MS = 60 * 1000;
 const FORM_SCREENS: Screen[] = ['intake', 'dimineata', 'seara', 'saptamanal', 'analize', 'teste', 'corp'];
 
@@ -92,18 +92,9 @@ function Shell() {
   const [lastMain, setLastMain] = useState<Screen>('acasa');
   const [trainSport, setTrainSport] = useState<Sport>(() => (goalSports(me?.user.goal ?? null)[0] ?? 'inot'));
   const [eveningFor, setEveningFor] = useState<string | null>(null);
-  // Întâmpinarea: la intrare, dar nu la o reîncărcare sau revenire în mai puțin de 30 de minute.
-  // Deschiderea aplicației arată mereu întâmpinarea; doar o reîncărcare (ex. cea automată după o actualizare) ține
-  // pragul de 30 de minute, ca să nu se repete.
-  const [memento, setMemento] = useState(() => {
-    try {
-      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-      if (nav && nav.type !== 'reload') return true;
-    } catch {
-      /* */
-    }
-    return welcomeDue();
-  });
+  // Întâmpinarea (regula proprietarului, 21.10.2026; src/welcome.ts): la prima deschidere din zi și când aplicația a
+  // fost închisă și redeschisă — nu la o reîncărcare, nu la refacerea paginii după fundal, nu la revenirea din alt app.
+  const [memento, setMemento] = useState(welcomeDue);
   const [countdown, setCountdown] = useState(false);
   const [shot, setShot] = useState<DissolveShot | null>(null);
   const [labsGate, setLabsGate] = useState(false);
@@ -268,8 +259,9 @@ function Shell() {
       else if (hiddenAt.current) {
         const away = Date.now() - hiddenAt.current;
         hiddenAt.current = null;
-        // Revenirea în aplicație: Acasă, cu întâmpinarea. Un formular început rămâne deschis (nu pierzi ce ai scris)
-        // dacă lipsa a fost scurtă (sub 30 de minute).
+        // Revenirea în aplicație: Acasă. Un formular început rămâne deschis (nu pierzi ce ai scris) dacă lipsa a fost
+        // scurtă (sub 30 de minute). Întâmpinarea NU reapare la o simplă revenire (regula proprietarului, 21.10.2026),
+        // decât dacă între timp a început o zi nouă.
         const inForm = FORM_SCREENS.includes(screenRef.current);
         if (away > RESUME_HOME_MS && (!inForm || away > RETURN_AFTER_MS)) {
           if (screenRef.current !== 'acasa') {
@@ -281,6 +273,9 @@ function Shell() {
             setNavDir('none');
             setScreen('acasa');
           }
+          if (welcomeDueOnResume()) setMemento(true);
+        } else if (welcomeDueOnResume() && !inForm) {
+          // Zi nouă începută cât aplicația stătea în fundal: prima deschidere din zi, chiar dacă lipsa a fost scurtă.
           setMemento(true);
         }
       }

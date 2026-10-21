@@ -3,31 +3,67 @@ import { useMe } from '../data/store';
 import { dayIndex } from '../data/model';
 import { randomMotivation } from '../data/motivation';
 import { WelcomeFire } from './WelcomeFire';
+import { localDay, welcomeOnLaunch, welcomeOnResume, type LaunchFacts } from '@core/welcome.js';
 
 /**
- * Întâmpinarea de la intrarea în aplicație: „Fire → Furtună → Home” (ui/WelcomeFire.tsx), pe fundal cosmic opac; la
- * „Continuă” firele se rup în praf, iar praful reconstruiește bula de Acasă. Rămâne până la „Continuă” (sau „Sari peste”).
+ * Întâmpinarea de la intrarea în aplicație: intro-ul AIRON, apoi „Fire → Furtună → Home” (ui/WelcomeFire.tsx), pe fundal
+ * cosmic opac; la „Continuă” firele se rup în praf, iar praful reconstruiește bula de Acasă. Rămâne până la „Continuă” (sau „Sari peste”).
  */
-const SHOWN_KEY = 'airon-welcome-at';
 /**
- * Întâmpinarea nu se repetă la o reîncărcare (ex. cea automată după o actualizare) sau la o revenire scurtă.
- * Ținută în sessionStorage: o deschidere nouă a aplicației (pornire la rece) o arată mereu; reîncărcarea din aceeași
- * sesiune, în mai puțin de 30 de minute, nu. Se notează doar când s-a închis (atingere sau timpul de citire): o reîncărcare în mijlocul ei o arată din nou.
+ * Politica de afișare (regula proprietarului, 21.10.2026; logica în src/welcome.ts): întâmpinarea apare la prima
+ * deschidere din zi și când aplicația a fost închisă și redeschisă — nu când sportivul doar iese din ea (alt app,
+ * ecran blocat) și revine, chiar dacă sistemul a oprit pagina în fundal și o reface. Faptele vin de aici:
+ * ziua ultimei întâmpinări (localStorage, rămâne între porniri), semnul de sesiune (sessionStorage: trăiește cât
+ * pagina e „aceeași”, inclusiv la refacerea ei după fundal; o aplicație închisă și redeschisă pornește fără el),
+ * document.wasDiscarded și tipul navigării.
  */
-export const WELCOME_GAP_MS = 30 * 60 * 1000;
-export function welcomeDue(now = Date.now()): boolean {
+const DAY_KEY = 'airon-welcome-day';
+const SESSION_KEY = 'airon-session';
+/** Pus la prima randare, înainte de orice decizie: orice refacere a aceleiași pagini îl găsește. */
+export function launchFacts(): LaunchFacts {
+  let sameSession = false;
   try {
-    const at = Number(sessionStorage.getItem(SHOWN_KEY) ?? 0);
-    return !at || now - at > WELCOME_GAP_MS;
+    sameSession = sessionStorage.getItem(SESSION_KEY) === '1';
+    if (!sameSession) sessionStorage.setItem(SESSION_KEY, '1');
   } catch {
-    return true;
+    /* fără sessionStorage: fiecare pornire e o deschidere */
   }
-}
-export function markWelcome(now = Date.now()) {
+  let lastWelcomeDay: string | null = null;
   try {
-    sessionStorage.setItem(SHOWN_KEY, String(now));
+    lastWelcomeDay = localStorage.getItem(DAY_KEY);
   } catch {
-    /* fără stocare: poate reapărea la reîncărcare */
+    /* fără localStorage: fiecare pornire e o zi nouă */
+  }
+  let navType: string | null = null;
+  try {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    navType = nav?.type ?? null;
+  } catch {
+    /* */
+  }
+  const discarded = typeof document !== 'undefined' && (document as { wasDiscarded?: boolean }).wasDiscarded === true;
+  return { today: localDay(), lastWelcomeDay, sameSession, discarded, navType };
+}
+/** La pornirea paginii: se arată întâmpinarea? */
+export function welcomeDue(): boolean {
+  return welcomeOnLaunch(launchFacts()) != null;
+}
+/** La revenirea din fundal: doar dacă a început o zi nouă. */
+export function welcomeDueOnResume(): boolean {
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(DAY_KEY);
+  } catch {
+    /* */
+  }
+  return welcomeOnResume(localDay(), last) != null;
+}
+/** Se notează când s-a închis (atingere sau „Sari peste”): o întrerupere în mijlocul ei o arată din nou. */
+export function markWelcome(now = new Date()) {
+  try {
+    localStorage.setItem(DAY_KEY, localDay(now));
+  } catch {
+    /* fără stocare: poate reapărea la pornire */
   }
 }
 
