@@ -9583,7 +9583,29 @@ async function connectedProviders(userId) {
   return select("oauth_tokens", { user_id: `eq.${userId}` });
 }
 async function disconnect(userId, provider) {
+  try {
+    const token = await accessToken(userId, provider);
+    if (token) await revokeAtProvider(provider, token);
+  } catch (e) {
+    console.error("revocare", provider, e instanceof Error ? e.message : String(e));
+  }
   await remove("oauth_tokens", { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+}
+async function revokeAtProvider(provider, token) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8e3);
+  try {
+    if (provider === "strava") await fetch(`https://www.strava.com/oauth/deauthorize?access_token=${encodeURIComponent(token)}`, { method: "POST", signal: ctl.signal });
+    else if (provider === "whoop") await fetch("https://api.prod.whoop.com/developer/v1/user/access", { method: "DELETE", headers: { authorization: `Bearer ${token}` }, signal: ctl.signal });
+    else if (provider === "oura") await fetch(`https://api.ouraring.com/oauth/revoke?access_token=${encodeURIComponent(token)}`, { method: "POST", signal: ctl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function disconnectAll(userId) {
+  const rows = await connectedProviders(userId);
+  for (const r2 of rows) await disconnect(userId, r2.provider);
+  return rows.map((r2) => r2.provider);
 }
 function signState(userId) {
   const payload = `${userId.replace(/-/g, "")}.${Date.now().toString(36)}`;
@@ -15190,6 +15212,7 @@ async function hasUpgrade() {
 // server/admin.ts
 init_auth();
 init_db();
+init_tokens();
 init_env();
 import { randomBytes as randomBytes5 } from "node:crypto";
 init_usage();
@@ -15373,6 +15396,19 @@ async function handler16(req, res) {
       if (!intake) throw new HttpError(400, "nu are chestionarul de intrare");
       const r2 = await generateAndStore(target.id, todayIn(target.tz), intake.answers);
       json(res, 200, { ok: r2.ok, text: r2.ok ? `plan nou: ${r2.weeks} s\u0103pt\u0103m\xE2ni, ${r2.budgetHours} h/s\u0103pt.` : r2.reason ?? "nu s-a putut" });
+      return;
+    }
+    if (body.action === "sterge") {
+      if (target.id === u.id) throw new HttpError(409, "nu te po\u021Bi \u0219terge pe tine de aici");
+      const role = await one("users", { id: `eq.${target.id}` }, { select: "role" });
+      if (role?.role === "admin") throw new HttpError(409, "alt administrator nu se \u0219terge de aici");
+      const revoked = await disconnectAll(target.id).catch(() => []);
+      await update("users", { coach_id: `eq.${target.id}` }, { coach_id: null }).catch(() => void 0);
+      await update("plans", { approved_by: `eq.${target.id}` }, { approved_by: null }).catch(() => void 0);
+      const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${target.id}`, { method: "DELETE", headers: supabaseKeyHeaders(ENV.supabaseService()) });
+      if (!r2.ok && r2.status !== 404) throw new HttpError(500, `nu am putut \u0219terge contul (${r2.status})`);
+      await remove("users", { id: `eq.${target.id}` }).catch(() => void 0);
+      json(res, 200, { ok: true, text: `cont \u0219ters: ${target.email}${revoked.length ? ` \xB7 br\u0103\u021B\u0103ri deconectate: ${revoked.join(", ")}` : ""} \xB7 locul e liber pentru alt prieten` });
       return;
     }
     if (body.action === "parola") {

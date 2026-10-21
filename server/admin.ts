@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { fail, HttpError, json, readJson, requireUser, todayIn } from './_lib/auth.js';
 import type { Req, Res } from './_lib/http.js';
-import { one, select } from './_lib/db.js';
+import { one, remove, select, update } from './_lib/db.js';
+import { disconnectAll } from './_lib/tokens.js';
 import { ENV, supabaseKeyHeaders } from './_lib/env.js';
 import { syncUser } from './_lib/sync.js';
 import { costUsd } from './_lib/usage.js';
@@ -12,7 +13,7 @@ import { summarizeUsage, type FeedbackRow, type UsageRow } from '../src/usage.js
 /**
  * Pentru admin (primul cont): starea fiecărui sportiv și trei reparații.
  * GET  /api/admin → lista: cont, chestionar, plan, brățări, ultima citire (cu eroarea), ultimul mesaj.
- * POST /api/admin { action: 'sync' | 'plan' | 'parola', userId }
+ * POST /api/admin { action: 'sync' | 'plan' | 'parola' | 'detalii' | 'sterge', userId }
  */
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
@@ -129,6 +130,25 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!intake) throw new HttpError(400, 'nu are chestionarul de intrare');
       const r = await generateAndStore(target.id, todayIn(target.tz), intake.answers);
       json(res, 200, { ok: r.ok, text: r.ok ? `plan nou: ${r.weeks} săptămâni, ${r.budgetHours} h/săpt.` : (r.reason ?? 'nu s-a putut') });
+      return;
+    }
+    if (body.action === 'sterge') {
+      // Ștergerea unui prieten (cererea proprietarului, 21.10.2026: loc liber pentru alt prieten de test). Întâi
+      // brățările se deconectează cu revocare la producător (Strava eliberează locul din capacitatea aplicației),
+      // apoi contul de autentificare: schema șterge în cascadă tot ce ține de el (users → plan, activități, formulare,
+      // mesaje, scoruri, folosire). Adminul nu se poate șterge pe sine și nu poate șterge alt admin.
+      if (target.id === u.id) throw new HttpError(409, 'nu te poți șterge pe tine de aici');
+      const role = await one<{ role: string }>('users', { id: `eq.${target.id}` }, { select: 'role' });
+      if (role?.role === 'admin') throw new HttpError(409, 'alt administrator nu se șterge de aici');
+      const revoked = await disconnectAll(target.id).catch(() => [] as string[]);
+      // Referințele care nu sunt în cascadă (antrenorul unui sportiv, cine a aprobat o ajustare) se golesc întâi.
+      await update('users', { coach_id: `eq.${target.id}` }, { coach_id: null }).catch(() => undefined);
+      await update('plans', { approved_by: `eq.${target.id}` }, { approved_by: null }).catch(() => undefined);
+      const r = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${target.id}`, { method: 'DELETE', headers: supabaseKeyHeaders(ENV.supabaseService()) });
+      if (!r.ok && r.status !== 404) throw new HttpError(500, `nu am putut șterge contul (${r.status})`);
+      // Dacă rândul din users a rămas (cont de autentificare lipsă), îl ștergem direct: tot în cascadă.
+      await remove('users', { id: `eq.${target.id}` }).catch(() => undefined);
+      json(res, 200, { ok: true, text: `cont șters: ${target.email}${revoked.length ? ` · brățări deconectate: ${revoked.join(', ')}` : ''} · locul e liber pentru alt prieten` });
       return;
     }
     if (body.action === 'parola') {

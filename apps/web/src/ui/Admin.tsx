@@ -30,7 +30,8 @@ export function Admin({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void load();
   }, []);
-  const act = async (action: 'sync' | 'plan' | 'parola' | 'detalii', id: string) => {
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const act = async (action: 'sync' | 'plan' | 'parola' | 'detalii' | 'sterge', id: string) => {
     setBusy(`${action}:${id}`);
     try {
       const r = await server.adminAction(action, id);
@@ -188,7 +189,34 @@ export function Admin({ onBack }: { onBack: () => void }) {
               <button className="pill" disabled={!!busy || !u.intake} onClick={() => void act('plan', u.id)}>{busy === `plan:${u.id}` ? '…' : 'Refă planul'}</button>
               <button className="pill" disabled={!!busy || !u.intake} onClick={() => void act('detalii', u.id)}>{busy === `detalii:${u.id}` ? '…' : 'Vezi planul'}</button>
               <button className="pill" disabled={!!busy} onClick={() => void act('parola', u.id)}>{busy === `parola:${u.id}` ? '…' : 'Parolă temporară'}</button>
+              {confirmDel !== u.id ? (
+                <button className="pill" disabled={!!busy} onClick={() => setConfirmDel(u.id)}>
+                  Șterge contul
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="pill"
+                    style={{ borderColor: 'var(--c-rosu)', color: 'var(--c-rosu)' }}
+                    disabled={!!busy}
+                    onClick={() => {
+                      setConfirmDel(null);
+                      void act('sterge', u.id);
+                    }}
+                  >
+                    {busy === `sterge:${u.id}` ? '…' : `Sigur: șterge definitiv ${u.email}`}
+                  </button>
+                  <button className="pill" disabled={!!busy} onClick={() => setConfirmDel(null)}>
+                    Renunț
+                  </button>
+                </>
+              )}
             </div>
+            {confirmDel === u.id && (
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                Se șterg contul, planul, activitățile, formularele și mesajele lui; brățările se deconectează (Strava eliberează locul). Nu se poate anula. Locul rămâne liber pentru alt prieten.
+              </div>
+            )}
             {out[u.id] && <div className="tiny" style={{ marginTop: 8, userSelect: 'all', whiteSpace: 'pre-wrap' }}>{out[u.id]}</div>}
           </Card>
         ))}

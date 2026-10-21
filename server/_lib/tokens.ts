@@ -87,8 +87,38 @@ export async function connectedProviders(userId: string): Promise<TokenRow[]> {
   return select<TokenRow>('oauth_tokens', { user_id: `eq.${userId}` });
 }
 
+/**
+ * Deconectarea unei brățări: întâi se revocă accesul la producător (Strava: deauthorize — altfel sportivul rămâne
+ * numărat în capacitatea de sportivi a aplicației Strava, 10 la Standard Tier; WHOOP: user/access; Oura: revoke),
+ * apoi se șterge tokenul. Revocarea e „cât se poate”: dacă producătorul nu răspunde, tokenul tot se șterge.
+ */
 export async function disconnect(userId: string, provider: Provider): Promise<void> {
+  try {
+    const token = await accessToken(userId, provider);
+    if (token) await revokeAtProvider(provider, token);
+  } catch (e) {
+    console.error('revocare', provider, e instanceof Error ? e.message : String(e));
+  }
   await remove('oauth_tokens', { user_id: `eq.${userId}`, provider: `eq.${provider}` });
+}
+
+export async function revokeAtProvider(provider: Provider, token: string): Promise<void> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    if (provider === 'strava') await fetch(`https://www.strava.com/oauth/deauthorize?access_token=${encodeURIComponent(token)}`, { method: 'POST', signal: ctl.signal });
+    else if (provider === 'whoop') await fetch('https://api.prod.whoop.com/developer/v1/user/access', { method: 'DELETE', headers: { authorization: `Bearer ${token}` }, signal: ctl.signal });
+    else if (provider === 'oura') await fetch(`https://api.ouraring.com/oauth/revoke?access_token=${encodeURIComponent(token)}`, { method: 'POST', signal: ctl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Ștergerea unui cont: toate brățările deconectate (cu revocare la producător), apoi tokenurile. */
+export async function disconnectAll(userId: string): Promise<string[]> {
+  const rows = await connectedProviders(userId);
+  for (const r of rows) await disconnect(userId, r.provider);
+  return rows.map((r) => r.provider);
 }
 
 /** Un state semnat pentru OAuth: cine e sportivul și când a pornit; valabil 15 minute. Scurt și doar cu caractere sigure în URL. */
