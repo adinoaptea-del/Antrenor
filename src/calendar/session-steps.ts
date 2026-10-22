@@ -204,7 +204,7 @@ export function openWaterSet(input: { type: string; minutes: number; structure?:
   if (input.continuousM == null) return [{ label: 'Ape libere', text: 'capacitatea ta fără oprire nu e cunoscută încă: ape libere doar după ce o stabilim în bazin (ședința de evaluare). Până atunci, ședința se face în bazin.' }];
   const cap = swimMaxSegment(input.continuousM);
   const checks = 'înainte să intri: temperatura APEI (nu a aerului), valurile și curentul, vizibilitatea, cine te supraveghează (însoțitor sau salvamar), costumul; dacă una nu e în regulă, faci ședința în bazin.';
-  if (/TEST/i.test(input.structure ?? '')) return [{ label: 'Ape libere', text: 'testul de înot se face în bazin, nu în ape libere: acolo distanța și condițiile nu sunt măsurabile.' }, { label: 'Siguranță', text: checks }];
+  if (/^TEST\b/.test(input.structure ?? '')) return [{ label: 'Ape libere', text: 'testul de înot se face în bazin, nu în ape libere: acolo distanța și condițiile nu sunt măsurabile.' }, { label: 'Siguranță', text: checks }];
   if (cap < 200) return [{ label: 'Ape libere', text: `încă înoți ${cap} m fără oprire: în ape libere doar lângă mal, unde atingi fundul, cu însoțitor; altfel ședința rămâne în bazin.` }, { label: 'Siguranță', text: checks }];
   // Cât încape în timp la un ritm prudent (2:45/100 m), dar nu peste ce a demonstrat fără oprire.
   const block = Math.min(cap, Math.max(200, Math.round((input.minutes - 15) / 2.75) * 100));

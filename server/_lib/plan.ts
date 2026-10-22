@@ -235,6 +235,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
     })(),
     declaredRecentHours: intake.oreRecente ?? null,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? 'toate' : 'Z2',
+    // Plafonul de vârstă se ridică doar cu aviz declarat și istoric de antrenament (generate.ts ageCapped).
+    vigorousCleared: !medicalLimit(intake) && !labs.limitIntensity && intake.sanatate?.avizCardiolog === 'da',
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
     tests: await testsAvailable(userId, intake),

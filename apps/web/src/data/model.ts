@@ -243,7 +243,7 @@ export function sessionSteps(me: Me, w: PlannedWorkout): { label: string; text: 
 export function purposeOf(w: PlannedWorkout): string {
   if (w.status === 'anulat_sistem') return 'Anulată: corpul are nevoie de odihnă sau ziua nu permite.';
   if (w.sport === 'mers') return walkSpec(w.plannedMinutes, walkKindOf(w)).purpose;
-  if (/TEST/i.test(w.structure ?? '')) return 'Test: din el ies zonele tale, ca intensitatea să fie pe corpul tău.';
+  if (/^TEST\b/.test(w.structure ?? '')) return 'Test: din el ies zonele tale, ca intensitatea să fie pe corpul tău.';
   if (/4\s*×\s*4/.test(w.structure ?? '')) return 'Metoda norvegiană 4×4: ridică VO2max, plafonul motorului.';
   const mod = parseModule(w.structure);
   if (mod) return MODULE_PURPOSE[mod.id];

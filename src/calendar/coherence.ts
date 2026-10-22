@@ -54,6 +54,8 @@ export function normalizeWorkout(w: PlannedWorkout): PlannedWorkout {
   if (/^TEST:/.test(w.structure ?? '') && w.sport === 'alergare') {
     const parts = testParts(w.structure);
     if (parts.reduce((a, b) => a + b, 0) === m) return w;
+    // T04: sub 30 min nu încape nici varianta scurtă (5 + 20 + 5): ședința devine ușoară, iar testul se reprogramează.
+    if (m < 30) return { ...w, type: 'z2', key: false, intervals: undefined, targetZones: [2], structure: `${m} min ușor (prea scurt pentru test: varianta scurtă are 30 min; testul se mută)` };
     const main = m >= 45 ? 30 : 20;
     const cool = 5;
     return { ...w, structure: RUN_TEST(m - main - cool, main, cool) };
@@ -61,6 +63,9 @@ export function normalizeWorkout(w: PlannedWorkout): PlannedWorkout {
   if (/^TEST:/.test(w.structure ?? '') && w.sport === 'bicicleta') {
     const parts = testParts(w.structure);
     if (parts.reduce((a, b) => a + b, 0) === m) return w;
+    // T04: testul are 20 min + minimum 10 încălzire + 5 revenire; sub 35 min ședința devine ușoară (înainte: 35 min
+    // de pași într-o ședință de 30).
+    if (m < 35) return { ...w, type: 'z2', key: false, intervals: undefined, targetZones: [2], structure: `${m} min ușor (prea scurt pentru testul de 20 min: minimul e 35 min; testul se mută)` };
     const cool = m >= 50 ? 10 : 5;
     return { ...w, structure: BIKE_TEST(Math.max(10, m - 20 - cool), cool) };
   }

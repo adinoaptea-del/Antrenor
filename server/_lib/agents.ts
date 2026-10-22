@@ -12,7 +12,7 @@ import { dedupeActivities } from '../../src/collector/packet.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import { buildPacket, type Packet } from '../../src/collector/packet.js';
 import { loadStoredScores } from './score.js';
-import { anthropicClient, runMainCoach, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
+import { anthropicClient, routeTrace, runMainCoach, runPyramid, type AgentName, type ModelClient, type RunResult } from '../../src/agents/runner.js';
 import { PROMPTS } from '../../src/prompts/bundle.js';
 import { adapt, eventKey, type AdaptContext, type AdaptEvent } from '../../src/calendar/adapt.js';
 import type { PlannedWorkout } from '../../src/types.js';
@@ -71,9 +71,17 @@ async function recentKeyScores(userId: string, today: string) {
  * decizia din cod și cea finală, evenimentele (cu propunerea și dovezile ei), ce a respins verificarea, eșecurile
  * modelului și ce s-a schimbat efectiv în calendar.
  */
-export function decisionRecord(result: RunResult, codeDecision: unknown, changes: string[]) {
+export function decisionRecord(result: RunResult, codeDecision: unknown, changes: string[], extra: { versiuneContext?: string; rutare?: ReturnType<typeof routeTrace>; modele?: { specialist: string; head: string } } = {}) {
   return {
     mod: result.mode ?? 'piramida',
+    // Auditul consolidat (contractul de rutare): versiunea stării pe care s-a decis, cine era eligibil / exclus și de ce,
+    // modelele efective și regula de arbitraj. Fără date sensibile integrale: doar referințe.
+    versiune_context: extra.versiuneContext ?? null,
+    eligibili: extra.rutare?.eligibili ?? null,
+    exclusi: extra.rutare?.exclusi ?? null,
+    specialisti_chemati: result.mode === 'main' ? [] : result.routed,
+    modele: extra.modele ?? null,
+    regula_arbitraj: 'nivelul zilei și siguranța vin din cod; AI-ul explică și propune; propunerile trec prin validator (doar ușurare/scurtare); stop cerut de AI fără semnal în date nu se aplică (B2); textul care contrazice ședința din calendar se respinge (B1)',
     rutati: result.routed,
     decizie_cod: codeDecision,
     decizie_finala: result.decision,
@@ -166,7 +174,7 @@ async function runAgentsLocked(userId: string, today: string, event: 'dimineata'
     'agent_outputs',
     result.specialists.map((s) => ({ packet_id: packetId, user_id: userId, agent: s.agent, verdict: s.verdict, output: s, rejected: s.ce.filter((i) => i.stare === 'respins').length, model: ENV.modelSpecialist() })),
   );
-  await insert('agent_outputs', { packet_id: packetId, user_id: userId, agent: 'head_coach', verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed, decision_record: decisionRecord(result, packet.decizia_aplicatiei ?? null, changes) }, rejected: result.headWarnings.length, model: ENV.modelHead() });
+  await insert('agent_outputs', { packet_id: packetId, user_id: userId, agent: 'head_coach', verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed, decision_record: decisionRecord(result, packet.decizia_aplicatiei ?? null, changes, { versiuneContext: hash, rutare: routeTrace(packet), modele: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } }) }, rejected: result.headWarnings.length, model: ENV.modelHead() });
 
   // Fișierele agenților: „pentru_viitor” se adaugă, maximum 30 de rânduri (cele mai vechi cad).
   for (const s of result.specialists) {

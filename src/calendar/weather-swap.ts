@@ -51,7 +51,7 @@ const touchable = (w: PlannedWorkout, ctx: SwapCtx) =>
   live(w) &&
   !(ctx.done ?? []).includes(w.id) &&
   !lockedForAutomation(w) &&
-  !/TEST/i.test(w.structure ?? '') &&
+  !/^TEST\b/.test(w.structure ?? '') &&
   !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
 const outdoor = (w: PlannedWorkout, ctx: SwapCtx) => (w.sport === 'bicicleta' && !ctx.noOutdoorBike) || w.sport === 'alergare';
 const indoor = (w: PlannedWorkout, ctx: SwapCtx) => w.sport === 'forta' || (w.sport === 'inot' && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? ''));

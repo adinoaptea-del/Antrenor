@@ -75,6 +75,9 @@ export function limitViolations(workouts: PlannedWorkout[], lim: PlanLimits): st
  * „3 × 10 min …, 3 min ușor între” cere 36 min + minimum 10 min încălzire/revenire; la 30 min rămân 1 × 10 sau 2 × 10
  * (după pauză), iar dacă nu încape nicio repetare, devine ședință ușoară.
  */
+/** Minutele blocului 30/15: serii × repetări × 45 s + 3 min între serii, rotunjit în sus. */
+export const shortIntervalWork = (series: number, reps: number) => Math.ceil(series * reps * 0.75 + (series - 1) * 3);
+
 export function fitStructure(w: PlannedWorkout): PlannedWorkout {
   // Modulele de alergare (V5, T1, H …): se rescriu întregi pentru minutele finale, cu încălzirea și revenirea incluse.
   const mod = parseModule(w.structure);
@@ -87,6 +90,25 @@ export function fitStructure(w: PlannedWorkout): PlannedWorkout {
     }
     const tail = (w.structure ?? '').includes('deschidere, nu antrenament') ? ' · deschidere, nu antrenament' : '';
     return { ...w, structure: b.text + tail, intervals: w.intervals ? { ...w.intervals, count: b.count } : undefined };
+  }
+  // Intervalele scurte 30/15 („2 serii × 10 × (30 s tare / 15 s ușor), 3 min ușor între serii”): auditul consolidat,
+  // T04 — la o ședință scurtată, seriile și repetările scad până încap cu minimum 10 min încălzire și 5 min revenire;
+  // altfel ședința devine ușoară (înainte rămâneau 2 serii întregi într-o ședință de 30 min: pașii făceau 38).
+  const si = /(\d+) serii × (\d+) × \(30 s tare \/ 15 s ușor\)/.exec(w.structure ?? '');
+  if (si) {
+    const fits = (sr: number, rp: number) => 10 + shortIntervalWork(sr, rp) + 5 <= w.plannedMinutes;
+    let series = Number(si[1]);
+    let reps = Number(si[2]);
+    while (!fits(series, reps) && (reps > 6 || series > 1)) {
+      if (reps > 6) reps -= 1;
+      else {
+        series -= 1;
+        reps = Number(si[2]);
+      }
+    }
+    if (!fits(series, reps)) return { ...w, type: 'z2', key: false, intervals: undefined, targetZones: [2], structure: `${w.plannedMinutes} min ușor (prea scurt pentru intervalele 30/15)` };
+    if (series === Number(si[1]) && reps === Number(si[2])) return w;
+    return { ...w, structure: w.structure!.replace(si[0], `${series} serii × ${reps} × (30 s tare / 15 s ușor)`) };
   }
   const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? '');
   if (!m || w.type === 'brick') return w;

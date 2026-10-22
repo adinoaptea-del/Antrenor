@@ -52,23 +52,38 @@ export function moduleMinutes(m: Pick<RunModule, 'warm' | 'count' | 'work' | 're
   return m.warm + m.count * m.work + Math.max(0, m.count - 1) * m.rest + m.cool;
 }
 
+/** Modulul potrivit în `minutes` (aceeași regulă în text, în pașii modulului și în pașii detaliați). */
+export function fitModule(id: RunModuleId, minutes: number): RunModule {
+  const m = { ...RUN_MODULES[id] };
+  while (moduleMinutes(m) > minutes && m.count > 2) m.count -= 1;
+  while (moduleMinutes(m) > minutes && m.warm > 8) m.warm -= 1;
+  while (moduleMinutes(m) > minutes && m.cool > 5) m.cool -= 1;
+  absorbExtra(m, minutes);
+  return m;
+}
+
+/**
+ * Timpul rămas după potrivire (auditul consolidat, T04: suma pașilor = durata din calendar): doza nu crește; până la
+ * 10 min merg la revenire, restul la încălzire (tot alergare ușoară). Fracțiunile (pauze de 1:30) rămân la revenire,
+ * scrise „11:30 min”. Înainte, peste +10 min și jumătățile de minut se pierdeau: M de 65 min avea pași de 62.
+ */
+export function absorbExtra(m: { warm: number; cool: number; count: number; work: number; rest: number }, minutes: number): void {
+  const extra = minutes - moduleMinutes(m);
+  if (extra <= 0) return;
+  const c = Math.min(10, extra);
+  m.cool += c;
+  m.warm += extra - c;
+}
+
 /**
  * Textul ședinței, potrivit în `minutes` (dacă e dat): întâi scade numărul de repetări (minimum 2), apoi încălzirea și
  * revenirea (minimum 8 și 5). Cu timp mai mult nu crește doza: restul rămâne alergare ușoară la revenire, cel mult +10.
  */
 export function moduleStructure(id: RunModuleId, minutes?: number | null, paceSecKm?: number | null): { text: string; minutes: number; count: number; work: number; zone: Zone } {
-  const base = RUN_MODULES[id];
-  const m = { ...base };
-  if (minutes != null && minutes > 0) {
-    while (moduleMinutes(m) > minutes && m.count > 2) m.count -= 1;
-    while (moduleMinutes(m) > minutes && m.warm > 8) m.warm -= 1;
-    while (moduleMinutes(m) > minutes && m.cool > 5) m.cool -= 1;
-    const extra = minutes - moduleMinutes(m);
-    if (extra > 0) m.cool += Math.min(10, Math.floor(extra));
-  }
+  const m = minutes != null && minutes > 0 ? fitModule(id, minutes) : { ...RUN_MODULES[id] };
   const pace = m.paceRef === 'cursa' && paceSecKm ? ` (orientativ ${fmtPace(paceSecKm)})` : '';
   const warmText = id === 'D1' ? `${m.warm} min ușor` : `${m.warm} min încălzire ușoară`;
-  const text = `${id} · ${warmText} + ${m.count} × (${fmtMin(m.work)} ${m.effort}, RPE ${m.rpe}${pace} + ${fmtMin(m.rest)} ${m.restLabel}) + ${m.cool} min revenire`;
+  const text = `${id} · ${warmText} + ${m.count} × (${fmtMin(m.work)} ${m.effort}, RPE ${m.rpe}${pace} + ${fmtMin(m.rest)} ${m.restLabel}) + ${fmtMin(m.cool)} revenire`;
   return { text, minutes: Math.round(moduleMinutes(m)), count: m.count, work: m.work, zone: m.zone };
 }
 
@@ -106,18 +121,12 @@ export function walkRunStructure(step: number, minutes: number): string | null {
 export function moduleSteps(structure: string | null | undefined, minutes: number): { label: string; text: string }[] | null {
   const p = parseModule(structure);
   if (!p) return null;
-  const base = RUN_MODULES[p.id];
-  const m = { ...base };
-  while (moduleMinutes(m) > minutes && m.count > 2) m.count -= 1;
-  while (moduleMinutes(m) > minutes && m.warm > 8) m.warm -= 1;
-  while (moduleMinutes(m) > minutes && m.cool > 5) m.cool -= 1;
-  const extra = minutes - moduleMinutes(m);
-  if (extra > 0) m.cool += Math.min(10, Math.floor(extra));
+  const m = fitModule(p.id, minutes);
   const pace = m.paceRef === 'cursa' && p.paceSecKm ? `, orientativ ${fmtPace(p.paceSecKm)}` : '';
   return [
     { label: 'Încălzire', text: p.id === 'D1' ? `${m.warm} min ușor, RPE 2–3` : `${m.warm} min ușor, progresiv, cu mobilitate dinamică; înaintea repetărilor câteva accelerări controlate` },
     { label: 'Principal', text: `${m.count} × ${fmtMin(m.work)} ${m.effort} (RPE ${m.rpe}${pace}), cu ${fmtMin(m.rest)} ${m.restLabel} între; prima repetare puțin mai ușor` },
-    { label: 'Revenire', text: `${m.cool} min ușor` },
+    { label: 'Revenire', text: `${fmtMin(m.cool)} ușor` },
   ];
 }
 

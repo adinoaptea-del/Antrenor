@@ -15,7 +15,7 @@
 // câteva minute — o spunem, în loc să afișăm un total exact.
 
 import type { PlannedWorkout, Zone } from '../types.js';
-import { RUN_MODULES, moduleMinutes, parseModule } from './run-modules.js';
+import { fitModule, parseModule } from './run-modules.js';
 import { easyWarmCool, fitStrides, openWaterSet, parseStrides, stridesMinutes, swimSet, type Step } from './session-steps.js';
 import { brickSplit, testParts } from './coherence.js';
 import { walkKindOf, walkSpec } from '../walking/plan.js';
@@ -149,12 +149,8 @@ function detailStepsRaw(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
   // Alergare: modulele de calitate (V5, T1, H, M …), cu școala alergării și pauză după puls.
   const p = parseModule(w.structure);
   if (p) {
-    const mm = { ...RUN_MODULES[p.id] };
-    while (moduleMinutes(mm) > m && mm.count > 2) mm.count -= 1;
-    while (moduleMinutes(mm) > m && mm.warm > 8) mm.warm -= 1;
-    while (moduleMinutes(mm) > m && mm.cool > 5) mm.cool -= 1;
-    const extra = m - moduleMinutes(mm);
-    if (extra > 0) mm.cool += Math.min(10, Math.floor(extra));
+    // Aceeași potrivire ca textul din plan (run-modules.ts fitModule): suma pașilor = durata din calendar.
+    const mm = fitModule(p.id, m);
     const pace = mm.paceRef === 'cursa' && p.paceSecKm ? `, orientativ ${fmtPace(p.paceSecKm)}` : '';
     // Zona din plan are prioritate (ex. plafonată la Z4 de la 55 de ani).
     const zUse = (w.targetZones.length && !w.targetZones.includes(mm.zone) ? Math.max(...w.targetZones) : mm.zone) as Zone;
@@ -165,7 +161,7 @@ function detailStepsRaw(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
       { label: 'Încălzire', text: p.id === 'D1' ? `${mm.warm} min ușor în ${z(2)}` : `${jog} min alergare ușoară în ${z(1)}–${z(2)}, crescând` },
       ...(drills ? [{ label: 'Școala alergării', text: `6 min — ${RUN_DRILLS}; la final 3 accelerări de 60–80 m` }] : []),
       { label: 'Principal', text: `${mm.count} × ${fmtMin(mm.work)} ${mm.effort} în ${z(zUse)} (efort ${mm.rpe} din 10${pace}); între repetări ${fmtMin(mm.rest)} trap ușor sau mers, ${recover}. Prima repetare puțin mai ușor.${zUse >= 4 ? lag(mm.work) : ''}` },
-      { label: 'Revenire', text: stretch ? `${mm.cool - 5} min alergare foarte ușoară în ${z(1)}, apoi ${STRETCH}` : `${mm.cool} min alergare foarte ușoară în ${z(1)}` },
+      { label: 'Revenire', text: stretch ? `${fmtMin(mm.cool - 5)} alergare foarte ușoară în ${z(1)}, apoi ${STRETCH}` : `${fmtMin(mm.cool)} alergare foarte ușoară în ${z(1)}` },
       { label: 'Plafon', text: capFor(zUse) },
       ...(mm.count > 1 && mm.rest > 0 ? [extendNote(mm.count, mm.rest)] : []),
     ]);
@@ -176,7 +172,7 @@ function detailStepsRaw(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
       { label: 'Plafon', text: hr ? `pe alergare, pulsul sub ${hr.up[1]} bpm; dacă trece, mergi până coboară sub ${hr.up[0]}.` : 'pe alergare, să poți vorbi în propoziții; dacă nu, mergi.' },
     ]);
   }
-  if (/TEST/i.test(w.structure ?? '') && w.sport !== 'inot') {
+  if (/^TEST\b/.test(w.structure ?? '') && w.sport !== 'inot') {
     // Pașii testului din aceleași minute ca structura (suma = durata din calendar).
     const [a, b, c] = testParts(w.structure);
     const run = w.sport === 'alergare';
@@ -187,8 +183,8 @@ function detailStepsRaw(w: PlannedWorkout, ctx: DetailContext = {}): Step[] {
       { label: 'Important', text: 'odihnit, fără efort greu în ultimele 48 h; notezi pulsul mediu și maxim. Testul respectă aceleași restricții ca restul planului: dacă ai limită de intensitate, nu se face.' },
     ]);
   }
-  if (/TEST/i.test(w.structure ?? '') && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
-  if (/TEST/i.test(w.structure ?? '')) return [{ label: 'Testul', text: w.structure!.replace(/^TEST:?\s*/i, '') }, { label: 'Important', text: 'odihnit, fără efort greu în ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de cursă.' }];
+  if (/^TEST\b/.test(w.structure ?? '') && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
+  if (/^TEST\b/.test(w.structure ?? '')) return [{ label: 'Testul', text: w.structure!.replace(/^TEST:?\s*/i, '') }, { label: 'Important', text: 'odihnit, fără efort greu în ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de cursă.' }];
 
   if (w.sport === 'inot' && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
   if (w.sport === 'inot') return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM, recentMaxM: ctx.swimRecentMaxM, declared400Sec: ctx.swimDeclared400Sec ?? null }).steps;

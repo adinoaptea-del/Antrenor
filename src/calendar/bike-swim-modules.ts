@@ -67,7 +67,8 @@ export function shortIntervalSteps(structure: string | null | undefined, minutes
   const series = Number(m[1]);
   const reps = Number(m[2]);
   const work = Math.ceil(series * reps * 0.75 + (series - 1) * 3);
-  const warm = 15;
+  // Încălzirea 15 min când încape; la o ședință scurtată coboară până la 10, ca suma să rămână durata din calendar.
+  const warm = Math.min(15, Math.max(10, minutes - work - 5));
   const cool = Math.max(5, minutes - warm - work);
   return [
     { label: 'Încălzire', text: `${warm} min ușor, crescând; la final 2 accelerări de 10 s` },

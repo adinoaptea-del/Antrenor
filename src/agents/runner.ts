@@ -145,6 +145,22 @@ export function route(p: Packet): AgentName[] {
   return [...out];
 }
 
+/**
+ * Urma rutării (auditul consolidat, contractul de rutare): cine e eligibil și de ce a fost exclus fiecare din ceilalți,
+ * din aceleași reguli ca `route`. În modul Main Coach nu se cheamă specialiști: lista spune cine AR fi fost rutat, iar
+ * jurnalul de decizie notează modul efectiv, ca nimeni să nu creadă că specialiștii au analizat cazul.
+ */
+export function routeTrace(p: Packet): { eligibili: AgentName[]; exclusi: { agent: AgentName; motiv: string }[] } {
+  const eligibili = route(p);
+  const sports = new Set<string>(p.meta.sporturi ?? ['inot', 'bicicleta', 'alergare', 'forta']);
+  const exclusi = AGENTS.filter((a) => !eligibili.includes(a)).map((agent) => {
+    const sport = Object.entries(COACH_OF).find(([, c]) => c === agent)?.[0];
+    const motiv = sport && !sports.has(sport) ? `${sport} nu e în obiectivul sportivului` : sport ? `fără ${sport} în evenimentul ${p.meta.eveniment}` : `nu e cerut de evenimentul ${p.meta.eveniment} (fără durere, stres ridicat sau duminică)`;
+    return { agent, motiv };
+  });
+  return { eligibili, exclusi };
+}
+
 // ---------- prompturi ----------
 
 function specialistSystem(agent: AgentName, prompts: Prompts, packet?: Packet): string {

@@ -4073,7 +4073,7 @@ function openWaterSet(input) {
   if (input.continuousM == null) return [{ label: "Ape libere", text: "capacitatea ta f\u0103r\u0103 oprire nu e cunoscut\u0103 \xEEnc\u0103: ape libere doar dup\u0103 ce o stabilim \xEEn bazin (\u0219edin\u021Ba de evaluare). P\xE2n\u0103 atunci, \u0219edin\u021Ba se face \xEEn bazin." }];
   const cap2 = swimMaxSegment(input.continuousM);
   const checks = "\xEEnainte s\u0103 intri: temperatura APEI (nu a aerului), valurile \u0219i curentul, vizibilitatea, cine te supravegheaz\u0103 (\xEEnso\u021Bitor sau salvamar), costumul; dac\u0103 una nu e \xEEn regul\u0103, faci \u0219edin\u021Ba \xEEn bazin.";
-  if (/TEST/i.test(input.structure ?? "")) return [{ label: "Ape libere", text: "testul de \xEEnot se face \xEEn bazin, nu \xEEn ape libere: acolo distan\u021Ba \u0219i condi\u021Biile nu sunt m\u0103surabile." }, { label: "Siguran\u021B\u0103", text: checks }];
+  if (/^TEST\b/.test(input.structure ?? "")) return [{ label: "Ape libere", text: "testul de \xEEnot se face \xEEn bazin, nu \xEEn ape libere: acolo distan\u021Ba \u0219i condi\u021Biile nu sunt m\u0103surabile." }, { label: "Siguran\u021B\u0103", text: checks }];
   if (cap2 < 200) return [{ label: "Ape libere", text: `\xEEnc\u0103 \xEEno\u021Bi ${cap2} m f\u0103r\u0103 oprire: \xEEn ape libere doar l\xE2ng\u0103 mal, unde atingi fundul, cu \xEEnso\u021Bitor; altfel \u0219edin\u021Ba r\u0103m\xE2ne \xEEn bazin.` }, { label: "Siguran\u021B\u0103", text: checks }];
   const block = Math.min(cap2, Math.max(200, Math.round((input.minutes - 15) / 2.75) * 100));
   return [
@@ -4118,6 +4118,7 @@ function normalizeWorkout(w) {
   if (/^TEST:/.test(w.structure ?? "") && w.sport === "alergare") {
     const parts2 = testParts(w.structure);
     if (parts2.reduce((a, b) => a + b, 0) === m) return w;
+    if (m < 30) return { ...w, type: "z2", key: false, intervals: void 0, targetZones: [2], structure: `${m} min u\u0219or (prea scurt pentru test: varianta scurt\u0103 are 30 min; testul se mut\u0103)` };
     const main = m >= 45 ? 30 : 20;
     const cool = 5;
     return { ...w, structure: RUN_TEST(m - main - cool, main, cool) };
@@ -4125,6 +4126,7 @@ function normalizeWorkout(w) {
   if (/^TEST:/.test(w.structure ?? "") && w.sport === "bicicleta") {
     const parts2 = testParts(w.structure);
     if (parts2.reduce((a, b) => a + b, 0) === m) return w;
+    if (m < 35) return { ...w, type: "z2", key: false, intervals: void 0, targetZones: [2], structure: `${m} min u\u0219or (prea scurt pentru testul de 20 min: minimul e 35 min; testul se mut\u0103)` };
     const cool = m >= 50 ? 10 : 5;
     return { ...w, structure: BIKE_TEST(Math.max(10, m - 20 - cool), cool) };
   }
@@ -5555,19 +5557,26 @@ var init_flags = __esm({
 function moduleMinutes(m) {
   return m.warm + m.count * m.work + Math.max(0, m.count - 1) * m.rest + m.cool;
 }
+function fitModule(id, minutes) {
+  const m = { ...RUN_MODULES[id] };
+  while (moduleMinutes(m) > minutes && m.count > 2) m.count -= 1;
+  while (moduleMinutes(m) > minutes && m.warm > 8) m.warm -= 1;
+  while (moduleMinutes(m) > minutes && m.cool > 5) m.cool -= 1;
+  absorbExtra(m, minutes);
+  return m;
+}
+function absorbExtra(m, minutes) {
+  const extra = minutes - moduleMinutes(m);
+  if (extra <= 0) return;
+  const c2 = Math.min(10, extra);
+  m.cool += c2;
+  m.warm += extra - c2;
+}
 function moduleStructure(id, minutes, paceSecKm) {
-  const base = RUN_MODULES[id];
-  const m = { ...base };
-  if (minutes != null && minutes > 0) {
-    while (moduleMinutes(m) > minutes && m.count > 2) m.count -= 1;
-    while (moduleMinutes(m) > minutes && m.warm > 8) m.warm -= 1;
-    while (moduleMinutes(m) > minutes && m.cool > 5) m.cool -= 1;
-    const extra = minutes - moduleMinutes(m);
-    if (extra > 0) m.cool += Math.min(10, Math.floor(extra));
-  }
+  const m = minutes != null && minutes > 0 ? fitModule(id, minutes) : { ...RUN_MODULES[id] };
   const pace = m.paceRef === "cursa" && paceSecKm ? ` (orientativ ${fmtPace3(paceSecKm)})` : "";
   const warmText = id === "D1" ? `${m.warm} min u\u0219or` : `${m.warm} min \xEEnc\u0103lzire u\u0219oar\u0103`;
-  const text = `${id} \xB7 ${warmText} + ${m.count} \xD7 (${fmtMin(m.work)} ${m.effort}, RPE ${m.rpe}${pace} + ${fmtMin(m.rest)} ${m.restLabel}) + ${m.cool} min revenire`;
+  const text = `${id} \xB7 ${warmText} + ${m.count} \xD7 (${fmtMin(m.work)} ${m.effort}, RPE ${m.rpe}${pace} + ${fmtMin(m.rest)} ${m.restLabel}) + ${fmtMin(m.cool)} revenire`;
   return { text, minutes: Math.round(moduleMinutes(m)), count: m.count, work: m.work, zone: m.zone };
 }
 function parseModule(structure) {
@@ -5661,6 +5670,22 @@ function fitStructure(w) {
     }
     const tail = (w.structure ?? "").includes("deschidere, nu antrenament") ? " \xB7 deschidere, nu antrenament" : "";
     return { ...w, structure: b.text + tail, intervals: w.intervals ? { ...w.intervals, count: b.count } : void 0 };
+  }
+  const si = /(\d+) serii × (\d+) × \(30 s tare \/ 15 s ușor\)/.exec(w.structure ?? "");
+  if (si) {
+    const fits = (sr, rp) => 10 + shortIntervalWork(sr, rp) + 5 <= w.plannedMinutes;
+    let series = Number(si[1]);
+    let reps2 = Number(si[2]);
+    while (!fits(series, reps2) && (reps2 > 6 || series > 1)) {
+      if (reps2 > 6) reps2 -= 1;
+      else {
+        series -= 1;
+        reps2 = Number(si[2]);
+      }
+    }
+    if (!fits(series, reps2)) return { ...w, type: "z2", key: false, intervals: void 0, targetZones: [2], structure: `${w.plannedMinutes} min u\u0219or (prea scurt pentru intervalele 30/15)` };
+    if (series === Number(si[1]) && reps2 === Number(si[2])) return w;
+    return { ...w, structure: w.structure.replace(si[0], `${series} serii \xD7 ${reps2} \xD7 (30 s tare / 15 s u\u0219or)`) };
   }
   const m = /(\d+)\s*×\s*(\d+)\s*min/.exec(w.structure ?? "");
   if (!m || w.type === "brick") return w;
@@ -5794,7 +5819,7 @@ function shortenWorkout(w, minutes) {
   out.note = `scurtat la cererea ta: ${minutes} min \xEEn loc de ${before}; ce nu se face azi nu se recupereaz\u0103`;
   return out;
 }
-var INTENSE_TEXT, SWIM_BEYOND, EASY_NOTE, SOFTEN_ORDER;
+var INTENSE_TEXT, SWIM_BEYOND, shortIntervalWork, EASY_NOTE, SOFTEN_ORDER;
 var init_validate = __esm({
   "src/calendar/validate.ts"() {
     "use strict";
@@ -5803,6 +5828,7 @@ var init_validate = __esm({
     init_ppl();
     INTENSE_TEXT = /Z[3-5]|prag|tempo|sweet spot|ritm de cursă|pace de cursă|CSS|TEST|accelerări|VO2/i;
     SWIM_BEYOND = /continuu|CSS|ritm de cursă|pace de cursă|TEST/i;
+    shortIntervalWork = (series, reps) => Math.ceil(series * reps * 0.75 + (series - 1) * 3);
     EASY_NOTE = "u\u0219or: l\xE2ng\u0103 alt\u0103 \u0219edin\u021B\u0103 grea (zi tare, zi u\u0219oar\u0103)";
     SOFTEN_ORDER = (w) => (w.key ? 10 : 0) + (w.sport === "inot" ? 0 : w.sport === "bicicleta" ? 1 : 2) + ((w.structure ?? "").startsWith("TEST") ? 50 : 0);
   }
@@ -6131,7 +6157,7 @@ function shortIntervalSteps(structure, minutes) {
   const series = Number(m[1]);
   const reps = Number(m[2]);
   const work = Math.ceil(series * reps * 0.75 + (series - 1) * 3);
-  const warm = 15;
+  const warm = Math.min(15, Math.max(10, minutes - work - 5));
   const cool = Math.max(5, minutes - warm - work);
   return [
     { label: "\xCEnc\u0103lzire", text: `${warm} min u\u0219or, cresc\xE2nd; la final 2 acceler\u0103ri de 10 s` },
@@ -6327,7 +6353,7 @@ function generatePlan(input) {
   if (input.run) input = { ...input, run: { ...input.run, planWeeks: weeks.length } };
   input = { ...input, experiencedBike: measuredAvg >= 6 && (bikeSessions >= 6 || (input.level?.longestRideH ?? 0) >= 2), strengthSlots: input.strengthSlots ?? ((kind === "tri" ? budget.hours >= 12 : budget.hours >= 5) ? 3 : 2) };
   const runGoal = kind === "run";
-  const startLong = runGoal ? runStartLong(input.goal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null) : 60;
+  const startLong = runGoal ? Math.max(runStartLong(input.goal, input.run?.canDoDistance ?? null, input.run?.longestRunKm ?? null), longRunStart(input.demonstrated) ?? 0) : 60;
   const lvl = input.level ?? {};
   const triRide = lvl.longestRideH ? Math.min(120, Math.max(MIN_SESSION_MIN2.bicicleta, Math.round(lvl.longestRideH * 60 * 1.25 / 5) * 5)) : 60;
   const demLong = longRunStart(input.demonstrated);
@@ -6341,6 +6367,8 @@ function generatePlan(input) {
   const maxBlock = Math.max(0, ...budget.blocks.map((b) => b.endMin - b.startMin)) - CHANGE_MIN;
   let longCapNoted = false;
   weeks = weeks.map((w, i) => i > 0 && weeks[i - 1].recovery && weeks[i - 1].phase === "evaluare" && !w.recovery ? { ...w, testCarry: { phase: weeks[i - 1].phase, weekInPhase: weeks[i - 1].weekInPhase } } : w);
+  let keptToleratedNoted = false;
+  let toleratedPhaseTarget = null;
   for (const pw of weeks) {
     const ph = hours[pw.phase];
     let target;
@@ -6348,6 +6376,12 @@ function generatePlan(input) {
       target = round12(prevLoaded * RECOVERY_FACTOR);
     } else {
       target = Math.min(ph.target, Math.max(prevLoaded * 1.1, history.length ? 0 : 0.6 * ph.target));
+      const tolerated = measured.length && pw.phase !== "taper" ? measuredAvg * 0.9 : 0;
+      if (tolerated > target) {
+        if (!keptToleratedNoted) toleratedPhaseTarget = round12(ph.target);
+        keptToleratedNoted = true;
+        target = tolerated;
+      }
       target = round12(Math.min(target, budget.hours));
       prevLoaded = target;
     }
@@ -6397,7 +6431,7 @@ function generatePlan(input) {
       targetHours: target,
       plannedHours,
       workouts: placed.workouts,
-      notes: [...capNotes, ...declaredUsed && out.length === 0 ? [`Doza de start: ${round12(avgHistory)} h/s\u0103pt. declarate de tine (nu avem \xEEnc\u0103 activit\u0103\u021Bi importate). C\xE2nd apar activit\u0103\u021Bile, planul porne\u0219te din ele.`] : [], ...fitted.notes, ...placed.notes]
+      notes: [...capNotes, ...out.length === 0 && toleratedPhaseTarget != null ? [`Doza de start din ce ai f\u0103cut: media ta m\u0103surat\u0103 e ${round12(measuredAvg)} h/s\u0103pt., prima s\u0103pt\u0103m\xE2n\u0103 are ${plannedHours} h (\u021Binta generic\u0103 a fazei ar fi fost ${toleratedPhaseTarget} h, o sc\u0103dere f\u0103r\u0103 motiv).${plannedHours < round12(measuredAvg * 0.9) ? " Sub media ta r\u0103m\xE2ne doar ce a c\u0103zut sau s-a scurtat ca \u0219edin\u021Bele \xEEntregi s\u0103 \xEEncap\u0103 \xEEn ore \u0219i \xEEn programul liber (notele de mai jos spun ce)." : ""} S\u0103pt\u0103m\xE2nile de desc\u0103rcare r\u0103m\xE2n mai u\u0219oare; dac\u0103 oboseala cre\u0219te, volumul se reevalueaz\u0103.`] : [], ...declaredUsed && out.length === 0 ? [`Doza de start: ${round12(avgHistory)} h/s\u0103pt. declarate de tine (nu avem \xEEnc\u0103 activit\u0103\u021Bi importate). C\xE2nd apar activit\u0103\u021Bile, planul porne\u0219te din ele.`] : [], ...fitted.notes, ...placed.notes]
     });
   }
   assignStrengthDays(out, input.raceDate, input.athlete?.sex === "m" ? "ppl" : void 0);
@@ -6553,7 +6587,7 @@ function advanceRunProgression(prog, pw, goal) {
     semimaraton: { evaluare: 70, baza1: 85, baza2: 100, build: 115, peak: 120, taper: 60 },
     maraton: { evaluare: 90, baza1: 120, baza2: 150, build: 175, peak: 180, taper: 75 }
   };
-  const cap2 = caps[goal][pw.phase];
+  const cap2 = pw.phase === "taper" ? caps[goal][pw.phase] : Math.max(caps[goal][pw.phase], prog.longRunFloor ?? 0);
   if (pw.phase === "taper") {
     prog.longRun = Math.min(prog.longRun, cap2);
     return;
@@ -6642,9 +6676,9 @@ function runWeekTemplate(pw, input, prog) {
   })();
   if (mod) {
     const b = moduleStructure(mod, null, pace);
-    const cap4 = input.intensityAllowed === "pana_la_Z4" || (input.athlete?.age ?? 0) >= 55;
+    const cap4 = input.intensityAllowed === "pana_la_Z4" || ageCapped(input);
     const z = cap4 && RUN_MODULES[mod].zone === 5 ? 4 : RUN_MODULES[mod].zone;
-    s.push({ sport: "alergare", type: "calitate", minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: cap4 && RUN_MODULES[mod].zone === 5 ? `${b.text} \xB7 plafonat la Z4 (v\xE2rsta)` : b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
+    s.push({ sport: "alergare", type: "calitate", minutes: b.minutes, zones: z === 5 ? [4, 5] : [z], key: true, priority: 3, structure: cap4 && RUN_MODULES[mod].zone === 5 ? `${b.text} \xB7 plafonat la Z4 (${input.intensityAllowed === "pana_la_Z4" ? "limita de intensitate" : "de la 55 de ani, f\u0103r\u0103 aviz cardiologic \u0219i istoric de antrenament regulat"})` : b.text, intervals: { count: b.count, minutes: Math.max(1, Math.round(b.work)), zone: z } });
   } else if (branch === "timp" && p === "baza1" && !beginner && input.intensityAllowed !== "Z2") {
     if (pw.weekInPhase % 2 === 1) s.push({ sport: "alergare", type: "calitate", minutes: 45, zones: [2, 3], key: true, priority: 3, structure: "progresiv: primele dou\u0103 treimi u\u0219or (RPE 2\u20133), apoi cre\u0219ti treptat p\xE2n\u0103 la moderat (RPE 4\u20135) \xEEn ultimele 10\u201315 min; nu termini \xEEn sprint" });
     else s.push({ sport: "alergare", type: "z2", minutes: 40, zones: [2], key: false, priority: 5, structure: "u\u0219or + 6 acceler\u0103ri de 20 s, relaxate, recuperare ampl\u0103" });
@@ -6742,7 +6776,7 @@ function bikeWeekTemplate(pw, input, prog) {
   const targetKm = isBikeGoal(input.goal) ? BIKE_DISTANCE_KM[input.goal] : 100;
   const hard3 = input.intensityAllowed !== "Z2";
   s.push({ sport: "bicicleta", type: "z2", minutes: early ? 60 : p === "taper" ? 45 : 75, zones: [2], key: false, priority: 6, structure: "u\u0219or, caden\u021B\u0103 90\u2013100" });
-  const bq = hard3 ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm, capZ4: input.intensityAllowed === "pana_la_Z4" || (input.athlete?.age ?? 0) >= 55, experienced: !!input.experiencedBike }) : null;
+  const bq = hard3 ? bikeQuality(p, pw.weekInPhase, { raceKm: targetKm, capZ4: input.intensityAllowed === "pana_la_Z4" || ageCapped(input), experienced: !!input.experiencedBike }) : null;
   if (bq) s.push({ sport: "bicicleta", type: "calitate", minutes: bq.minutes, zones: bq.zones, key: p !== "taper", priority: 3, structure: bq.structure, ...bq.intervals ? { intervals: bq.intervals } : {} });
   else s.push({ sport: "bicicleta", type: "z2", minutes: early ? 60 : 70, zones: [2], key: false, priority: 5.8, structure: "u\u0219or, cu 6 \xD7 1 min caden\u021B\u0103 110" });
   if (!(p === "taper" && pw.weekInPhase > 0)) {
@@ -6772,7 +6806,7 @@ function weekTemplate(pw, input, prog) {
   const p = pw.phase;
   const s = [];
   const swimMin = input.swimContinuous400 ? p === "baza1" || p === "evaluare" ? 40 : 45 : 30;
-  const quality = qualitySession(input.intensityAllowed, p, input.athlete?.age ?? null, pw.weekInPhase);
+  const quality = qualitySession(input.intensityAllowed, p, ageCapped(input), pw.weekInPhase);
   const swimCount = p === "taper" ? 2 : 3;
   for (let i = 0; i < swimCount; i++) {
     if ((p === "build" || p === "peak") && i === 1 && input.intensityAllowed !== "Z2" && input.swimContinuous400) s.push({ sport: "inot", type: "calitate", minutes: 45, zones: [3, 4], key: false, priority: 5, structure: swimQuality(p, pw.weekInPhase) ?? "set CSS" });
@@ -6824,11 +6858,11 @@ function weekTemplate(pw, input, prog) {
   }
   return s;
 }
-function qualitySession(allowed, phase, age = null, weekInPhase = 0) {
+function qualitySession(allowed, phase, ageCap = false, weekInPhase = 0) {
   return (minutes) => {
     if (allowed === "Z2") return { sport: "alergare", type: "z2", minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: "calitatea e limitat\u0103 (restric\u021Bie de la medic sau din analize)" };
     if (phase === "evaluare") return { sport: "alergare", type: "z2", minutes: Math.round(minutes * 0.9), zones: [2], key: false, priority: 6, structure: "u\u0219or + 6 acceler\u0103ri de 20 s" };
-    const capZ4 = allowed === "pana_la_Z4" || age != null && age >= 55;
+    const capZ4 = allowed === "pana_la_Z4" || ageCap;
     const CTRL = " \xB7 prima repetare pu\u021Bin mai u\u0219or, ultimele cele mai bune";
     if (phase === "baza1") {
       if (weekInPhase % 2 === 1) return { sport: "alergare", type: "calitate", minutes, zones: [2, 3], key: true, priority: 3, structure: "progresiv: primele dou\u0103 treimi u\u0219or (Z2), apoi cre\u0219ti treptat p\xE2n\u0103 \xEEn Z3 \xEEn ultimele 10\u201315 min" };
@@ -6846,9 +6880,15 @@ function qualitySession(allowed, phase, age = null, weekInPhase = 0) {
     return fourByFour;
   };
 }
-function fieldTests(pw, input, sports) {
+function ageCapped(input) {
   const age = input.athlete?.age ?? null;
-  if (pw.recovery || input.intensityAllowed !== "toate" || age != null && age >= 55) return [];
+  if (age == null || age < 55) return false;
+  const weeks = input.historyHoursPerWeek.length;
+  const trained = weeks >= 4 && input.historyHoursPerWeek.reduce((a, b) => a + b, 0) / weeks >= 4;
+  return !(trained && input.vigorousCleared === true);
+}
+function fieldTests(pw, input, sports) {
+  if (pw.recovery || input.intensityAllowed !== "toate" || ageCapped(input)) return [];
   const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
   const out = [];
   const dueAt = (w, sport, week) => w.phase === "evaluare" && w.weekInPhase === week && !have[sport] || (w.phase === "baza2" || w.phase === "build") && w.weekInPhase === 0;
@@ -6864,7 +6904,8 @@ function fitToHours(sessions, targetHours, recovery, minCount, easyMin = (x) => 
   let all2 = sessions.map((x) => ({ ...x }));
   const total2 = () => all2.reduce((n2, x) => n2 + x.minutes, 0);
   const count = (sp) => all2.filter((x) => x.sport === sp).length;
-  const floorOf = (x) => x.key ? Math.max(MIN_SESSION_MIN2[x.sport], x.type === "lung" || x.type === "brick" ? x.sport === "bicicleta" ? 60 : 40 : 30) : Math.max(MIN_SESSION_MIN2[x.sport], easyMin(x));
+  const easiestLongFloor = (x) => x.type === "lung" ? Math.max(0, ...all2.filter((y) => !y.key && y.sport === x.sport).map((y) => y.minutes)) : 0;
+  const floorOf = (x) => x.key ? Math.max(MIN_SESSION_MIN2[x.sport], x.type === "lung" || x.type === "brick" ? x.sport === "bicicleta" ? 60 : 40 : 30, easiestLongFloor(x)) : Math.max(MIN_SESSION_MIN2[x.sport], easyMin(x));
   const shrink = (pred) => {
     const over = total2() - targetMin;
     if (over <= 0) return;
@@ -8776,7 +8817,7 @@ var init_weather_swap = __esm({
     DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
     WHAT = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
     live = (w) => w.status === "planificat" || w.status === "mutat";
-    touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !lockedForAutomation(w) && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
+    touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !lockedForAutomation(w) && !/^TEST\b/.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
     outdoor = (w, ctx) => w.sport === "bicicleta" && !ctx.noOutdoorBike || w.sport === "alergare";
     indoor = (w, ctx) => w.sport === "forta" || w.sport === "inot" && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? "");
     describe = (d, v) => {
@@ -10968,6 +11009,16 @@ function route(p) {
   for (const [sport, coach2] of Object.entries(COACH_OF)) if (coach2 && !sports.has(sport)) out.delete(coach2);
   return [...out];
 }
+function routeTrace(p) {
+  const eligibili = route(p);
+  const sports = new Set(p.meta.sporturi ?? ["inot", "bicicleta", "alergare", "forta"]);
+  const exclusi = AGENTS.filter((a) => !eligibili.includes(a)).map((agent) => {
+    const sport = Object.entries(COACH_OF).find(([, c2]) => c2 === agent)?.[0];
+    const motiv = sport && !sports.has(sport) ? `${sport} nu e \xEEn obiectivul sportivului` : sport ? `f\u0103r\u0103 ${sport} \xEEn evenimentul ${p.meta.eveniment}` : `nu e cerut de evenimentul ${p.meta.eveniment} (f\u0103r\u0103 durere, stres ridicat sau duminic\u0103)`;
+    return { agent, motiv };
+  });
+  return { eligibili, exclusi };
+}
 function specialistSystem(agent, prompts, packet) {
   if (agent.startsWith("antrenor_")) {
     const fitness = agent === "antrenor_forta" && packet?.meta.tip_obiectiv === "fitness" && !!prompts.antrenor_fitness;
@@ -11447,9 +11498,17 @@ async function recentKeyScores(userId, today) {
   const rows = await select("scores", { user_id: `eq.${userId}` }, { select: "color,workouts_planned!inner(date,is_key)", limit: 100 });
   return rows.filter((r2) => r2.workouts_planned.is_key && r2.workouts_planned.date >= addDays(today, -14)).map((r2) => ({ date: r2.workouts_planned.date, color: r2.color }));
 }
-function decisionRecord(result, codeDecision, changes) {
+function decisionRecord(result, codeDecision, changes, extra = {}) {
   return {
     mod: result.mode ?? "piramida",
+    // Auditul consolidat (contractul de rutare): versiunea stării pe care s-a decis, cine era eligibil / exclus și de ce,
+    // modelele efective și regula de arbitraj. Fără date sensibile integrale: doar referințe.
+    versiune_context: extra.versiuneContext ?? null,
+    eligibili: extra.rutare?.eligibili ?? null,
+    exclusi: extra.rutare?.exclusi ?? null,
+    specialisti_chemati: result.mode === "main" ? [] : result.routed,
+    modele: extra.modele ?? null,
+    regula_arbitraj: "nivelul zilei \u0219i siguran\u021Ba vin din cod; AI-ul explic\u0103 \u0219i propune; propunerile trec prin validator (doar u\u0219urare/scurtare); stop cerut de AI f\u0103r\u0103 semnal \xEEn date nu se aplic\u0103 (B2); textul care contrazice \u0219edin\u021Ba din calendar se respinge (B1)",
     rutati: result.routed,
     decizie_cod: codeDecision,
     decizie_finala: result.decision,
@@ -11511,7 +11570,7 @@ async function runAgentsLocked(userId, today, event, force, manual = false) {
     "agent_outputs",
     result.specialists.map((s) => ({ packet_id: packetId, user_id: userId, agent: s.agent, verdict: s.verdict, output: s, rejected: s.ce.filter((i) => i.stare === "respins").length, model: ENV.modelSpecialist() }))
   );
-  await insert("agent_outputs", { packet_id: packetId, user_id: userId, agent: "head_coach", verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed, decision_record: decisionRecord(result, packet.decizia_aplicatiei ?? null, changes) }, rejected: result.headWarnings.length, model: ENV.modelHead() });
+  await insert("agent_outputs", { packet_id: packetId, user_id: userId, agent: "head_coach", verdict: result.decision, output: { ...result.head, avertismente: result.headWarnings, fallback: result.fallbackUsed, decision_record: decisionRecord(result, packet.decizia_aplicatiei ?? null, changes, { versiuneContext: hash, rutare: routeTrace(packet), modele: { specialist: ENV.modelSpecialist(), head: ENV.modelHead() } }) }, rejected: result.headWarnings.length, model: ENV.modelHead() });
   for (const s of result.specialists) {
     if (!s.pentru_viitor || s.pentru_viitor === "-") continue;
     const agent = s.agent;
@@ -11749,12 +11808,7 @@ function detailStepsRaw(w, ctx = {}) {
   const withNote = (steps) => note && (w.sport === "alergare" || w.sport === "bicicleta") ? [...steps, note] : steps;
   const p = parseModule(w.structure);
   if (p) {
-    const mm = { ...RUN_MODULES[p.id] };
-    while (moduleMinutes(mm) > m && mm.count > 2) mm.count -= 1;
-    while (moduleMinutes(mm) > m && mm.warm > 8) mm.warm -= 1;
-    while (moduleMinutes(mm) > m && mm.cool > 5) mm.cool -= 1;
-    const extra = m - moduleMinutes(mm);
-    if (extra > 0) mm.cool += Math.min(10, Math.floor(extra));
+    const mm = fitModule(p.id, m);
     const pace = mm.paceRef === "cursa" && p.paceSecKm ? `, orientativ ${fmtPace6(p.paceSecKm)}` : "";
     const zUse = w.targetZones.length && !w.targetZones.includes(mm.zone) ? Math.max(...w.targetZones) : mm.zone;
     const drills = p.id !== "D1" && mm.warm >= 10;
@@ -11764,7 +11818,7 @@ function detailStepsRaw(w, ctx = {}) {
       { label: "\xCEnc\u0103lzire", text: p.id === "D1" ? `${mm.warm} min u\u0219or \xEEn ${z(2)}` : `${jog} min alergare u\u0219oar\u0103 \xEEn ${z(1)}\u2013${z(2)}, cresc\xE2nd` },
       ...drills ? [{ label: "\u0218coala alerg\u0103rii", text: `6 min \u2014 ${RUN_DRILLS}; la final 3 acceler\u0103ri de 60\u201380 m` }] : [],
       { label: "Principal", text: `${mm.count} \xD7 ${fmtMin2(mm.work)} ${mm.effort} \xEEn ${z(zUse)} (efort ${mm.rpe} din 10${pace}); \xEEntre repet\u0103ri ${fmtMin2(mm.rest)} trap u\u0219or sau mers, ${recover}. Prima repetare pu\u021Bin mai u\u0219or.${zUse >= 4 ? lag(mm.work) : ""}` },
-      { label: "Revenire", text: stretch ? `${mm.cool - 5} min alergare foarte u\u0219oar\u0103 \xEEn ${z(1)}, apoi ${STRETCH}` : `${mm.cool} min alergare foarte u\u0219oar\u0103 \xEEn ${z(1)}` },
+      { label: "Revenire", text: stretch ? `${fmtMin2(mm.cool - 5)} alergare foarte u\u0219oar\u0103 \xEEn ${z(1)}, apoi ${STRETCH}` : `${fmtMin2(mm.cool)} alergare foarte u\u0219oar\u0103 \xEEn ${z(1)}` },
       { label: "Plafon", text: capFor(zUse) },
       ...mm.count > 1 && mm.rest > 0 ? [extendNote(mm.count, mm.rest)] : []
     ]);
@@ -11775,7 +11829,7 @@ function detailStepsRaw(w, ctx = {}) {
       { label: "Plafon", text: hr ? `pe alergare, pulsul sub ${hr.up[1]} bpm; dac\u0103 trece, mergi p\xE2n\u0103 coboar\u0103 sub ${hr.up[0]}.` : "pe alergare, s\u0103 po\u021Bi vorbi \xEEn propozi\u021Bii; dac\u0103 nu, mergi." }
     ]);
   }
-  if (/TEST/i.test(w.structure ?? "") && w.sport !== "inot") {
+  if (/^TEST\b/.test(w.structure ?? "") && w.sport !== "inot") {
     const [a, b, c2] = testParts(w.structure);
     const run2 = w.sport === "alergare";
     return withNote([
@@ -11785,8 +11839,8 @@ function detailStepsRaw(w, ctx = {}) {
       { label: "Important", text: "odihnit, f\u0103r\u0103 efort greu \xEEn ultimele 48 h; notezi pulsul mediu \u0219i maxim. Testul respect\u0103 acelea\u0219i restric\u021Bii ca restul planului: dac\u0103 ai limit\u0103 de intensitate, nu se face." }
     ]);
   }
-  if (/TEST/i.test(w.structure ?? "") && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
-  if (/TEST/i.test(w.structure ?? "")) return [{ label: "Testul", text: w.structure.replace(/^TEST:?\s*/i, "") }, { label: "Important", text: "odihnit, f\u0103r\u0103 efort greu \xEEn ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de curs\u0103." }];
+  if (/^TEST\b/.test(w.structure ?? "") && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
+  if (/^TEST\b/.test(w.structure ?? "")) return [{ label: "Testul", text: w.structure.replace(/^TEST:?\s*/i, "") }, { label: "Important", text: "odihnit, f\u0103r\u0103 efort greu \xEEn ultimele 48 h; notezi timpii. CSS-ul e un reper ajustabil, nu ritmul automat de curs\u0103." }];
   if (w.sport === "inot" && ctx.openWater) return openWaterSet({ type: w.type, minutes: m, structure: w.structure, continuousM: ctx.swimContinuousM });
   if (w.sport === "inot") return swimSet({ type: w.type, minutes: m, css: ctx.css ?? null, date: w.date, structure: w.structure, continuousM: ctx.swimContinuousM, recentMaxM: ctx.swimRecentMaxM, declared400Sec: ctx.swimDeclared400Sec ?? null }).steps;
   const si = shortIntervalSteps(w.structure, m);
@@ -11983,6 +12037,8 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     })(),
     declaredRecentHours: intake.oreRecente ?? null,
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
+    // Plafonul de vârstă se ridică doar cu aviz declarat și istoric de antrenament (generate.ts ageCapped).
+    vigorousCleared: !medicalLimit(intake) && !labs.limitIntensity && intake.sanatate?.avizCardiolog === "da",
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
     tests: await testsAvailable(userId, intake),
