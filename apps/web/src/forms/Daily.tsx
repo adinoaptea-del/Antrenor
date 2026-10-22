@@ -100,7 +100,7 @@ export function Morning({ date, onBack, onDone }: { date: string; onBack: () => 
   );
 }
 
-const PAIN_LOC = ['gambă', 'tibie', 'tendon ahilean', 'genunchi', 'șold', 'spate', 'umăr', 'altundeva'];
+const PAIN_LOC = ['gambă', 'tibie', 'tendon ahilean', 'genunchi', 'șold', 'spate', 'umăr', 'piept', 'altundeva'];
 
 // Seara / după antrenament: 7 câmpuri, toate de atins; comentariul e opțional.
 export function Evening({ workout, activityId, unplanned, onBack, onDone }: { workout: PlannedWorkout | null; activityId: string; unplanned?: { date: string; sport: string; minutes: number; distanceKm?: number | null } | null; onBack: () => void; onDone: () => void }) {
@@ -111,7 +111,8 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
   const [e, setE] = useState<EveningForm>(saved ?? emptyEvening(date, activityId));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const complete = e.rpe != null && e.fata_de_asteptari != null && e.durere.scor != null && (!unplanned || e.tip_neplanificat != null);
+  const complete = e.rpe != null && e.fata_de_asteptari != null && e.durere.scor != null && e.simptome_cardiace != null && (!unplanned || e.tip_neplanificat != null);
+  const chest = e.simptome_cardiace === true || (e.durere.loc === 'piept' && (e.durere.scor ?? 0) > 0);
   const title = workout ? `${SPORT_LABEL[workout.sport]}${workout.type === 'forta' ? '' : ` ${TYPE_LABEL[workout.type]}`} · ${fmtMinutes(workout.plannedMinutes)}` : unplanned ? `${unplanned.sport} · ${fmtMinutes(unplanned.minutes)}${unplanned.distanceKm ? ` · ${unplanned.distanceKm.toLocaleString('ro-RO')} km` : ''}` : 'Antrenament';
 
   return (
@@ -151,6 +152,14 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
             </div>
           )}
         </Q>
+        <Q title="Ai avut durere sau apăsare în piept, palpitații, amețeală puternică sau leșin?" hint="În timpul antrenamentului sau după. Răspunsul „Da” oprește antrenamentele până la o evaluare medicală.">
+          <Chips value={e.simptome_cardiace == null ? null : e.simptome_cardiace ? 'da' : 'nu'} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }]} onChange={(v) => setE({ ...e, simptome_cardiace: v === 'da' })} />
+          {chest && (
+            <p className="hint" style={{ color: 'var(--c-rosu)', marginTop: 8 }}>
+              Nu te mai antrena azi. Dacă durerea în piept, lipsa de aer sau palpitațiile nu trec, ori ai leșinat, sună acum la 112. Altfel, cere o evaluare medicală înainte de următorul antrenament.
+            </p>
+          )}
+        </Q>
         <Q title="Ce a încurcat?">
           <Chips value={e.ce_a_incurcat} options={[{ id: 'nimic', label: 'Nimic' }, { id: 'somn', label: 'Somnul' }, { id: 'mancare', label: 'Mâncarea' }, { id: 'stres', label: 'Stresul' }, { id: 'vreme', label: 'Vremea' }, { id: 'timp', label: 'Timpul' }, { id: 'traseu', label: 'Traseul' }]} onChange={(ce_a_incurcat) => setE({ ...e, ce_a_incurcat })} />
         </Q>
@@ -163,7 +172,7 @@ export function Evening({ workout, activityId, unplanned, onBack, onDone }: { wo
       </div>
 
       <div className="wizard-nav">
-        <div className="small muted">{err ? <span style={{ color: 'var(--red, #e5484d)' }}>Nu s-a trimis: {err}. Încearcă din nou.</span> : complete ? 'Intră în pachet diseară' : 'RPE, așteptări și durere sunt necesare'}</div>
+        <div className="small muted">{err ? <span style={{ color: 'var(--red, #e5484d)' }}>Nu s-a trimis: {err}. Încearcă din nou.</span> : complete ? 'Intră în pachet diseară' : 'RPE, așteptări, durere și întrebarea despre piept sunt necesare'}</div>
         <button
           className="btn"
           disabled={!complete || busy}

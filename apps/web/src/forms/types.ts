@@ -81,7 +81,7 @@ export function emptyMorning(date: string): MorningForm {
 }
 
 export function emptyEvening(date: string, activityId: string | null): EveningForm {
-  return { date, activityId, rpe: null, fata_de_asteptari: null, durere: { scor: null, loc: null }, ce_a_incurcat: null, fueling_conform: null, comentariu: null, tip_neplanificat: null };
+  return { date, activityId, rpe: null, fata_de_asteptari: null, durere: { scor: null, loc: null }, ce_a_incurcat: null, fueling_conform: null, comentariu: null, tip_neplanificat: null, simptome_cardiace: null };
 }
 
 export function morningComplete(m: MorningForm | undefined): boolean {

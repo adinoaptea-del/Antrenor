@@ -109,7 +109,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       // Durerea mare schimbă zilele următoare imediat, din cod, chiar dacă agenții nu rulează.
       await protect(u.id, today, user.tz, painSafetyEvents(date, body.durere));
       // Auditul v93, A64: simptomul urgent scris seara oprește și calendarul, nu doar ecranul.
-      if (urgentText(typeof body.comentariu === 'string' ? body.comentariu : null)) await protect(u.id, today, user.tz, morningSafetyEvents(today, { simptom_cardiac: true }));
+      // A1 (auditul consolidat): întrebarea structurată despre piept/palpitații/amețeală/leșin și durerea „piept” intră în
+      // același flux de siguranță ca simptomul cardiac de dimineață, din cod, înaintea AI.
+      const chestPain = (body.durere as { loc?: unknown; scor?: unknown } | undefined)?.loc === 'piept' && Number((body.durere as { scor?: unknown }).scor ?? 0) > 0;
+      if (body.simptome_cardiace === true || chestPain || urgentText(typeof body.comentariu === 'string' ? body.comentariu : null)) await protect(u.id, today, user.tz, morningSafetyEvents(today, { simptom_cardiac: true }));
       const goal = user.goal && user.goal !== 'full' ? user.goal : '70.3';
       await rescore(u.id, today, goal);
       // RPE ≥ 7 sau tipul ales (cursă / altceva) schimbă reacția calendarului imediat.

@@ -132,8 +132,8 @@ export interface Packet {
   /** Prima ședință de mâine: nutriționistul răspunde seara doar dacă urmează ceva în sub 24 h. */
   plan_maine: { sport: Sport; tip: string; durata_planificata: number; cheie: boolean } | null;
   /** Toate ședințele zilei (plan_azi / plan_maine sunt doar cea principală). */
-  plan_azi_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
-  plan_maine_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; cheie: boolean; structura?: string }[];
+  plan_azi_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; zone_tinta?: number[]; cheie: boolean; structura?: string }[];
+  plan_maine_toate: { id: string; sport: Sport; tip: string; durata_planificata: number; zone_tinta?: number[]; cheie: boolean; structura?: string }[];
   /** Ieșirea lungă de alergare din următoarele 7 zile față de cea mai lungă alergare reală din ultimele 30 de zile: peste +10% cere revizuire (asociere observațională, nu prag sigur). */
   alergare_lunga?: { data: string; planificat_min: number; cea_mai_lunga_30_zile_min: number | null; salt_pct: number | null; revizuire: boolean } | null;
   /** Forța: prescripția motorului pentru următoarea ședință și cât s-a făcut din ce era planificat (21 de zile). */
@@ -548,7 +548,7 @@ function planLabel(w: PlannedWorkout): string {
   return `${sport}${tip} ${w.plannedMinutes}${w.key ? ' (cheie)' : ''}`;
 }
 
-const brief = (w: PlannedWorkout) => ({ id: w.id, sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
+const brief = (w: PlannedWorkout) => ({ id: w.id, sport: w.sport, tip: w.type === 'z2' ? 'Z2' : w.type, durata_planificata: w.plannedMinutes, zone_tinta: w.targetZones, cheie: w.key, ...(w.structure ? { structura: w.structure } : {}) });
 
 /** Saltul ieșirii lungi: planificat față de maximul real din ultimele 30 de zile (fără istoric: necunoscut, nu procent din zero). */
 function longRunJump(input: CollectorInput, acts: SourceActivity[]): Packet['alergare_lunga'] {

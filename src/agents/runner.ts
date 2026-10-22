@@ -8,6 +8,7 @@ import type { Packet } from '../collector/packet.js';
 import type { AdaptEvent } from '../calendar/adapt.js';
 import type { Phase, Sport } from '../types.js';
 import { HEAD_SCHEMA, SPECIALIST_SCHEMA, type HeadResponse } from './schema.js';
+import { planContradictions } from './plan-claims.js';
 import { claimsActivation, validateProposal } from './proposal.js';
 import { AGENTS, KIND_PATH, getPath, measurementClaims, numberPaths, numbersIn, typedMeasurementClaims, verifyResponse, type SpecialistResponse, type VerifiedResponse } from './verify.js';
 
@@ -291,13 +292,19 @@ function physVerdict(v: VerifiedResponse | undefined, p: Packet): HeadResponse['
   // boală sau durere mare = roșu.
   const raw = p.readiness.verdict_cod?.verdict ?? 'galben';
   let out: HeadResponse['decizie'] = raw === 'portocaliu' ? 'galben' : raw;
-  if (v?.verdict === 'stop' || p.semnale.febra === true || p.semnale.simptom_cardiac === true) return 'stop';
+  if (p.semnale.febra === true || p.semnale.simptom_cardiac === true) return 'stop';
   if (p.semnale.boala === true || (p.antrenament_ultim?.durere.scor ?? 0) >= 5) out = 'rosu';
   // Restricția activă (și durerea de ieri, nu doar a ultimei ședințe) e podeaua.
   const r = p.restrictie_activa?.verdict;
   if (r === 'stop') return 'stop';
   if (r && RANK[r] > RANK[out]) out = r;
   return out;
+}
+
+/** Rândul pus în mesaj când un model a cerut stop fără semnal în date: nu anulăm, dar nu ignorăm posibilul simptom. */
+export const AI_STOP_LINE = 'Dacă azi ai durere sau apăsare în piept, palpitații, amețeală puternică, leșin sau febră, nu te antrena și declară simptomul în aplicație (Cum te simți azi sau „Nu am făcut-o”); la durere în piept care nu trece sună la 112.';
+export function aiStopUnsupported(head: HeadResponse, notes: string[]): HeadResponse {
+  return { ...head, jurnal: [...head.jurnal, ...notes], mesaj: head.mesaj.includes(AI_STOP_LINE) ? head.mesaj : `${head.mesaj}\n${AI_STOP_LINE}` };
 }
 
 /** Verdictul de siguranță calculat doar din cod (febră, simptom cardiac, boală, durere): nu depinde de niciun apel AI. */
@@ -365,7 +372,11 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
     if (r.status === 'fulfilled') specialists.push(r.value);
     else failures.push(`${others[i]}: ${errText(r.reason)}`);
   });
-  if (specialists.some((s) => s.verdict === 'stop')) decision = 'stop';
+  // B2 (auditul consolidat, 22.10.2026): „stop” cerut de un model nu anulează ziua fără un semnal de siguranță în date;
+  // se notează și sportivul e întrebat de simptome (aiStopUnsupported), decizia rămâne cea din cod.
+  const specStop = specialists.find((s) => s.verdict === 'stop');
+  const aiStopNotes: string[] = [];
+  if (specStop && safe !== 'stop') aiStopNotes.push(`${specStop.agent} a cerut stop fără semnal de siguranță în date: neaplicat`);
 
   const fallbackHead = (why: string): HeadResponse => ({
     decizie: decision,
@@ -383,7 +394,7 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
   let fallbackUsed = false;
   try {
     head = await client.json<HeadResponse>({ model: models.head, system: headSystem, user: headUser(packetWithVerdict, specialists, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
-    headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists)];
+    headWarnings = [...verifyHeadText(head.mesaj, packetWithVerdict, specialists), ...verifyHeadText(head.memento, packetWithVerdict, specialists), ...planContradictions(`${head.mesaj}\n${head.memento}`, packetWithVerdict, decision)];
     if (RANK[head.decizie] < RANK[decision]) headWarnings.push(`decizia head coach-ului (${head.decizie}) e mai permisivă decât a Fiziologului (${decision}); se păstrează ${decision}`);
   } catch (e) {
     failures.push(`head_coach: ${errText(e)}`);
@@ -397,11 +408,11 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
       retry = await client.json<HeadResponse>({
         model: models.head,
         system: headSystem,
-        user: `${headUser(packetWithVerdict, specialists, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`,
+        user: `${headUser(packetWithVerdict, specialists, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect și fără prescripții care contrazic ședința din calendar (zona, intensitatea, sportul vin din plan; o schimbare se propune structurat, în câmpul propunere). Decizia nu poate fi mai permisivă decât ${decision}.`,
         schema: HEAD_SCHEMA,
         maxTokens: 2000,
       });
-      again = [...verifyHeadText(retry.mesaj, packetWithVerdict, specialists), ...verifyHeadText(retry.memento, packetWithVerdict, specialists)];
+      again = [...verifyHeadText(retry.mesaj, packetWithVerdict, specialists), ...verifyHeadText(retry.memento, packetWithVerdict, specialists), ...planContradictions(`${retry.mesaj}\n${retry.memento}`, packetWithVerdict, decision)];
     } catch (e) {
       failures.push(`head_coach (reîncercare): ${errText(e)}`);
     }
@@ -414,10 +425,11 @@ export async function runPyramid(input: RunInput, client: ModelClient): Promise<
       headWarnings = again;
     }
   }
-  // Culoarea o dau datele de sănătate; head coach-ul o poate schimba doar în stop (siguranță).
-  if (head.decizie === 'stop') decision = 'stop';
+  // Culoarea o dau datele de sănătate. „Stop” de la model fără semnal în date nu anulează ziua (B2).
+  if (head.decizie === 'stop' && safe !== 'stop') aiStopNotes.push('head coach a cerut stop fără semnal de siguranță în date: neaplicat');
   const line = safetyLine(packetWithVerdict);
   head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}\n${head.mesaj}` : head.mesaj };
+  if (aiStopNotes.length) head = aiStopUnsupported(head, aiStopNotes);
 
   // Restul zilei după o activitate în plus: varianta aleasă de head coach, doar dintre cele calculate de cod.
   const cover = packetWithVerdict.acoperire_azi;
@@ -486,7 +498,7 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
     optiune: p.acoperire_azi?.implicit ?? null,
   });
   const check = (h: HeadResponse) => {
-    const w = [...verifyHeadText(h.mesaj, p, []), ...verifyHeadText(h.memento, p, [])];
+    const w = [...verifyHeadText(h.mesaj, p, []), ...verifyHeadText(h.memento, p, []), ...planContradictions(`${h.mesaj}\n${h.memento}`, p, decision)];
     if (RANK[h.decizie] < RANK[decision]) w.push(`decizia propusă (${h.decizie}) e mai permisivă decât a aplicației (${decision})`);
     // V2-14: modelul nu activează nimic; mesajul nu poate spune că a schimbat planul.
     if (claimsActivation(h.mesaj)) w.push('mesajul prezintă o schimbare ca deja făcută („am schimbat/redus/mutat…”); planul îl schimbă doar codul, după confirmarea ta: scrie „îți propun”');
@@ -501,7 +513,7 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
     if (headWarnings.length) {
       let retry: HeadResponse | null = null;
       try {
-        retry = await client.json<HeadResponse>({ model: models.head, system, user: `${mainUser(p, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect. Decizia nu poate fi mai permisivă decât ${decision}.`, schema: HEAD_SCHEMA, maxTokens: 2000 });
+        retry = await client.json<HeadResponse>({ model: models.head, system, user: `${mainUser(p, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect și fără prescripții care contrazic ședința din calendar (zona, intensitatea, sportul vin din plan; o schimbare se propune structurat, în câmpul propunere). Decizia nu poate fi mai permisivă decât ${decision}.`, schema: HEAD_SCHEMA, maxTokens: 2000 });
       } catch (e) {
         failures.push(`main_coach (reîncercare): ${errText(e)}`);
       }
@@ -520,9 +532,11 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
     head = fallback(`main coach indisponibil (${errText(e)}); mesaj din cod`);
     fallbackUsed = true;
   }
-  if (head.decizie === 'stop') decision = 'stop';
+  // B2: „stop” cerut de model fără semnal de siguranță în date nu anulează ziua; se notează și sportivul e întrebat.
+  const mainStopUnsupported = head.decizie === 'stop' && safe !== 'stop';
   const line = safetyLine(p);
   head = { ...head, decizie: decision, mesaj: line && !head.mesaj.includes(line) ? `${line}\n${head.mesaj}` : head.mesaj };
+  if (mainStopUnsupported) head = aiStopUnsupported(head, ['main coach a cerut stop fără semnal de siguranță în date: neaplicat']);
   const cover = p.acoperire_azi;
   const coverEvents: AdaptEvent[] = [];
   if (cover?.stare === 'partial' && cover.optiuni.length && (decision === 'verde' || decision === 'galben')) {

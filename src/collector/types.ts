@@ -66,6 +66,8 @@ export interface EveningForm {
   comentariu: string | null;
   /** Dacă activitatea a fost în afara planului: ce a fost. */
   tip_neplanificat?: 'cursa' | 'antrenament' | 'altceva' | null;
+  /** A1 (auditul consolidat, 22.10.2026): durere/apăsare în piept, palpitații, amețeală puternică sau leșin, în timpul sau după efort. */
+  simptome_cardiace?: boolean | null;
 }
 
 export interface ZonesInput {

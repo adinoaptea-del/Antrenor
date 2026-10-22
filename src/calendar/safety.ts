@@ -105,8 +105,25 @@ export function pendingCardiac(mornings: { date?: string; semnale?: Record<strin
  * lipsă de aer neobișnuită. Auditul R03: un simptom urgent trebuie tratat în cod, înaintea AI, nu doar dacă e bifat.
  * O negație apropiată („fără durere în piept”, „n-am avut palpitații”) nu declanșează.
  */
-const URGENT = /(dur(ere|eri)|apăsare|apasare|strânsoare|jungh(i|iuri))\s+(în|in|la)\s+piept|piept(ul)?\s+(mă|ma)\s+(doare|strânge)|leșin|lesin|am\s+leșinat|palpita(ț|t)ii|inima\s+(o\s+ia\s+razna|bate\s+neregulat)|bătăi\s+neregulate|nu\s+(mai\s+)?puteam\s+respira|lipsă\s+de\s+aer|lipsa\s+de\s+aer|sufoca/i;
+const URGENT = new RegExp(
+  [
+    '(dur(ere|eri)|apăsare|apasare|strânsoare|stransoare|jungh(i|iuri)|arsur[ăa])\\s+(în|in|la|pe)\\s+piept',
+    'piept(ul)?\\s+(mă|ma|m-a)\\s+(doare|durut|strânge|strange|apăsa|apasa)',
+    '(mă|ma|m-a)\\s+(doare|durut|strâns|strans|apăsat|apasat)\\s+(în|in|la|pe)?\\s*piept(ul)?',
+    'durere\\s+toracic[ăa]',
+    'leșin|lesin|am\\s+leșinat|mi-a\\s+venit\\s+r[ăa]u',
+    'am\\s+ame[țt]it|ame[țt]eal[ăa]|m-a\\s+luat\\s+ame[țt]eala',
+    'am\\s+v[ăa]zut\\s+negru|mi\\s+s-a\\s+f[ăa]cut\\s+negru',
+    'palpita(ț|t)ii',
+    'inima\\s+(o\\s+ia\\s+razna|o\\s+lua\\s+razna|bate\\s+neregulat|bătea\\s+neregulat|bătea\\s+haotic)',
+    'bătăi\\s+neregulate|ritm\\s+neregulat',
+    'puls(ul)?\\s+(a\\s+)?(s[ăa]rit|crescut)\\s+(brusc\\s+)?(la\\s+)?\\d*\\s*(și|si)\\s+nu\\s+(mai\\s+)?(cobora|scădea|scadea)',
+    'nu\\s+(mai\\s+)?puteam\\s+respira|lipsă\\s+de\\s+aer|lipsa\\s+de\\s+aer|sufoca',
+  ].join('|'),
+  'i',
+);
 const NEG = /(fără|fara|nu\s+am|n-am|nu\s+a\s+fost|niciun|nicio)\s+(\S+\s+){0,3}$/i;
+const OTHER = /\b(colegul|colega|prietenul|prietena|soția|sotia|soțul|sotul|tata|mama|fratele|sora|cineva|un\s+alerg[ăa]tor|o\s+alerg[ăa]toare|altcuiva)\b/i;
 /** Granița propoziției: negația dintr-o propoziție nu acoperă simptomul din următoarea („Nu am febră, dar am durere în piept”). */
 const CLAUSE = /.*(?:[,;.!?:]|\b(?:dar|însă|insa|iar|apoi|totuși|totusi|și|si)\b)/is;
 export function urgentText(text: string | null | undefined): string | null {
@@ -117,6 +134,8 @@ export function urgentText(text: string | null | undefined): string | null {
     let before = text.slice(Math.max(0, m.index - 40), m.index);
     const cut = CLAUSE.exec(before);
     if (cut) before = before.slice(cut[0].length);
+    // Persoana descrisă: simptomul altcuiva („colegul a leșinat”) nu e al sportivului.
+    if (OTHER.test(before)) continue;
     if (!NEG.test(before)) return m[0];
   }
   return null;
@@ -164,7 +183,13 @@ export function activeRestriction(input: {
     add('galben', `Epuizare ${oboseala}/7 azi${days ? ` (a ${days + 1}-a zi din ultimele 4)` : ''}: doar ușor sau pauză. ${days >= 2 ? 'E persistentă: verificăm cauza (somn, mâncare, boală) înainte de următoarea ședință grea; obiectivul rămâne, planul se reevaluează.' : 'Dacă ține 2–3 zile, verificăm cauza (somn, mâncare, boală).'}`);
   }
   const todayMorning = input.morning && (input.morning.date == null || input.morning.date === input.today) ? [{ date: input.today, semnale: input.morning.semnale ?? null }] : [];
-  const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning], input.today);
+  // A1 (auditul consolidat): simptomul cardiac declarat seara (întrebarea structurată sau durere „piept”) e același
+  // incident ca cel de dimineață: stop în ziua lui, apoi doar ușor până la evaluarea declarată.
+  const eveningCardiac = input.evenings
+    .filter((e) => e.date <= input.today && ((e as { simptome_cardiace?: boolean | null }).simptome_cardiace === true || (e.durere?.loc === 'piept' && (e.durere?.scor ?? 0) > 0)))
+    .map((e) => ({ date: e.date, semnale: { simptom_cardiac: true } as Record<string, unknown> }));
+  if (eveningCardiac.some((e) => e.date === input.today) && s.simptom_cardiac !== true) add('stop', 'Ai declarat azi durere/apăsare în piept, palpitații, amețeală sau leșin: fără antrenament și cere o evaluare medicală. Dacă simptomul nu trece, sună la 112.');
+  const cardiacSince = pendingCardiac([...(input.mornings ?? []).filter((m) => m.date !== input.today), ...todayMorning, ...eveningCardiac].sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? -1 : 1)), input.today);
   if (cardiacSince && cardiacSince < input.today) add('galben', `Simptom cardiac raportat pe ${cardiacSince}: până la o evaluare medicală, doar ușor — fără teste, intervale sau ieșiri lungi. Când medicul ți-a permis efortul, bifează în chestionarul de dimineață.`);
   const worst = activePain(input.evenings, input.today);
   if (worst && worst.scor >= 5) add('rosu', `Durere ${worst.scor}/10${worst.loc ? ` la ${worst.loc}` : ''} (raportată pe ${worst.date}): fără antrenament până la reevaluare. Când a scăzut, spune în formular.`);
