@@ -9,6 +9,7 @@
 
 import type { PlannedWorkout } from '../types.js';
 import { weekday } from '../util/dates.js';
+import { makeFlags, stateOf } from './flags.js';
 import { easyWorkout, moveOptions, moveWorkout, withOriginal } from './actions.js';
 
 const DAY = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
@@ -20,10 +21,11 @@ export type AdjustKind = 'usor' | 'muta' | 'varianta';
 
 /** Ajustarea făcută de sportiv pe o ședință (din nota pusă de acțiune), sau null. */
 export function userAdjustment(w: PlannedWorkout): AdjustKind | null {
-  const n = w.note ?? '';
-  if (/^ușoară la cererea ta/.test(n)) return 'usor';
-  if (/^mutată de tine/.test(n)) return 'muta';
-  if (/^varianta aleasă de tine/.test(n) || w.suggestion?.accepted === true) return 'varianta';
+  // Din starea tipizată (A2): o notă rescrisă de progresie nu mai pierde alegerea sportivului.
+  const o = stateOf(w)?.origin;
+  if (o === 'usor') return 'usor';
+  if (o === 'mutare') return 'muta';
+  if (o === 'varianta' || w.suggestion?.accepted === true) return 'varianta';
   return null;
 }
 
@@ -69,7 +71,7 @@ export function carryAdjustments(candidate: PlannedWorkout[], oldPlan: PlannedWo
         plan[i] = moveWorkout(plan, c.id, w.date, today, at);
         kept.push(`${label}: rămâne mutată pe ${DAY[weekday(w.date)]}`);
       } else {
-        const next: PlannedWorkout = { ...c, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: undefined, note: w.note, ...(w.suggestion ? { suggestion: w.suggestion } : {}) };
+        const next: PlannedWorkout = { ...c, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: undefined, note: w.note, flags: makeFlags('varianta', c, w.note ?? null), ...(w.suggestion ? { suggestion: w.suggestion } : {}) };
         plan[i] = withOriginal(c, next, at);
         kept.push(`${label}: rămâne varianta aleasă de tine (${w.plannedMinutes} min)`);
       }

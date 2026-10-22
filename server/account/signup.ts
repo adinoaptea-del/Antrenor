@@ -17,10 +17,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     const password = body.password ?? '';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, 'adresa de e-mail nu pare validă');
     if (password.length < 8) throw new HttpError(400, 'parola: minimum 8 caractere');
-    const existing = await select<{ id: string }>('users', {}, { select: 'id' });
+    const existing = await select<{ id: string; approved: boolean | null }>('users', {}, { select: 'id,approved' });
     const max = ENV.maxUsers();
     if (!Number.isInteger(max) || max < 1) throw new HttpError(500, 'MAX_USERS trebuie să fie un număr întreg pozitiv');
-    if (existing.length >= max) throw new HttpError(403, `s-au ocupat toate cele ${max} locuri`);
+    // Auditul consolidat, C6: locurile le ocupă doar conturile aprobate (cele făcute aici, cu invitație). Un rând
+    // neaprobat (ex. creat direct prin Supabase Auth, dacă înscrierea publică e activă acolo) nu blochează grupul.
+    // Invitația și „primul cont = admin” se judecă în continuare pe toate rândurile (mai strict, nu mai permisiv).
+    if (approvedCount(existing) >= max) throw new HttpError(403, `s-au ocupat toate cele ${max} locuri`);
     // Grup privat: după primul cont (adminul), un cont nou se face doar cu linkul de invitație din ecranul Prieteni.
     if (existing.length > 0) {
       const code = await inviteCode();
@@ -42,4 +45,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   } catch (e) {
     fail(res, e);
   }
+}
+
+/** C6: câte conturi ocupă un loc (doar cele aprobate). */
+export function approvedCount(rows: { approved: boolean | null }[]): number {
+  return rows.filter((r) => r.approved === true).length;
 }

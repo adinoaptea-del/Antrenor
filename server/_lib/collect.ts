@@ -40,6 +40,8 @@ export interface UserRow {
   lat?: number | null;
   lon?: number | null;
   apple_token?: string | null;
+  /** Token separat pentru Samsung Health / Health Connect (auditul consolidat, C5; schema 13). */
+  android_token?: string | null;
   role?: string;
   sex?: 'm' | 'f' | null;
   birth_year?: number | null;
@@ -63,6 +65,7 @@ export interface WorkoutRow {
   suggestion?: PlannedWorkout['suggestion'] | null;
   original?: PlannedWorkout['original'] | null;
   changed_at?: string | null;
+  flags?: PlannedWorkout['flags'];
 }
 
 export function toPlanned(r: WorkoutRow): PlannedWorkout {
@@ -82,6 +85,8 @@ export function toPlanned(r: WorkoutRow): PlannedWorkout {
     suggestion: r.suggestion ?? null,
     original: r.original ?? null,
     changedAt: r.changed_at ?? null,
+    // Coloana lipsește pe o schemă sub 13: undefined → starea se citește din notă.
+    ...(r.flags !== undefined ? { flags: r.flags } : {}),
   };
 }
 
@@ -106,6 +111,9 @@ export function toWorkoutRow(w: PlannedWorkout, userId: string, planId: string):
     // Forma din plan de dinainte de schimbări (eticheta „Actualizat”); null = ședința e cum a fost planificată.
     original: w.original ?? null,
     changed_at: w.changedAt ?? null,
+    // Starea tipizată (A2), mereu scrisă (o cheie lipsă dintr-un lot ar lăsa coloana neatinsă la upsert);
+    // db.ts o scoate dacă schema n-are încă coloana.
+    flags: w.flags ?? null,
   };
 }
 

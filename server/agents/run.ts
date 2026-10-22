@@ -2,6 +2,7 @@ import { fail, readJson, requireUser, todayIn, HttpError } from '../_lib/auth.js
 import type { Req, Res } from '../_lib/http.js';
 import { loadUser } from '../_lib/collect.js';
 import { acquireLock, releaseLock, runAgents } from '../_lib/agents.js';
+import { AiSkip } from '../_lib/ai-budget.js';
 
 /**
  * POST /api/agents/run { event: 'dimineata' | 'dupa_antrenament' | 'saptamanal' } — rulare manuală.
@@ -33,9 +34,10 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (!lock) out = { skipped: 'antrenorul scrie deja mesajul; apare în câteva clipe' };
     else
       try {
-        out = (await runAgents(u.id, todayIn(user.tz), event, body.force ?? true)) ?? { skipped: 'nimic nou: mesajul de azi e scris pe datele de acum' };
+        // B3: rulare manuală — plafon pe sportiv și zi, și reutilizarea mesajului când contextul e același.
+        out = (await runAgents(u.id, todayIn(user.tz), event, body.force ?? true, { manual: true })) ?? { skipped: 'nimic nou: mesajul de azi e scris pe datele de acum' };
       } catch (e) {
-        out = { error: e instanceof Error ? e.message : String(e) };
+        out = e instanceof AiSkip ? { skipped: e.message } : { error: e instanceof Error ? e.message : String(e) };
       } finally {
         await releaseLock(u.id, lockKey);
       }

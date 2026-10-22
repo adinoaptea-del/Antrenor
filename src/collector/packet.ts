@@ -441,7 +441,8 @@ const hmMin = (s: string | null | undefined) => (s && /^\d{2}:\d{2}/.test(s) ? N
  */
 export function sameSession(a: SourceActivity, b: SourceActivity): boolean {
   if (a.date !== b.date || a.sport !== b.sport) return false;
-  if (a.source && b.source && a.source === b.source) return false;
+  if (a.id === b.id) return true;
+  if (a.source && b.source && a.source === b.source) return sameSessionSameSource(a, b);
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
@@ -453,6 +454,27 @@ export function sameSession(a: SourceActivity, b: SourceActivity): boolean {
     return overlap >= 0.6 * Math.max(1, Math.min(da, db));
   }
   return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
+}
+
+/**
+ * Auditul consolidat 22.10.2026, C3: aceeași ședință venită de două ori pe ACEEAȘI cale (Apple Health sau Health
+ * Connect adună antrenamentele din mai multe aplicații: ceasul și Strava/Samsung), cu id-uri externe diferite.
+ * Pe aceeași sursă, pragul e strict, ca două ședințe reale să nu se contopească niciodată: ore de start la cel mult
+ * 3 minute, ferestre suprapuse cel puțin 90% din CEA LUNGĂ, durate la cel mult max(3 min, 5%) și, dacă ambele au
+ * distanță, distanțe la cel mult max(0,3 km, 3%). Fără ore de start, sau cu un singur criteriu neclar, rămân două.
+ */
+export function sameSessionSameSource(a: SourceActivity, b: SourceActivity): boolean {
+  if (a.externalId && b.externalId && a.externalId === b.externalId) return true;
+  const sa = hmMin(a.startLocal);
+  const sb = hmMin(b.startLocal);
+  if (sa == null || sb == null || Math.abs(sa - sb) > 3) return false;
+  const da = a.details?.elapsedMin ?? a.minutes;
+  const db = b.details?.elapsedMin ?? b.minutes;
+  const overlap = Math.min(sa + da, sb + db) - Math.max(sa, sb);
+  if (overlap < 0.9 * Math.max(1, da, db)) return false;
+  if (Math.abs(a.minutes - b.minutes) > Math.max(3, 0.05 * Math.max(a.minutes, b.minutes))) return false;
+  if (a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) > Math.max(0.3, 0.03 * Math.max(a.distanceKm, b.distanceKm))) return false;
+  return true;
 }
 
 /** Viteza minimă (km/h) a minutelor în plus ca să fie efort, nu mers pe jos sau ceas uitat pornit. */

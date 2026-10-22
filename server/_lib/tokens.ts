@@ -1,5 +1,5 @@
 // Token-urile OAuth ale fiecărui sportiv: citire cu reîmprospătare automată, scriere, state semnat pentru redirect.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ENV } from './env.js';
 import { one, remove, select, upsert } from './db.js';
 import { seal, unseal } from './secretbox.js';
@@ -121,19 +121,38 @@ export async function disconnectAll(userId: string): Promise<string[]> {
   return rows.map((r) => r.provider);
 }
 
-/** Un state semnat pentru OAuth: cine e sportivul și când a pornit; valabil 15 minute. Scurt și doar cu caractere sigure în URL. */
-export function signState(userId: string): string {
-  const payload = `${userId.replace(/-/g, '')}.${Date.now().toString(36)}`;
+/**
+ * State-ul OAuth (auditul consolidat 22.10.2026, C4): cine e sportivul, pentru ce producător, când a pornit și un
+ * nonce aleator. Nonce-ul stă și într-un cookie HttpOnly pus la „Conectează” (OAUTH_COOKIE), iar callback-ul cere
+ * ca cele două să coincidă: un link de autorizare trimis altcuiva (sau reluat după folosire) nu mai leagă contul
+ * Strava/WHOOP/Oura al acelei persoane de contul celui care a generat linkul. Valabil 15 minute, o singură folosire
+ * (cookie-ul se șterge la callback).
+ */
+export const OAUTH_COOKIE = 'airon_oauth';
+
+export function newOAuthNonce(): string {
+  return randomBytes(16).toString('base64url');
+}
+
+export function signState(userId: string, provider: string, nonce: string, now = Date.now()): string {
+  const payload = `${userId.replace(/-/g, '')}.${now.toString(36)}.${provider}.${nonce}`;
   const sig = createHmac('sha256', ENV.stateSecret()).update(payload).digest('base64url').slice(0, 22);
   return `${payload}.${sig}`;
 }
 
-export function verifyState(state: string): string {
+const eqSafe = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+export function verifyState(state: string, provider: string, cookieNonce: string | null | undefined, now = Date.now()): string {
   if (!state) throw new Error('conectarea nu a primit înapoi codul de siguranță (state); apasă din nou Conectează');
-  const [id, ts, sig] = state.split('.');
-  if (!id || !ts || !sig || id.length !== 32) throw new Error('codul de siguranță (state) primit înapoi e modificat; apasă din nou Conectează');
-  const expected = createHmac('sha256', ENV.stateSecret()).update(`${id}.${ts}`).digest('base64url').slice(0, 22);
-  if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) throw new Error('codul de siguranță (state) nu se potrivește; apasă din nou Conectează');
-  if (Date.now() - parseInt(ts, 36) > 15 * 60_000) throw new Error('au trecut peste 15 minute de la Conectează; apasă din nou');
+  const parts = state.split('.');
+  if (parts.length !== 5) throw new Error('codul de siguranță (state) primit înapoi e modificat sau vechi; apasă din nou Conectează');
+  const [id, ts, prov, nonce, sig] = parts as [string, string, string, string, string];
+  if (id.length !== 32 || !nonce) throw new Error('codul de siguranță (state) primit înapoi e modificat; apasă din nou Conectează');
+  const expected = createHmac('sha256', ENV.stateSecret()).update(`${id}.${ts}.${prov}.${nonce}`).digest('base64url').slice(0, 22);
+  if (!eqSafe(expected, sig)) throw new Error('codul de siguranță (state) nu se potrivește; apasă din nou Conectează');
+  if (prov !== provider) throw new Error('codul de siguranță e pentru alt producător; apasă din nou Conectează');
+  if (now - parseInt(ts, 36) > 15 * 60_000) throw new Error('au trecut peste 15 minute de la Conectează; apasă din nou');
+  if (!cookieNonce || !eqSafe(cookieNonce, nonce))
+    throw new Error('autorizarea n-a pornit din AIRON pe acest telefon sau linkul e deja folosit; apasă din nou Conectează și autorizează în aceeași fereastră');
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }

@@ -8,9 +8,37 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
   return { ...supabaseKeyHeaders(ENV.supabaseService()), 'content-type': 'application/json', ...extra };
 }
 
-async function call<T>(method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<T> {
+/**
+ * Coloane adăugate de migrarea 0005 (schema 13), pe care codul le scrie înainte ca administratorul să ruleze
+ * actualizarea bazei: pe o schemă veche, scrierea se repetă o dată fără ele, în loc să cadă tot planul.
+ */
+export const OPTIONAL_COLUMNS: Record<string, readonly string[]> = { workouts_planned: ['flags'], packets: ['context_hash'] };
+
+/** Coloana opțională pe care PostgREST n-o găsește (PGRST204 / „column … does not exist”), sau null. */
+export function missingOptionalColumn(table: string, errText: string): string | null {
+  for (const c of OPTIONAL_COLUMNS[table] ?? []) {
+    if (new RegExp(`'${c}' column|column "?${c}"? (of relation "?${table}"? )?does not exist|\\.${c} does not exist`).test(errText)) return c;
+  }
+  return null;
+}
+
+export function stripColumn(body: unknown, col: string): unknown {
+  const strip = (r: unknown) => {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return r;
+    const { [col]: _gone, ...rest } = r as Row;
+    return rest;
+  };
+  return Array.isArray(body) ? body.map(strip) : strip(body);
+}
+
+async function call<T>(method: string, path: string, body?: unknown, extra: Record<string, string> = {}, retried: string[] = []): Promise<T> {
   const res = await fetch(`${ENV.supabaseUrl()}/rest/v1/${path}`, { method, headers: headers(extra), body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!res.ok) throw new Error(`db ${method} ${path} → ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    const col = body !== undefined && res.status === 400 ? missingOptionalColumn(path.split('?')[0]!, text) : null;
+    if (col && !retried.includes(col)) return call<T>(method, path, stripColumn(body, col), extra, [...retried, col]);
+    throw new Error(`db ${method} ${path} → ${res.status}: ${text}`);
+  }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;

@@ -9,6 +9,7 @@
 //  3. starea de acum (brățări + cum te simți, cu restricția ca podea); portocaliu se citește galben („mai ușor”);
 //  4. decizia salvată dimineața, dacă nu există stare.
 
+import { isAwayChange } from './flags.js';
 import { stopAction } from './safety.js';
 import type { PlannedWorkout } from '../types.js';
 
@@ -71,7 +72,7 @@ export function decideDay(i: DayInput): DayDecision | null {
   // Calendarul: toate ședințele de azi anulate de o regulă de sănătate = pauză azi.
   const sessions = i.todayPlan.filter((w) => w.type !== 'odihna' && w.status !== 'sters');
   const coveredNote = (w: PlannedWorkout) => /^(acoperită|gata pe azi)/.test(w.note ?? '');
-  const cancelled = sessions.filter((w) => w.status === 'anulat_sistem' && !(w.note ?? '').startsWith('plecat') && !coveredNote(w));
+  const cancelled = sessions.filter((w) => w.status === 'anulat_sistem' && !isAwayChange(w) && !coveredNote(w));
   const doneSet = new Set(i.doneIds ?? []);
   const done = sessions.filter((w) => doneSet.has(w.id));
   const active = sessions.filter((w) => (w.status === 'planificat' || w.status === 'mutat') && !doneSet.has(w.id));

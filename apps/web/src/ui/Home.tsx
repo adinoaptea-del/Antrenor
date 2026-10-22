@@ -1,3 +1,4 @@
+import { isMovedByAthlete, isWeatherSwapped, weatherReason } from '@core/calendar/flags.js';
 import { useState } from 'react';
 import { GOAL_NAME } from '@core/bar/sport-readiness.js';
 import { FITNESS_WEEKS, goalKind, type Goal } from '@core/calendar/phases.js';
@@ -18,7 +19,7 @@ import { useMetOnce, walkOrb } from './Walking';
 import { readyLabel, readyView } from '@core/bar/ready-view.js';
 import { useWorkoutSheet } from './WorkoutSheet';
 import { AppHeader } from './Shell';
-import { WEATHER_NOTE, dayWord } from '@core/calendar/weather-swap.js';
+import { dayWord } from '@core/calendar/weather-swap.js';
 import { fmtTime } from '@core/goals/run-target.js';
 
 
@@ -337,7 +338,7 @@ function WeatherSwapped() {
   const [okLocal, setOkLocal] = useState<string[]>([]);
   if (local) return null;
   const acked = new Set([...(me.prefs?.vremeOk ?? []), ...okLocal]);
-  const swapped = me.plan.filter((w) => (w.note ?? '').startsWith(WEATHER_NOTE) && w.original && w.date >= me.today && (w.status === 'planificat' || w.status === 'mutat'));
+  const swapped = me.plan.filter((w) => isWeatherSwapped(w) && w.original && w.date >= me.today && (w.status === 'planificat' || w.status === 'mutat'));
   // Perechea: ședința de afară (bicicletă/alergare) și cea de înăuntru care i-a luat locul.
   const out = swapped.filter((w) => (w.sport === 'bicicleta' || w.sport === 'alergare') && !acked.has(w.id));
   if (!out.length && !msg) return null;
@@ -346,7 +347,7 @@ function WeatherSwapped() {
     <>
       {out.map((o) => {
         const i = swapped.find((x) => x.id !== o.id && x.original?.date === o.date && x.date === o.original!.date);
-        const reason = (o.note ?? '').replace(/^vremea:\s*/, '').split(';')[0];
+        const reason = weatherReason(o);
         const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
         // „Lasă-le cum erau” doar cât timp niciuna n-a fost făcută și zilele din plan n-au trecut.
         const canUndo = !activityFor(me, o) && (!i || !activityFor(me, i)) && o.original!.date >= me.today && (!i || (i.original?.date ?? me.today) >= me.today);
@@ -397,7 +398,7 @@ function MovedAway() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   if (local) return null;
-  const moved = me.plan.filter((w) => w.original?.date === me.today && w.date > me.today && (w.note ?? '').startsWith('mutată de tine') && (w.status === 'planificat' || w.status === 'mutat'));
+  const moved = me.plan.filter((w) => w.original?.date === me.today && w.date > me.today && isMovedByAthlete(w) && (w.status === 'planificat' || w.status === 'mutat'));
   if (!moved.length && !msg) return null;
   return (
     <>

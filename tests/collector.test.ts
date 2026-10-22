@@ -239,9 +239,11 @@ describe('aceeași ședință pe două brățări', () => {
     const l = run({ id: 'l', source: 'apple', minutes: 63, avgHr: 155 });
     assert.equal(pickRecording(s, l).id, 's');
   });
-  it('aceeași sursă sau fără ore și fără distanțe: rămân două ședințe', () => {
+  it('fără ore și fără distanțe: rămân două ședințe (aceeași sursă: vezi C3 în tests/consolidated-audit-stage2.test.ts)', () => {
     assert.equal(sameSession(run({ id: 'a', startLocal: null }), run({ id: 'b', source: 'apple', startLocal: null })), false);
-    assert.equal(sameSession(run({ id: 'a' }), run({ id: 'b' })), false);
+    // Auditul consolidat (C3) a schimbat regula „aceeași sursă = mereu două”: aceeași sursă cu ore, durate și distanțe
+    // identice și id-uri externe diferite e o dublură; fără ore de start rămân două.
+    assert.equal(sameSession(run({ id: 'a', externalId: 'a', startLocal: null }), run({ id: 'b', externalId: 'b', startLocal: null })), false);
   });
   it('GPS diferit cu 0,4 km pe 21 km și minute de mers după → tot cea scurtă', () => {
     const s = run({ id: 's', minutes: 127, distanceKm: 21.1 });
@@ -260,6 +262,6 @@ describe('aceeași ședință pe două brățări', () => {
     assert.deepEqual(kept[0]!.mergedSources, ['whoop', 'strava']);
   });
   it('două alergări diferite în aceeași zi (dimineața și seara) nu se unesc', () => {
-    assert.equal(sameSession(run({ startLocal: '07:00', minutes: 40 }), run({ startLocal: '19:00', minutes: 40 })), false);
+    assert.equal(sameSession(run({ id: 'm', externalId: 'm', startLocal: '07:00', minutes: 40 }), run({ id: 'e', externalId: 'e', startLocal: '19:00', minutes: 40 })), false);
   });
 });

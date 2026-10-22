@@ -1,4 +1,5 @@
 import { runTargetProblem, type RunTargetLike } from '../../src/goals/intake-check.js';
+import { isEasedBySystem, isMovedByAthlete, isWeatherSwapped, makeFlags } from '../../src/calendar/flags.js';
 import { describeChange, thresholdChanges, type ThresholdSet } from '../../src/goals/thresholds.js';
 import { reassessGoal } from '../_lib/feasibility.js';
 import { STRENGTH_LOG_CONFLICT, cleanEntry, strengthLogRow, strengthLogRowLegacy } from '../../src/strength/log.js';
@@ -255,10 +256,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       }
       if (accept) {
         const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null, sport: row.sport, type: row.type, key: row.key };
-        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}`, status: 'in.(planificat,mutat)' }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, ...(s.sport ? { sport: s.sport, type: 'z2', key: false } : {}), note: `varianta aleasă de tine (în loc de ${original.minutes} min${s.sport && original.sport && s.sport !== original.sport ? ` de ${original.sport}` : ''})`, suggestion: { ...s, accepted: true, original } });
+        const note = `varianta aleasă de tine (în loc de ${original.minutes} min${s.sport && original.sport && s.sport !== original.sport ? ` de ${original.sport}` : ''})`;
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}`, status: 'in.(planificat,mutat)' }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, ...(s.sport ? { sport: s.sport, type: 'z2', key: false } : {}), note, flags: makeFlags('varianta', { date: row.date, original: null }, note), suggestion: { ...s, accepted: true, original } });
       } else if (s.accepted === true && s.original) {
         // Revine la ședința din plan: prescripția originală se pune înapoi.
-        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, ...(s.original.sport ? { sport: s.original.sport } : {}), ...(s.original.type ? { type: s.original.type, key: !!s.original.key } : {}), note: null, suggestion: { ...s, accepted: false } });
+        await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, ...(s.original.sport ? { sport: s.original.sport } : {}), ...(s.original.type ? { type: s.original.type, key: !!s.original.key } : {}), note: null, flags: null, suggestion: { ...s, accepted: false } });
       } else {
         await update('workouts_planned', { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }
@@ -381,8 +383,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
           const { planId, workouts } = await loadPlan(u.id, today, addDays(today, 8));
           const at = new Date().toISOString();
           const back = workouts
-            .filter((w) => w.original && (w.note ?? '').startsWith('ușurată:') && (w.changedAt ?? '') >= prevOut.reported_at.slice(0, 10) && w.date >= today)
-            .map((w) => ({ ...w, sport: w.original!.sport ?? w.sport, type: w.original!.type, plannedMinutes: w.original!.plannedMinutes, targetZones: [...w.original!.targetZones], structure: w.original!.structure ?? undefined, key: w.original!.key, intervals: w.original!.intervals ?? undefined, note: undefined, original: null, changedAt: at }));
+            .filter((w) => w.original && isEasedBySystem(w) && (w.changedAt ?? '') >= prevOut.reported_at.slice(0, 10) && w.date >= today)
+            .map((w) => ({ ...w, sport: w.original!.sport ?? w.sport, type: w.original!.type, plannedMinutes: w.original!.plannedMinutes, targetZones: [...w.original!.targetZones], structure: w.original!.structure ?? undefined, key: w.original!.key, intervals: w.original!.intervals ?? undefined, note: undefined, original: null, flags: null, changedAt: at }));
           if (planId && back.length) await upsert('workouts_planned', back.map((w) => toWorkoutRow(w, u.id, planId)), 'id');
           restored = back.length;
         }
@@ -429,7 +431,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         // Merge și pentru o ședință deja făcută sau trecută: nu schimbă planul.
         const all = (await loadPlan(u.id, addDays(today, -7), addDays(today, 10))).workouts;
         const w = all.find((x) => x.id === id);
-        const partner = w ? all.find((x) => x.id !== w.id && (x.note ?? '').startsWith('vremea') && x.original?.date === w.date && x.date === w.original?.date) : null;
+        const partner = w ? all.find((x) => x.id !== w.id && isWeatherSwapped(x) && x.original?.date === w.date && x.date === w.original?.date) : null;
         const prefsOk = await loadPrefs(u.id);
         const ids = [id, ...(partner ? [partner.id] : [])].filter((x) => !(prefsOk.vremeOk ?? []).includes(x));
         if (ids.length) await savePrefs(u.id, { ...prefsOk, vremeOk: [...(prefsOk.vremeOk ?? []), ...ids].slice(-40) });
@@ -468,10 +470,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         if (op === 'inapoi') {
           // Răzgândirea la „Mută”: ședința amânată de tine revine în ziua din plan, dacă ziua aceea e azi sau mai târziu.
           const o = w.original;
-          if (!o || !(w.note ?? '').startsWith('mutată de tine')) throw new HttpError(409, 'ședința n-a fost mutată de tine');
+          // Starea tipizată (A2): o notă rescrisă între timp de progresie nu mai blochează „Pune înapoi”.
+          if (!o || !isMovedByAthlete(w)) throw new HttpError(409, 'ședința n-a fost mutată de tine');
           if (o.date < today) throw new HttpError(409, 'ziua inițială a trecut');
           const onlyDate = w.type === o.type && w.plannedMinutes === o.plannedMinutes && (w.sport === (o.sport ?? w.sport));
-          next = onlyDate ? { ...w, date: o.date, note: undefined, original: null, changedAt: at } : { ...w, date: o.date, note: 'pusă înapoi în ziua din plan', changedAt: at };
+          next = onlyDate ? { ...w, date: o.date, note: undefined, original: null, flags: null, changedAt: at } : { ...w, date: o.date, note: 'pusă înapoi în ziua din plan', flags: makeFlags('pus_inapoi', w, 'pusă înapoi în ziua din plan'), changedAt: at };
         } else if (op === 'muta') {
           // A65: mutarea se validează și pe programul liber și pe plecările anunțate.
           const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
@@ -678,7 +681,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (kind === 'deconectare') {
       // Deconectarea unei brățări: tokenul se șterge, importul se oprește. Datele importate deja rămân (ștergerea lor e separată).
       const p = String(body.provider ?? '');
+      // C5: Apple Health și Samsung Health / Health Connect au tokenuri separate: deconectarea uneia n-o oprește pe cealaltă.
       if (p === 'apple') await update('users', { id: `eq.${u.id}` }, { apple_token: null });
+      else if (p === 'android') await update('users', { id: `eq.${u.id}` }, { android_token: null });
       else if (['whoop', 'strava', 'oura'].includes(p)) await disconnect(u.id, p as 'whoop' | 'strava' | 'oura');
       else throw new HttpError(400, 'brățară necunoscută');
       json(res, 200, { ok: true });
@@ -718,6 +723,19 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const token = newAppleToken();
       await update('users', { id: `eq.${u.id}` }, { apple_token: token });
       json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
+      return;
+    }
+    if (kind === 'android-arata' || kind === 'android') {
+      // C5: adresa Samsung Health / Health Connect are tokenul ei (users.android_token), separat de Apple Health.
+      // „android-arata” o arată (o creează doar dacă lipsește); „android” face una nouă (cea veche nu mai primește date).
+      const cur = await one<{ android_token?: string | null }>('users', { id: `eq.${u.id}` });
+      if (cur && !('android_token' in cur)) throw new HttpError(503, 'baza de date trebuie actualizată (Admin → Pregătește baza) pentru adresa separată de Samsung Health');
+      let token = kind === 'android' ? null : (cur?.android_token ?? null);
+      if (!token) {
+        token = newAppleToken();
+        await update('users', { id: `eq.${u.id}` }, { android_token: token });
+      }
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/android?t=${token}` });
       return;
     }
     throw new HttpError(404, `formular necunoscut: ${kind}`);

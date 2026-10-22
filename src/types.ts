@@ -47,6 +47,11 @@ export interface PlannedWorkout {
   original?: WorkoutSnapshot | null;
   /** Când s-a schimbat ultima dată (ISO). */
   changedAt?: string | null;
+  /**
+   * Starea schimbării, tipizată (auditul consolidat, A2; src/calendar/flags.ts): cine a schimbat-o și de ce.
+   * undefined = rând vechi (starea se citește din notă); null = cum e în plan.
+   */
+  flags?: import('./calendar/flags.js').WorkoutFlags | null;
 }
 
 export interface WorkoutSnapshot {

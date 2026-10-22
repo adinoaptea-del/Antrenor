@@ -9,7 +9,7 @@ import { wellnessGroups } from './apple.js';
 
 /**
  * POST /api/webhooks/android?t=<token personal> — Samsung Health / Health Connect, trimis de aplicația Android
- * „Health Connect Webhook” (sau alt exportator) de pe telefonul sportivului. Același token ca la Apple Health.
+ * „Health Connect Webhook” (sau alt exportator) de pe telefonul sportivului. Token propriu (nu cel de Apple Health).
  * Răspunsul spune ce s-a recunoscut și ce nu, iar sync_log păstrează tipurile necunoscute, ca să le adăugăm.
  */
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -17,7 +17,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     const token = webhookToken(req);
     if (!token || token.length < 20) throw new HttpError(401, 'lipsește tokenul');
-    const user = await one<{ id: string; tz: string | null }>('users', { apple_token: `eq.${token}` });
+    // C5: tokenul Android e separat de cel Apple (users.android_token, schema 13). Tokenurile vechi folosite deja pe
+    // Android au fost copiate de migrarea 0005, deci adresa lipită în telefon merge în continuare.
+    const user = await one<{ id: string; tz: string | null }>('users', { android_token: `eq.${token}` }).catch(async (e: Error) => {
+      // Schemă sub 13 (fără coloană): ca înainte, pe tokenul comun, până rulează actualizarea bazei.
+      if (/android_token/.test(e.message)) return one<{ id: string; tz: string | null }>('users', { apple_token: `eq.${token}` });
+      throw e;
+    });
     if (!user) throw new HttpError(401, 'token necunoscut');
     // Butonul „Test” al unor aplicații verifică adresa cu GET: răspundem că e bună, fără date.
     if (req.method === 'GET' || req.method === 'HEAD') {

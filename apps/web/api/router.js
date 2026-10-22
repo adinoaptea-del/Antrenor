@@ -81,9 +81,28 @@ var init_env = __esm({
 function headers(extra = {}) {
   return { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json", ...extra };
 }
-async function call(method, path, body, extra = {}) {
+function missingOptionalColumn(table, errText2) {
+  for (const c2 of OPTIONAL_COLUMNS[table] ?? []) {
+    if (new RegExp(`'${c2}' column|column "?${c2}"? (of relation "?${table}"? )?does not exist|\\.${c2} does not exist`).test(errText2)) return c2;
+  }
+  return null;
+}
+function stripColumn(body, col) {
+  const strip = (r2) => {
+    if (!r2 || typeof r2 !== "object" || Array.isArray(r2)) return r2;
+    const { [col]: _gone, ...rest } = r2;
+    return rest;
+  };
+  return Array.isArray(body) ? body.map(strip) : strip(body);
+}
+async function call(method, path, body, extra = {}, retried = []) {
   const res = await fetch(`${ENV.supabaseUrl()}/rest/v1/${path}`, { method, headers: headers(extra), body: body === void 0 ? void 0 : JSON.stringify(body) });
-  if (!res.ok) throw new Error(`db ${method} ${path} \u2192 ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text2 = await res.text();
+    const col = body !== void 0 && res.status === 400 ? missingOptionalColumn(path.split("?")[0], text2) : null;
+    if (col && !retried.includes(col)) return call(method, path, stripColumn(body, col), extra, [...retried, col]);
+    throw new Error(`db ${method} ${path} \u2192 ${res.status}: ${text2}`);
+  }
   if (res.status === 204) return void 0;
   const text = await res.text();
   return text ? JSON.parse(text) : void 0;
@@ -127,10 +146,12 @@ async function remove(table, filters) {
   const q4 = params(filters);
   await call("DELETE", `${table}?${q4.toString()}`, void 0, { prefer: "return=minimal" });
 }
+var OPTIONAL_COLUMNS;
 var init_db = __esm({
   "server/_lib/db.ts"() {
     "use strict";
     init_env();
+    OPTIONAL_COLUMNS = { workouts_planned: ["flags"], packets: ["context_hash"] };
   }
 });
 
@@ -5486,6 +5507,50 @@ var init_load = __esm({
   }
 });
 
+// src/calendar/flags.ts
+function makeFlags(origin, w, change_reason, weather) {
+  return { origin, manual_override: MANUAL.has(origin), weather_swap: origin === "vreme" ? weather ?? { reason: "" } : null, original_slot: w.original?.date ?? w.date, change_reason };
+}
+function legacyFlags(w) {
+  const n2 = w.note ?? "";
+  const slot = w.original?.date ?? null;
+  const f = (origin, weather = null) => ({ origin, manual_override: MANUAL.has(origin), weather_swap: weather, original_slot: slot, change_reason: n2 || null });
+  if (/^mutată de tine/.test(n2)) return f("mutare");
+  if (/^pusă înapoi/.test(n2)) return f("pus_inapoi");
+  if (/^făcută în ziua din plan \(vremea/.test(n2)) return f("vreme_revenit");
+  if (/^vremea/.test(n2)) return f("vreme", { reason: n2.replace(/^vremea:\s*/, "").split(";")[0] ?? "" });
+  if (/^plecat/.test(n2)) return f("plecat");
+  if (/^ușurată:/.test(n2)) return f("usurare");
+  if (/^ușoară la cererea ta/.test(n2)) return f("usor");
+  if (/^varianta aleasă de tine/.test(n2) || w.suggestion?.accepted === true) return f("varianta");
+  return null;
+}
+function stateOf(w) {
+  const s = rawState(w);
+  if (!s) return null;
+  if (NEEDS_ORIGINAL.has(s.origin) && !w.original) return null;
+  return s;
+}
+function rawState(w) {
+  return w.flags !== void 0 ? w.flags : legacyFlags(w);
+}
+var MANUAL, NEEDS_ORIGINAL, isMovedByAthlete, isWeatherSwapped, isAwayChange, isEasedBySystem, lockedForAutomation;
+var init_flags = __esm({
+  "src/calendar/flags.ts"() {
+    "use strict";
+    MANUAL = /* @__PURE__ */ new Set(["mutare", "usor", "varianta", "pus_inapoi"]);
+    NEEDS_ORIGINAL = /* @__PURE__ */ new Set(["mutare", "vreme", "usurare", "usor"]);
+    isMovedByAthlete = (w) => stateOf(w)?.origin === "mutare";
+    isWeatherSwapped = (w) => stateOf(w)?.origin === "vreme";
+    isAwayChange = (w) => rawState(w)?.origin === "plecat";
+    isEasedBySystem = (w) => stateOf(w)?.origin === "usurare";
+    lockedForAutomation = (w) => {
+      const s = rawState(w);
+      return !!s && (s.manual_override || s.origin === "vreme");
+    };
+  }
+});
+
 // src/calendar/run-modules.ts
 function moduleMinutes(m) {
   return m.warm + m.count * m.work + Math.max(0, m.count - 1) * m.rest + m.cool;
@@ -5798,14 +5863,17 @@ function moveWorkout(plan, id, date, today, at, doneIds = [], ctx = {}) {
   const opt = moveOptions(plan, id, today, doneIds, ctx).find((o) => o.date === date);
   if (!opt) throw new Error("se poate muta doar o \u0219edin\u021B\u0103 care urmeaz\u0103, pe alt\u0103 zi din aceea\u0219i s\u0103pt\u0103m\xE2n\u0103");
   if (!opt.ok) throw new Error(`ziua aleas\u0103 ${opt.reason}`);
-  return withOriginal(w, { ...w, date, note: `mutat\u0103 de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}` }, at);
+  const note = `mutat\u0103 de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}`;
+  const next = withOriginal(w, { ...w, date, note }, at);
+  return { ...next, flags: makeFlags("mutare", next, note) };
 }
 function easyWorkout(w, at) {
   const intense = w.type === "calitate" || w.type === "brick" || w.targetZones.some((z) => z >= 3);
   if (!active(w)) throw new Error("\u0219edin\u021Ba nu mai e activ\u0103");
   if (w.type === "lung") {
     const minutes = Math.max(30, Math.round(w.plannedMinutes * 0.75 / 5) * 5);
-    return withOriginal(w, { ...w, plannedMinutes: minutes, targetZones: [1, 2], intervals: void 0, key: false, structure: `${minutes} min constant, Z1\u2013Z2`, note: "u\u0219oar\u0103 la cererea ta: \u221225%, f\u0103r\u0103 final rapid" }, at);
+    const n3 = withOriginal(w, { ...w, plannedMinutes: minutes, targetZones: [1, 2], intervals: void 0, key: false, structure: `${minutes} min constant, Z1\u2013Z2`, note: "u\u0219oar\u0103 la cererea ta: \u221225%, f\u0103r\u0103 final rapid" }, at);
+    return { ...n3, flags: makeFlags("usor", n3, n3.note ?? null) };
   }
   if (!intense) throw new Error("\u0219edin\u021Ba e deja u\u0219oar\u0103");
   const swim = w.sport === "inot";
@@ -5818,7 +5886,8 @@ function easyWorkout(w, at) {
     structure: swim ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : `${w.plannedMinutes} min u\u0219or, s\u0103 po\u021Bi vorbi`,
     note: "u\u0219oar\u0103 la cererea ta: f\u0103r\u0103 intensitate azi; progresia a\u0219teapt\u0103"
   };
-  return withOriginal(w, fitStructure(next), at);
+  const n2 = withOriginal(w, fitStructure(next), at);
+  return { ...n2, flags: makeFlags("usor", n2, n2.note ?? null) };
 }
 function sportSwapBlock(w) {
   if (!active(w)) return "\u0219edin\u021Ba nu mai e activ\u0103";
@@ -5874,9 +5943,11 @@ function applyAway(plan, away, today, at, doneIds = [], blocked = []) {
         subDays.add(day2);
         const minutes = Math.min(w.plannedMinutes, w.sport === "bicicleta" ? 45 : 40);
         hasRun = true;
-        changed.push(withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD3[w.sport]}` }, at));
+        const n2 = withOriginal(w, { ...w, sport: "alergare", type: "z2", key: false, plannedMinutes: minutes, targetZones: [2], intervals: void 0, structure: `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`, note: `${label}: alergare u\u0219oar\u0103 \xEEn loc de ${SPORT_WORD3[w.sport]}` }, at);
+        changed.push({ ...n2, flags: makeFlags("plecat", n2, n2.note ?? null) });
       } else {
-        changed.push(withOriginal(w, { ...w, status: "anulat_sistem", note: `${label}: ${SPORT_WORD3[w.sport]} anulat` }, at));
+        const n2 = withOriginal(w, { ...w, status: "anulat_sistem", note: `${label}: ${SPORT_WORD3[w.sport]} anulat` }, at);
+        changed.push({ ...n2, flags: makeFlags("plecat", n2, n2.note ?? null) });
       }
     }
   }
@@ -5890,9 +5961,9 @@ function keeps(w, ce) {
 }
 function restoreAway(plan, away, today, at) {
   const from = away.dela < today ? today : away.dela;
-  return plan.filter((w) => w.original && (w.note ?? "").startsWith(AWAY_NOTE) && w.original.date >= from && w.original.date <= away.panala && w.date >= today).map((w) => {
+  return plan.filter((w) => w.original && isAwayChange(w) && w.original.date >= from && w.original.date <= away.panala && w.date >= today).map((w) => {
     const o = w.original;
-    return { ...w, sport: o.sport ?? w.sport, date: o.date, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, status: o.status, intervals: o.intervals ?? void 0, note: void 0, original: null, changedAt: at };
+    return { ...w, sport: o.sport ?? w.sport, date: o.date, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, status: o.status, intervals: o.intervals ?? void 0, note: void 0, original: null, flags: null, changedAt: at };
   });
 }
 function fixedBonus(fixed, day2, sport, type) {
@@ -5906,6 +5977,7 @@ var sameShape, DAY, active, SPORT_WORD3, SPORT_NAME, SWAP_SPORTS, AWAY_LABEL, AW
 var init_actions = __esm({
   "src/calendar/actions.ts"() {
     "use strict";
+    init_flags();
     init_safety();
     init_dates();
     init_validate();
@@ -7126,7 +7198,8 @@ function mergeWellness(rows) {
 }
 function sameSession(a, b) {
   if (a.date !== b.date || a.sport !== b.sport) return false;
-  if (a.source && b.source && a.source === b.source) return false;
+  if (a.id === b.id) return true;
+  if (a.source && b.source && a.source === b.source) return sameSessionSameSource(a, b);
   const sa = hmMin(a.startLocal);
   const sb = hmMin(b.startLocal);
   if (sa != null && sb != null) {
@@ -7136,6 +7209,19 @@ function sameSession(a, b) {
     return overlap >= 0.6 * Math.max(1, Math.min(da, db));
   }
   return Math.abs(a.minutes - b.minutes) <= 3 && a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) < 0.3;
+}
+function sameSessionSameSource(a, b) {
+  if (a.externalId && b.externalId && a.externalId === b.externalId) return true;
+  const sa = hmMin(a.startLocal);
+  const sb = hmMin(b.startLocal);
+  if (sa == null || sb == null || Math.abs(sa - sb) > 3) return false;
+  const da = a.details?.elapsedMin ?? a.minutes;
+  const db = b.details?.elapsedMin ?? b.minutes;
+  const overlap = Math.min(sa + da, sb + db) - Math.max(sa, sb);
+  if (overlap < 0.9 * Math.max(1, da, db)) return false;
+  if (Math.abs(a.minutes - b.minutes) > Math.max(3, 0.05 * Math.max(a.minutes, b.minutes))) return false;
+  if (a.distanceKm != null && b.distanceKm != null && Math.abs(a.distanceKm - b.distanceKm) > Math.max(0.3, 0.03 * Math.max(a.distanceKm, b.distanceKm))) return false;
+  return true;
 }
 function pickRecording(a, b) {
   const fields2 = (x) => Object.values(x).filter((v) => v != null).length;
@@ -7725,10 +7811,10 @@ var init_labs_compare = __esm({
 
 // src/calendar/regen-carry.ts
 function userAdjustment(w) {
-  const n2 = w.note ?? "";
-  if (/^ușoară la cererea ta/.test(n2)) return "usor";
-  if (/^mutată de tine/.test(n2)) return "muta";
-  if (/^varianta aleasă de tine/.test(n2) || w.suggestion?.accepted === true) return "varianta";
+  const o = stateOf(w)?.origin;
+  if (o === "usor") return "usor";
+  if (o === "mutare") return "muta";
+  if (o === "varianta" || w.suggestion?.accepted === true) return "varianta";
   return null;
 }
 function carryAdjustments(candidate, oldPlan, from, today, at) {
@@ -7764,7 +7850,7 @@ function carryAdjustments(candidate, oldPlan, from, today, at) {
         plan[i] = moveWorkout(plan, c2.id, w.date, today, at);
         kept.push(`${label}: r\u0103m\xE2ne mutat\u0103 pe ${DAY2[weekday(w.date)]}`);
       } else {
-        const next = { ...c2, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: void 0, note: w.note, ...w.suggestion ? { suggestion: w.suggestion } : {} };
+        const next = { ...c2, sport: w.sport, type: w.type, key: w.key, plannedMinutes: w.plannedMinutes, targetZones: [...w.targetZones], structure: w.structure, intervals: void 0, note: w.note, flags: makeFlags("varianta", c2, w.note ?? null), ...w.suggestion ? { suggestion: w.suggestion } : {} };
         plan[i] = withOriginal(c2, next, at);
         kept.push(`${label}: r\u0103m\xE2ne varianta aleas\u0103 de tine (${w.plannedMinutes} min)`);
       }
@@ -7793,6 +7879,7 @@ var init_regen_carry = __esm({
   "src/calendar/regen-carry.ts"() {
     "use strict";
     init_dates();
+    init_flags();
     init_actions();
     DAY2 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
     SPORT2 = { inot: "\xEEnot", bicicleta: "biciclet\u0103", alergare: "alergare", forta: "for\u021B\u0103", mers: "mers" };
@@ -8637,8 +8724,8 @@ function weatherSwap(plan, a, b, today, at, ctx = {}) {
       if (dayBlock(after2.filter((w) => w.id !== i.id), iNew, bad.date, ctx)) continue;
       const why = `${DAY3[weekday(good.date)]} frumos (${describe(good.w, "bun")}), ${DAY3[weekday(bad.date)]} ${describe(bad.w, "rau")}`;
       const changed = [
-        withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[i.sport]}` }, at),
-        withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[o.sport]}` }, at)
+        weatherStamp(withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[i.sport]}` }, at), why),
+        weatherStamp(withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversat\u0103 cu ${WHAT[o.sport]}` }, at), why)
       ];
       const G = dayWord(good.date, today);
       const B = dayWord(bad.date, today);
@@ -8651,11 +8738,12 @@ function weatherSwap(plan, a, b, today, at, ctx = {}) {
 }
 function undoWeatherSwap(plan, id, today, at) {
   const w = plan.find((x) => x.id === id);
-  if (!w || !(w.note ?? "").startsWith(WEATHER_NOTE) || !w.original) throw new Error("\u0219edin\u021Ba n-a fost mutat\u0103 de vreme");
-  const partner = plan.find((x) => x.id !== w.id && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === w.date && x.date === w.original.date);
+  if (!w || !isWeatherSwapped(w) || !w.original) throw new Error("\u0219edin\u021Ba n-a fost mutat\u0103 de vreme");
+  const partner = plan.find((x) => x.id !== w.id && isWeatherSwapped(x) && x.original?.date === w.date && x.date === w.original.date);
   const back = (x) => {
     if (x.original.date < today) throw new Error("ziua ini\u021Bial\u0103 a trecut");
-    return withOriginal(x, { ...x, date: x.original.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan" }, at);
+    const n2 = withOriginal(x, { ...x, date: x.original.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan" }, at);
+    return { ...n2, flags: makeFlags("pus_inapoi", n2, n2.note ?? null) };
   };
   return partner ? [back(w), back(partner)] : [back(w)];
 }
@@ -8667,25 +8755,28 @@ function reclaimWeatherSwaps(plan, activities, today, at) {
   const taken = /* @__PURE__ */ new Set();
   for (const a of m.unplanned) {
     if (a.date > today) continue;
-    const w = live2.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && (x.note ?? "").startsWith(WEATHER_NOTE) && x.original?.date === a.date && x.date !== a.date);
+    const w = live2.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && isWeatherSwapped(x) && x.original?.date === a.date && x.date !== a.date);
     if (!w) continue;
     taken.add(w.id);
-    out.push(withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at));
+    const n2 = withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at);
+    out.push({ ...n2, flags: makeFlags("vreme_revenit", n2, RECLAIM_NOTE) });
   }
   return out;
 }
-var WEATHER_NOTE, DAY3, WHAT, live, touchable, outdoor, indoor, describe, RECLAIM_NOTE;
+var WEATHER_NOTE, weatherStamp, DAY3, WHAT, live, touchable, outdoor, indoor, describe, RECLAIM_NOTE;
 var init_weather_swap = __esm({
   "src/calendar/weather-swap.ts"() {
     "use strict";
+    init_flags();
     init_dates();
     init_match();
     init_actions();
     WEATHER_NOTE = "vremea";
+    weatherStamp = (w, why) => ({ ...w, flags: makeFlags("vreme", w, w.note ?? null, { reason: why }) });
     DAY3 = ["luni", "mar\u021Bi", "miercuri", "joi", "vineri", "s\xE2mb\u0103t\u0103", "duminic\u0103"];
     WHAT = { inot: "\xEEnotul", bicicleta: "bicicleta", alergare: "alergarea", forta: "sala", mers: "mersul" };
     live = (w) => w.status === "planificat" || w.status === "mutat";
-    touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !/^(mutată de tine|pusă înapoi|vremea)/.test(w.note ?? "") && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
+    touchable = (w, ctx) => live(w) && !(ctx.done ?? []).includes(w.id) && !lockedForAutomation(w) && !/TEST/i.test(w.structure ?? "") && !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
     outdoor = (w, ctx) => w.sport === "bicicleta" && !ctx.noOutdoorBike || w.sport === "alergare";
     indoor = (w, ctx) => w.sport === "forta" || w.sport === "inot" && !ctx.swimOutdoors && !/ape libere/i.test(w.structure ?? "");
     describe = (d, v) => {
@@ -9014,7 +9105,7 @@ function decideDay(i) {
   else if (i.readiness) candidates.push({ level: i.readiness.verdict, reason: i.readiness.reason });
   const sessions = i.todayPlan.filter((w) => w.type !== "odihna" && w.status !== "sters");
   const coveredNote = (w) => /^(acoperită|gata pe azi)/.test(w.note ?? "");
-  const cancelled = sessions.filter((w) => w.status === "anulat_sistem" && !(w.note ?? "").startsWith("plecat") && !coveredNote(w));
+  const cancelled = sessions.filter((w) => w.status === "anulat_sistem" && !isAwayChange(w) && !coveredNote(w));
   const doneSet = new Set(i.doneIds ?? []);
   const done = sessions.filter((w) => doneSet.has(w.id));
   const active6 = sessions.filter((w) => (w.status === "planificat" || w.status === "mutat") && !doneSet.has(w.id));
@@ -9064,6 +9155,7 @@ var DAY_TEXT, RANK3;
 var init_day = __esm({
   "src/calendar/day.ts"() {
     "use strict";
+    init_flags();
     init_safety();
     DAY_TEXT = {
       verde: { title: "Zi verde", action: "Faci antrenamentul din plan." },
@@ -9546,7 +9638,7 @@ var init_oura = __esm({
 });
 
 // server/_lib/tokens.ts
-import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { createHmac as createHmac2, randomBytes as randomBytes3, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 function providerConfig(p) {
   const redirect2 = `${ENV.appUrl()}/api/oauth/${p}/callback`;
   switch (p) {
@@ -9628,21 +9720,29 @@ async function disconnectAll(userId) {
   for (const r2 of rows) await disconnect(userId, r2.provider);
   return rows.map((r2) => r2.provider);
 }
-function signState(userId) {
-  const payload = `${userId.replace(/-/g, "")}.${Date.now().toString(36)}`;
+function newOAuthNonce() {
+  return randomBytes3(16).toString("base64url");
+}
+function signState(userId, provider, nonce, now = Date.now()) {
+  const payload = `${userId.replace(/-/g, "")}.${now.toString(36)}.${provider}.${nonce}`;
   const sig = createHmac2("sha256", ENV.stateSecret()).update(payload).digest("base64url").slice(0, 22);
   return `${payload}.${sig}`;
 }
-function verifyState(state) {
+function verifyState(state, provider, cookieNonce, now = Date.now()) {
   if (!state) throw new Error("conectarea nu a primit \xEEnapoi codul de siguran\u021B\u0103 (state); apas\u0103 din nou Conecteaz\u0103");
-  const [id, ts, sig] = state.split(".");
-  if (!id || !ts || !sig || id.length !== 32) throw new Error("codul de siguran\u021B\u0103 (state) primit \xEEnapoi e modificat; apas\u0103 din nou Conecteaz\u0103");
-  const expected = createHmac2("sha256", ENV.stateSecret()).update(`${id}.${ts}`).digest("base64url").slice(0, 22);
-  if (expected.length !== sig.length || !timingSafeEqual2(Buffer.from(expected), Buffer.from(sig))) throw new Error("codul de siguran\u021B\u0103 (state) nu se potrive\u0219te; apas\u0103 din nou Conecteaz\u0103");
-  if (Date.now() - parseInt(ts, 36) > 15 * 6e4) throw new Error("au trecut peste 15 minute de la Conecteaz\u0103; apas\u0103 din nou");
+  const parts2 = state.split(".");
+  if (parts2.length !== 5) throw new Error("codul de siguran\u021B\u0103 (state) primit \xEEnapoi e modificat sau vechi; apas\u0103 din nou Conecteaz\u0103");
+  const [id, ts, prov, nonce, sig] = parts2;
+  if (id.length !== 32 || !nonce) throw new Error("codul de siguran\u021B\u0103 (state) primit \xEEnapoi e modificat; apas\u0103 din nou Conecteaz\u0103");
+  const expected = createHmac2("sha256", ENV.stateSecret()).update(`${id}.${ts}.${prov}.${nonce}`).digest("base64url").slice(0, 22);
+  if (!eqSafe(expected, sig)) throw new Error("codul de siguran\u021B\u0103 (state) nu se potrive\u0219te; apas\u0103 din nou Conecteaz\u0103");
+  if (prov !== provider) throw new Error("codul de siguran\u021B\u0103 e pentru alt produc\u0103tor; apas\u0103 din nou Conecteaz\u0103");
+  if (now - parseInt(ts, 36) > 15 * 6e4) throw new Error("au trecut peste 15 minute de la Conecteaz\u0103; apas\u0103 din nou");
+  if (!cookieNonce || !eqSafe(cookieNonce, nonce))
+    throw new Error("autorizarea n-a pornit din AIRON pe acest telefon sau linkul e deja folosit; apas\u0103 din nou Conecteaz\u0103 \u0219i autorizeaz\u0103 \xEEn aceea\u0219i fereastr\u0103");
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }
-var PROVIDERS;
+var PROVIDERS, OAUTH_COOKIE, eqSafe;
 var init_tokens = __esm({
   "server/_lib/tokens.ts"() {
     "use strict";
@@ -9654,6 +9754,8 @@ var init_tokens = __esm({
     init_strava();
     init_oura();
     PROVIDERS = ["whoop", "strava", "oura"];
+    OAUTH_COOKIE = "airon_oauth";
+    eqSafe = (a, b) => a.length === b.length && timingSafeEqual2(Buffer.from(a), Buffer.from(b));
   }
 });
 
@@ -9844,7 +9946,7 @@ async function buildMe(userId, today) {
     prepStart,
     baseline,
     admin: u2.role === "admin" ? { providers: { whoop: providerConfigured("whoop"), strava: providerConfigured("strava"), oura: providerConfigured("oura") }, appUrl: ENV.appUrl() } : null,
-    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => {
+    profile: { sex: u2.sex ?? null, birthYear: u2.birth_year ?? null, heightCm: u2.height_cm ?? null, city: u2.city ?? null, appleConnected: !!u2.apple_token, androidConnected: !!u2.android_token, appleLastSync: appleRow?.synced_at ?? null, appleLast: (() => {
       const l = lastSyncRows.find((r2) => r2.provider === "apple");
       return l ? { ok: l.ok, detail: l.detail, at: l.ran_at } : null;
     })(), androidLastSync: lastSyncRows.find((r2) => r2.provider === "android" && r2.ok && !String(r2.detail ?? "").startsWith("test"))?.ran_at ?? null, androidLast: androidLast ? { ok: androidLast.ok, detail: androidLast.detail, at: androidLast.ran_at } : null },
@@ -11271,14 +11373,68 @@ var init_bundle = __esm({
   }
 });
 
+// server/_lib/ai-budget.ts
+import { createHash } from "node:crypto";
+function stableStringify(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  const o = v;
+  return `{${Object.keys(o).filter((k) => !VOLATILE.has(k) && o[k] !== void 0).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
+}
+function contextHash(parts2) {
+  return createHash("sha256").update(stableStringify(parts2)).digest("hex").slice(0, 32);
+}
+function manualDecision(i) {
+  if (i.sameContextAsLastMessage) return { run: false, reason: "acelasi_context", message: "nimic nou: mesajul de azi e scris pe exact acelea\u0219i date" };
+  if (i.used >= i.cap) return { run: false, reason: "plafon", message: `ai cerut azi ${i.used} actualiz\u0103ri ale antrenorului (limita zilei e ${i.cap}); mesajul de acum r\u0103m\xE2ne valabil, iar diminea\u021Ba \u0219i seara vin automat` };
+  return { run: true };
+}
+function manualCap() {
+  const n2 = Number(process.env.AI_MANUAL_PER_DAY ?? "6");
+  return Number.isInteger(n2) && n2 >= 1 ? n2 : 6;
+}
+async function manualRunsToday(userId, today) {
+  try {
+    return (await select("agent_events", { user_id: `eq.${userId}`, event_key: `like.manual:${today}:*` }, { select: "event_key", limit: 100 })).length;
+  } catch {
+    return 0;
+  }
+}
+async function recordManualRun(userId, today, event) {
+  await insertIgnore("agent_events", { user_id: userId, event_key: `manual:${today}:${event}:${Date.now().toString(36)}` }, "user_id,event_key").catch(() => void 0);
+}
+async function sameContextAsLastMessage(userId, event, dayStartIso, hash) {
+  try {
+    const msg2 = await one("messages", { user_id: `eq.${userId}`, kind: `eq.${event}`, created_at: `gte.${dayStartIso}` }, { order: "created_at.desc" });
+    if (!msg2?.packet_id) return false;
+    const p = await one("packets", { id: `eq.${msg2.packet_id}`, user_id: `eq.${userId}` }, { select: "context_hash" });
+    return !!p?.context_hash && p.context_hash === hash;
+  } catch {
+    return false;
+  }
+}
+var VOLATILE, AiSkip;
+var init_ai_budget = __esm({
+  "server/_lib/ai-budget.ts"() {
+    "use strict";
+    init_db();
+    VOLATILE = /* @__PURE__ */ new Set(["ora_locala"]);
+    AiSkip = class extends Error {
+    };
+  }
+});
+
 // server/_lib/agents.ts
 async function loadAgentFiles(userId) {
   const rows = await select("agent_files", { user_id: `eq.${userId}` });
   return Object.fromEntries(rows.map((r2) => [r2.agent, r2.content]));
 }
 async function loadJournal(userId, today) {
-  const rows = await select("journal", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -14)}` }, { order: "date.asc", limit: 200 });
-  return rows.filter((r2) => journalForAI(r2.entry)).map((r2) => `${r2.date}: ${r2.entry}`);
+  const rows = await select("journal", { user_id: `eq.${userId}`, date: `gte.${addDays(today, -14)}`, or: JOURNAL_FILTER }, { order: "date.desc,created_at.desc", limit: 200 });
+  return recentJournal(rows, 200);
+}
+function recentJournal(newestFirst, max) {
+  return newestFirst.filter((r2) => journalForAI(r2.entry)).slice(0, max).reverse().map((r2) => `${r2.date}: ${r2.entry}`);
 }
 function journalForAI(entry) {
   return /^(calendar|declarat de sportiv|plecat |migrare )/.test(entry);
@@ -11304,7 +11460,7 @@ function decisionRecord(result, codeDecision, changes) {
     schimbari_calendar: changes
   };
 }
-async function runAgents(userId, today, event, force = false) {
+async function runAgents(userId, today, event, force = false, opts = {}) {
   if (!await hasConsent(userId)) return null;
   const user = await loadUser(userId);
   const dayStart = localDayStartUtc(today, user.tz || "Europe/Bucharest");
@@ -11315,12 +11471,12 @@ async function runAgents(userId, today, event, force = false) {
   const lockKey = `run:${event}:${today}`;
   if (!await acquireLock(userId, lockKey, 10 * 6e4)) return null;
   try {
-    return await runAgentsLocked(userId, today, event, force);
+    return await runAgentsLocked(userId, today, event, force, opts.manual === true);
   } finally {
     await releaseLock(userId, lockKey);
   }
 }
-async function runAgentsLocked(userId, today, event, force) {
+async function runAgentsLocked(userId, today, event, force, manual = false) {
   const user = await loadUser(userId);
   const { input, planId } = await collect(userId, today, event);
   input.storedScores = await loadStoredScores(userId).catch(() => null);
@@ -11329,9 +11485,16 @@ async function runAgentsLocked(userId, today, event, force) {
   if (me?.day && !me.day.ask) packet.decizia_aplicatiei = { nivel: me.day.level, titlu: me.day.title, ce_faci: me.day.action, motiv: forAI(me.day.reason) };
   if (event === "dimineata" && !force && me?.day?.ask) return null;
   if (event === "dimineata" && !force && packet.readiness.verdict_cod.intrebare) return null;
-  const [packetRow] = await insert("packets", { user_id: userId, event, packet });
-  const packetId = packetRow.id;
   const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
+  const hash = contextHash({ packet, journal, event, files, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead(), mode: ENV.agentMode() } });
+  if (manual) {
+    const dayStart = localDayStartUtc(today, user.tz || "Europe/Bucharest");
+    const d = manualDecision({ used: await manualRunsToday(userId, today), cap: manualCap(), sameContextAsLastMessage: await sameContextAsLastMessage(userId, event, dayStart, hash) });
+    if (!d.run) throw new AiSkip(d.message);
+    await recordManualRun(userId, today, event);
+  }
+  const [packetRow] = await insert("packets", { user_id: userId, event, packet, context_hash: hash });
+  const packetId = packetRow.id;
   const usageWrites = [];
   let client;
   try {
@@ -11454,7 +11617,7 @@ async function realign(userId, today) {
   await runAgents(userId, today, "dimineata", true);
   return true;
 }
-var FILE_MAX_LINES, TWO_PHASE_SINCE, missingTable;
+var FILE_MAX_LINES, JOURNAL_FILTER, TWO_PHASE_SINCE, missingTable;
 var init_agents = __esm({
   "server/_lib/agents.ts"() {
     "use strict";
@@ -11474,7 +11637,9 @@ var init_agents = __esm({
     init_bundle();
     init_adapt();
     init_dates();
+    init_ai_budget();
     FILE_MAX_LINES = 30;
+    JOURNAL_FILTER = "(entry.like.calendar*,entry.like.declarat*de*sportiv*,entry.like.plecat*,entry.like.migrare*)";
     TWO_PHASE_SINCE = "2026-10-20T15:00:00Z";
     missingTable = (e) => /does not exist|relation .*agent_events|PGRST20[45]/i.test(e instanceof Error ? e.message : String(e));
   }
@@ -12017,7 +12182,9 @@ function toPlanned(r2) {
     note: r2.note ?? void 0,
     suggestion: r2.suggestion ?? null,
     original: r2.original ?? null,
-    changedAt: r2.changed_at ?? null
+    changedAt: r2.changed_at ?? null,
+    // Coloana lipsește pe o schemă sub 13: undefined → starea se citește din notă.
+    ...r2.flags !== void 0 ? { flags: r2.flags } : {}
   };
 }
 function toWorkoutRow(w, userId, planId) {
@@ -12040,7 +12207,10 @@ function toWorkoutRow(w, userId, planId) {
     suggestion: w.suggestion ?? null,
     // Forma din plan de dinainte de schimbări (eticheta „Actualizat”); null = ședința e cum a fost planificată.
     original: w.original ?? null,
-    changed_at: w.changedAt ?? null
+    changed_at: w.changedAt ?? null,
+    // Starea tipizată (A2), mereu scrisă (o cheie lipsă dintr-un lot ar lăsa coloana neatinsă la upsert);
+    // db.ts o scoate dacă schema n-are încă coloana.
+    flags: w.flags ?? null
   };
 }
 function toSourceActivity(r2) {
@@ -12448,10 +12618,10 @@ async function handler(req, res) {
     const password = body.password ?? "";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "adresa de e-mail nu pare valid\u0103");
     if (password.length < 8) throw new HttpError(400, "parola: minimum 8 caractere");
-    const existing = await select("users", {}, { select: "id" });
+    const existing = await select("users", {}, { select: "id,approved" });
     const max = ENV.maxUsers();
     if (!Number.isInteger(max) || max < 1) throw new HttpError(500, "MAX_USERS trebuie s\u0103 fie un num\u0103r \xEEntreg pozitiv");
-    if (existing.length >= max) throw new HttpError(403, `s-au ocupat toate cele ${max} locuri`);
+    if (approvedCount(existing) >= max) throw new HttpError(403, `s-au ocupat toate cele ${max} locuri`);
     if (existing.length > 0) {
       const code = await inviteCode();
       const given = String(body.invite ?? "");
@@ -12472,6 +12642,9 @@ async function handler(req, res) {
   } catch (e) {
     fail(res, e);
   }
+}
+function approvedCount(rows) {
+  return rows.filter((r2) => r2.approved === true).length;
 }
 
 // server/account/password.ts
@@ -12509,6 +12682,7 @@ async function handler2(req, res) {
 init_auth();
 init_collect();
 init_agents();
+init_ai_budget();
 async function handler3(req, res) {
   let beat = null;
   try {
@@ -12531,9 +12705,9 @@ async function handler3(req, res) {
     if (!lock) out = { skipped: "antrenorul scrie deja mesajul; apare \xEEn c\xE2teva clipe" };
     else
       try {
-        out = await runAgents(u.id, todayIn(user.tz), event, body.force ?? true) ?? { skipped: "nimic nou: mesajul de azi e scris pe datele de acum" };
+        out = await runAgents(u.id, todayIn(user.tz), event, body.force ?? true, { manual: true }) ?? { skipped: "nimic nou: mesajul de azi e scris pe datele de acum" };
       } catch (e) {
-        out = { error: e instanceof Error ? e.message : String(e) };
+        out = e instanceof AiSkip ? { skipped: e.message } : { error: e instanceof Error ? e.message : String(e) };
       } finally {
         await releaseLock(u.id, lockKey);
       }
@@ -12553,7 +12727,7 @@ init_env();
 init_tokens();
 
 // src/schema-version.ts
-var SCHEMA_VERSION = 12;
+var SCHEMA_VERSION = 13;
 
 // server/config.ts
 async function handler4(_req, res) {
@@ -12571,7 +12745,7 @@ async function handler4(_req, res) {
     let users = 0;
     let upgrade = false;
     try {
-      const r2 = await fetch(`${supabaseUrl}/rest/v1/users?select=id`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: "count=exact", range: "0-0" } });
+      const r2 = await fetch(`${supabaseUrl}/rest/v1/users?select=id&approved=eq.true`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: "count=exact", range: "0-0" } });
       ready = r2.ok;
       users = Number(r2.headers.get("content-range")?.split("/")[1] ?? 0) || 0;
       if (ready) {
@@ -12653,15 +12827,87 @@ async function reassessGoal(userId, today, trigger) {
   return entry;
 }
 
+// server/_lib/jobs.ts
+init_db();
+
+// src/util/fanout.ts
+async function fanOut(items, opts, fn) {
+  const now = opts.now ?? Date.now;
+  const start = now();
+  const done = [];
+  const notStarted = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      if (now() - start >= opts.budgetMs) break;
+      const item = items[next++];
+      try {
+        await fn(item);
+      } catch {
+      }
+      done.push(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(opts.limit, items.length)) }, worker));
+  for (let i = next; i < items.length; i++) notStarted.push(items[i]);
+  return { done, notStarted };
+}
+function backoffMs(failures) {
+  if (failures <= 0) return 0;
+  return Math.min(6 * 36e5, 15 * 6e4 * 2 ** (failures - 1));
+}
+function jobDue(s, nowMs) {
+  if (!s?.next_try_at) return true;
+  return Date.parse(s.next_try_at) <= nowMs;
+}
+function stalestFirst(items, stateOf2) {
+  const key3 = (t) => {
+    const ok2 = stateOf2(t)?.last_ok_at;
+    return ok2 ? Date.parse(ok2) : -Infinity;
+  };
+  return [...items].sort((a, b) => key3(a) - key3(b));
+}
+
+// server/_lib/jobs.ts
+async function loadJobs(job) {
+  try {
+    const rows = await select("athlete_jobs", { job: `eq.${job}` }, { limit: 1e3 });
+    return Object.assign(new Map(rows.map((r2) => [r2.user_id, r2])), { ready: true });
+  } catch {
+    return Object.assign(/* @__PURE__ */ new Map(), { ready: false });
+  }
+}
+async function jobStarted(userId, job) {
+  await upsert("athlete_jobs", { user_id: userId, job, last_started_at: (/* @__PURE__ */ new Date()).toISOString() }, "user_id,job").catch(() => void 0);
+}
+async function jobFinished(userId, job, prev, error) {
+  const now = Date.now();
+  const failures = error ? (prev?.failures ?? 0) + 1 : 0;
+  const row = error ? { user_id: userId, job, last_error: error.slice(0, 300), failures, next_try_at: new Date(now + backoffMs(failures)).toISOString() } : { user_id: userId, job, last_ok_at: new Date(now).toISOString(), last_error: null, failures: 0, next_try_at: null };
+  await upsert("athlete_jobs", row, "user_id,job").catch(() => void 0);
+}
+async function jobRow(userId, job) {
+  try {
+    return (await select("athlete_jobs", { user_id: `eq.${userId}`, job: `eq.${job}` }, { limit: 1 }))[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+function recentlyStarted(row, nowMs, minMs) {
+  return !!row?.last_started_at && nowMs - Date.parse(row.last_started_at) < minMs;
+}
+
 // server/cron/evening.ts
 async function handler5(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,consents(health_data,withdrawn_at)" });
+    const jobs = await loadJobs("seara");
     const out = {};
-    for (const u of users) {
-      if (!consentActive(u.consents)) continue;
+    const eligible2 = stalestFirst(users.filter((u) => consentActive(u.consents)), (u) => jobs.get(u.id));
+    const r2 = await fanOut(eligible2, { limit: 3, budgetMs: 15e4 }, async (u) => {
       const today = todayIn(u.tz);
+      await jobStarted(u.id, "seara");
       try {
         const activity = await one("activities", { user_id: `eq.${u.id}`, date: `eq.${today}` });
         const evening = activity ? await runAgents(u.id, today, "dupa_antrenament") : null;
@@ -12670,11 +12916,14 @@ async function handler5(req, res) {
         const freq = weekday(today) === 6 ? await reevaluateFitnessDays(u.id, today).catch(() => null) : null;
         const vreme = await weatherSwapFor(u.id, today, "maine").catch(() => null);
         out[u.id] = { vreme, frecventa: freq, seara: evening ? evening.decision : activity ? "deja rulat" : "f\u0103r\u0103 \u0219edin\u021B\u0103", saptamanal: weekly ? weekly.decision : weekday(today) === 6 ? "deja rulat" : "-" };
+        await jobFinished(u.id, "seara", jobs.get(u.id), null);
       } catch (e) {
-        out[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
+        const msg2 = e instanceof Error ? e.message : String(e);
+        out[u.id] = { eroare: msg2 };
+        await jobFinished(u.id, "seara", jobs.get(u.id), msg2);
       }
-    }
-    json(res, 200, { ok: true, out });
+    });
+    json(res, 200, { ok: true, out, neprocesati: r2.notStarted.map((u) => u.id) });
   } catch (e) {
     fail(res, e);
   }
@@ -12827,7 +13076,7 @@ async function syncUser(userId, days = 3) {
         rows = activities.length;
       } else if (provider === "oura") {
         const { wellness, activities, others } = await pullOura(token, days);
-        await remove("activities", { user_id: `eq.${userId}`, source: "eq.oura", name: "like.*detectat automat*" }).catch(() => void 0);
+        await remove("activities", { user_id: `eq.${userId}`, source: "eq.oura", name: "like.*detectat automat*" }).catch((e) => console.error("cur\u0103\u021Benie oura", userId, e.message));
         await saveOthers(userId, others);
         if (wellness.length) await saveWellness(userId, wellness);
         if (activities.length) await upsert("activities", activities.map((a) => activityRow(userId, a)), "id");
@@ -12865,7 +13114,7 @@ function otherRows(userId, others, walkCols) {
   }));
 }
 
-// server/cron/morning.ts
+// server/_lib/morning.ts
 init_score2();
 init_agents();
 
@@ -12917,6 +13166,7 @@ init_agents();
 init_db();
 
 // src/calendar/outcomes.ts
+init_flags();
 init_dates();
 init_actions();
 init_validate();
@@ -12950,7 +13200,8 @@ function outcomeFeedback(plan, outcomes, now, today, at) {
         structure: target.type === "lung" ? `${minutes} min constant, Z1\u2013Z2` : swim ? "tehnic\u0103 \u0219i buc\u0103\u021Bi u\u0219oare" : `${minutes} min u\u0219or, s\u0103 po\u021Bi vorbi`,
         note: `u\u0219urat\u0103: ${recent.length} \u0219edin\u021Be nef\u0103cute sau par\u021Biale din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join("/")} \xEEn ultimele 7 zile (declarat de tine); revine la plan dup\u0103 o \u0219edin\u021B\u0103 bine tolerat\u0103`
       });
-      changed.push(withOriginal(target, easy, at));
+      const eased = withOriginal(target, easy, at);
+      changed.push({ ...eased, flags: makeFlags("usurare", eased, eased.note ?? null) });
       decision = "modificat";
       nextLine = `Urm\u0103toarea \u0219edin\u021B\u0103 grea (${SPORT3[target.sport]}, ${DAY4[weekday(target.date)]} ${dm2(target.date)}) devine u\u0219oar\u0103, deoarece ai declarat ${recent.length} \u0219edin\u021Be nef\u0103cute din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join("/")} \xEEn ultimele 7 zile.`;
     } else nextLine = `\xCEn urm\u0103toarele 7 zile nu ai nicio \u0219edin\u021B\u0103 grea: planul r\u0103m\xE2ne; ai declarat ${recent.length} \u0219edin\u021Be nef\u0103cute din oboseal\u0103/durere/boal\u0103, iar la bilan\u021Bul s\u0103pt\u0103m\xE2nal se reevalueaz\u0103 doza.`;
@@ -12973,7 +13224,7 @@ function restoreEased(plan, executions, today, at) {
   const byId = new Map(plan.map((w) => [w.id, w]));
   const out = [];
   for (const w of plan) {
-    if (!active5(w) || w.date < today || !w.original || !(w.note ?? "").startsWith("u\u0219urat\u0103:")) continue;
+    if (!active5(w) || w.date < today || !w.original || !isEasedBySystem(w)) continue;
     const since = (w.changedAt ?? "").slice(0, 10);
     const ok2 = executions.some((e) => {
       const p = byId.get(e.workoutId);
@@ -12981,7 +13232,7 @@ function restoreEased(plan, executions, today, at) {
     });
     if (!ok2) continue;
     const o = w.original;
-    out.push({ ...w, sport: o.sport ?? w.sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, intervals: o.intervals ?? void 0, note: void 0, original: null, changedAt: at });
+    out.push({ ...w, sport: o.sport ?? w.sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? void 0, key: o.key, intervals: o.intervals ?? void 0, note: void 0, original: null, flags: null, changedAt: at });
   }
   return out;
 }
@@ -13106,42 +13357,51 @@ async function bigEffortMorning(userId, today) {
   return changed.map((x) => `${x.id}: sugestie u\u0219oar\u0103 dup\u0103 efortul de ieri`);
 }
 
-// server/cron/morning.ts
+// server/_lib/morning.ts
 init_migrations();
 init_split();
 init_collect();
 init_dates();
 init_weather_swap2();
+async function morningFor(u, today) {
+  await syncUser(u.id, 3);
+  await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
+  await labsReminder(u.id, today).catch(() => false);
+  await (async () => {
+    const p = await loadPlan(u.id, addDays(today, -28), addDays(today, 400));
+    await runOnce(u.id, p.planId, today, MIGRATIONS.strengthSplit, p.workouts, async (plan) => {
+      const after2 = await ensureSplit(u.id, today, { planId: p.planId, workouts: plan });
+      return after2.filter((w, i) => w !== plan[i]);
+    });
+  })().catch(() => void 0);
+  if (u.goal && u.goal.startsWith("fit-")) await missedStrength(u.id, today).catch(() => []);
+  else await moduleProgression(u.id, today).catch(() => []);
+  await bigEffortMorning(u.id, today).catch(() => []);
+  await weatherSwapFor(u.id, today, "azi").catch(() => null);
+  const r2 = await runAgents(u.id, today, "dimineata");
+  return r2 ? { decizie: r2.decision, rutati: r2.routed, respinse: r2.rejected, schimbari: r2.changes.length } : "deja rulat";
+}
+
+// server/cron/morning.ts
 async function handler6(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
+    const jobs = await loadJobs("dimineata");
     const out = {};
-    for (const u of users) {
-      if (!consentActive(u.consents)) continue;
-      const today = todayIn(u.tz);
+    const eligible2 = stalestFirst(users.filter((u) => consentActive(u.consents)), (u) => jobs.get(u.id));
+    const r2 = await fanOut(eligible2, { limit: 3, budgetMs: 15e4 }, async (u) => {
+      await jobStarted(u.id, "dimineata");
       try {
-        await syncUser(u.id, 3);
-        await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
-        await labsReminder(u.id, today).catch(() => false);
-        await (async () => {
-          const p = await loadPlan(u.id, addDays(today, -28), addDays(today, 400));
-          await runOnce(u.id, p.planId, today, MIGRATIONS.strengthSplit, p.workouts, async (plan) => {
-            const after2 = await ensureSplit(u.id, today, { planId: p.planId, workouts: plan });
-            return after2.filter((w, i) => w !== plan[i]);
-          });
-        })().catch(() => void 0);
-        if (u.goal && u.goal.startsWith("fit-")) await missedStrength(u.id, today).catch(() => []);
-        else await moduleProgression(u.id, today).catch(() => []);
-        await bigEffortMorning(u.id, today).catch(() => []);
-        await weatherSwapFor(u.id, today, "azi").catch(() => null);
-        const r2 = await runAgents(u.id, today, "dimineata");
-        out[u.id] = r2 ? { decizie: r2.decision, rutati: r2.routed, respinse: r2.rejected, schimbari: r2.changes.length } : "deja rulat";
+        out[u.id] = await morningFor(u, todayIn(u.tz));
+        await jobFinished(u.id, "dimineata", jobs.get(u.id), null);
       } catch (e) {
-        out[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
+        const msg2 = e instanceof Error ? e.message : String(e);
+        out[u.id] = { eroare: msg2 };
+        await jobFinished(u.id, "dimineata", jobs.get(u.id), msg2);
       }
-    }
-    json(res, 200, { ok: true, out });
+    });
+    json(res, 200, { ok: true, out, neprocesati: r2.notStarted.map((u) => u.id) });
   } catch (e) {
     fail(res, e);
   }
@@ -13195,21 +13455,195 @@ async function importHistory(userId) {
 }
 
 // server/cron/sync.ts
+init_collect();
+
+// server/_lib/strava-inbox.ts
+init_db();
+init_tokens();
+
+// server/_lib/activity-delete.ts
+init_db();
+init_collect();
+init_score2();
+async function deleteActivities(userId, ids, today) {
+  if (!ids.length) return { removed: 0 };
+  const list = `in.(${ids.map((i) => `"${i.replace(/"/g, "")}"`).join(",")})`;
+  await remove("activities", { user_id: `eq.${userId}`, id: list });
+  await remove("other_activities", { user_id: `eq.${userId}`, id: list });
+  const u = await loadUser(userId);
+  const goal = u.goal && u.goal !== "full" ? u.goal : "70.3";
+  await rescore(userId, today, goal);
+  return { removed: ids.length };
+}
+
+// src/collector/providers/strava-webhook.ts
+var isId = (v) => typeof v === "number" && Number.isSafeInteger(v) && v > 0 || typeof v === "string" && /^\d{1,20}$/.test(v);
+function parseStravaEvent(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, why: "corp lips\u0103" };
+  const b = body;
+  if (b.object_type !== "activity" && b.object_type !== "athlete") return { ok: false, why: "object_type necunoscut" };
+  if (b.aspect_type !== "create" && b.aspect_type !== "update" && b.aspect_type !== "delete") return { ok: false, why: "aspect_type necunoscut" };
+  if (!isId(b.object_id) || !isId(b.owner_id) || !isId(b.subscription_id)) return { ok: false, why: "id-uri invalide" };
+  if (typeof b.event_time !== "number" || !Number.isFinite(b.event_time) || b.event_time <= 0) return { ok: false, why: "event_time invalid" };
+  let updates = null;
+  if (b.updates != null) {
+    if (typeof b.updates !== "object" || Array.isArray(b.updates)) return { ok: false, why: "updates invalid" };
+    updates = Object.fromEntries(Object.entries(b.updates).slice(0, 20).map(([k, v]) => [k.slice(0, 40), String(v).slice(0, 200)]));
+  }
+  return {
+    ok: true,
+    ev: { object_type: b.object_type, aspect_type: b.aspect_type, object_id: String(b.object_id), owner_id: String(b.owner_id), subscription_id: String(b.subscription_id), event_time: Math.floor(b.event_time), updates }
+  };
+}
+function subscriptionMatches(ev, expected) {
+  return !expected || ev.subscription_id === expected.trim();
+}
+function isDeauthorization(ev) {
+  return ev.object_type === "athlete" && ev.aspect_type === "update" && ev.updates?.authorized === "false";
+}
+function classifyDeleteCheck(status) {
+  if (status === 404) return "stearsa";
+  if (status != null && status >= 200 && status < 300) return "exista";
+  if (status === 401 || status === 403) return "acces_refuzat";
+  return "reincearca";
+}
+function deauthConfirmed(status) {
+  if (status === 401) return true;
+  if (status != null && status >= 200 && status < 300) return false;
+  return null;
+}
+
+// server/_lib/strava-inbox.ts
+async function enqueueStrava(ev, userId) {
+  try {
+    await insertIgnore("webhook_inbox", { provider: "strava", owner_id: ev.owner_id, object_type: ev.object_type, object_id: ev.object_id, aspect: ev.aspect_type, event_time: ev.event_time, updates: ev.updates, user_id: userId }, "provider,object_id,aspect,event_time");
+    return true;
+  } catch (e) {
+    if (/webhook_inbox|PGRST20[45]|does not exist/i.test(e instanceof Error ? e.message : String(e))) return false;
+    throw e;
+  }
+}
+async function apiStatus(url, token) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8e3);
+  try {
+    const r2 = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal: ctl.signal });
+    return r2.status;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var DEFAULT_DEPS = {
+  tokenOf: (userId) => accessToken(userId, "strava"),
+  deleter: deleteActivities,
+  forgetStrava: (userId) => remove("oauth_tokens", { user_id: `eq.${userId}`, provider: "eq.strava" })
+};
+async function processDelete(userId, objectId, today, deps = DEFAULT_DEPS) {
+  let token;
+  try {
+    token = await deps.tokenOf(userId);
+  } catch (e) {
+    return { done: false, error: `token: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!token) return { done: true, outcome: "neconectat: nimic de \u0219ters" };
+  const check = classifyDeleteCheck(await apiStatus(`https://www.strava.com/api/v3/activities/${objectId}`, token));
+  if (check === "exista") return { done: true, outcome: "ignorat: activitatea exist\u0103 \xEEnc\u0103 pe Strava" };
+  if (check === "acces_refuzat") return { done: true, outcome: "neaplicat: Strava a refuzat accesul (401/403), datele r\u0103m\xE2n" };
+  if (check === "reincearca") return { done: false, error: "Strava nu a r\u0103spuns clar (429/5xx/re\u021Bea); se re\xEEncearc\u0103" };
+  const r2 = await deps.deleter(userId, [`strava-${objectId}`, `strava-o-${objectId}`], today);
+  return { done: true, outcome: `\u0219ters (confirmat 404): ${r2.removed} r\xE2nduri, scor recalculat` };
+}
+async function processDeauth(userId, deps = DEFAULT_DEPS) {
+  let token = null;
+  try {
+    token = await deps.tokenOf(userId);
+  } catch (e) {
+    const msg2 = e instanceof Error ? e.message : String(e);
+    if (!/\b(400|401)\b/.test(msg2)) return { done: false, error: `token: ${msg2}` };
+  }
+  const confirmed = token ? deauthConfirmed(await apiStatus("https://www.strava.com/api/v3/athlete", token)) : true;
+  if (confirmed === null) return { done: false, error: "Strava nu a r\u0103spuns clar; se re\xEEncearc\u0103" };
+  if (!confirmed) return { done: true, outcome: "ignorat: tokenul \xEEnc\u0103 merge" };
+  await deps.forgetStrava(userId);
+  return { done: true, outcome: "acces retras din Strava: conexiunea s-a \xEEnchis" };
+}
+async function drainStravaInbox(todayOf, opts = {}) {
+  let rows;
+  try {
+    rows = await select("webhook_inbox", { provider: "eq.strava", processed_at: "is.null", next_try_at: `lte.${(/* @__PURE__ */ new Date()).toISOString()}`, ...opts.userId ? { user_id: `eq.${opts.userId}` } : {} }, { order: "received_at.asc", limit: opts.max ?? 50 });
+  } catch {
+    return { processed: 0, pending: 0, errors: [] };
+  }
+  const errors = [];
+  let processed = 0;
+  const finish2 = async (r2, o) => {
+    if (o.done) {
+      await update("webhook_inbox", { id: `eq.${r2.id}`, user_id: `eq.${r2.user_id}` }, { processed_at: (/* @__PURE__ */ new Date()).toISOString(), outcome: o.outcome.slice(0, 300), last_error: null, attempts: r2.attempts + 1 });
+      processed++;
+    } else {
+      const attempts = r2.attempts + 1;
+      const give = attempts >= 8;
+      await update("webhook_inbox", { id: `eq.${r2.id}`, user_id: `eq.${r2.user_id}` }, { attempts, last_error: o.error.slice(0, 300), next_try_at: new Date(Date.now() + backoffMs(attempts)).toISOString(), ...give ? { processed_at: (/* @__PURE__ */ new Date()).toISOString(), outcome: `abandonat dup\u0103 ${attempts} \xEEncerc\u0103ri` } : {} });
+      errors.push(o.error);
+    }
+  };
+  const byUser = /* @__PURE__ */ new Map();
+  for (const r2 of rows) byUser.set(r2.user_id, [...byUser.get(r2.user_id) ?? [], r2]);
+  for (const [userId, list] of byUser) {
+    const today = await todayOf(userId);
+    let changed = false;
+    for (const r2 of list.filter((x) => x.aspect === "delete" && x.object_type === "activity")) {
+      const o = await processDelete(userId, r2.object_id, today).catch((e) => ({ done: false, error: e.message }));
+      if (o.done && o.outcome.startsWith("\u0219ters")) changed = true;
+      await finish2(r2, o);
+    }
+    for (const r2 of list.filter((x) => x.object_type === "athlete")) {
+      const ev = { object_type: "athlete", aspect_type: r2.aspect, updates: r2.updates };
+      await finish2(r2, isDeauthorization(ev) ? await processDeauth(userId).catch((e) => ({ done: false, error: e.message })) : { done: true, outcome: "ignorat: eveniment de profil" });
+    }
+    const ups = list.filter((x) => x.object_type === "activity" && x.aspect !== "delete");
+    if (ups.length) {
+      const o = await syncUser(userId, 3).then((rep) => {
+        const bad = rep.find((x) => x.provider === "strava" && !x.ok);
+        return bad ? { done: false, error: `sincronizare: ${bad.detail ?? "eroare"}` } : { done: true, outcome: `sincronizat (${ups.length} evenimente)` };
+      }).catch((e) => ({ done: false, error: e.message }));
+      if (o.done) changed = true;
+      for (const r2 of ups) await finish2(r2, o);
+    }
+    if (changed) await reactNow(userId).catch(() => void 0);
+  }
+  let pending = 0;
+  try {
+    pending = (await select("webhook_inbox", { provider: "eq.strava", processed_at: "is.null" }, { select: "id", limit: 1e3 })).length;
+  } catch {
+  }
+  return { processed, pending, errors };
+}
+
+// server/cron/sync.ts
+init_dates();
 async function handler7(req, res) {
   try {
     requireCron(req);
     const users = await select("users", {}, { select: "id,tz,goal,consents(health_data,withdrawn_at)" });
+    const started = Date.now();
+    const inbox = await drainStravaInbox((id) => userToday(id), { max: 100 }).catch((e) => ({ processed: 0, pending: -1, errors: [e.message] }));
+    const [jobs, morningJobs] = await Promise.all([loadJobs("sync"), loadJobs("dimineata")]);
     const done = {};
     let historyBudget = 1;
-    for (const u of users) {
-      if (!consentActive(u.consents)) continue;
+    const now = Date.now();
+    const eligible2 = stalestFirst(users.filter((u) => consentActive(u.consents) && jobDue(jobs.get(u.id), now)), (u) => jobs.get(u.id));
+    const r2 = await fanOut(eligible2, { limit: 3, budgetMs: 15e4 }, async (u) => {
+      await jobStarted(u.id, "sync");
       try {
         const today = todayIn(u.tz);
         const reports = await syncUser(u.id, 3);
         if (reports.length) await rescore(u.id, today, u.goal && u.goal !== "full" ? u.goal : "70.3");
-        const r2 = await reactToActivities(u.id, today);
+        const r3 = await reactToActivities(u.id, today);
         let fresh = false;
-        for (const k of r2.todayKeys) {
+        for (const k of r3.todayKeys) {
           if (await one("agent_events", { user_id: `eq.${u.id}`, event_key: `eq.analiza:${k.legacy}` }).catch(() => null)) continue;
           if (await claimEvent(u.id, `analiza:${k.key}`)) fresh = true;
         }
@@ -13217,15 +13651,38 @@ async function handler7(req, res) {
         const realiniat = agent ? false : await realign(u.id, today).catch(() => false);
         let istoric = null;
         if (historyBudget > 0) {
+          historyBudget -= 1;
           istoric = await importHistory(u.id).catch((e) => ({ eroare: e.message }));
-          if (Object.keys(istoric).length) historyBudget -= 1;
+          if (!Object.keys(istoric).length) historyBudget += 1;
         }
-        done[u.id] = { istoric, realiniat, citire: reports.map((x) => `${x.provider}:${x.ok ? x.rows : "eroare"}`), calendar: r2.changes.length, antrenor: agent ? "eroare" in agent ? agent.eroare : agent.decision : "-" };
+        done[u.id] = { istoric, realiniat, citire: reports.map((x) => `${x.provider}:${x.ok ? x.rows : "eroare"}`), calendar: r3.changes.length, antrenor: agent ? "eroare" in agent ? agent.eroare : agent.decision : "-" };
+        await jobFinished(u.id, "sync", jobs.get(u.id), null);
       } catch (e) {
-        done[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
+        const msg2 = e instanceof Error ? e.message : String(e);
+        done[u.id] = { eroare: msg2 };
+        await jobFinished(u.id, "sync", jobs.get(u.id), msg2);
       }
-    }
-    json(res, 200, { ok: true, done });
+    });
+    const recuperati = [];
+    const late = users.filter((u) => {
+      if (!morningJobs.ready || !consentActive(u.consents) || !jobDue(morningJobs.get(u.id), Date.now())) return false;
+      const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: u.tz || "Europe/Bucharest", hour: "2-digit", hour12: false }).format(/* @__PURE__ */ new Date()));
+      if (hour < 6 || hour >= 12) return false;
+      const ok2 = morningJobs.get(u.id)?.last_ok_at;
+      return !ok2 || Date.parse(ok2) < Date.parse(localDayStartUtc(todayIn(u.tz), u.tz || "Europe/Bucharest"));
+    });
+    const left = Math.max(0, 2e5 - (Date.now() - started));
+    const m = await fanOut(late, { limit: 2, budgetMs: left }, async (u) => {
+      await jobStarted(u.id, "dimineata");
+      try {
+        await morningFor(u, todayIn(u.tz));
+        recuperati.push(u.id);
+        await jobFinished(u.id, "dimineata", morningJobs.get(u.id), null);
+      } catch (e) {
+        await jobFinished(u.id, "dimineata", morningJobs.get(u.id), e instanceof Error ? e.message : String(e));
+      }
+    });
+    json(res, 200, { ok: true, done, strava: inbox, neprocesati: r2.notStarted.map((u) => u.id), dimineata_recuperata: recuperati, dimineata_neprocesata: m.notStarted.map((u) => u.id) });
   } catch (e) {
     fail(res, e);
   }
@@ -13240,6 +13697,9 @@ function runTargetProblem(a) {
   if (!a || a.ramura !== "timp") return null;
   return runResultValid(a.tinta) ? null : "ai ales \u201Epe timp\u201D: scrie \u021Binta (ritm, ex. 5:30, sau timp final, ex. 52:00), ori alege \u201Evreau s\u0103 termin\u201D";
 }
+
+// server/forms/[kind].ts
+init_flags();
 
 // src/goals/thresholds.ts
 var THRESHOLD_CONFIRM_PCT = 15;
@@ -13325,6 +13785,32 @@ function webhookToken(req) {
   const auth = String(req.headers.authorization ?? "");
   const bearer2 = /^Bearer\s+(.+)$/i.exec(auth)?.[1] ?? "";
   return (fromHeader || bearer2 || q(req, "t")).trim();
+}
+function afterResponse(p) {
+  const safe = p.catch((e) => console.error("dup\u0103 r\u0103spuns", e instanceof Error ? e.message : String(e)));
+  try {
+    const ctx = globalThis[/* @__PURE__ */ Symbol.for("@vercel/request-context")]?.get?.();
+    ctx?.waitUntil?.(safe);
+  } catch {
+  }
+}
+function readCookie(req, name) {
+  const raw = String(req.headers.cookie ?? "");
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(i + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+function oauthCookie(name, value, maxAgeSec) {
+  return `${name}=${encodeURIComponent(value)}; Path=/api/oauth; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSec}`;
 }
 
 // server/forms/[kind].ts
@@ -13536,7 +14022,7 @@ async function readLabs(base64, mediaType, userId = null) {
 
 // server/webhooks/apple.ts
 init_auth();
-import { randomBytes as randomBytes3 } from "node:crypto";
+import { randomBytes as randomBytes4 } from "node:crypto";
 init_db();
 
 // server/_lib/apple.ts
@@ -13752,7 +14238,7 @@ async function handler8(req, res) {
   }
 }
 function newAppleToken() {
-  return randomBytes3(24).toString("base64url");
+  return randomBytes4(24).toString("base64url");
 }
 function appleActivityId(userId, parsedId) {
   return `apple-${userId}-${parsedId.replace(/^apple-/, "")}`;
@@ -14013,7 +14499,10 @@ async function handler9(req, res) {
   try {
     const token = webhookToken(req);
     if (!token || token.length < 20) throw new HttpError(401, "lipse\u0219te tokenul");
-    const user = await one("users", { apple_token: `eq.${token}` });
+    const user = await one("users", { android_token: `eq.${token}` }).catch(async (e) => {
+      if (/android_token/.test(e.message)) return one("users", { apple_token: `eq.${token}` });
+      throw e;
+    });
     if (!user) throw new HttpError(401, "token necunoscut");
     if (req.method === "GET" || req.method === "HEAD") {
       json(res, 200, { ok: true, mesaj: "adresa e bun\u0103; trimite datele cu POST (JSON)" });
@@ -14428,9 +14917,10 @@ async function handler10(req, res) {
       }
       if (accept) {
         const original = s.original ?? { minutes: row.planned_minutes, zones: row.target_zones, structure: row.structure, intervals: row.intervals ?? null, sport: row.sport, type: row.type, key: row.key };
-        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}`, status: "in.(planificat,mutat)" }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, ...s.sport ? { sport: s.sport, type: "z2", key: false } : {}, note: `varianta aleas\u0103 de tine (\xEEn loc de ${original.minutes} min${s.sport && original.sport && s.sport !== original.sport ? ` de ${original.sport}` : ""})`, suggestion: { ...s, accepted: true, original } });
+        const note = `varianta aleas\u0103 de tine (\xEEn loc de ${original.minutes} min${s.sport && original.sport && s.sport !== original.sport ? ` de ${original.sport}` : ""})`;
+        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}`, status: "in.(planificat,mutat)" }, { planned_minutes: s.minutes, target_zones: s.zones, structure: s.structure, intervals: null, ...s.sport ? { sport: s.sport, type: "z2", key: false } : {}, note, flags: makeFlags("varianta", { date: row.date, original: null }, note), suggestion: { ...s, accepted: true, original } });
       } else if (s.accepted === true && s.original) {
-        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, ...s.original.sport ? { sport: s.original.sport } : {}, ...s.original.type ? { type: s.original.type, key: !!s.original.key } : {}, note: null, suggestion: { ...s, accepted: false } });
+        await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { planned_minutes: s.original.minutes, target_zones: s.original.zones, structure: s.original.structure, intervals: s.original.intervals ?? null, ...s.original.sport ? { sport: s.original.sport } : {}, ...s.original.type ? { type: s.original.type, key: !!s.original.key } : {}, note: null, flags: null, suggestion: { ...s, accepted: false } });
       } else {
         await update("workouts_planned", { id: `eq.${id}`, user_id: `eq.${u.id}` }, { suggestion: { ...s, accepted: false } });
       }
@@ -14538,7 +15028,7 @@ async function handler10(req, res) {
         if (!stillTired) {
           const { planId: planId2, workouts: workouts2 } = await loadPlan(u.id, today, addDays(today, 8));
           const at = (/* @__PURE__ */ new Date()).toISOString();
-          const back = workouts2.filter((w) => w.original && (w.note ?? "").startsWith("u\u0219urat\u0103:") && (w.changedAt ?? "") >= prevOut.reported_at.slice(0, 10) && w.date >= today).map((w) => ({ ...w, sport: w.original.sport ?? w.sport, type: w.original.type, plannedMinutes: w.original.plannedMinutes, targetZones: [...w.original.targetZones], structure: w.original.structure ?? void 0, key: w.original.key, intervals: w.original.intervals ?? void 0, note: void 0, original: null, changedAt: at }));
+          const back = workouts2.filter((w) => w.original && isEasedBySystem(w) && (w.changedAt ?? "") >= prevOut.reported_at.slice(0, 10) && w.date >= today).map((w) => ({ ...w, sport: w.original.sport ?? w.sport, type: w.original.type, plannedMinutes: w.original.plannedMinutes, targetZones: [...w.original.targetZones], structure: w.original.structure ?? void 0, key: w.original.key, intervals: w.original.intervals ?? void 0, note: void 0, original: null, flags: null, changedAt: at }));
           if (planId2 && back.length) await upsert("workouts_planned", back.map((w) => toWorkoutRow(w, u.id, planId2)), "id");
           restored = back.length;
         }
@@ -14579,7 +15069,7 @@ async function handler10(req, res) {
       if (op === "vreme-ok") {
         const all2 = (await loadPlan(u.id, addDays(today, -7), addDays(today, 10))).workouts;
         const w2 = all2.find((x) => x.id === id);
-        const partner = w2 ? all2.find((x) => x.id !== w2.id && (x.note ?? "").startsWith("vremea") && x.original?.date === w2.date && x.date === w2.original?.date) : null;
+        const partner = w2 ? all2.find((x) => x.id !== w2.id && isWeatherSwapped(x) && x.original?.date === w2.date && x.date === w2.original?.date) : null;
         const prefsOk = await loadPrefs(u.id);
         const ids = [id, ...partner ? [partner.id] : []].filter((x) => !(prefsOk.vremeOk ?? []).includes(x));
         if (ids.length) await savePrefs(u.id, { ...prefsOk, vremeOk: [...prefsOk.vremeOk ?? [], ...ids].slice(-40) });
@@ -14614,10 +15104,10 @@ async function handler10(req, res) {
         }
         if (op === "inapoi") {
           const o = w.original;
-          if (!o || !(w.note ?? "").startsWith("mutat\u0103 de tine")) throw new HttpError(409, "\u0219edin\u021Ba n-a fost mutat\u0103 de tine");
+          if (!o || !isMovedByAthlete(w)) throw new HttpError(409, "\u0219edin\u021Ba n-a fost mutat\u0103 de tine");
           if (o.date < today) throw new HttpError(409, "ziua ini\u021Bial\u0103 a trecut");
           const onlyDate = w.type === o.type && w.plannedMinutes === o.plannedMinutes && w.sport === (o.sport ?? w.sport);
-          next = onlyDate ? { ...w, date: o.date, note: void 0, original: null, changedAt: at } : { ...w, date: o.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan", changedAt: at };
+          next = onlyDate ? { ...w, date: o.date, note: void 0, original: null, flags: null, changedAt: at } : { ...w, date: o.date, note: "pus\u0103 \xEEnapoi \xEEn ziua din plan", flags: makeFlags("pus_inapoi", w, "pus\u0103 \xEEnapoi \xEEn ziua din plan"), changedAt: at };
         } else if (op === "muta") {
           const [forms, prefsM] = await Promise.all([loadForms(u.id, today), loadPrefs(u.id)]);
           const program = forms.intake?.program;
@@ -14804,6 +15294,7 @@ async function handler10(req, res) {
     if (kind === "deconectare") {
       const p = String(body.provider ?? "");
       if (p === "apple") await update("users", { id: `eq.${u.id}` }, { apple_token: null });
+      else if (p === "android") await update("users", { id: `eq.${u.id}` }, { android_token: null });
       else if (["whoop", "strava", "oura"].includes(p)) await disconnect(u.id, p);
       else throw new HttpError(400, "br\u0103\u021Bar\u0103 necunoscut\u0103");
       json(res, 200, { ok: true });
@@ -14837,6 +15328,17 @@ async function handler10(req, res) {
       const token = newAppleToken();
       await update("users", { id: `eq.${u.id}` }, { apple_token: token });
       json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/apple?t=${token}` });
+      return;
+    }
+    if (kind === "android-arata" || kind === "android") {
+      const cur = await one("users", { id: `eq.${u.id}` });
+      if (cur && !("android_token" in cur)) throw new HttpError(503, "baza de date trebuie actualizat\u0103 (Admin \u2192 Preg\u0103te\u0219te baza) pentru adresa separat\u0103 de Samsung Health");
+      let token = kind === "android" ? null : cur?.android_token ?? null;
+      if (!token) {
+        token = newAppleToken();
+        await update("users", { id: `eq.${u.id}` }, { android_token: token });
+      }
+      json(res, 200, { ok: true, url: `${ENV.appUrl()}/api/webhooks/android?t=${token}` });
       return;
     }
     throw new HttpError(404, `formular necunoscut: ${kind}`);
@@ -14926,6 +15428,7 @@ init_tokens();
 init_oauth();
 init_whoop();
 async function handler12(req, res) {
+  res.setHeader("set-cookie", oauthCookie(OAUTH_COOKIE, "", 0));
   try {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
@@ -14935,7 +15438,7 @@ async function handler12(req, res) {
       redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(text)}`);
       return;
     }
-    const userId = verifyState(q(req, "state"));
+    const userId = verifyState(q(req, "state"), provider, readCookie(req, OAUTH_COOKIE));
     const tokens = await exchangeCode(providerConfig(provider), q(req, "code"));
     if (provider === "whoop" && !tokens.externalUserId) {
       const p = await whoopApi.profile(tokens.accessToken).catch(() => null);
@@ -14969,7 +15472,10 @@ async function handler13(req, res) {
     const provider = q(req, "provider");
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, "produc\u0103tor necunoscut");
     if (!providerConfigured(provider)) throw new HttpError(503, `${provider} nu e configurat pe server (lipsesc cheile aplica\u021Biei)`);
-    json(res, 200, { url: authorizeUrl(providerConfig(provider), signState(u.id)) });
+    const nonce = newOAuthNonce();
+    res.setHeader("set-cookie", oauthCookie(OAUTH_COOKIE, nonce, 15 * 60));
+    res.setHeader("cache-control", "no-store");
+    json(res, 200, { url: authorizeUrl(providerConfig(provider), signState(u.id, provider, nonce)) });
   } catch (e) {
     fail(res, e);
   }
@@ -15010,11 +15516,14 @@ var strength_log_sets_default = "-- Jurnalul de for\u021B\u0103 pe serie \u0219i
 // supabase/migrations/0004_app_usage.sql
 var app_usage_default = "-- Folosirea aplica\u021Biei (cererea proprietarului, 20.10.2026: \u201Ec\xE2nd a fost ultima dat\u0103 pe aplica\u021Bie, tendin\u021Ba de a c\u0103uta\n-- informa\u021Bii, c\xE2t le place\u201D). Schema 12. Idempotent: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te\u201D, dup\u0103 0003.\n--  - app_usage_daily: UN r\xE2nd pe sportiv \u0219i zi, doar num\u0103r\u0103tori (sesiuni, secunde \xEEn fa\u021B\u0103, ecrane deschise, detalii\n--    deschise). F\u0103r\u0103 con\u021Binut, f\u0103r\u0103 texte, f\u0103r\u0103 date de s\u0103n\u0103tate: ce ecran, nu ce scria pe el.\n--  - app_feedback: nota 1\u20135 (\u201EC\xE2t de mult \xEE\u021Bi place AIRON?\u201D), cel mult o dat\u0103 pe zi; nota scris\u0103 e op\u021Bional\u0103.\ncreate table if not exists public.app_usage_daily (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  sessions int not null default 0,\n  seconds int not null default 0,\n  details int not null default 0,\n  screens jsonb not null default '{}'::jsonb,\n  last_at timestamptz not null default now(),\n  primary key (user_id, date)\n);\nalter table public.app_usage_daily enable row level security;\n\ncreate table if not exists public.app_feedback (\n  user_id uuid not null references public.users(id) on delete cascade,\n  date date not null,\n  score smallint not null check (score between 1 and 5),\n  note text,\n  created_at timestamptz not null default now(),\n  primary key (user_id, date)\n);\nalter table public.app_feedback enable row level security;\n\n-- Adunarea atomic\u0103 (dou\u0103 trimiteri simultane nu se suprascriu): num\u0103r\u0103torile se adun\u0103, ecranele se adun\u0103 pe cheie.\ncreate or replace function public.track_usage(p_user uuid, p_date date, p_sessions int, p_seconds int, p_details int, p_screens jsonb)\nreturns void language plpgsql as $$\nbegin\n  insert into public.app_usage_daily (user_id, date, sessions, seconds, details, screens, last_at)\n  values (p_user, p_date, greatest(0, p_sessions), greatest(0, p_seconds), greatest(0, p_details), coalesce(p_screens, '{}'::jsonb), now())\n  on conflict (user_id, date) do update set\n    sessions = public.app_usage_daily.sessions + excluded.sessions,\n    seconds = public.app_usage_daily.seconds + excluded.seconds,\n    details = public.app_usage_daily.details + excluded.details,\n    screens = (\n      select coalesce(jsonb_object_agg(k, n), '{}'::jsonb) from (\n        select k, sum(v)::int as n from (\n          select key as k, value::text::int as v from jsonb_each(public.app_usage_daily.screens)\n          union all\n          select key, value::text::int from jsonb_each(excluded.screens)\n        ) s group by k\n      ) t\n    ),\n    last_at = now();\nend $$;\nrevoke execute on function public.track_usage(uuid, date, int, int, int, jsonb) from public, anon, authenticated;\ngrant execute on function public.track_usage(uuid, date, int, int, int, jsonb) to service_role;\n\ninsert into public.schema_meta (key, value) values ('version', 12)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n";
 
+// supabase/migrations/0005_audit_consolidat.sql
+var audit_consolidat_default = "-- Auditul consolidat (22.10.2026), etapa 2: datele \u0219i persistarea. Idempotent\u0103: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te baza\u201D.\n-- Revenire (rollback) manual\u0103, dac\u0103 e nevoie: vezi la final.\n\n-- C2: o activitate \u0219tears\u0103 (pe Strava, Oura) se poate \u0219terge \u0219i c\xE2nd e legat\u0103 de o \u0219edin\u021B\u0103 cu scor. Leg\u0103tura din\n-- scor devine NULL, iar codul recalculeaz\u0103 scorul imediat dup\u0103 \u0219tergere (server/_lib/activity-delete.ts).\ndo $$\nbegin\n  alter table public.scores drop constraint if exists scores_activity_id_fkey;\n  alter table public.scores drop constraint if exists scores_extra_activity_id_fkey;\n  alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade on delete set null;\n  alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade on delete set null;\nend $$;\n\n-- C5: tokenuri separate pentru Apple Health \u0219i Samsung Health / Health Connect. Cine trimitea deja date Android cu\n-- tokenul comun \xEEl p\u0103streaz\u0103 ca token Android (adresa lipit\u0103 \xEEn telefon merge \xEEn continuare); ceilal\u021Bi primesc unul\n-- la prima ap\u0103sare pe \u201EConecteaz\u0103 Samsung Health\u201D.\nalter table public.users add column if not exists android_token text;\ncreate unique index if not exists users_android_token_key on public.users (android_token) where android_token is not null;\nupdate public.users u set android_token = u.apple_token\n where u.android_token is null and u.apple_token is not null\n   and exists (select 1 from public.sync_log l where l.user_id = u.id and l.provider = 'android');\n\n-- A2: starea schimb\u0103rii \u0219edin\u021Bei \xEEn c\xE2mp tipizat (src/calendar/flags.ts), nu \xEEn textul notei.\nalter table public.workouts_planned add column if not exists flags jsonb;\n-- R\xE2ndurile vechi: starea se ia o singur\u0103 dat\u0103 din not\u0103 (aceea\u0219i regul\u0103 ca legacyFlags din cod).\nupdate public.workouts_planned w set flags = jsonb_build_object(\n    'origin', case\n      when w.note ~ '^mutat\u0103 de tine' then 'mutare'\n      when w.note ~ '^pus\u0103 \xEEnapoi' then 'pus_inapoi'\n      when w.note ~ '^f\u0103cut\u0103 \xEEn ziua din plan \\(vremea' then 'vreme_revenit'\n      when w.note ~ '^vremea' then 'vreme'\n      when w.note ~ '^plecat' then 'plecat'\n      when w.note ~ '^u\u0219urat\u0103:' then 'usurare'\n      when w.note ~ '^u\u0219oar\u0103 la cererea ta' then 'usor'\n      else 'varianta' end,\n    'manual_override', (w.note ~ '^(mutat\u0103 de tine|pus\u0103 \xEEnapoi|u\u0219oar\u0103 la cererea ta|varianta aleas\u0103 de tine)'),\n    'weather_swap', case when w.note ~ '^vremea' and w.note !~ '^f\u0103cut\u0103' then jsonb_build_object('reason', split_part(regexp_replace(w.note, '^vremea:\\s*', ''), ';', 1)) else null end,\n    'original_slot', w.original ->> 'date',\n    'change_reason', w.note)\n where w.flags is null\n   and w.note ~ '^(mutat\u0103 de tine|pus\u0103 \xEEnapoi|f\u0103cut\u0103 \xEEn ziua din plan \\(vremea|vremea|plecat|u\u0219urat\u0103:|u\u0219oar\u0103 la cererea ta|varianta aleas\u0103 de tine)';\n\n-- B3: versiunea contextului trimis AI-ului. O cerere manual\u0103 pe acela\u0219i context nu mai cheam\u0103 modelul.\nalter table public.packets add column if not exists context_hash text;\ncreate index if not exists packets_user_event_hash on public.packets (user_id, event, created_at desc);\n\n-- C1 / E1: coada durabil\u0103 a evenimentelor Strava. Webhook-ul confirm\u0103 primirea imediat \u0219i scrie aici; procesarea\n-- (sincronizare, \u0219tergere confirmat\u0103 prin API) se face dup\u0103, cu re\xEEncerc\u0103ri. Cheia unic\u0103 face re\xEEncerc\u0103rile Strava\n-- (acela\u0219i eveniment trimis din nou) idempotente.\ncreate table if not exists public.webhook_inbox (\n  id bigint generated always as identity primary key,\n  provider text not null,\n  owner_id text not null,\n  object_type text not null,\n  object_id text not null,\n  aspect text not null,\n  event_time bigint not null,\n  updates jsonb,\n  user_id uuid references public.users(id) on delete cascade,\n  received_at timestamptz not null default now(),\n  processed_at timestamptz,\n  attempts int not null default 0,\n  next_try_at timestamptz not null default now(),\n  last_error text,\n  outcome text,\n  unique (provider, object_id, aspect, event_time)\n);\ncreate index if not exists webhook_inbox_pending on public.webhook_inbox (next_try_at) where processed_at is null;\nalter table public.webhook_inbox enable row level security;\n\n-- E1: starea pe sportiv a lucr\u0103rilor programate (ultima reu\u0219it\u0103, ultima eroare, c\xE2te \xEEncerc\u0103ri, c\xE2nd se re\xEEncearc\u0103).\ncreate table if not exists public.athlete_jobs (\n  user_id uuid not null references public.users(id) on delete cascade,\n  job text not null,\n  last_started_at timestamptz,\n  last_ok_at timestamptz,\n  last_error text,\n  failures int not null default 0,\n  next_try_at timestamptz,\n  primary key (user_id, job)\n);\nalter table public.athlete_jobs enable row level security;\n\ninsert into public.schema_meta (key, value) values ('version', 13)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n\n-- Revenire manual\u0103 (nu ruleaz\u0103 automat):\n--   alter table public.scores drop constraint scores_activity_id_fkey, drop constraint scores_extra_activity_id_fkey;\n--   alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n--   alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n--   coloanele noi (users.android_token, workouts_planned.flags, packets.context_hash) \u0219i tabelele webhook_inbox,\n--   athlete_jobs pot r\u0103m\xE2ne: codul vechi nu le cite\u0219te. Schema_meta coboar\u0103 cu: update public.schema_meta set value = 12 where key = 'version';\n";
+
 // server/_lib/setup.ts
 init_env();
 
 // server/_lib/pg.ts
-import { createHash, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes4 } from "node:crypto";
+import { createHash as createHash2, createHmac as createHmac3, pbkdf2Sync, randomBytes as randomBytes5 } from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 function parsePgUrl(url) {
@@ -15131,12 +15640,12 @@ async function connect(url, timeoutMs = 15e3) {
       if (code === 3) sock.write(msg("p", cstr(c2.password)));
       else if (code === 5) {
         const salt = m.body.subarray(4, 8);
-        const inner = createHash("md5").update(c2.password + c2.user).digest("hex");
-        sock.write(msg("p", cstr("md5" + createHash("md5").update(Buffer.concat([Buffer.from(inner), salt])).digest("hex"))));
+        const inner = createHash2("md5").update(c2.password + c2.user).digest("hex");
+        sock.write(msg("p", cstr("md5" + createHash2("md5").update(Buffer.concat([Buffer.from(inner), salt])).digest("hex"))));
       } else if (code === 10) {
         const mechs = m.body.subarray(4).toString("utf8").split("\0");
         if (!mechs.includes("SCRAM-SHA-256")) throw new Error(`postgres: autentificare nesuportat\u0103 (${mechs.join(", ")})`);
-        nonce = randomBytes4(18).toString("base64");
+        nonce = randomBytes5(18).toString("base64");
         const first2 = `n,,n=*,r=${nonce}`;
         const firstBuf = Buffer.from(first2, "utf8");
         const len = Buffer.alloc(4);
@@ -15149,7 +15658,7 @@ async function connect(url, timeoutMs = 15e3) {
         if (!r2.startsWith(nonce)) throw new Error("postgres: nonce SCRAM invalid");
         const salted = pbkdf2Sync(c2.password, Buffer.from(attrs.s ?? "", "base64"), Number(attrs.i), 32, "sha256");
         const clientKey = createHmac3("sha256", salted).update("Client Key").digest();
-        const storedKey = createHash("sha256").update(clientKey).digest();
+        const storedKey = createHash2("sha256").update(clientKey).digest();
         const withoutProof = `c=biws,r=${r2}`;
         const authMessage = `n=*,r=${nonce},${serverFirst},${withoutProof}`;
         const signature = createHmac3("sha256", storedKey).update(authMessage).digest();
@@ -15283,6 +15792,7 @@ commit;`);
     await step("actualiz\u0103ri", upgrade_default);
     await step("jurnal de for\u021B\u0103 pe serii", strength_log_sets_default);
     await step("folosirea aplica\u021Biei", app_usage_default);
+    await step("audit consolidat: date \u0219i persistare", audit_consolidat_default);
     await step("drepturi", GRANTS, true);
     try {
       const r2 = await c2.query(VERIFY_GRANTS);
@@ -15350,7 +15860,7 @@ init_auth();
 init_db();
 init_tokens();
 init_env();
-import { randomBytes as randomBytes5 } from "node:crypto";
+import { randomBytes as randomBytes6 } from "node:crypto";
 init_usage();
 init_plan2();
 
@@ -15548,7 +16058,7 @@ async function handler16(req, res) {
       return;
     }
     if (body.action === "parola") {
-      const password = randomBytes5(6).toString("base64url");
+      const password = randomBytes6(6).toString("base64url");
       const r2 = await fetch(`${ENV.supabaseUrl()}/auth/v1/admin/users/${target.id}`, {
         method: "PUT",
         headers: { ...supabaseKeyHeaders(ENV.supabaseService()), "content-type": "application/json" },
@@ -15623,6 +16133,7 @@ async function handler18(req, res) {
 // server/webhooks/strava.ts
 init_auth();
 init_db();
+init_collect();
 async function handler19(req, res) {
   try {
     if (req.method === "GET") {
@@ -15633,18 +16144,47 @@ async function handler19(req, res) {
       json(res, 200, { "hub.challenge": q(req, "hub.challenge") });
       return;
     }
-    const ev = await readJson(req);
-    if (ev.object_type === "activity") {
-      const row = await one("oauth_tokens", { provider: "eq.strava", external_user_id: `eq.${ev.owner_id}` });
-      if (row) {
-        if (ev.aspect_type === "delete") {
-          await remove("activities", { user_id: `eq.${row.user_id}`, id: `in.(strava-${ev.object_id},strava-o-${ev.object_id})` }).catch(() => void 0);
-          await remove("other_activities", { user_id: `eq.${row.user_id}`, id: `eq.strava-o-${ev.object_id}` }).catch(() => void 0);
-        } else await syncUser(row.user_id, 3);
-        await reactNow(row.user_id);
-      }
+    if (req.method !== "POST") {
+      json(res, 405, { error: "POST" });
+      return;
     }
+    const parsed = parseStravaEvent(await readJson(req).catch(() => null));
+    if (!parsed.ok) {
+      json(res, 400, { error: `eveniment invalid: ${parsed.why}` });
+      return;
+    }
+    const ev = parsed.ev;
+    if (!subscriptionMatches(ev, process.env.STRAVA_SUBSCRIPTION_ID)) {
+      json(res, 403, { error: "abonament necunoscut" });
+      return;
+    }
+    const row = await one("oauth_tokens", { provider: "eq.strava", external_user_id: `eq.${ev.owner_id}` });
+    if (!row) {
+      json(res, 200, { ok: true, ignorat: "sportiv neconectat" });
+      return;
+    }
+    const userId = row.user_id;
+    const queued = await enqueueStrava(ev, userId);
     json(res, 200, { ok: true });
+    const todayOf = async (id) => userToday(id);
+    if (queued) {
+      const last = await jobRow(userId, "strava-webhook");
+      if (!recentlyStarted(last, Date.now(), 6e4)) {
+        await jobStarted(userId, "strava-webhook");
+        afterResponse(drainStravaInbox(todayOf, { userId, max: 20 }));
+      }
+      return;
+    }
+    afterResponse(
+      (async () => {
+        if (ev.object_type === "activity" && ev.aspect_type === "delete") await processDelete(userId, ev.object_id, await todayOf(userId));
+        else if (isDeauthorization(ev)) await processDeauth(userId);
+        else if (ev.object_type === "activity") {
+          await syncUser(userId, 3);
+          await reactNow(userId);
+        }
+      })()
+    );
   } catch (e) {
     fail(res, e);
   }

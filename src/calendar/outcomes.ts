@@ -7,6 +7,7 @@
 //    grea din 7 zile devine ușoară (doza se reevaluează), cu dovezile scrise. Pragul e o regulă de produs, explicabilă.
 // Obiectivul nu se declară pierdut sau garantat dintr-o săptămână.
 
+import { isEasedBySystem, makeFlags } from './flags.js';
 import type { PlannedWorkout, Sport } from '../types.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import { withOriginal } from './actions.js';
@@ -55,7 +56,8 @@ export function outcomeFeedback(plan: PlannedWorkout[], outcomes: Outcome[], now
         structure: target.type === 'lung' ? `${minutes} min constant, Z1–Z2` : swim ? 'tehnică și bucăți ușoare' : `${minutes} min ușor, să poți vorbi`,
         note: `ușurată: ${recent.length} ședințe nefăcute sau parțiale din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join('/')} în ultimele 7 zile (declarat de tine); revine la plan după o ședință bine tolerată`,
       });
-      changed.push(withOriginal(target, easy, at));
+      const eased = withOriginal(target, easy, at);
+      changed.push({ ...eased, flags: makeFlags('usurare', eased, eased.note ?? null) });
       decision = 'modificat';
       nextLine = `Următoarea ședință grea (${SPORT[target.sport]}, ${DAY[weekday(target.date)]} ${dm(target.date)}) devine ușoară, deoarece ai declarat ${recent.length} ședințe nefăcute din ${[...new Set(recent.map((o) => MOTIV_LABEL[o.motiv]))].join('/')} în ultimele 7 zile.`;
     } else nextLine = `În următoarele 7 zile nu ai nicio ședință grea: planul rămâne; ai declarat ${recent.length} ședințe nefăcute din oboseală/durere/boală, iar la bilanțul săptămânal se reevaluează doza.`;
@@ -91,7 +93,7 @@ export function restoreEased(plan: PlannedWorkout[], executions: { workoutId: st
   const byId = new Map(plan.map((w) => [w.id, w]));
   const out: PlannedWorkout[] = [];
   for (const w of plan) {
-    if (!active(w) || w.date < today || !w.original || !(w.note ?? '').startsWith('ușurată:')) continue;
+    if (!active(w) || w.date < today || !w.original || !isEasedBySystem(w)) continue;
     const since = (w.changedAt ?? '').slice(0, 10);
     const ok = executions.some((e) => {
       const p = byId.get(e.workoutId);
@@ -99,7 +101,7 @@ export function restoreEased(plan: PlannedWorkout[], executions: { workoutId: st
     });
     if (!ok) continue;
     const o = w.original;
-    out.push({ ...w, sport: o.sport ?? w.sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? undefined, key: o.key, intervals: o.intervals ?? undefined, note: undefined, original: null, changedAt: at });
+    out.push({ ...w, sport: o.sport ?? w.sport, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? undefined, key: o.key, intervals: o.intervals ?? undefined, note: undefined, original: null, flags: null, changedAt: at });
   }
   return out;
 }

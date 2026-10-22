@@ -169,7 +169,8 @@ export async function syncUser(userId: string, days = 3): Promise<SyncReport[]> 
       } else if (provider === 'oura') {
         const { wellness, activities, others } = await pullOura(token, days);
         // Curățenie: antrenamentele Oura detectate automat, importate ca sport înainte de 20.10.2026, ies din activități.
-        await remove('activities', { user_id: `eq.${userId}`, source: 'eq.oura', name: 'like.*detectat automat*' }).catch(() => undefined);
+        // Auditul consolidat, C2: eroarea nu se mai înghite (cu schema 13, legătura din scor devine NULL și ștergerea trece).
+        await remove('activities', { user_id: `eq.${userId}`, source: 'eq.oura', name: 'like.*detectat automat*' }).catch((e: Error) => console.error('curățenie oura', userId, e.message));
         await saveOthers(userId, others);
         if (wellness.length) await saveWellness(userId, wellness);
         if (activities.length) await upsert('activities', activities.map((a) => activityRow(userId, a)), 'id');

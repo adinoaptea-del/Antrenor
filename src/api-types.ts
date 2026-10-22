@@ -116,6 +116,8 @@ export interface Me {
   profile: { sex: 'm' | 'f' | null; birthYear: number | null; heightCm: number | null; city: string | null; appleConnected: boolean; appleLastSync: string | null;
     /** Samsung Health / Health Connect (Android), prin același token: ultima trimitere și rezultatul ei. */
     androidLastSync?: string | null;
+    /** C5: are adresă Samsung Health / Health Connect proprie (token separat de Apple Health). */
+    androidConnected?: boolean;
     androidLast?: { ok: boolean; detail: string | null; at: string } | null; appleLast?: { ok: boolean; detail: string | null; at: string } | null };
   /** Doar pentru admin (primul cont): ce producători au cheile puse și adresele de copiat la ei. */
   admin: { providers: Record<'whoop' | 'strava' | 'oura', boolean>; appUrl: string } | null;

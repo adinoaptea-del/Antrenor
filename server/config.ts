@@ -24,8 +24,9 @@ export default async function handler(_req: Req, res: Res): Promise<void> {
     let users = 0;
     let upgrade = false;
     try {
-      const r = await fetch(`${supabaseUrl}/rest/v1/users?select=id`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: 'count=exact', range: '0-0' } });
+      const r = await fetch(`${supabaseUrl}/rest/v1/users?select=id&approved=eq.true`, { headers: { ...supabaseKeyHeaders(ENV.supabaseService()), prefer: 'count=exact', range: '0-0' } });
       ready = r.ok;
+      // C6: doar conturile aprobate ocupă locuri (la fel ca la înscriere).
       users = Number(r.headers.get('content-range')?.split('/')[1] ?? 0) || 0;
       if (ready) {
         // Schema veche (fără coloanele din 0002): aplicația cere singură actualizarea.

@@ -5,6 +5,7 @@
 //  - Plecat: zile de deplasare cu ce ai la dispoziție (fără bazin, fără bicicletă, doar alergare, nimic); la anulare revine planul;
 //  - Întâlniri fixe (alergarea cu grupul): generatorul pune ședința potrivită în ziua aceea.
 
+import { isAwayChange, makeFlags } from './flags.js';
 import type { PlannedWorkout, Sport, WorkoutSnapshot } from '../types.js';
 import { sportsBlockedByPain } from './safety.js';
 import { addDays, weekStart, weekday } from '../util/dates.js';
@@ -117,7 +118,9 @@ export function moveWorkout(plan: PlannedWorkout[], id: string, date: string, to
   const opt = moveOptions(plan, id, today, doneIds, ctx).find((o) => o.date === date);
   if (!opt) throw new Error('se poate muta doar o ședință care urmează, pe altă zi din aceeași săptămână');
   if (!opt.ok) throw new Error(`ziua aleasă ${opt.reason}`);
-  return withOriginal(w, { ...w, date, note: `mutată de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}` }, at);
+  const note = `mutată de tine de ${DAY[weekday(w.date)]} pe ${DAY[weekday(date)]}`;
+  const next = withOriginal(w, { ...w, date, note }, at);
+  return { ...next, flags: makeFlags('mutare', next, note) };
 }
 
 /** „Fă-o ușoară”: intensitatea iese (ușor, să poți vorbi); ieșirea lungă rămâne lungă, dar mai scurtă și doar Z1–Z2. */
@@ -126,7 +129,8 @@ export function easyWorkout(w: PlannedWorkout, at: string): PlannedWorkout {
   if (!active(w)) throw new Error('ședința nu mai e activă');
   if (w.type === 'lung') {
     const minutes = Math.max(30, Math.round((w.plannedMinutes * 0.75) / 5) * 5);
-    return withOriginal(w, { ...w, plannedMinutes: minutes, targetZones: [1, 2], intervals: undefined, key: false, structure: `${minutes} min constant, Z1–Z2`, note: 'ușoară la cererea ta: −25%, fără final rapid' }, at);
+    const n = withOriginal(w, { ...w, plannedMinutes: minutes, targetZones: [1, 2], intervals: undefined, key: false, structure: `${minutes} min constant, Z1–Z2`, note: 'ușoară la cererea ta: −25%, fără final rapid' }, at);
+    return { ...n, flags: makeFlags('usor', n, n.note ?? null) };
   }
   if (!intense) throw new Error('ședința e deja ușoară');
   const swim = w.sport === 'inot';
@@ -139,7 +143,8 @@ export function easyWorkout(w: PlannedWorkout, at: string): PlannedWorkout {
     structure: swim ? 'tehnică și bucăți ușoare' : `${w.plannedMinutes} min ușor, să poți vorbi`,
     note: 'ușoară la cererea ta: fără intensitate azi; progresia așteaptă',
   };
-  return withOriginal(w, fitStructure(next), at);
+  const n = withOriginal(w, fitStructure(next), at);
+  return { ...n, flags: makeFlags('usor', n, n.note ?? null) };
 }
 
 // ——— Alt sport ———
@@ -227,9 +232,11 @@ export function applyAway(plan: PlannedWorkout[], away: Away, today: string, at:
         subDays.add(day);
         const minutes = Math.min(w.plannedMinutes, w.sport === 'bicicleta' ? 45 : 40);
         hasRun = true;
-        changed.push(withOriginal(w, { ...w, sport: 'alergare', type: 'z2', key: false, plannedMinutes: minutes, targetZones: [2], intervals: undefined, structure: `${minutes} min ușor, să poți vorbi`, note: `${label}: alergare ușoară în loc de ${SPORT_WORD[w.sport]}` }, at));
+        const n = withOriginal(w, { ...w, sport: 'alergare', type: 'z2', key: false, plannedMinutes: minutes, targetZones: [2], intervals: undefined, structure: `${minutes} min ușor, să poți vorbi`, note: `${label}: alergare ușoară în loc de ${SPORT_WORD[w.sport]}` }, at);
+        changed.push({ ...n, flags: makeFlags('plecat', n, n.note ?? null) });
       } else {
-        changed.push(withOriginal(w, { ...w, status: 'anulat_sistem', note: `${label}: ${SPORT_WORD[w.sport]} anulat` }, at));
+        const n = withOriginal(w, { ...w, status: 'anulat_sistem', note: `${label}: ${SPORT_WORD[w.sport]} anulat` }, at);
+        changed.push({ ...n, flags: makeFlags('plecat', n, n.note ?? null) });
       }
     }
   }
@@ -247,10 +254,10 @@ function keeps(w: PlannedWorkout, ce: AwayKind): boolean {
 export function restoreAway(plan: PlannedWorkout[], away: Away, today: string, at: string): PlannedWorkout[] {
   const from = away.dela < today ? today : away.dela;
   return plan
-    .filter((w) => w.original && (w.note ?? '').startsWith(AWAY_NOTE) && w.original.date >= from && w.original.date <= away.panala && w.date >= today)
+    .filter((w) => w.original && isAwayChange(w) && w.original.date >= from && w.original.date <= away.panala && w.date >= today)
     .map((w) => {
       const o = w.original!;
-      return { ...w, sport: o.sport ?? w.sport, date: o.date, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? undefined, key: o.key, status: o.status, intervals: o.intervals ?? undefined, note: undefined, original: null, changedAt: at };
+      return { ...w, sport: o.sport ?? w.sport, date: o.date, type: o.type, plannedMinutes: o.plannedMinutes, targetZones: [...o.targetZones], structure: o.structure ?? undefined, key: o.key, status: o.status, intervals: o.intervals ?? undefined, note: undefined, original: null, flags: null, changedAt: at };
     });
 }
 

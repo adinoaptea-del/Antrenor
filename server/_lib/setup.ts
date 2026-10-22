@@ -4,6 +4,7 @@ import MIGRATION from '../../supabase/migrations/0001_init.sql';
 import UPGRADE from '../../supabase/migrations/0002_upgrade.sql';
 import STRENGTH_LOG_SETS from '../../supabase/migrations/0003_strength_log_sets.sql';
 import APP_USAGE from '../../supabase/migrations/0004_app_usage.sql';
+import AUDIT_CONSOLIDAT from '../../supabase/migrations/0005_audit_consolidat.sql';
 import { ENV } from './env.js';
 import { connect, lit, type PgClient } from './pg.js';
 
@@ -73,6 +74,7 @@ export async function runSetup(appUrl: string, opts: { schedule?: boolean } = {}
     await step('actualizări', UPGRADE);
     await step('jurnal de forță pe serii', STRENGTH_LOG_SETS);
     await step('folosirea aplicației', APP_USAGE);
+    await step('audit consolidat: date și persistare', AUDIT_CONSOLIDAT);
     await step('drepturi', GRANTS, true);
     try {
       const r = await c.query(VERIFY_GRANTS);

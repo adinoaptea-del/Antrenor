@@ -18,6 +18,8 @@ import { adapt, eventKey, type AdaptContext, type AdaptEvent } from '../../src/c
 import type { PlannedWorkout } from '../../src/types.js';
 import { addDays, localDayStartUtc } from '../../src/util/dates.js';
 
+import { AiSkip, contextHash, manualCap, manualDecision, manualRunsToday, recordManualRun, sameContextAsLastMessage } from './ai-budget.js';
+
 const FILE_MAX_LINES = 30;
 
 async function loadAgentFiles(userId: string): Promise<Partial<Record<AgentName, string>>> {
@@ -25,9 +27,24 @@ async function loadAgentFiles(userId: string): Promise<Partial<Record<AgentName,
   return Object.fromEntries(rows.map((r) => [r.agent, r.content]));
 }
 
+/**
+ * Auditul consolidat, B4: filtrul se aplică în interogare și se iau cele mai NOI 200 de intrări (date.desc), apoi
+ * lista se întoarce în ordine cronologică. Înainte, limita se aplica pe cele mai vechi, iar declarațiile de azi
+ * puteau lipsi din context exact când jurnalul era plin.
+ */
+export const JOURNAL_FILTER = '(entry.like.calendar*,entry.like.declarat*de*sportiv*,entry.like.plecat*,entry.like.migrare*)'; // fără spații în URL; filtrul exact rămâne journalForAI
 async function loadJournal(userId: string, today: string): Promise<string[]> {
-  const rows = await select<{ date: string; entry: string }>('journal', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -14)}` }, { order: 'date.asc', limit: 200 });
-  return rows.filter((r) => journalForAI(r.entry)).map((r) => `${r.date}: ${r.entry}`);
+  const rows = await select<{ date: string; entry: string }>('journal', { user_id: `eq.${userId}`, date: `gte.${addDays(today, -14)}`, or: JOURNAL_FILTER }, { order: 'date.desc,created_at.desc', limit: 200 });
+  return recentJournal(rows, 200);
+}
+
+/** Cele mai noi `max` intrări permise, în ordine cronologică (rândurile vin de la cea mai nouă). */
+export function recentJournal(newestFirst: { date: string; entry: string }[], max: number): string[] {
+  return newestFirst
+    .filter((r) => journalForAI(r.entry))
+    .slice(0, max)
+    .reverse()
+    .map((r) => `${r.date}: ${r.entry}`);
 }
 
 /**
@@ -83,7 +100,7 @@ export interface AgentsOutcome {
  * Un eveniment complet pentru un sportiv. Fără force, nu rulează din nou dacă azi (ziua locală a sportivului) există
  * deja un mesaj pentru eveniment; un pachet rămas de la o rulare căzută nu blochează reluarea.
  */
-export async function runAgents(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = false): Promise<AgentsOutcome | null> {
+export async function runAgents(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force = false, opts: { manual?: boolean } = {}): Promise<AgentsOutcome | null> {
   if (!(await hasConsent(userId))) return null;
   const user = await loadUser(userId);
   const dayStart = localDayStartUtc(today, user.tz || 'Europe/Bucharest');
@@ -96,13 +113,13 @@ export async function runAgents(userId: string, today: string, event: 'dimineata
   const lockKey = `run:${event}:${today}`;
   if (!(await acquireLock(userId, lockKey, 10 * 60_000))) return null;
   try {
-    return await runAgentsLocked(userId, today, event, force);
+    return await runAgentsLocked(userId, today, event, force, opts.manual === true);
   } finally {
     await releaseLock(userId, lockKey);
   }
 }
 
-async function runAgentsLocked(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force: boolean): Promise<AgentsOutcome | null> {
+async function runAgentsLocked(userId: string, today: string, event: 'dimineata' | 'dupa_antrenament' | 'saptamanal', force: boolean, manual = false): Promise<AgentsOutcome | null> {
   const user = await loadUser(userId);
   const { input, planId } = await collect(userId, today, event);
   // Scorurile salvate (aceleași ca pe ecrane): pachetul nu calculează altă culoare pentru aceeași ședință (auditul v93, T51).
@@ -115,10 +132,18 @@ async function runAgentsLocked(userId: string, today: string, event: 'dimineata'
   // Dimineața fără date de la brățări și fără răspunsul sportivului: nu scriem un mesaj pe o culoare ghicită.
   // Aplicația îl întreabă dacă e apt; după răspuns, mesajul se cere din aplicație.
   if (event === 'dimineata' && !force && packet.readiness.verdict_cod.intrebare) return null;
-  const [packetRow] = await insert<{ id: string }>('packets', { user_id: userId, event, packet });
+  const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
+  // B3: versiunea contextului; o cerere manuală pe același context nu cheamă modelul, iar plafonul zilnic e pe server.
+  const hash = contextHash({ packet, journal, event, files, models: { specialist: ENV.modelSpecialist(), head: ENV.modelHead(), mode: ENV.agentMode() } });
+  if (manual) {
+    const dayStart = localDayStartUtc(today, user.tz || 'Europe/Bucharest');
+    const d = manualDecision({ used: await manualRunsToday(userId, today), cap: manualCap(), sameContextAsLastMessage: await sameContextAsLastMessage(userId, event, dayStart, hash) });
+    if (!d.run) throw new AiSkip(d.message);
+    await recordManualRun(userId, today, event);
+  }
+  const [packetRow] = await insert<{ id: string }>('packets', { user_id: userId, event, packet, context_hash: hash });
   const packetId = packetRow!.id;
 
-  const [files, journal] = await Promise.all([loadAgentFiles(userId), loadJournal(userId, today)]);
   const usageWrites: Promise<void>[] = [];
   // Fără cheie de model, piramida merge oricum: protecția și mesajul vin din cod.
   let client: ModelClient;

@@ -26,3 +26,43 @@ export function webhookToken(req: Req): string {
   const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1] ?? '';
   return (fromHeader || bearer || q(req, 't')).trim();
 }
+
+/**
+ * Lucru care continuă după răspuns (auditul consolidat, C1: webhook-ul confirmă primirea imediat). Pe Vercel,
+ * `waitUntil` vine din contextul cererii (același simbol pe care îl citește @vercel/functions); fără el, promisiunea
+ * rulează cât trăiește instanța, iar ce nu apucă se reia din coadă la cronul de 15 minute.
+ */
+export function afterResponse(p: Promise<unknown>): void {
+  const safe = p.catch((e: unknown) => console.error('după răspuns', e instanceof Error ? e.message : String(e)));
+  try {
+    const ctx = (globalThis as Record<symbol, { get?: () => { waitUntil?: (p: Promise<unknown>) => void } | undefined } | undefined>)[Symbol.for('@vercel/request-context')]?.get?.();
+    ctx?.waitUntil?.(safe);
+  } catch {
+    /* fără context Vercel */
+  }
+}
+
+/** Valoarea unui cookie din cerere, sau null. */
+export function readCookie(req: Req, name: string): string | null {
+  const raw = String(req.headers.cookie ?? '');
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(i + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Cookie-ul nonce-ului OAuth (C4): HttpOnly (scriptul paginii nu-l citește), Secure, SameSite=Lax (se trimite la
+ * întoarcerea de la producător, care e o navigare de nivel superior), doar pe /api/oauth, 15 minute. maxAge 0 = șters.
+ */
+export function oauthCookie(name: string, value: string, maxAgeSec: number): string {
+  return `${name}=${encodeURIComponent(value)}; Path=/api/oauth; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSec}`;
+}

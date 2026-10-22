@@ -1,13 +1,15 @@
 import { ENV } from '../../_lib/env.js';
 import { HttpError } from '../../_lib/auth.js';
-import { q, redirect, type Req, type Res } from '../../_lib/http.js';
-import { providerConfig, PROVIDERS, saveTokens, verifyState, type Provider } from '../../_lib/tokens.js';
+import { oauthCookie, q, readCookie, redirect, type Req, type Res } from '../../_lib/http.js';
+import { OAUTH_COOKIE, providerConfig, PROVIDERS, saveTokens, verifyState, type Provider } from '../../_lib/tokens.js';
 import { exchangeCode } from '../../../src/collector/providers/oauth.js';
 import { syncUser } from '../../_lib/sync.js';
 import { whoopApi } from '../../../src/collector/providers/whoop.js';
 
 /** GET /api/oauth/{provider}/callback?code=&state= → schimbă codul, salvează token-urile, trage 35 de zile, revine în Profil. */
 export default async function handler(req: Req, res: Res): Promise<void> {
+  // C4: nonce-ul se folosește o singură dată: cookie-ul se șterge oricum se termină întoarcerea.
+  res.setHeader('set-cookie', oauthCookie(OAUTH_COOKIE, '', 0));
   try {
     const provider = q(req, 'provider') as Provider;
     if (!PROVIDERS.includes(provider)) throw new HttpError(404, 'producător necunoscut');
@@ -17,7 +19,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       redirect(res, `${ENV.appUrl()}/#profil?eroare=${encodeURIComponent(text)}`);
       return;
     }
-    const userId = verifyState(q(req, 'state'));
+    const userId = verifyState(q(req, 'state'), provider, readCookie(req, OAUTH_COOKIE));
     const tokens = await exchangeCode(providerConfig(provider), q(req, 'code'));
     // WHOOP nu trimite id-ul sportivului în răspunsul de token: îl cerem din profil, ca webhook-ul să găsească contul.
     if (provider === 'whoop' && !tokens.externalUserId) {

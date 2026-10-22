@@ -4,6 +4,7 @@
 // schimbă (aceleași două ședințe, doar zilele), iar mutarea trece prin aceleași reguli ca „Mută” (actions.ts dayBlock).
 // Determinist, fără AI. Prognoza: Open-Meteo (server/_lib/weather.ts).
 
+import { isWeatherSwapped, lockedForAutomation, makeFlags } from './flags.js';
 import type { WeatherDay } from '../collector/types.js';
 import type { Activity, PlannedWorkout, Sport } from '../types.js';
 import { addDays, weekday } from '../util/dates.js';
@@ -29,6 +30,7 @@ export function weatherVerdict(d: WeatherDay | null | undefined): WeatherVerdict
 }
 
 export const WEATHER_NOTE = 'vremea';
+const weatherStamp = (w: PlannedWorkout, why: string): PlannedWorkout => ({ ...w, flags: makeFlags('vreme', w, w.note ?? null, { reason: why }) });
 const DAY = ['luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă', 'duminică'];
 const WHAT: Record<Sport, string> = { inot: 'înotul', bicicleta: 'bicicleta', alergare: 'alergarea', forta: 'sala', mers: 'mersul' };
 
@@ -48,7 +50,7 @@ const live = (w: PlannedWorkout) => w.status === 'planificat' || w.status === 'm
 const touchable = (w: PlannedWorkout, ctx: SwapCtx) =>
   live(w) &&
   !(ctx.done ?? []).includes(w.id) &&
-  !/^(mutată de tine|pusă înapoi|vremea)/.test(w.note ?? '') &&
+  !lockedForAutomation(w) &&
   !/TEST/i.test(w.structure ?? '') &&
   !(ctx.fixed ?? []).some((f) => f.zi === weekday(w.date) && f.sport === w.sport);
 const outdoor = (w: PlannedWorkout, ctx: SwapCtx) => (w.sport === 'bicicleta' && !ctx.noOutdoorBike) || w.sport === 'alergare';
@@ -94,8 +96,8 @@ export function weatherSwap(plan: PlannedWorkout[], a: { date: string; w: Weathe
       if (dayBlock(after.filter((w) => w.id !== i.id), iNew, bad.date, ctx)) continue;
       const why = `${DAY[weekday(good.date)]} frumos (${describe(good.w!, 'bun')}), ${DAY[weekday(bad.date)]} ${describe(bad.w!, 'rau')}`;
       const changed = [
-        withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversată cu ${WHAT[i.sport]}` }, at),
-        withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversată cu ${WHAT[o.sport]}` }, at),
+        weatherStamp(withOriginal(o, { ...o, date: good.date, note: `${WEATHER_NOTE}: ${why}; inversată cu ${WHAT[i.sport]}` }, at), why),
+        weatherStamp(withOriginal(i, { ...i, date: bad.date, note: `${WEATHER_NOTE}: ${why}; inversată cu ${WHAT[o.sport]}` }, at), why),
       ];
       const G = dayWord(good.date, today);
       const B = dayWord(bad.date, today);
@@ -110,11 +112,12 @@ export function weatherSwap(plan: PlannedWorkout[], a: { date: string; w: Weathe
 /** „Lasă-le cum erau”: cele două ședințe inversate de vreme revin în zilele lor (dacă ziua n-a trecut). */
 export function undoWeatherSwap(plan: PlannedWorkout[], id: string, today: string, at: string): PlannedWorkout[] {
   const w = plan.find((x) => x.id === id);
-  if (!w || !(w.note ?? '').startsWith(WEATHER_NOTE) || !w.original) throw new Error('ședința n-a fost mutată de vreme');
-  const partner = plan.find((x) => x.id !== w.id && (x.note ?? '').startsWith(WEATHER_NOTE) && x.original?.date === w.date && x.date === w.original!.date);
+  if (!w || !isWeatherSwapped(w) || !w.original) throw new Error('ședința n-a fost mutată de vreme');
+  const partner = plan.find((x) => x.id !== w.id && isWeatherSwapped(x) && x.original?.date === w.date && x.date === w.original!.date);
   const back = (x: PlannedWorkout) => {
     if (x.original!.date < today) throw new Error('ziua inițială a trecut');
-    return withOriginal(x, { ...x, date: x.original!.date, note: 'pusă înapoi în ziua din plan' }, at);
+    const n = withOriginal(x, { ...x, date: x.original!.date, note: 'pusă înapoi în ziua din plan' }, at);
+    return { ...n, flags: makeFlags('pus_inapoi', n, n.note ?? null) };
   };
   return partner ? [back(w), back(partner)] : [back(w)];
 }
@@ -135,10 +138,11 @@ export function reclaimWeatherSwaps(plan: PlannedWorkout[], activities: Activity
   const taken = new Set<string>();
   for (const a of m.unplanned) {
     if (a.date > today) continue;
-    const w = live.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && (x.note ?? '').startsWith(WEATHER_NOTE) && x.original?.date === a.date && x.date !== a.date);
+    const w = live.find((x) => !taken.has(x.id) && !doneIds.has(x.id) && x.sport === a.sport && isWeatherSwapped(x) && x.original?.date === a.date && x.date !== a.date);
     if (!w) continue;
     taken.add(w.id);
-    out.push(withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at));
+    const n = withOriginal(w, { ...w, date: a.date, note: RECLAIM_NOTE }, at);
+    out.push({ ...n, flags: makeFlags('vreme_revenit', n, RECLAIM_NOTE) });
   }
   return out;
 }

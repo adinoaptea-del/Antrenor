@@ -3,53 +3,34 @@ import { fail, json, requireCron, todayIn } from '../_lib/auth.js';
 import type { Req, Res } from '../_lib/http.js';
 import { consentActive } from '../_lib/consent.js';
 import { select } from '../_lib/db.js';
-import { syncUser } from '../_lib/sync.js';
-import { rescore } from '../_lib/score.js';
-import { runAgents } from '../_lib/agents.js';
-import { labsReminder } from '../_lib/reminders.js';
-import { bigEffortMorning, missedStrength, moduleProgression } from '../_lib/react.js';
-import { MIGRATIONS, runOnce } from '../_lib/migrations.js';
-import { ensureSplit } from '../_lib/split.js';
-import { loadPlan } from '../_lib/collect.js';
-import { addDays } from '../../src/util/dates.js';
-import { weatherSwapFor } from '../_lib/weather-swap.js';
+import { morningFor } from '../_lib/morning.js';
+import { jobFinished, jobStarted, loadJobs } from '../_lib/jobs.js';
+import { fanOut, stalestFirst } from '../../src/util/fanout.js';
 
-/** Dimineața (05:30 ora României): sincronizare, scor, apoi piramida pentru fiecare sportiv cu plan și consimțământ. */
+/**
+ * Dimineața (05:30 ora României): sincronizare, scor, apoi piramida pentru fiecare sportiv cu plan și consimțământ.
+ * Auditul consolidat, E1: cel mult 3 sportivi deodată, sportivi noi porniți doar în primele 150 s (funcția are 300 s);
+ * starea fiecăruia în athlete_jobs. Cine nu apucă e recuperat de cronul de 15 minute (server/cron/sync.ts).
+ */
 export default async function handler(req: Req, res: Res): Promise<void> {
   try {
     requireCron(req);
     const users = await select<{ id: string; tz: string; goal: Goal | 'full' | null; consents: { health_data: boolean; withdrawn_at: string | null } | null }>('users', {}, { select: 'id,tz,goal,consents(health_data,withdrawn_at)' });
+    const jobs = await loadJobs('dimineata');
     const out: Record<string, unknown> = {};
-    for (const u of users) {
-      if (!consentActive(u.consents)) continue;
-      const today = todayIn(u.tz);
+    const eligible = stalestFirst(users.filter((u) => consentActive(u.consents)), (u) => jobs.get(u.id));
+    const r = await fanOut(eligible, { limit: 3, budgetMs: 150_000 }, async (u) => {
+      await jobStarted(u.id, 'dimineata');
       try {
-        await syncUser(u.id, 3);
-        await rescore(u.id, today, u.goal && u.goal !== 'full' ? u.goal : '70.3');
-        await labsReminder(u.id, today).catch(() => false);
-        // Auditul v93, A23: o singură dată pe plan (aceeași migrare ca la deschiderea aplicației).
-        await (async () => {
-          const p = await loadPlan(u.id, addDays(today, -28), addDays(today, 400));
-          await runOnce(u.id, p.planId, today, MIGRATIONS.strengthSplit, p.workouts, async (plan) => {
-            const after = await ensureSplit(u.id, today, { planId: p.planId, workouts: plan });
-            return after.filter((w, i) => w !== plan[i]);
-          });
-        })().catch(() => undefined);
-        // Fitness: sala ratată ieri → rotația continuă (fără dublare), înaintea mesajului de dimineață.
-        if (u.goal && u.goal.startsWith('fit-')) await missedStrength(u.id, today).catch(() => []);
-        // Treptele modulelor din execuții, nu din calendar (V2-05); și „rămâne” își scrie dovezile în jurnal.
-        else await moduleProgression(u.id, today).catch(() => []);
-        // A08: după un efort mare ieri, sugestie ușoară pe ședința de picioare de azi (planul rămâne).
-        await bigEffortMorning(u.id, today).catch(() => []);
-        // Vremea: azi ↔ mâine, înaintea mesajului de dimineață (ca mesajul să vorbească de planul inversat).
-        await weatherSwapFor(u.id, today, 'azi').catch(() => null);
-        const r = await runAgents(u.id, today, 'dimineata');
-        out[u.id] = r ? { decizie: r.decision, rutati: r.routed, respinse: r.rejected, schimbari: r.changes.length } : 'deja rulat';
+        out[u.id] = await morningFor(u, todayIn(u.tz));
+        await jobFinished(u.id, 'dimineata', jobs.get(u.id), null);
       } catch (e) {
-        out[u.id] = { eroare: e instanceof Error ? e.message : String(e) };
+        const msg = e instanceof Error ? e.message : String(e);
+        out[u.id] = { eroare: msg };
+        await jobFinished(u.id, 'dimineata', jobs.get(u.id), msg);
       }
-    }
-    json(res, 200, { ok: true, out });
+    });
+    json(res, 200, { ok: true, out, neprocesati: r.notStarted.map((u) => u.id) });
   } catch (e) {
     fail(res, e);
   }
