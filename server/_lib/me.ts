@@ -33,7 +33,7 @@ import type { LabsForm, Me, MeActivity, MeMessage, TestsForm } from '../../src/a
 import type { BarResult } from '../../src/bar/bar.js';
 import { dedupeActivities, mergeWellness } from '../../src/collector/packet.js';
 import { compareLabs } from '../../src/collector/labs-compare.js';
-import { dayVerdict, hooperSum, objectiveReadiness } from '../../src/collector/readiness.js';
+import { dayVerdict, deviceScoresOf, hooperSum, objectiveReadiness } from '../../src/collector/readiness.js';
 import { labSnapshot } from './collect.js';
 import { matchActivities } from '../../src/scoring/match.js';
 import type { Color, FreeBlock } from '../../src/types.js';
@@ -151,7 +151,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     const xs = prev.map((m) => m[k]).filter((x): x is number => x != null);
     return xs.length >= 14 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
   };
-  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base('hrv'), rhr: todayW?.rhr ?? null, rhrBaseline: base('rhr'), resp: todayW?.respiratoryRate ?? null, respBaseline: base('respiratoryRate'), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
+  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base('hrv'), rhr: todayW?.rhr ?? null, rhrBaseline: base('rhr'), resp: todayW?.respiratoryRate ?? null, respBaseline: base('respiratoryRate'), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null, deviceScores: deviceScoresOf(todayW) });
   const mf = forms.morning as MorningForm | null;
   const hs = hooperSum(mf?.hooper).suma; // și din răspunsuri parțiale
   // Restricția activă (febră, simptom cardiac, boală, durere): o singură regulă; somnul bun nu o anulează.
@@ -162,7 +162,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
   const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
   // Fără date de la brățări și fără răspuns: nu ghicim o culoare, îl întrebăm pe sportiv.
   const ask = !!verdict0.intrebare;
-  const state0 = ask || (objective.scor == null && hs == null && !mf?.apt) ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const state0 = ask || (objective.scor == null && hs == null && !mf?.apt) ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor, aplicatie: objective.scor_aplicatie, bratari: objective.scor_bratari, bratariLista: objective.bratari } };
   const state = !restriction
     ? state0
     : state0

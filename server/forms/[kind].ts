@@ -282,8 +282,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     if (kind === 'aviz') {
-      // Trei stări: „da” = sportivul declară că are aviz; „nu” = medicul i-a limitat efortul (planul rămâne la Z1–Z2);
-      // „necunoscut” = nu știm (nu blochează antrenamentul obișnuit și nu e prezentat ca aviz).
+      // Declarat pe propria răspundere (decizia proprietarului, 22.10.2026): „da” = are aviz pentru efort intens; „nu” = nu
+      // are (planul rămâne la Z1–Z2 și i se spune că așa nu ajunge la obiectiv). „necunoscut” rămâne doar pentru conturi
+      // vechi, nerăspunse: nu blochează antrenamentul obișnuit.
       const v = body.aviz === 'da' ? 'da' : body.aviz === 'nu' ? 'nu' : 'necunoscut';
       const da = v === 'da';
       await upsert('clearances', { user_id: u.id, cardiology: da, cleared_at: da ? today : null, intensity_allowed: v === 'nu' ? 'Z2' : 'toate' }, 'user_id');

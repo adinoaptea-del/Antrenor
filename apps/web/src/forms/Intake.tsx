@@ -216,7 +216,7 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
       case 'Program':
         return a.program.length > 0 && (fit || walk || a.oreSport != null);
       case 'Sănătate':
-        return fit || walk || !!a.evaluare?.testEfort;
+        return fit || walk || (!!a.evaluare?.testEfort && (a.sanatate.avizCardiolog === 'da' || a.sanatate.avizCardiolog === 'nu'));
       case 'Gata':
         return a.consimtamant;
       default:
@@ -518,6 +518,13 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
             {!walk && !fit && a.sex === 'f' && (
               <Q title="Ești însărcinată sau în primul an după naștere?" hint="Opțional, rămâne privat. Dacă da, AIRON nu generează automat un plan de anduranță: volumul și revenirea se stabilesc cu medicul sau moașa.">
                 <Chips value={(a as { sarcina?: string | null }).sarcina ?? null} options={[{ id: 'nu', label: 'Nu' }, { id: 'da', label: 'Da' }, { id: 'alaptez', label: 'Alăptez', sub: 'planul merge; fără deficit la mese' }, { id: 'nu_spun', label: 'Prefer să nu spun' }]} onChange={(sarcina) => set({ sarcina } as never)} />
+              </Q>
+            )}
+            {!fit && !walk && (
+              // Decizia proprietarului (22.10.2026): avizul se declară pe propria răspundere, Da sau Nu. „Nu” = ședințe ușoare
+              // (Z1–Z2), spus clar: așa nu ajungi la obiectiv.
+              <Q title="Ai aviz medical (cardiologic) pentru efort intens?" hint={`Declari pe propria răspundere; aplicația nu verifică documentul. ${a.sanatate.avizCardiolog === 'nu' ? '${NOTE_NU} Când ai aviz, schimbi răspunsul din Profil → Date de sănătate și planul se reface.' : 'Cu aviz, planul are și intensitate (intervale, teste), după nivelul tău.'}`}>
+                <Chips value={a.sanatate.avizCardiolog === 'da' || a.sanatate.avizCardiolog === 'nu' ? a.sanatate.avizCardiolog : null} options={[{ id: 'da', label: 'Da, am aviz' }, { id: 'nu', label: 'Nu am aviz' }]} onChange={(v) => set({ sanatate: { ...a.sanatate, avizCardiolog: v as 'da' | 'nu', limitareMedic: v === 'nu' } })} />
               </Q>
             )}
             <Q title={fit || walk ? 'Dureri, accidentări sau restricții de la medic' : 'Accidentări sau dureri în ultimul an'} hint="Pe scurt, în cuvintele tale. Rămâne la fizio.">

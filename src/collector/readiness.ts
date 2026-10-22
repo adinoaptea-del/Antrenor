@@ -19,6 +19,13 @@ export interface ObjectiveInput {
   /** Scorul de recuperare / readiness al brățării principale (0–100), scara producătorului; nu e mediat între brățări. */
   recovery: number | null;
   sleepMin: number | null;
+  /**
+   * Scorurile de recuperare / readiness ale TUTUROR brățărilor de azi (WHOOP recovery %, Oura readiness …), câte unul pe
+   * sursă. Decizia proprietarului (22.10.2026): starea zilei = media dintre calculul aplicației (HRV, puls, respirație,
+   * somn față de media ta) și media brățărilor — fiecare are raționamentul ei și niciunul nu e greșit. Lipsă = vechiul
+   * comportament (doar `recovery`, ca înlocuitor al inimii).
+   */
+  deviceScores?: { source: string; score: number }[];
 }
 
 export interface Component {
@@ -28,8 +35,13 @@ export interface Component {
 }
 
 export interface ObjectiveReadiness {
-  /** Media componentelor disponibile, 0–100. null = nicio componentă. */
+  /** Starea zilei, 0–100: media dintre calculul aplicației și media brățărilor (când există amândouă). null = nimic. */
   scor: number | null;
+  /** Calculul aplicației: media componentelor (HRV, puls, respirație, somn). */
+  scor_aplicatie: number | null;
+  /** Media scorurilor brățărilor de azi, pe scara producătorilor. */
+  scor_bratari: number | null;
+  bratari: { source: string; score: number }[];
   verdict: Verdict | null;
   componente: { inima_hrv: Component; inima_puls: Component; respiratie: Component; recuperare: Component; somn: Component };
   disponibile: number;
@@ -63,9 +75,13 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   // Somn (aliniat cu regulile Fiziologului: sub 6 h galben, sub 5 h roșu): 7 h sau peste = 100; 6 h = 70; 5 h = 30; 4 h = 0.
   const sleep = i.sleepMin != null ? clamp(sleepScore(i.sleepMin)) : null;
   // Scorul proprietar doar ca înlocuitor al inimii (HRV și puls lipsă), nu ca dovadă în plus.
-  const recUsed = hrv == null && rhr == null ? rec : null;
+  const devices = (i.deviceScores ?? []).filter((d) => Number.isFinite(d.score)).map((d) => ({ source: d.source, score: clamp(d.score) }));
+  // Cu scorurile brățărilor date separat, ele intră în medie o singură dată (mai jos), nu și ca înlocuitor al inimii.
+  const recUsed = !devices.length && hrv == null && rhr == null ? rec : null;
   const parts = [hrv, rhr, resp, recUsed, sleep].filter((x): x is number => x != null);
-  const scor = parts.length ? clamp(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  const app = parts.length ? clamp(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  const dev = devices.length ? clamp(devices.reduce((a, b) => a + b.score, 0) / devices.length) : null;
+  const scor = app != null && dev != null ? clamp((app + dev) / 2) : (app ?? dev);
   // Auditul v93, A09: media nu ascunde un semnal mare (HRV −33% sau puls +8 → componentă ≤ 20 plafonează ziua la
   // galben). Acoperirea (câți indicatori din 5) se spune în motiv, nu schimbă culoarea: un sportiv doar cu somn
   // măsurat nu rămâne pe galben permanent.
@@ -74,8 +90,11 @@ export function objectiveReadiness(i: ObjectiveInput): ObjectiveReadiness {
   if (verdict === 'verde' && heart.some((x) => x <= 20)) verdict = 'galben';
   return {
     scor,
+    scor_aplicatie: app,
+    scor_bratari: dev,
+    bratari: devices,
     verdict,
-    disponibile: parts.length,
+    disponibile: parts.length + (devices.length ? 1 : 0),
     componente: {
       inima_hrv: { valoare: i.hrv, referinta: i.hrvBaseline, scor: hrv },
       inima_puls: { valoare: i.rhr, referinta: i.rhrBaseline, scor: rhr },
@@ -112,7 +131,7 @@ export function dayVerdict(obj: ObjectiveReadiness, hooperSum: number | null, ct
   let intrebare = false;
   if (obj.verdict) {
     v = obj.verdict;
-    motiv = `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)`;
+    motiv = obj.scor_aplicatie != null && obj.scor_bratari != null ? `starea zilei ${obj.scor}/100 = media dintre calculul aplicației (${obj.scor_aplicatie}) și brățări (${obj.scor_bratari})` : `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 măsurate)`;
     if (obj.verdict !== verdictFromScore(obj.scor)) motiv += '; un semnal mare (inima) plafonează la galben';
   } else if (ctx.apt) {
     v = ctx.apt === 'da' ? 'verde' : ctx.apt === 'partial' ? 'galben' : 'rosu';
@@ -146,4 +165,11 @@ export function hooperSum(h: { somn: number | null; oboseala: number | null; str
   // celelalte: răspunsurile ajung la fiziolog una câte una, dar nu fac un total.
   if (xs.length < 3) return { suma: null, raspunse: xs.length };
   return { suma: Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 4), raspunse: xs.length };
+}
+
+/** Scorurile brățărilor de azi din rândul unit (perDevice), câte unul pe sursă. */
+export function deviceScoresOf(row: { perDevice?: Record<string, { recuperare: number | null }> } | null | undefined): { source: string; score: number }[] {
+  return Object.entries(row?.perDevice ?? {})
+    .filter(([, d]) => d.recuperare != null)
+    .map(([source, d]) => ({ source, score: d.recuperare! }));
 }

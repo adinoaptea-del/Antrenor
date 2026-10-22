@@ -15,7 +15,7 @@ import { raceReady, type RaceReady } from '../bar/race-ready.js';
 import { readyView } from '../bar/ready-view.js';
 import { METRICS } from '../bar/metrics.js';
 import { extraOn, overYesterday, type DayCoverage } from '../calendar/load.js';
-import { dayVerdict, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
+import { dayVerdict, deviceScoresOf, objectiveReadiness, type ObjectiveReadiness, type Verdict } from './readiness.js';
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import { BLOCK_LABEL, prescribe } from '../strength/ppl.js';
 import { strengthSpecFor } from '../strength/plan-specs.js';
@@ -722,6 +722,7 @@ export function buildPacket(input: CollectorInput): Packet {
     respBaseline: resp60.length >= 14 ? round(mean(resp60), 1) : null,
     recovery: todayRow?.recoveryScore ?? null,
     sleepMin: todayRow?.sleepMin ?? null,
+    deviceScores: deviceScoresOf(todayRow),
   });
   const h = input.morning?.hooper;
   const hooper = hooperSum(h);

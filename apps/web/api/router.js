@@ -4567,16 +4567,22 @@ function objectiveReadiness(i) {
   const resp = i.resp != null && i.respBaseline != null ? clamp(100 - Math.max(0, i.resp - i.respBaseline - 0.5) * 40) : null;
   const rec = i.recovery != null ? clamp(i.recovery) : null;
   const sleep = i.sleepMin != null ? clamp(sleepScore(i.sleepMin)) : null;
-  const recUsed = hrv == null && rhr == null ? rec : null;
+  const devices = (i.deviceScores ?? []).filter((d) => Number.isFinite(d.score)).map((d) => ({ source: d.source, score: clamp(d.score) }));
+  const recUsed = !devices.length && hrv == null && rhr == null ? rec : null;
   const parts2 = [hrv, rhr, resp, recUsed, sleep].filter((x) => x != null);
-  const scor = parts2.length ? clamp(parts2.reduce((a, b) => a + b, 0) / parts2.length) : null;
+  const app = parts2.length ? clamp(parts2.reduce((a, b) => a + b, 0) / parts2.length) : null;
+  const dev = devices.length ? clamp(devices.reduce((a, b) => a + b.score, 0) / devices.length) : null;
+  const scor = app != null && dev != null ? clamp((app + dev) / 2) : app ?? dev;
   let verdict = verdictFromScore(scor);
   const heart = [hrv, rhr].filter((x) => x != null);
   if (verdict === "verde" && heart.some((x) => x <= 20)) verdict = "galben";
   return {
     scor,
+    scor_aplicatie: app,
+    scor_bratari: dev,
+    bratari: devices,
     verdict,
-    disponibile: parts2.length,
+    disponibile: parts2.length + (devices.length ? 1 : 0),
     componente: {
       inima_hrv: { valoare: i.hrv, referinta: i.hrvBaseline, scor: hrv },
       inima_puls: { valoare: i.rhr, referinta: i.rhrBaseline, scor: rhr },
@@ -4592,7 +4598,7 @@ function dayVerdict(obj, hooperSum2, ctx = {}) {
   let intrebare = false;
   if (obj.verdict) {
     v = obj.verdict;
-    motiv = `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 m\u0103surate)`;
+    motiv = obj.scor_aplicatie != null && obj.scor_bratari != null ? `starea zilei ${obj.scor}/100 = media dintre calculul aplica\u021Biei (${obj.scor_aplicatie}) \u0219i br\u0103\u021B\u0103ri (${obj.scor_bratari})` : `date obiective ${obj.scor}/100 (${obj.disponibile} din 5 m\u0103surate)`;
     if (obj.verdict !== verdictFromScore(obj.scor)) motiv += "; un semnal mare (inima) plafoneaz\u0103 la galben";
   } else if (ctx.apt) {
     v = ctx.apt === "da" ? "verde" : ctx.apt === "partial" ? "galben" : "rosu";
@@ -4619,6 +4625,9 @@ function hooperSum(h2) {
   const xs = h2 ? [h2.somn, h2.oboseala, h2.stres, h2.dureri].filter((x) => typeof x === "number") : [];
   if (xs.length < 3) return { suma: null, raspunse: xs.length };
   return { suma: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 4), raspunse: xs.length };
+}
+function deviceScoresOf(row) {
+  return Object.entries(row?.perDevice ?? {}).filter(([, d]) => d.recuperare != null).map(([source, d]) => ({ source, score: d.recuperare }));
 }
 var clamp, verdictFromScore, RANK2;
 var init_readiness = __esm({
@@ -6431,7 +6440,7 @@ function generatePlan(input) {
       targetHours: target,
       plannedHours,
       workouts: placed.workouts,
-      notes: [...capNotes, ...out.length === 0 && toleratedPhaseTarget != null ? [`Doza de start din ce ai f\u0103cut: media ta m\u0103surat\u0103 e ${round12(measuredAvg)} h/s\u0103pt., prima s\u0103pt\u0103m\xE2n\u0103 are ${plannedHours} h (\u021Binta generic\u0103 a fazei ar fi fost ${toleratedPhaseTarget} h, o sc\u0103dere f\u0103r\u0103 motiv).${plannedHours < round12(measuredAvg * 0.9) ? " Sub media ta r\u0103m\xE2ne fie pentru c\u0103 s\u0103pt\u0103m\xE2na obiectivului are mai pu\u021Bine \u0219edin\u021Be dec\xE2t faci acum (media ta poate include \u0219i alte sporturi), fie pentru c\u0103 ceva n-a \xEEnc\u0103put \xEEn ore sau \xEEn programul liber (notele de mai jos spun ce)." : ""} S\u0103pt\u0103m\xE2nile de desc\u0103rcare r\u0103m\xE2n mai u\u0219oare; dac\u0103 oboseala cre\u0219te, volumul se reevalueaz\u0103.`] : [], ...declaredUsed && out.length === 0 ? [`Doza de start: ${round12(avgHistory)} h/s\u0103pt. declarate de tine (nu avem \xEEnc\u0103 activit\u0103\u021Bi importate). C\xE2nd apar activit\u0103\u021Bile, planul porne\u0219te din ele.`] : [], ...fitted.notes, ...placed.notes]
+      notes: [...capNotes, ...out.length === 0 && input.noClearance ? ["Ai declarat c\u0103 nu ai aviz medical pentru efort intens: antrenamentele r\u0103m\xE2n u\u0219oare (Z1\u2013Z2) \u0219i nu te pot duce la obiectivul t\u0103u. C\xE2nd ai aviz, schimbi r\u0103spunsul din Profil \u2192 Date de s\u0103n\u0103tate \u0219i planul se reface cu intensitate."] : [], ...out.length === 0 && toleratedPhaseTarget != null ? [`Doza de start din ce ai f\u0103cut: media ta m\u0103surat\u0103 e ${round12(measuredAvg)} h/s\u0103pt., prima s\u0103pt\u0103m\xE2n\u0103 are ${plannedHours} h (\u021Binta generic\u0103 a fazei ar fi fost ${toleratedPhaseTarget} h, o sc\u0103dere f\u0103r\u0103 motiv).${plannedHours < round12(measuredAvg * 0.9) ? " Sub media ta r\u0103m\xE2ne fie pentru c\u0103 s\u0103pt\u0103m\xE2na obiectivului are mai pu\u021Bine \u0219edin\u021Be dec\xE2t faci acum (media ta poate include \u0219i alte sporturi), fie pentru c\u0103 ceva n-a \xEEnc\u0103put \xEEn ore sau \xEEn programul liber (notele de mai jos spun ce)." : ""} S\u0103pt\u0103m\xE2nile de desc\u0103rcare r\u0103m\xE2n mai u\u0219oare; dac\u0103 oboseala cre\u0219te, volumul se reevalueaz\u0103.`] : [], ...declaredUsed && out.length === 0 ? [`Doza de start: ${round12(avgHistory)} h/s\u0103pt. declarate de tine (nu avem \xEEnc\u0103 activit\u0103\u021Bi importate). C\xE2nd apar activit\u0103\u021Bile, planul porne\u0219te din ele.`] : [], ...fitted.notes, ...placed.notes]
     });
   }
   assignStrengthDays(out, input.raceDate, input.athlete?.sex === "m" ? "ppl" : void 0);
@@ -7459,7 +7468,8 @@ function buildPacket(input) {
     resp: todayRow?.respiratoryRate ?? null,
     respBaseline: resp60.length >= 14 ? round(mean3(resp60), 1) : null,
     recovery: todayRow?.recoveryScore ?? null,
-    sleepMin: todayRow?.sleepMin ?? null
+    sleepMin: todayRow?.sleepMin ?? null,
+    deviceScores: deviceScoresOf(todayRow)
   });
   const h2 = input.morning?.hooper;
   const hooper = hooperSum(h2);
@@ -9911,7 +9921,7 @@ async function buildMe(userId, today) {
     const xs = prev.map((m) => m[k]).filter((x) => x != null);
     return xs.length >= 14 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
   };
-  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null });
+  const objective = objectiveReadiness({ hrv: todayW?.hrv ?? null, hrvBaseline: base("hrv"), rhr: todayW?.rhr ?? null, rhrBaseline: base("rhr"), resp: todayW?.respiratoryRate ?? null, respBaseline: base("respiratoryRate"), recovery: todayW?.recoveryScore ?? null, sleepMin: todayW?.sleepMin ?? null, deviceScores: deviceScoresOf(todayW) });
   const mf = forms.morning;
   const hs = hooperSum(mf?.hooper).suma;
   const restriction = activeRestriction({ today, morning: mf, evenings: withIncidents(forms.evenings, forms.incidents.evenings), mornings: withIncidents(forms.mornings, forms.incidents.mornings), savedVerdict: readinessRow?.verdict ?? null, todayActivities: activities.filter((a) => a.date === today).map((a) => ({ sport: a.sport, minutes: a.minutes, rpe: evFor(a)?.rpe ?? null })) });
@@ -9919,7 +9929,7 @@ async function buildMe(userId, today) {
   const ieri = overYesterday(today, planned, withRpe);
   const verdict0 = dayVerdict(objective, hs, { apt: mf?.apt ?? null, efortIeri: ieri.over, dureri: mf?.hooper.dureri ?? null });
   const ask = !!verdict0.intrebare;
-  const state0 = ask || objective.scor == null && hs == null && !mf?.apt ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor } };
+  const state0 = ask || objective.scor == null && hs == null && !mf?.apt ? null : { ...verdict0, score: objective.scor, parts: { recuperare: objective.componente.recuperare.scor, somn: objective.componente.somn.scor, hrv: objective.componente.inima_hrv.scor, puls: objective.componente.inima_puls.scor, respiratie: objective.componente.respiratie.scor, aplicatie: objective.scor_aplicatie, bratari: objective.scor_bratari, bratariLista: objective.bratari } };
   const state = !restriction ? state0 : state0 ? { ...state0, verdict: stricter(state0.verdict, restriction.verdict === "stop" ? "rosu" : restriction.verdict), motiv: restriction.reason } : { verdict: restriction.verdict === "stop" ? "rosu" : restriction.verdict, motiv: restriction.reason, score: null, parts: { recuperare: null, somn: null, hrv: null, puls: null, respiratie: null } };
   const devices = tokens.map((t) => {
     const last = lastSyncRows.find((s) => s.provider === t.provider);
@@ -12039,6 +12049,7 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     intensityAllowed: !medicalLimit(intake) && !labs.limitIntensity ? "toate" : "Z2",
     // Plafonul de vârstă se ridică doar cu aviz declarat și istoric de antrenament (generate.ts ageCapped).
     vigorousCleared: !medicalLimit(intake) && !labs.limitIntensity && intake.sanatate?.avizCardiolog === "da",
+    noClearance: intake.sanatate?.avizCardiolog === "nu",
     swimContinuous400: (swimCap.meters ?? 0) >= 400,
     athlete: await athleteInfo(userId, today).then((a) => ({ ...a, sex: a.sex ?? intake.sex ?? null })),
     tests: await testsAvailable(userId, intake),

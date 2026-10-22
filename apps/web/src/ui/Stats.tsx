@@ -29,8 +29,13 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
   const recovery = w?.recoveryScore ?? null;
   const parts = me.state?.parts;
   const sleepSc = parts?.somn ?? (w?.sleepMin != null ? Math.round(sleepScore(w.sleepMin)) : null);
+  // Starea zilei = media dintre calculul aplicației și media brățărilor (decizia proprietarului, 22.10.2026).
+  const blended = parts?.aplicatie != null && parts?.bratari != null;
+  const SRC: Record<string, string> = { whoop: 'WHOOP', oura: 'Oura', garmin: 'Garmin', apple: 'Apple', android: 'Samsung', strava: 'Strava' };
   const chips = [
-    { k: 'rec', label: 'Recuperare brățări', score: parts?.recuperare ?? recovery, show: recovery != null },
+    { k: 'app', label: 'Calculul aplicației', score: parts?.aplicatie ?? null, show: blended },
+    ...(parts?.bratariLista ?? []).map((d) => ({ k: `dev-${d.source}`, label: `${SRC[d.source] ?? d.source}`, score: d.score, show: blended })),
+    { k: 'rec', label: 'Recuperare brățări', score: parts?.recuperare ?? recovery, show: !blended && recovery != null },
     { k: 'somn', label: `Somn ${w?.sleepMin != null ? fmtMinutes(w.sleepMin) : ''}`, score: sleepSc, show: w?.sleepMin != null },
     { k: 'hrv', label: `HRV ${w?.hrv != null ? String(w.hrv).replace('.', ',') : ''} ms`, score: parts?.hrv ?? null, show: w?.hrv != null },
     { k: 'rhr', label: `Puls de repaus ${w?.rhr ?? ''}`, score: parts?.puls ?? null, show: w?.rhr != null },
@@ -38,7 +43,7 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
     // Temperatura pielii (Oura): afișată ca valoare, fără scor inventat; nu e temperatura corpului.
     { k: 'temp', label: `Temperatura pielii ${w?.tempDevC != null ? `${w.tempDevC > 0 ? '+' : ''}${w.tempDevC.toLocaleString('ro-RO', { maximumFractionDigits: 2 })} °C față de media ta` : ''}`, score: null, show: w?.tempDevC != null },
   ].filter((c) => c.show);
-  const n = parts ? Object.values(parts).filter((x) => x != null).length : 0;
+  const n = parts ? [parts.recuperare, parts.somn, parts.hrv, parts.puls, parts.respiratie].filter((x) => x != null).length : 0;
   const ringValue = me.state?.score ?? recovery;
   const ringLevel = levelFromScore(ringValue ?? null);
   const day = dayOf(me);
@@ -95,7 +100,9 @@ export function Stats({ onOpen }: { onOpen: (screen: string) => void }) {
             ))}
           </div>
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            {n > 1 ? `Media celor ${n} scoruri de mai sus; inima și respirația sunt comparate cu media ta din ultimele 60 de zile. ` : ''}
+            {blended
+              ? `Media dintre calculul aplicației (${parts!.aplicatie}: HRV, puls, respirație și somn față de media ta din ultimele 60 de zile) și brățări (${parts!.bratari}${(parts!.bratariLista ?? []).length > 1 ? ', media lor' : ''}): fiecare are raționamentul ei. `
+              : n > 1 ? `Media celor ${n} scoruri de mai sus; inima și respirația sunt comparate cu media ta din ultimele 60 de zile. ` : ''}
             Măsurătoarea de azi, nu decizia: decizia zilei e pe Acasă{day ? ` (${day.title.toLowerCase()})` : ''}.
           </p>
           <Sources />

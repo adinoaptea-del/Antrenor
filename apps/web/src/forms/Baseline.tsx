@@ -274,15 +274,15 @@ export function BaselineList({ onOpen, onlyMissing = false }: { onOpen: (screen:
 }
 
 /**
- * Avizul pentru efort, în trei stări: necunoscut (implicit; nu blochează antrenamentul obișnuit), am aviz (declarat de
- * tine, nu verificat de aplicație), medicul mi-a limitat efortul (planul rămâne la Z1–Z2).
+ * Avizul pentru efort intens, declarat pe propria răspundere: Da sau Nu (decizia proprietarului, 22.10.2026). „Nu” =
+ * planul rămâne la Z1–Z2 și sportivul află că așa nu ajunge la obiectiv. Nerăspuns (conturi vechi) = cere răspunsul.
  */
 function AvizRow() {
   const me = useMe();
   const { submitForm } = useData();
   const [busy, setBusy] = useState(false);
-  const cur = me.baseline.cardiolog === 'da' ? 'da' : me.baseline.cardiolog === 'nu' ? 'nu' : 'necunoscut';
-  const set = async (v: 'da' | 'nu' | 'necunoscut') => {
+  const cur = me.baseline.cardiolog === 'da' ? 'da' : me.baseline.cardiolog === 'nu' ? 'nu' : null;
+  const set = async (v: 'da' | 'nu') => {
     if (v === cur) return;
     setBusy(true);
     try {
@@ -291,29 +291,27 @@ function AvizRow() {
       setBusy(false);
     }
   };
-  const OPTS: { v: 'necunoscut' | 'da' | 'nu'; label: string }[] = [
-    { v: 'necunoscut', label: 'Nu știu / n-am făcut' },
-    { v: 'da', label: 'Am aviz' },
-    { v: 'nu', label: 'Medicul mi-a limitat efortul' },
-  ];
   return (
-    <div className={`base-row ${cur === 'da' ? 'done' : ''}`} role="group" aria-label="Aviz pentru efort">
+    <div className={`base-row ${cur === 'da' ? 'done' : ''}`} role="group" aria-label="Aviz pentru efort intens">
       <span className="ic">{cur === 'da' ? Icons.check : null}</span>
       <span className="tx">
         <span className="t">
-          Aviz pentru efort <small>· {cur === 'da' ? 'declarat de tine' : cur === 'nu' ? 'efort limitat de medic' : 'necunoscut'}</small>
+          Aviz pentru efort intens <small>· {cur === 'da' ? 'da, declarat pe propria răspundere' : cur === 'nu' ? 'nu' : 'nerăspuns'}</small>
         </span>
         <span className="s">
           {cur === 'nu'
-            ? 'planul rămâne la Z1–Z2 până când medicul îți permite din nou intensitatea'
-            : 'lipsa avizului nu oprește antrenamentul obișnuit; dacă medicul ți-a limitat efortul, spune aici și planul se adaptează'}
+            ? 'Fără aviz, antrenamentele rămân ușoare (Z1–Z2) și nu te pot duce la obiectivul tău. Când ai aviz, alege „Da” și planul se reface.'
+            : cur === 'da'
+              ? 'declarat de tine, pe propria răspundere; aplicația nu verifică documentul. Planul are și intensitate, după nivelul tău.'
+              : 'Răspunde pe propria răspundere: Da sau Nu. Fără aviz, antrenamentele rămân ușoare (Z1–Z2) și nu te pot duce la obiectivul tău.'}
         </span>
         <span className="wk-btns" style={{ marginTop: 8 }}>
-          {OPTS.map((o) => (
-            <button key={o.v} className={`pill ${cur === o.v ? 'on' : ''}`} disabled={busy} aria-pressed={cur === o.v} onClick={() => void set(o.v)}>
-              {o.label}
-            </button>
-          ))}
+          <button className={`pill ${cur === 'da' ? 'on' : ''}`} disabled={busy} aria-pressed={cur === 'da'} onClick={() => void set('da')}>
+            Da, am aviz
+          </button>
+          <button className={`pill ${cur === 'nu' ? 'on' : ''}`} disabled={busy} aria-pressed={cur === 'nu'} onClick={() => void set('nu')}>
+            Nu am aviz
+          </button>
         </span>
       </span>
     </div>

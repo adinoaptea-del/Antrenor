@@ -248,6 +248,8 @@ export function Home({ onOpen }: { onOpen: (screen: string, opts?: { sport?: Spo
 
       <div className="stack">
 
+        <AvizAsk />
+
         <WeatherSwapped />
 
         <MovedAway />
@@ -330,6 +332,36 @@ function PainClear({ reason }: { reason: string }) {
  * poate, „Lasă-le cum erau” (le pune pe amândouă în zilele din plan). O ședință deja făcută sau din trecut nu se mai
  * poate pune înapoi: rămâne doar „OK”.
  */
+/**
+ * Conturile vechi, fără răspuns la aviz (decizia proprietarului, 22.10.2026): o singură întrebare pe Acasă, Da / Nu pe
+ * propria răspundere. Doar pentru obiectivele de anduranță; dispare după răspuns.
+ */
+function AvizAsk() {
+  const me = useMe();
+  const { submitForm, local } = useData();
+  const [busy, setBusy] = useState(false);
+  const kind = goalKind(me.user.goal);
+  if (local || !me.intakeComplete || kind === 'fitness' || kind === 'walk' || me.baseline.cardiolog === 'da' || me.baseline.cardiolog === 'nu') return null;
+  const answer = async (aviz: 'da' | 'nu') => {
+    setBusy(true);
+    try {
+      await submitForm('aviz', { aviz });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="card">
+      <div style={{ fontWeight: 700 }}>Ai aviz medical (cardiologic) pentru efort intens?</div>
+      <p className="small muted" style={{ marginTop: 6 }}>Declari pe propria răspundere. Fără aviz, antrenamentele rămân ușoare (Z1–Z2) și nu te pot duce la obiectivul tău.</p>
+      <div className="wk-btns" style={{ marginTop: 10 }}>
+        <button className="pill" disabled={busy} onClick={() => void answer('da')}>Da, am aviz</button>
+        <button className="pill" disabled={busy} onClick={() => void answer('nu')}>Nu am aviz</button>
+      </div>
+    </section>
+  );
+}
+
 function WeatherSwapped() {
   const me = useMe();
   const { submitForm, local } = useData();

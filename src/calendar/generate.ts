@@ -27,6 +27,8 @@ export interface GenerateInput {
   historyHoursPerWeek: number[];
   /** Aviz cardiologic declarat pentru efort și fără limitare de la medic (server/_lib/plan.ts); vezi ageCapped. */
   vigorousCleared?: boolean;
+  /** Sportivul a declarat că NU are aviz pentru efort intens: planul e ușor, iar prima săptămână spune ce înseamnă. */
+  noClearance?: boolean;
   /** Ore/săpt. antrenate recent, DECLARATE de sportiv (user_reported). Folosite doar când nu există istoric importat:
    *  dau doza de start și pragul de debutant, NU deblochează protocoale intense (30/15). */
   declaredRecentHours?: number | null;
@@ -307,7 +309,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
       targetHours: target,
       plannedHours,
       workouts: placed.workouts,
-      notes: [...capNotes, ...(out.length === 0 && toleratedPhaseTarget != null ? [`Doza de start din ce ai făcut: media ta măsurată e ${round1(measuredAvg)} h/săpt., prima săptămână are ${plannedHours} h (ținta generică a fazei ar fi fost ${toleratedPhaseTarget} h, o scădere fără motiv).${plannedHours < round1(measuredAvg * 0.9) ? ' Sub media ta rămâne fie pentru că săptămâna obiectivului are mai puține ședințe decât faci acum (media ta poate include și alte sporturi), fie pentru că ceva n-a încăput în ore sau în programul liber (notele de mai jos spun ce).' : ''} Săptămânile de descărcare rămân mai ușoare; dacă oboseala crește, volumul se reevaluează.`] : []), ...(declaredUsed && out.length === 0 ? [`Doza de start: ${round1(avgHistory)} h/săpt. declarate de tine (nu avem încă activități importate). Când apar activitățile, planul pornește din ele.`] : []), ...fitted.notes, ...placed.notes],
+      notes: [...capNotes, ...(out.length === 0 && input.noClearance ? ['Ai declarat că nu ai aviz medical pentru efort intens: antrenamentele rămân ușoare (Z1–Z2) și nu te pot duce la obiectivul tău. Când ai aviz, schimbi răspunsul din Profil → Date de sănătate și planul se reface cu intensitate.'] : []), ...(out.length === 0 && toleratedPhaseTarget != null ? [`Doza de start din ce ai făcut: media ta măsurată e ${round1(measuredAvg)} h/săpt., prima săptămână are ${plannedHours} h (ținta generică a fazei ar fi fost ${toleratedPhaseTarget} h, o scădere fără motiv).${plannedHours < round1(measuredAvg * 0.9) ? ' Sub media ta rămâne fie pentru că săptămâna obiectivului are mai puține ședințe decât faci acum (media ta poate include și alte sporturi), fie pentru că ceva n-a încăput în ore sau în programul liber (notele de mai jos spun ce).' : ''} Săptămânile de descărcare rămân mai ușoare; dacă oboseala crește, volumul se reevaluează.`] : []), ...(declaredUsed && out.length === 0 ? [`Doza de start: ${round1(avgHistory)} h/săpt. declarate de tine (nu avem încă activități importate). Când apar activitățile, planul pornește din ele.`] : []), ...fitted.notes, ...placed.notes],
     });
   }
 
