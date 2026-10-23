@@ -247,8 +247,14 @@ export function taperWeeksFor(goal: string | null | undefined): number {
   return goal === '5k' || goal === '10k' ? 1 : goal === 'maraton' ? 3 : 2;
 }
 
-export function phaseLengths(totalWeeks: number, taperWeeks?: number): Record<Phase, number> {
-  const desired = { ...DESIRED, taper: taperWeeks ?? DESIRED.taper };
+/**
+ * `evaluationWeeks`: câte săptămâni de evaluare (implicit 3). Decizia proprietarului (23.10.2026): cu istoric măsurat
+ * pe brățări / Health, evaluarea se scurtează (1) sau dispare (0) — sportivul nu e luat de la zero; vezi
+ * generate.ts evaluationWeeksFor.
+ */
+export function phaseLengths(totalWeeks: number, taperWeeks?: number, evaluationWeeks?: number | null): Record<Phase, number> {
+  const evalW = evaluationWeeks == null ? null : Math.max(0, Math.min(DESIRED.evaluare, Math.round(evaluationWeeks)));
+  const desired = { ...DESIRED, taper: taperWeeks ?? DESIRED.taper, ...(evalW != null ? { evaluare: evalW } : {}) };
   const fixed = desired.evaluare + desired.baza2 + desired.build + desired.peak + desired.taper;
   if (totalWeeks >= fixed + 4) {
     return { ...desired, baza1: totalWeeks - fixed };
@@ -258,6 +264,7 @@ export function phaseLengths(totalWeeks: number, taperWeeks?: number): Record<Ph
   let used = 0;
   for (const p of ORDER) {
     out[p] = Math.max(MIN_WEEKS[p], Math.floor(totalWeeks * RATIO[p]));
+    if (p === 'evaluare' && evalW != null) out[p] = Math.min(out[p], evalW);
     used += out[p];
   }
   // Pe orizont scurt, taper-ul distanței dacă încape (cel mult ~12% din plan), altfel o săptămână.
@@ -287,13 +294,13 @@ export function phaseLengths(totalWeeks: number, taperWeeks?: number): Record<Ph
 }
 
 /** recoveryEvery: a câta săptămână din fază e descărcare (4 implicit; 3 de la 40 de ani, recuperarea e mai lentă). */
-export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4, goal?: string | null, fitness?: FitnessProfile): PhaseWeek[] {
+export function phaseWeeks(startDate: string, raceDate: string, recoveryEvery = 4, goal?: string | null, fitness?: FitnessProfile, evaluationWeeks?: number | null): PhaseWeek[] {
   const first = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total = Math.floor(diffDays(first, raceWeek) / 7) + 1;
   if (total < 4) throw new Error(`Prea puține săptămâni până la cursă (${total}); planul are nevoie de minimum 4.`);
   if (isFitnessGoal(goal)) return fitnessPhaseWeeks(first, total, fitness ?? fitnessProfile(goal, undefined));
-  const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined);
+  const lengths = phaseLengths(total, goal ? taperWeeksFor(goal) : undefined, evaluationWeeks);
   const weeks: PhaseWeek[] = [];
   let index = 0;
   // Auditul v93, A97: descărcarea se numără pe tot planul (săptămâni încărcate de la ultima descărcare), nu de la zero

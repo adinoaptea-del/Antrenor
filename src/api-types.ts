@@ -136,6 +136,8 @@ export interface Me {
   prepStart?: string | null;
   /** Prima zi a planului activ (luni). */
   planStart?: string | null;
+  /** Săptămânile de evaluare ale planului activ (0–3; null = planuri vechi, 3). */
+  planEvaluationWeeks?: number | null;
   plan: PlannedWorkout[];
   /**
    * Scorul salvat al fiecărei ședințe (tabelul `scores`). durationPct/pain/evaluare: aceleași valori ca în pachetul AI

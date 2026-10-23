@@ -18,7 +18,9 @@ test('T70 / A98: 46 de ani, 400 m continuu, fără CSS → testul CSS apare în 
 });
 
 test('A98: testul de evaluare (CSS lipsă) căzut în descărcare apare în săptămâna următoare', () => {
-  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-09-26', goal: '70.3', freeBlocks: blocks, historyHoursPerWeek: [7, 7, 7, 7], intensityAllowed: 'toate', swimContinuous400: true, athlete: { age: 46, sex: 'm' } });
+  // Fără istoric măsurat (doar declarat): evaluarea are 3 săptămâni. Cu istoric măsurat ea se scurtează sau dispare
+  // (decizia proprietarului, 23.10.2026; tests/evaluation-weeks.test.ts), deci cazul A98 apare doar fără date.
+  const r = generatePlan({ startDate: '2026-10-26', raceDate: '2027-09-26', goal: '70.3', freeBlocks: blocks, historyHoursPerWeek: [0, 0, 0, 0], declaredRecentHours: 7, intensityAllowed: 'toate', swimContinuous400: true, athlete: { age: 46, sex: 'm' } });
   assert.ok(r.ok);
   if (!r.ok) return;
   const i = r.weeks.findIndex((w) => w.phase === 'evaluare' && w.recovery);

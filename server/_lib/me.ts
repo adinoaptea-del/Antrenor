@@ -61,7 +61,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     one<{ run_hr_zones: number[] | null; bike_ftp_w: number | null; bike_hr_zones: number[] | null; swim_css_sec_100m: number | null; source: string | null }>('zones', { user_id: `eq.${userId}` }),
     select<{ drawn_at: string; feritina: number | null; vitamina_d: number | null; hemoglobina: number | null; ck: number | null; crp: number | null; other: { laborator?: string | null; valori?: LabsForm['alte'] } | null }>('labs', { user_id: `eq.${userId}` }, { order: 'drawn_at.desc', limit: 2 }),
     select<{ provider: Provider; ok: boolean; detail: string | null; ran_at: string }>('sync_log', { user_id: `eq.${userId}` }, { order: 'ran_at.desc', limit: 30 }),
-    one<{ start_date: string; race_date: string; budget_hours: number }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
+    one<{ start_date: string; race_date: string; budget_hours: number; evaluation_weeks?: number | null }>('plans', { user_id: `eq.${userId}`, active: 'eq.true' }),
   ]);
   // Mersul pe jos (obiectivul „mers”): plimbările devin activități de mers, legate de ședințele de mers din plan.
   const tz = (user as UserRow).tz || 'Europe/Bucharest';
@@ -270,7 +270,8 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
     today,
-    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, intake) : null,
+    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, intake, planRow.evaluation_weeks) : null,
+    planEvaluationWeeks: planRow?.evaluation_weeks ?? null,
     budgetHours: planRow?.budget_hours ?? null,
     availability: (() => {
       const prog = (intake?.program as FreeBlock[] | undefined) ?? [];
@@ -340,6 +341,7 @@ export async function buildMe(userId: string, today: string): Promise<Me> {
       goal: user.goal ?? null,
       planStart: planRow?.start_date ?? null,
       raceDate: user.race_date ?? null,
+      evaluationWeeks: planRow?.evaluation_weeks ?? null,
       age: u2.birth_year ? Number(today.slice(0, 4)) - u2.birth_year : null,
       zonesTested: !!zonesRow && zonesRow.source !== 'provizoriu',
       efficiencyPct: aerobicEfficiency(activities, today).map((e) => e.schimbare_pct),

@@ -325,9 +325,9 @@ export async function loadClearance(userId: string): Promise<{ cardiolog: string
   return { cardiolog: c.cardiology ? `declarat de sportiv${c.cleared_at ? ` (${c.cleared_at})` : ''}` : 'necunoscut', intensitate_permisa: c.intensity_allowed };
 }
 
-export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4, intake?: Record<string, unknown> | null): Phase | null {
+export function phaseAt(startDate: string, raceDate: string, today: string, goal?: string | null, recoveryEvery = 4, intake?: Record<string, unknown> | null, evaluationWeeks?: number | null): Phase | null {
   try {
-    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal, goal && isFitnessGoal(goal) ? fitnessProfile(goal, intake?.fitness as never) : undefined);
+    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal, goal && isFitnessGoal(goal) ? fitnessProfile(goal, intake?.fitness as never) : undefined, evaluationWeeks);
     const w = [...weeks].reverse().find((x) => x.weekStart <= today);
     return w?.phase ?? null;
   } catch {
@@ -348,8 +348,8 @@ export async function collect(userId: string, today: string, event: CollectorInp
     loadLabs(userId),
     loadClearance(userId),
   ]);
-  const planRow = planRes.planId ? await one<{ start_date: string; race_date: string }>('plans', { id: `eq.${planRes.planId}` }) : null;
-  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, forms.intake) ?? 'evaluare') : 'evaluare';
+  const planRow = planRes.planId ? await one<{ start_date: string; race_date: string; evaluation_weeks?: number | null }>('plans', { id: `eq.${planRes.planId}` }) : null;
+  const phase = planRow ? (phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, forms.intake, planRow.evaluation_weeks) ?? 'evaluare') : 'evaluare';
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),

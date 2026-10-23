@@ -312,6 +312,8 @@ export async function generateAndStore(userId: string, today: string, intake: In
     race_date: intake.dataCursa,
     start_date: startDate,
     budget_hours: result.budgetHours,
+    // Săptămânile de evaluare (0–3, după datele măsurate): fazele se recalculează din ele peste tot (schema 14).
+    evaluation_weeks: result.evaluationWeeks ?? null,
     version: (prev[0]?.version ?? 0) + 1,
     active: false,
   });

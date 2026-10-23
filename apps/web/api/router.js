@@ -151,7 +151,7 @@ var init_db = __esm({
   "server/_lib/db.ts"() {
     "use strict";
     init_env();
-    OPTIONAL_COLUMNS = { workouts_planned: ["flags"], packets: ["context_hash"] };
+    OPTIONAL_COLUMNS = { workouts_planned: ["flags"], packets: ["context_hash"], plans: ["evaluation_weeks"] };
   }
 });
 
@@ -1896,8 +1896,9 @@ function goalSports(g) {
 function taperWeeksFor(goal) {
   return goal === "5k" || goal === "10k" ? 1 : goal === "maraton" ? 3 : 2;
 }
-function phaseLengths(totalWeeks, taperWeeks) {
-  const desired = { ...DESIRED, taper: taperWeeks ?? DESIRED.taper };
+function phaseLengths(totalWeeks, taperWeeks, evaluationWeeks) {
+  const evalW = evaluationWeeks == null ? null : Math.max(0, Math.min(DESIRED.evaluare, Math.round(evaluationWeeks)));
+  const desired = { ...DESIRED, taper: taperWeeks ?? DESIRED.taper, ...evalW != null ? { evaluare: evalW } : {} };
   const fixed = desired.evaluare + desired.baza2 + desired.build + desired.peak + desired.taper;
   if (totalWeeks >= fixed + 4) {
     return { ...desired, baza1: totalWeeks - fixed };
@@ -1906,6 +1907,7 @@ function phaseLengths(totalWeeks, taperWeeks) {
   let used = 0;
   for (const p of ORDER) {
     out[p] = Math.max(MIN_WEEKS[p], Math.floor(totalWeeks * RATIO[p]));
+    if (p === "evaluare" && evalW != null) out[p] = Math.min(out[p], evalW);
     used += out[p];
   }
   if (taperWeeks != null) {
@@ -1930,13 +1932,13 @@ function phaseLengths(totalWeeks, taperWeeks) {
   }
   return out;
 }
-function phaseWeeks(startDate, raceDate, recoveryEvery = 4, goal, fitness) {
+function phaseWeeks(startDate, raceDate, recoveryEvery = 4, goal, fitness, evaluationWeeks) {
   const first2 = weekStart(startDate);
   const raceWeek = weekStart(raceDate);
   const total2 = Math.floor(diffDays(first2, raceWeek) / 7) + 1;
   if (total2 < 4) throw new Error(`Prea pu\u021Bine s\u0103pt\u0103m\xE2ni p\xE2n\u0103 la curs\u0103 (${total2}); planul are nevoie de minimum 4.`);
   if (isFitnessGoal(goal)) return fitnessPhaseWeeks(first2, total2, fitness ?? fitnessProfile(goal, void 0));
-  const lengths = phaseLengths(total2, goal ? taperWeeksFor(goal) : void 0);
+  const lengths = phaseLengths(total2, goal ? taperWeeksFor(goal) : void 0, evaluationWeeks);
   const weeks = [];
   let index = 0;
   let loaded = 0;
@@ -6315,7 +6317,7 @@ function generatePlan(input) {
   const age = input.athlete?.age ?? null;
   let weeks;
   try {
-    weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal);
+    weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal, void 0, evaluationWeeksFor(input).weeks);
   } catch (e) {
     return { ok: false, reason: `${e instanceof Error ? e.message : String(e)} Alege o dat\u0103 mai \xEEndep\u0103rtat\u0103 sau un obiectiv mai scurt; p\xE2n\u0103 atunci, antrenament u\u0219or de \xEEntre\u021Binere.`, budgetHours: budget.hours, minimumHours: 0, options: ["mut\u0103 data cursei", "alege un obiectiv mai scurt"] };
   }
@@ -6458,7 +6460,7 @@ function generatePlan(input) {
     if (v.notes.length) w.notes.push(...v.notes);
     capToBudget(w, budget.hours, (x) => easyOf(x, w.recovery || w.phase === "taper"));
   }
-  return { ok: true, weeks: out, budgetHours: budget.hours };
+  return { ok: true, weeks: out, budgetHours: budget.hours, evaluationWeeks: evaluationWeeksFor(input).weeks };
 }
 function capToBudget(w, hours, floor = (x) => MIN_SESSION_MIN2[x.sport]) {
   const cap2 = Math.round(hours * 60);
@@ -6889,6 +6891,15 @@ function qualitySession(allowed, phase, ageCap = false, weekInPhase = 0) {
     return fourByFour;
   };
 }
+function evaluationWeeksFor(input) {
+  const kind = goalKind(input.goal);
+  const sports = kind === "run" ? ["alergare"] : kind === "swim" ? ["inot"] : kind === "bike" ? ["bicicleta"] : ["inot", "bicicleta", "alergare"];
+  const withData = sports.filter((s) => (input.demonstrated?.n[s] ?? 0) >= 3);
+  const without = sports.filter((s) => !withData.includes(s));
+  const measuredWeeks = input.historyHoursPerWeek.filter((h2) => h2 > 0).length;
+  const weeks = withData.length === sports.length && measuredWeeks >= 3 ? 0 : withData.length > 0 || measuredWeeks >= 3 ? 1 : 3;
+  return { weeks, withData, without };
+}
 function ageCapped(input) {
   const age = input.athlete?.age ?? null;
   if (age == null || age < 55) return false;
@@ -6900,7 +6911,9 @@ function fieldTests(pw, input, sports) {
   if (pw.recovery || input.intensityAllowed !== "toate" || ageCapped(input)) return [];
   const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
   const out = [];
-  const dueAt = (w, sport, week) => w.phase === "evaluare" && w.weekInPhase === week && !have[sport] || (w.phase === "baza2" || w.phase === "build") && w.weekInPhase === 0;
+  const evalW = evaluationWeeksFor(input).weeks;
+  const missing = (sport) => !have[sport];
+  const dueAt = (w, sport, week) => w.phase === "evaluare" && evalW > 0 && w.weekInPhase === Math.min(week, evalW - 1) && missing(sport) || evalW === 0 && w.phase === "baza1" && w.weekInPhase === week - 1 && missing(sport) || (w.phase === "baza2" || w.phase === "build") && w.weekInPhase === 0;
   const due = (sport, week) => dueAt(pw, sport, week) || pw.testCarry != null && dueAt(pw.testCarry, sport, week);
   if (sports.includes("alergare") && due("alergare", 1)) out.push({ sport: "alergare", type: "calitate", minutes: 50, zones: [4, 5], key: true, priority: 2.5, structure: RUN_TEST(15, 30, 5) });
   if (sports.includes("bicicleta") && due("bicicleta", 1)) out.push({ sport: "bicicleta", type: "calitate", minutes: 55, zones: [4, 5], key: true, priority: 2.5, structure: BIKE_TEST(25, 10) });
@@ -7099,13 +7112,13 @@ var init_generate = __esm({
 });
 
 // src/strength/plan-specs.ts
-function strengthSpecFor(plan, w, planStart, raceDate, recoveryEvery = 4, goal) {
+function strengthSpecFor(plan, w, planStart, raceDate, recoveryEvery = 4, goal, evaluationWeeks) {
   const own2 = parseStrength(w.structure);
   if (own2) return own2;
   if (!planStart || !raceDate) return null;
   let pws;
   try {
-    pws = phaseWeeks(planStart, raceDate, recoveryEvery, goal);
+    pws = phaseWeeks(planStart, raceDate, recoveryEvery, goal, void 0, evaluationWeeks);
   } catch {
     return null;
   }
@@ -9020,7 +9033,7 @@ function computeBadges(i) {
   if (i.planStart && i.raceDate) {
     let pw = [];
     try {
-      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4, i.goal);
+      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4, i.goal, void 0, i.evaluationWeeks);
     } catch {
       pw = [];
     }
@@ -9108,6 +9121,7 @@ async function loadBadges(userId, today, o) {
     planStart: o.planStart,
     raceDate: o.raceDate,
     recoveryEvery: o.age != null && o.age >= 40 ? 3 : 4,
+    evaluationWeeks: o.evaluationWeeks ?? null,
     plan: plan.workouts,
     acts,
     redDays: red.map((r2) => r2.date),
@@ -10019,7 +10033,8 @@ async function buildMe(userId, today) {
     consent: !!consent?.health_data && !consent.withdrawn_at,
     intakeComplete: !!intake?.consimtamant,
     today,
-    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, intake) : null,
+    phase: planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, intake, planRow.evaluation_weeks) : null,
+    planEvaluationWeeks: planRow?.evaluation_weeks ?? null,
     budgetHours: planRow?.budget_hours ?? null,
     availability: (() => {
       const prog = intake?.program ?? [];
@@ -10083,6 +10098,7 @@ async function buildMe(userId, today) {
       goal: user.goal ?? null,
       planStart: planRow?.start_date ?? null,
       raceDate: user.race_date ?? null,
+      evaluationWeeks: planRow?.evaluation_weeks ?? null,
       age: u2.birth_year ? Number(today.slice(0, 4)) - u2.birth_year : null,
       zonesTested: !!zonesRow && zonesRow.source !== "provizoriu",
       efficiencyPct: aerobicEfficiency(activities, today).map((e) => e.schimbare_pct)
@@ -12112,6 +12128,8 @@ async function generateAndStore(userId, today, intake, opts = {}) {
     race_date: intake.dataCursa,
     start_date: startDate,
     budget_hours: result.budgetHours,
+    // Săptămânile de evaluare (0–3, după datele măsurate): fazele se recalculează din ele peste tot (schema 14).
+    evaluation_weeks: result.evaluationWeeks ?? null,
     version: (prev[0]?.version ?? 0) + 1,
     active: false
   });
@@ -12422,9 +12440,9 @@ async function loadClearance(userId) {
   if (c2.intensity_allowed === "Z2") return { cardiolog: "restrictie declarata", intensitate_permisa: "Z2" };
   return { cardiolog: c2.cardiology ? `declarat de sportiv${c2.cleared_at ? ` (${c2.cleared_at})` : ""}` : "necunoscut", intensitate_permisa: c2.intensity_allowed };
 }
-function phaseAt(startDate, raceDate, today, goal, recoveryEvery = 4, intake) {
+function phaseAt(startDate, raceDate, today, goal, recoveryEvery = 4, intake, evaluationWeeks) {
   try {
-    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal, goal && isFitnessGoal(goal) ? fitnessProfile(goal, intake?.fitness) : void 0);
+    const weeks = phaseWeeks(startDate, raceDate, recoveryEvery, goal, goal && isFitnessGoal(goal) ? fitnessProfile(goal, intake?.fitness) : void 0, evaluationWeeks);
     const w = [...weeks].reverse().find((x) => x.weekStart <= today);
     return w?.phase ?? null;
   } catch {
@@ -12444,7 +12462,7 @@ async function collect(userId, today, event) {
     loadClearance(userId)
   ]);
   const planRow = planRes.planId ? await one("plans", { id: `eq.${planRes.planId}` }) : null;
-  const phase = planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, forms.intake) ?? "evaluare" : "evaluare";
+  const phase = planRow ? phaseAt(planRow.start_date, planRow.race_date, today, user.goal, 4, forms.intake, planRow.evaluation_weeks) ?? "evaluare" : "evaluare";
   const [weather, history, totals] = await Promise.all([
     user.lat != null && user.lon != null && user.city ? forecast(user.city, user.lat, user.lon, user.tz) : Promise.resolve(null),
     loadHistory(userId, today),
@@ -12794,7 +12812,7 @@ init_env();
 init_tokens();
 
 // src/schema-version.ts
-var SCHEMA_VERSION = 13;
+var SCHEMA_VERSION = 14;
 
 // server/config.ts
 async function handler4(_req, res) {
@@ -15586,6 +15604,9 @@ var app_usage_default = "-- Folosirea aplica\u021Biei (cererea proprietarului, 2
 // supabase/migrations/0005_audit_consolidat.sql
 var audit_consolidat_default = "-- Auditul consolidat (22.10.2026), etapa 2: datele \u0219i persistarea. Idempotent\u0103: ruleaz\u0103 la fiecare \u201EPreg\u0103te\u0219te baza\u201D.\n-- Revenire (rollback) manual\u0103, dac\u0103 e nevoie: vezi la final.\n\n-- C2: o activitate \u0219tears\u0103 (pe Strava, Oura) se poate \u0219terge \u0219i c\xE2nd e legat\u0103 de o \u0219edin\u021B\u0103 cu scor. Leg\u0103tura din\n-- scor devine NULL, iar codul recalculeaz\u0103 scorul imediat dup\u0103 \u0219tergere (server/_lib/activity-delete.ts).\ndo $$\nbegin\n  alter table public.scores drop constraint if exists scores_activity_id_fkey;\n  alter table public.scores drop constraint if exists scores_extra_activity_id_fkey;\n  alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade on delete set null;\n  alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade on delete set null;\nend $$;\n\n-- C5: tokenuri separate pentru Apple Health \u0219i Samsung Health / Health Connect. Cine trimitea deja date Android cu\n-- tokenul comun \xEEl p\u0103streaz\u0103 ca token Android (adresa lipit\u0103 \xEEn telefon merge \xEEn continuare); ceilal\u021Bi primesc unul\n-- la prima ap\u0103sare pe \u201EConecteaz\u0103 Samsung Health\u201D.\nalter table public.users add column if not exists android_token text;\ncreate unique index if not exists users_android_token_key on public.users (android_token) where android_token is not null;\nupdate public.users u set android_token = u.apple_token\n where u.android_token is null and u.apple_token is not null\n   and exists (select 1 from public.sync_log l where l.user_id = u.id and l.provider = 'android');\n\n-- A2: starea schimb\u0103rii \u0219edin\u021Bei \xEEn c\xE2mp tipizat (src/calendar/flags.ts), nu \xEEn textul notei.\nalter table public.workouts_planned add column if not exists flags jsonb;\n-- R\xE2ndurile vechi: starea se ia o singur\u0103 dat\u0103 din not\u0103 (aceea\u0219i regul\u0103 ca legacyFlags din cod).\nupdate public.workouts_planned w set flags = jsonb_build_object(\n    'origin', case\n      when w.note ~ '^mutat\u0103 de tine' then 'mutare'\n      when w.note ~ '^pus\u0103 \xEEnapoi' then 'pus_inapoi'\n      when w.note ~ '^f\u0103cut\u0103 \xEEn ziua din plan \\(vremea' then 'vreme_revenit'\n      when w.note ~ '^vremea' then 'vreme'\n      when w.note ~ '^plecat' then 'plecat'\n      when w.note ~ '^u\u0219urat\u0103:' then 'usurare'\n      when w.note ~ '^u\u0219oar\u0103 la cererea ta' then 'usor'\n      else 'varianta' end,\n    'manual_override', (w.note ~ '^(mutat\u0103 de tine|pus\u0103 \xEEnapoi|u\u0219oar\u0103 la cererea ta|varianta aleas\u0103 de tine)'),\n    'weather_swap', case when w.note ~ '^vremea' and w.note !~ '^f\u0103cut\u0103' then jsonb_build_object('reason', split_part(regexp_replace(w.note, '^vremea:\\s*', ''), ';', 1)) else null end,\n    'original_slot', w.original ->> 'date',\n    'change_reason', w.note)\n where w.flags is null\n   and w.note ~ '^(mutat\u0103 de tine|pus\u0103 \xEEnapoi|f\u0103cut\u0103 \xEEn ziua din plan \\(vremea|vremea|plecat|u\u0219urat\u0103:|u\u0219oar\u0103 la cererea ta|varianta aleas\u0103 de tine)';\n\n-- B3: versiunea contextului trimis AI-ului. O cerere manual\u0103 pe acela\u0219i context nu mai cheam\u0103 modelul.\nalter table public.packets add column if not exists context_hash text;\ncreate index if not exists packets_user_event_hash on public.packets (user_id, event, created_at desc);\n\n-- C1 / E1: coada durabil\u0103 a evenimentelor Strava. Webhook-ul confirm\u0103 primirea imediat \u0219i scrie aici; procesarea\n-- (sincronizare, \u0219tergere confirmat\u0103 prin API) se face dup\u0103, cu re\xEEncerc\u0103ri. Cheia unic\u0103 face re\xEEncerc\u0103rile Strava\n-- (acela\u0219i eveniment trimis din nou) idempotente.\ncreate table if not exists public.webhook_inbox (\n  id bigint generated always as identity primary key,\n  provider text not null,\n  owner_id text not null,\n  object_type text not null,\n  object_id text not null,\n  aspect text not null,\n  event_time bigint not null,\n  updates jsonb,\n  user_id uuid references public.users(id) on delete cascade,\n  received_at timestamptz not null default now(),\n  processed_at timestamptz,\n  attempts int not null default 0,\n  next_try_at timestamptz not null default now(),\n  last_error text,\n  outcome text,\n  unique (provider, object_id, aspect, event_time)\n);\ncreate index if not exists webhook_inbox_pending on public.webhook_inbox (next_try_at) where processed_at is null;\nalter table public.webhook_inbox enable row level security;\n\n-- E1: starea pe sportiv a lucr\u0103rilor programate (ultima reu\u0219it\u0103, ultima eroare, c\xE2te \xEEncerc\u0103ri, c\xE2nd se re\xEEncearc\u0103).\ncreate table if not exists public.athlete_jobs (\n  user_id uuid not null references public.users(id) on delete cascade,\n  job text not null,\n  last_started_at timestamptz,\n  last_ok_at timestamptz,\n  last_error text,\n  failures int not null default 0,\n  next_try_at timestamptz,\n  primary key (user_id, job)\n);\nalter table public.athlete_jobs enable row level security;\n\ninsert into public.schema_meta (key, value) values ('version', 13)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n\n-- Revenire manual\u0103 (nu ruleaz\u0103 automat):\n--   alter table public.scores drop constraint scores_activity_id_fkey, drop constraint scores_extra_activity_id_fkey;\n--   alter table public.scores add constraint scores_activity_id_fkey foreign key (activity_id) references public.activities(id) on update cascade;\n--   alter table public.scores add constraint scores_extra_activity_id_fkey foreign key (extra_activity_id) references public.activities(id) on update cascade;\n--   coloanele noi (users.android_token, workouts_planned.flags, packets.context_hash) \u0219i tabelele webhook_inbox,\n--   athlete_jobs pot r\u0103m\xE2ne: codul vechi nu le cite\u0219te. Schema_meta coboar\u0103 cu: update public.schema_meta set value = 12 where key = 'version';\n";
 
+// supabase/migrations/0006_evaluation_weeks.sql
+var evaluation_weeks_default = "-- Evaluarea dup\u0103 date (decizia proprietarului, 23.10.2026): c\xE2te s\u0103pt\u0103m\xE2ni de evaluare are planul (0\u20133). NULL = planurile\n-- vechi, cu evaluarea implicit\u0103 de 3 s\u0103pt\u0103m\xE2ni. Fazele se calculeaz\u0103 din start, curs\u0103 \u0219i acest num\u0103r, peste tot.\nalter table public.plans add column if not exists evaluation_weeks smallint check (evaluation_weeks between 0 and 3);\n\ninsert into public.schema_meta (key, value) values ('version', 14)\n  on conflict (key) do update set value = greatest(public.schema_meta.value, excluded.value), updated_at = now();\n";
+
 // server/_lib/setup.ts
 init_env();
 
@@ -15860,6 +15881,7 @@ commit;`);
     await step("jurnal de for\u021B\u0103 pe serii", strength_log_sets_default);
     await step("folosirea aplica\u021Biei", app_usage_default);
     await step("audit consolidat: date \u0219i persistare", audit_consolidat_default);
+    await step("evaluarea dup\u0103 date", evaluation_weeks_default);
     await step("drepturi", GRANTS, true);
     try {
       const r2 = await c2.query(VERIFY_GRANTS);

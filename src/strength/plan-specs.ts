@@ -7,13 +7,13 @@ import { phaseWeeks } from '../calendar/phases.js';
 import type { PlannedWorkout } from '../types.js';
 import { parseStrength, type StrengthSpec } from './ppl.js';
 
-export function strengthSpecFor(plan: PlannedWorkout[], w: PlannedWorkout, planStart: string | null, raceDate: string | null, recoveryEvery = 4, goal?: string | null): StrengthSpec | null {
+export function strengthSpecFor(plan: PlannedWorkout[], w: PlannedWorkout, planStart: string | null, raceDate: string | null, recoveryEvery = 4, goal?: string | null, evaluationWeeks?: number | null): StrengthSpec | null {
   const own = parseStrength(w.structure);
   if (own) return own;
   if (!planStart || !raceDate) return null;
   let pws;
   try {
-    pws = phaseWeeks(planStart, raceDate, recoveryEvery, goal);
+    pws = phaseWeeks(planStart, raceDate, recoveryEvery, goal, undefined, evaluationWeeks);
   } catch {
     return null;
   }

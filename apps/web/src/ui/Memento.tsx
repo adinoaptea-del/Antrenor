@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMe } from '../data/store';
-import { dayIndex } from '../data/model';
-import { randomMotivation } from '../data/motivation';
+import { dayIndex, dayOf } from '../data/model';
+import { welcomeMessage } from '../data/motivation';
+import { welcomeKind } from '@core/welcome-messages.js';
 import { WelcomeFire } from './WelcomeFire';
 import { localDay, welcomeOnLaunch, welcomeOnResume, type LaunchFacts } from '@core/welcome.js';
 
@@ -69,7 +70,8 @@ export function markWelcome(now = new Date()) {
 
 export function Memento({ onClose }: { onClose: () => void }) {
   const me = useMe();
-  const [msg] = useState(randomMotivation);
+  // Mesajul după ziua de azi: odihnă = relaxare; antrenament = motivație (cererea proprietarului, 23.10.2026).
+  const [msg] = useState(() => welcomeMessage(welcomeKind({ sessions: me.plan.filter((w) => w.date === me.today), day: dayOf(me) })));
   const d = dayIndex(me);
   const close = () => {
     markWelcome();

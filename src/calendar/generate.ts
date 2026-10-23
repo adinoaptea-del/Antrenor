@@ -84,7 +84,7 @@ export interface WeekPlan {
 }
 
 export type GenerateResult =
-  | { ok: true; weeks: WeekPlan[]; budgetHours: number }
+  | { ok: true; weeks: WeekPlan[]; budgetHours: number; /** Săptămânile de evaluare folosite (0–3), salvate pe plan. */ evaluationWeeks?: number }
   | { ok: false; reason: string; budgetHours: number; minimumHours: number; options: string[] };
 
 interface Session {
@@ -137,7 +137,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
   const age = input.athlete?.age ?? null;
   let weeks: ReturnType<typeof phaseWeeks>;
   try {
-    weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal);
+    weeks = phaseWeeks(input.startDate, input.raceDate, age != null && age >= 40 ? 3 : 4, input.goal, undefined, evaluationWeeksFor(input).weeks);
   } catch (e) {
     // Obiectiv prea aproape: un răspuns explicit, nu o eroare și nu o probabilitate inventată.
     return { ok: false, reason: `${e instanceof Error ? e.message : String(e)} Alege o dată mai îndepărtată sau un obiectiv mai scurt; până atunci, antrenament ușor de întreținere.`, budgetHours: budget.hours, minimumHours: 0, options: ['mută data cursei', 'alege un obiectiv mai scurt'] };
@@ -331,7 +331,7 @@ export function generatePlan(input: GenerateInput): GenerateResult {
     if (v.notes.length) w.notes.push(...v.notes);
     capToBudget(w, budget.hours, (x) => easyOf(x, w.recovery || w.phase === 'taper'));
   }
-  return { ok: true, weeks: out, budgetHours: budget.hours };
+  return { ok: true, weeks: out, budgetHours: budget.hours, evaluationWeeks: evaluationWeeksFor(input).weeks };
 }
 
 /**
@@ -908,6 +908,25 @@ function qualitySession(allowed: IntensityAllowed, phase: Phase, ageCap = false,
 }
 
 /**
+ * Câte săptămâni de evaluare (decizia proprietarului, 23.10.2026: „nu poți lua toți sportivii de la 0 când ai deja date”).
+ * Dovada = istoric MĂSURAT de brățări / Health, nu declarat: ședințe recente pe fiecare sport al obiectivului (cel puțin
+ * 3 în ultimele 6 săptămâni, cu una în ultimele 14 zile — demonstrated.n) și cel puțin 3 săptămâni cu ore măsurate.
+ *  - toate sporturile obiectivului au date + 3 săptămâni măsurate → 0 (fără evaluare: planul pornește din ce ai făcut);
+ *  - doar o parte → 1 săptămână (calibrare pentru sporturile fără date);
+ *  - nimic măsurat → 3 (ca până acum).
+ * Testele de teren care lipsesc nu se pierd: fără evaluare se fac în prima săptămână de bază (fieldTests).
+ */
+export function evaluationWeeksFor(input: Pick<GenerateInput, 'goal' | 'demonstrated' | 'historyHoursPerWeek'>): { weeks: number; withData: Sport[]; without: Sport[] } {
+  const kind = goalKind(input.goal);
+  const sports: Sport[] = kind === 'run' ? ['alergare'] : kind === 'swim' ? ['inot'] : kind === 'bike' ? ['bicicleta'] : ['inot', 'bicicleta', 'alergare'];
+  const withData = sports.filter((s) => (input.demonstrated?.n[s] ?? 0) >= 3);
+  const without = sports.filter((s) => !withData.includes(s));
+  const measuredWeeks = input.historyHoursPerWeek.filter((h) => h > 0).length;
+  const weeks = withData.length === sports.length && measuredWeeks >= 3 ? 0 : withData.length > 0 || measuredWeeks >= 3 ? 1 : 3;
+  return { weeks, withData, without };
+}
+
+/**
  * Plafonul de vârstă (de la 55 de ani: Z4, fără teste maximale). Auditul consolidat (22.10.2026, etapa 3): nu se mai
  * aplică NUMAI din vârstă. Se ridică pentru sportivul care a demonstrat antrenament regulat (media săptămânilor
  * măsurate ≥ 4 h, cu pauzele incluse) ȘI a declarat aviz cardiologic pentru efort (fără limitare de la medic). Criteriul
@@ -929,8 +948,14 @@ function fieldTests(pw: PhaseWeek, input: GenerateInput, sports: Sport[]): Sessi
   if (pw.recovery || input.intensityAllowed !== 'toate' || ageCapped(input)) return [];
   const have = input.tests ?? { alergare: false, bicicleta: false, inot: false };
   const out: Session[] = [];
+  // Evaluarea scurtată (1 săptămână) sau sărită (0): testele care lipsesc vin în ultima săptămână de evaluare, respectiv
+  // în primele săptămâni de bază (aceeași ordine: alergare/bicicletă, apoi înotul), nu dispar.
+  const evalW = evaluationWeeksFor(input).weeks;
+  const missing = (sport: Sport) => !have[sport as 'alergare' | 'bicicleta' | 'inot'];
   const dueAt = (w: { phase: Phase; weekInPhase: number }, sport: Sport, week: number) =>
-    (w.phase === 'evaluare' && w.weekInPhase === week && !have[sport as 'alergare' | 'bicicleta' | 'inot']) || ((w.phase === 'baza2' || w.phase === 'build') && w.weekInPhase === 0);
+    (w.phase === 'evaluare' && evalW > 0 && w.weekInPhase === Math.min(week, evalW - 1) && missing(sport)) ||
+    (evalW === 0 && w.phase === 'baza1' && w.weekInPhase === week - 1 && missing(sport)) ||
+    ((w.phase === 'baza2' || w.phase === 'build') && w.weekInPhase === 0);
   const due = (sport: Sport, week: number) => dueAt(pw, sport, week) || (pw.testCarry != null && dueAt(pw.testCarry, sport, week));
   if (sports.includes('alergare') && due('alergare', 1)) out.push({ sport: 'alergare', type: 'calitate', minutes: 50, zones: [4, 5], key: true, priority: 2.5, structure: RUN_TEST(15, 30, 5) });
   if (sports.includes('bicicleta') && due('bicicleta', 1)) out.push({ sport: 'bicicleta', type: 'calitate', minutes: 55, zones: [4, 5], key: true, priority: 2.5, structure: BIKE_TEST(25, 10) });

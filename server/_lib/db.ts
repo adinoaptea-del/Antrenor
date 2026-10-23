@@ -12,7 +12,7 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
  * Coloane adăugate de migrarea 0005 (schema 13), pe care codul le scrie înainte ca administratorul să ruleze
  * actualizarea bazei: pe o schemă veche, scrierea se repetă o dată fără ele, în loc să cadă tot planul.
  */
-export const OPTIONAL_COLUMNS: Record<string, readonly string[]> = { workouts_planned: ['flags'], packets: ['context_hash'] };
+export const OPTIONAL_COLUMNS: Record<string, readonly string[]> = { workouts_planned: ['flags'], packets: ['context_hash'], plans: ['evaluation_weeks'] };
 
 /** Coloana opțională pe care PostgREST n-o găsește (PGRST204 / „column … does not exist”), sau null. */
 export function missingOptionalColumn(table: string, errText: string): string | null {

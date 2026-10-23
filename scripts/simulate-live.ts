@@ -36,7 +36,8 @@ const succ = runLongitudinal(tenK, 8, 7, 'succes', '2026-12-28');
 add('Zilele 1–7 (și mai departe): execuții tolerate', 'progres justificat, nu doar reduceri', `trepte: ${JSON.stringify(succ.steps)}; atinse: ${Object.entries(succ.reached).map(([k, v]) => `${k}=${v}`).join(', ') || '—'}`, succ.steps.progress > 0 && succ.violations.length === 0);
 
 // 2. O zi obosită vs. 3–5 zile obosite.
-const q = all.find((w) => w.type === 'calitate')!;
+// Prima ședință de calitate cu cel puțin 3 ședințe înainte (cu istoric măsurat, evaluarea e scurtă și calitatea vine devreme).
+const q = all.find((w) => w.type === 'calitate' && all.filter((x) => x.date < w.date).length >= 3)!;
 const prev = all.filter((w) => w.date < q.date).slice(-3);
 const one: Outcome[] = [{ workoutId: prev[2]!.id, date: prev[2]!.date, status: 'ratat', motiv: 'oboseala' }];
 const many: Outcome[] = prev.map((w) => ({ workoutId: w.id, date: w.date, status: 'ratat' as const, motiv: 'oboseala' as const }));

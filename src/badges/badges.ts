@@ -77,6 +77,8 @@ export interface BadgesInput {
   raceDate: string | null;
   /** Vârsta ≥ 40: descărcare la 3 săptămâni (ca în plan). */
   recoveryEvery?: number;
+  /** Săptămânile de evaluare ale planului (0–3; lipsă = 3). */
+  evaluationWeeks?: number | null;
   plan: PlannedWorkout[];
   acts: Activity[];
   /** Zilele cu verdict roșu sau stop. */
@@ -257,7 +259,7 @@ export function computeBadges(i: BadgesInput): BadgesResult {
   if (i.planStart && i.raceDate) {
     let pw: ReturnType<typeof phaseWeeks> = [];
     try {
-      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4, i.goal);
+      pw = phaseWeeks(i.planStart, i.raceDate, i.recoveryEvery ?? 4, i.goal, undefined, i.evaluationWeeks);
     } catch {
       pw = [];
     }

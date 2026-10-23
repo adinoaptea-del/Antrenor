@@ -429,7 +429,7 @@ function PlanOverview({ onPick }: { onPick: (iso: string) => void }) {
     // Fitness: structura proprie (26 de săptămâni, fără descărcări automate), aceeași ca în plan (V2-13).
     weeks = isFitnessGoal(me.user.goal)
       ? fitnessPlanWeeks(me.planStart, me.user.raceDate, fitnessProfile(me.user.goal ?? 'fit-tonifiere', ((me.forms.intake ?? {}) as { fitness?: FitnessIntake }).fitness)).map((w) => ({ weekStart: w.weekStart, phase: w.phase, recovery: false, weekInPhase: w.blockWeek - 1 })) as never
-      : phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4, me.user.goal);
+      : phaseWeeks(me.planStart, me.user.raceDate, age != null && age >= 40 ? 3 : 4, me.user.goal, undefined, me.planEvaluationWeeks);
   } catch {
     return null;
   }

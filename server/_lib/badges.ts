@@ -25,7 +25,7 @@ interface Row {
   name: string | null;
 }
 
-export async function loadBadges(userId: string, today: string, o: { goal: string | null; planStart: string | null; raceDate: string | null; age: number | null; zonesTested: boolean; efficiencyPct: number[] }): Promise<MeBadges | null> {
+export async function loadBadges(userId: string, today: string, o: { goal: string | null; planStart: string | null; raceDate: string | null; evaluationWeeks?: number | null; age: number | null; zonesTested: boolean; efficiencyPct: number[] }): Promise<MeBadges | null> {
   const since = o.planStart ?? addDays(today, -365);
   const [rows, ov, plan, red, mornings, evenings, stored] = await Promise.all([
     select<Row>('activities', { user_id: `eq.${userId}`, date: `gte.${since}` }, { select: 'id,source,external_id,date,start_local,sport,minutes,distance_km,avg_hr,time_in_zones_min,name', order: 'date.desc', limit: 3000 }),
@@ -49,6 +49,7 @@ export async function loadBadges(userId: string, today: string, o: { goal: strin
     planStart: o.planStart,
     raceDate: o.raceDate,
     recoveryEvery: o.age != null && o.age >= 40 ? 3 : 4,
+    evaluationWeeks: o.evaluationWeeks ?? null,
     plan: plan.workouts,
     acts,
     redDays: red.map((r) => r.date),
