@@ -27,6 +27,23 @@ export function Chips<T extends string>({ value, options, onChange }: { value: T
   );
 }
 
+/** Mai multe alegeri (ex. echipamentul de acasă): fiecare buton se bifează sau nu. */
+export function MultiChips<T extends string>({ value, options, onChange }: { value: readonly T[]; options: { id: T; label: string; sub?: string }[]; onChange: (v: T[]) => void }) {
+  return (
+    <div className="chips" role="group">
+      {options.map((o) => {
+        const on = value.includes(o.id);
+        return (
+          <button key={o.id} aria-pressed={on} className={`chip ${on ? 'on' : ''}`} onClick={() => onChange(on ? value.filter((x) => x !== o.id) : options.map((x) => x.id).filter((x) => x === o.id || value.includes(x)))}>
+            <span>{o.label}</span>
+            {o.sub && <small>{o.sub}</small>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Scară de atins: 0–10 (RPE, durere) sau 1–7 (Hooper). Capetele au etichete. */
 export function Scale({ value, min, max, onChange, lowLabel, highLabel }: { value: number | null; min: number; max: number; onChange: (v: number) => void; lowLabel: string; highLabel: string }) {
   const n = max - min + 1;

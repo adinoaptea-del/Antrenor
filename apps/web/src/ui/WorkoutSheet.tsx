@@ -5,6 +5,7 @@ import type { PlannedWorkout } from '@core/types.js';
 import type { Me } from '@core/api-types.js';
 import { prescribe, sessionName, type Prescription } from '@core/strength/ppl.js';
 import { strengthSpecFor } from '@core/strength/plan-specs.js';
+import { withHome } from '@core/strength/fitness.js';
 import { weekday } from '@core/util/dates.js';
 import { goalKind } from '@core/calendar/phases.js';
 import { Dot, Icons, fmtDayMonth } from './common';
@@ -24,11 +25,11 @@ const SPORT_ICON = { inot: Icons.waves, bicicleta: Icons.bike, alergare: Icons.r
 export function strengthOf(me: Me, w: PlannedWorkout): Prescription | null {
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
   const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
-  // Locul de antrenament din chestionar (planurile vechi nu îl au scris): acasă = doar exerciții cu gantere, bandă, corp.
-  const acces = (me.forms.intake as { fitness?: { acces?: string } } | null)?.fitness?.acces;
+  // Locul și echipamentul din chestionar (planurile vechi nu le au scrise; echipamentul se poate schimba): regula 49.
+  const fx = (me.forms.intake as { fitness?: { acces?: string; echipament?: string[] } } | null)?.fitness;
   // Pornirea pe bandă/bicicletă: după obiectiv și fără să dubleze alergarea sau bicicleta din aceeași zi (regula 25).
   const sameDay = me.plan.filter((x) => x.date === w.date && x.id !== w.id && (x.status === 'planificat' || x.status === 'mutat')).map((x) => x.sport);
-  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes, { goal: me.user.goal, sameDay }) : null;
+  return spec ? prescribe(withHome(spec, fx), w.plannedMinutes, { goal: me.user.goal, sameDay }) : null;
 }
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);

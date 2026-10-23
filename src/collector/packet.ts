@@ -19,7 +19,7 @@ import { dayVerdict, deviceScoresOf, objectiveReadiness, type ObjectiveReadiness
 import { addDays, diffDays, weekday } from '../util/dates.js';
 import { BLOCK_LABEL, prescribe } from '../strength/ppl.js';
 import { strengthSpecFor } from '../strength/plan-specs.js';
-import { fitnessCardio, fitnessProfile, fitnessWeekAction, fitnessWeeks } from '../strength/fitness.js';
+import { fitnessCardio, fitnessProfile, fitnessWeekAction, fitnessWeeks, withHome } from '../strength/fitness.js';
 import type { CollectorInput, EveningForm, SourceActivity, SourceDaily, SportHours } from './types.js';
 
 const SPORTS: Sport[] = ['inot', 'bicicleta', 'alergare', 'forta', 'mers'];
@@ -149,6 +149,8 @@ export interface Packet {
     minute_sedinta: number | null;
     nivel: 'incepatoare' | 'stabila' | null;
     acces: 'sala' | 'acasa' | null;
+    /** Acasă: echipamentul declarat (gantere, banda, saltea, reformer); null = nedeclarat sau la sală. */
+    echipament_acasa: string[] | null;
     miscare_actuala: 'sedentara' | 'plimbari' | 'activa' | null;
     /** true doar dacă a spus „da” la sarcină / primul an după naștere: fără ramura standard de slăbire. */
     sarcina_postpartum: boolean;
@@ -590,8 +592,8 @@ function strengthBrief(input: CollectorInput, acts: SourceActivity[]): Packet['f
   // Planurile dinaintea programului AIRON („Push 1 · …”): prescripția se recalculează cu aceeași regulă ca generatorul.
   const first = input.plan.reduce<string | null>((m, w) => (m == null || w.date < m ? w.date : m), null);
   const spec0 = next ? strengthSpecFor(input.plan, next, first ? addDays(first, -weekday(first)) : null, input.athlete.raceDate ?? null) : null;
-  // Acasă = exercițiile cu gantere, bandă, corp (aceeași regulă ca ecranul).
-  const spec = spec0 && !spec0.place && (input.athlete.fitness as { acces?: string } | null)?.acces === 'acasa' ? { ...spec0, place: 'acasa' as const } : spec0;
+  // Acasă = exercițiile după echipamentul declarat (aceeași regulă ca ecranul, regula 49).
+  const spec = spec0 ? withHome(spec0, input.athlete.fitness as { acces?: string; echipament?: string[] } | null) : spec0;
   const since = addDays(today, -21);
   const planned = input.plan.filter((w) => w.type === 'forta' && w.date >= since && w.date < today && w.status !== 'sters').length;
   const done = acts.filter((a) => a.sport === 'forta' && a.date >= since && a.date < today).length;
@@ -630,6 +632,7 @@ function fitnessBrief(input: CollectorInput): Packet['fitness'] {
     minute_sedinta: f.minute ?? null,
     nivel: f.experienta ?? null,
     acces: f.acces ?? null,
+    echipament_acasa: f.acces === 'acasa' ? (Array.isArray(f.echipament) ? f.echipament : null) : null,
     miscare_actuala: f.miscare ?? null,
     sarcina_postpartum: f.sarcina === 'da',
   };

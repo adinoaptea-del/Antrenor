@@ -3,7 +3,8 @@ import { weeklyBudget } from '@core/calendar/budget.js';
 import { currentFromIntake, distanceFeasibility, fmtTime, planTarget } from '@core/goals/run-target.js';
 import { AvailabilityDays } from '../ui/Availability';
 import { CircleBtn, Icons, LiveTitle } from '../ui/common';
-import { Chips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
+import { Chips, MultiChips, Progress, Q, ScheduleGrid, Stepper, TextBox, Toggle } from './controls';
+import { HOME_GEAR, HOME_GEAR_LABEL } from '@core/strength/ppl.js';
 import { useData, useMe } from '../data/store';
 import { EMPTY_INTAKE, runResultOk, type IntakeAnswers } from './types';
 import { FITNESS_WEEKS, goalKind, isRunGoal, RUN_DISTANCE_KM } from '@core/calendar/phases.js';
@@ -332,8 +333,13 @@ export function Intake({ onBack, onDone }: { onBack: () => void; onDone: () => v
               <Chips value={fx.minute ? String(Math.max(45, fx.minute)) : null} options={[{ id: '45', label: '45 min' }, { id: '60', label: '60 min' }, { id: '75', label: '75 min' }, { id: '90', label: '90 min' }]} onChange={(m) => setFx({ minute: Number(m) })} />
             </Q>
             <Q title="Unde te antrenezi?">
-              <Chips value={fx.acces ?? null} options={[{ id: 'sala', label: 'La sală', sub: 'aparate și gantere' }, { id: 'acasa', label: 'Acasă', sub: 'gantere, bandă' }]} onChange={(acces) => setFx({ acces })} />
+              <Chips value={fx.acces ?? null} options={[{ id: 'sala', label: 'La sală', sub: 'aparate și gantere' }, { id: 'acasa', label: 'Acasă', sub: 'cu ce ai' }]} onChange={(acces) => setFx({ acces, ...(acces === 'acasa' && !fx.echipament ? { echipament: [] } : {}) })} />
             </Q>
+            {fx.acces === 'acasa' && (
+              <Q title="Ce ai acasă?" hint="Bifează tot ce ai. Greutatea corpului și un scaun stabil sunt mereu incluse. Exercițiile se aleg după ce bifezi: cu reformer, picioarele și spatele lucrează la reformer; fără bandă nu primești exerciții cu bandă.">
+                <MultiChips value={fx.echipament ?? []} options={HOME_GEAR.map((id) => ({ id, label: HOME_GEAR_LABEL[id][0]!.toUpperCase() + HOME_GEAR_LABEL[id].slice(1) }))} onChange={(echipament) => setFx({ echipament })} />
+              </Q>
+            )}
             <Q title="Cât te miști acum, în afară de sală?" hint="De aici pornesc plimbările și cardio-ul, treptat.">
               <Chips value={fx.miscare ?? null} options={[{ id: 'sedentara', label: 'Puțin', sub: 'stau mult jos' }, { id: 'plimbari', label: 'Plimbări regulate' }, { id: 'activa', label: 'Activă', sub: 'cardio, alte sporturi' }]} onChange={(miscare) => setFx({ miscare })} />
             </Q>

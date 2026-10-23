@@ -5,8 +5,8 @@ import { goalSports } from '@core/calendar/phases.js';
 import { Card, Dot, Icons, Label, fmtDayMonth } from './common';
 import { SubTabs } from './Shell';
 import { useData, useMe } from '../data/store';
-import { BLOCK_GOAL, BLOCK_LABEL, FITNESS_BLOCK_GOAL, STRENGTH_RULES, isFitnessSession, prescribe, type Prescription } from '@core/strength/ppl.js';
-import { FITNESS_RULES, FITNESS_WEEK_ACTION, fitnessCardio, fitnessProfile, fitnessWeeks, type FitnessIntake } from '@core/strength/fitness.js';
+import { BLOCK_GOAL, BLOCK_LABEL, FITNESS_BLOCK_GOAL, STRENGTH_RULES, HOME_GEAR_LABEL, isFitnessSession, prescribe, type Prescription } from '@core/strength/ppl.js';
+import { FITNESS_RULES, FITNESS_WEEK_ACTION, fitnessCardio, fitnessProfile, fitnessWeeks, withHome, type FitnessIntake } from '@core/strength/fitness.js';
 import { FITNESS_WEEKS, goalKind } from '@core/calendar/phases.js';
 import { strengthSpecFor } from '@core/strength/plan-specs.js';
 import type { Me, SportTotal } from '@core/api-types.js';
@@ -341,11 +341,11 @@ function swimStructure(type: string, planned: string | null, bestM: number | nul
 function strengthFor(me: Me, w: PlannedWorkout): Prescription | null {
   const age = me.profile.birthYear ? Number(me.today.slice(0, 4)) - me.profile.birthYear : null;
   const spec = strengthSpecFor(me.plan, w, me.planStart ?? null, me.user.raceDate ?? null, age != null && age >= 40 ? 3 : 4, me.user.goal);
-  // Locul de antrenament din chestionar (planurile vechi nu îl au scris): acasă = doar exerciții cu gantere, bandă, corp.
-  const acces = (me.forms.intake as { fitness?: { acces?: string } } | null)?.fitness?.acces;
+  // Locul și echipamentul din chestionar (planurile vechi nu le au scrise; echipamentul se poate schimba): regula 49.
+  const fx = (me.forms.intake as { fitness?: { acces?: string; echipament?: string[] } } | null)?.fitness;
   // Pornirea pe bandă/bicicletă: după obiectiv și fără să dubleze alergarea sau bicicleta din aceeași zi (regula 25).
   const sameDay = me.plan.filter((x) => x.date === w.date && x.id !== w.id && (x.status === 'planificat' || x.status === 'mutat')).map((x) => x.sport);
-  return spec ? prescribe({ ...spec, ...(spec.place ? {} : acces === 'acasa' ? { place: 'acasa' as const } : {}) }, w.plannedMinutes, { goal: me.user.goal, sameDay }) : null;
+  return spec ? prescribe(withHome(spec, fx), w.plannedMinutes, { goal: me.user.goal, sameDay }) : null;
 }
 
 const fmtRest = (sec: number) => (sec >= 120 ? `${Math.floor(sec / 60)}${sec % 60 ? `:${String(sec % 60).padStart(2, '0')}` : ''} min` : `${sec} s`);
@@ -484,6 +484,12 @@ function FitnessWeekCard() {
           <div className="small">
             Acum: {me.fitnessFreq.why ?? 'frecvența de început'}. Ziua în plus se adaugă după 3 săptămâni la rând cu cel puțin 80% din ședințe făcute, feedback după fiecare și fără durere, dacă ai zi liberă în program. Se verifică duminica; până atunci programul rămâne cum e.
           </div>
+        </>
+      )}
+      {f.acces === 'acasa' && (
+        <>
+          <div className="pref-k" style={{ marginTop: 10 }}>Echipament acasă</div>
+          <div className="small">{Array.isArray(f.echipament) ? (f.echipament.length ? f.echipament.map((g) => HOME_GEAR_LABEL[g]).join(', ') : 'doar greutatea corpului') + ' · exercițiile se aleg după el' : 'nedeclarat — se presupun gantere și bandă. Îl alegi în Profil → Obiectiv (chestionarul), la „Unde te antrenezi?”.'}</div>
         </>
       )}
       <div className="pref-k" style={{ marginTop: 10 }}>{f.acces === 'acasa' ? 'Mișcare în afara antrenamentului' : 'Mișcare în afara sălii'}</div>

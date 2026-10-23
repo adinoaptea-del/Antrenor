@@ -11,7 +11,7 @@
 
 import type { FitnessGoal } from '../calendar/phases.js';
 import type { Phase } from '../types.js';
-import { FITNESS_ROTATION, FITNESS_ROTATION_WIDE, type Block, type FitnessSessionId } from './ppl.js';
+import { FITNESS_ROTATION, FITNESS_ROTATION_WIDE, HOME_GEAR, type Block, type FitnessSessionId, type HomeGear, type StrengthSpec } from './ppl.js';
 
 export type FitnessDays = 2 | 3 | 4;
 
@@ -34,8 +34,10 @@ export interface FitnessProfile {
   unlocked?: FitnessDays;
   /** Motivul deciziei de frecvență (pentru explicație). */
   unlockWhy?: string;
-  /** Unde se antrenează: acasă = doar gantere, bandă, corp, scaun (exercițiile se aleg după echipament). */
+  /** Unde se antrenează: acasă = exercițiile se aleg după echipamentul declarat (regula 49). */
   place?: 'sala' | 'acasa';
+  /** Acasă: ce are (gantere, bandă, saltea, reformer); lipsă = nedeclarat (gantere și bandă, ca până acum). */
+  gear?: HomeGear[];
 }
 
 export interface FitnessWeek {
@@ -279,8 +281,8 @@ export function fitnessCardio(week: number, activity: FitnessProfile['activity']
   const start = activity === 'activa' ? 2 : activity === 'plimbari' ? 1 : 0;
   const level = Math.min(2, start + (week > 12 ? 2 : week > 4 ? 1 : 0));
   if (level === 0) return 'Două plimbări de 10–15 min, în zile separate (sau bucăți mai scurte). Nu trebuie să alergi.';
-  if (level === 1) return '2–3 ședințe de 20–30 min de mers alert, bicicletă sau eliptică, plus mișcarea de zi cu zi. Crești un singur lucru odată.';
-  return 'Spre 150 min pe săptămână moderat (ex. 5 plimbări alerte × 20 min + 2 ture de bicicletă × 25 min). Moderat = respiri mai repede, dar poți vorbi în propoziții.';
+  if (level === 1) return '2–3 ședințe de 20–30 min de mers alert, bicicletă, eliptică sau alergare ușoară în parc (dacă alergi deja), plus mișcarea de zi cu zi. Crești un singur lucru odată.';
+  return 'Spre 150 min pe săptămână moderat (ex. 5 plimbări alerte × 20 min + 2 ture de bicicletă × 25 min; alergarea ușoară în parc contează și ea). Moderat = respiri mai repede, dar poți vorbi în propoziții. Nu alergi în ziua de picioare, înaintea ei sau imediat după ea, ca picioarele să lucreze proaspete la forță.';
 }
 
 /** Răspunsurile de fitness din chestionar. */
@@ -289,6 +291,8 @@ export interface FitnessIntake {
   zile?: 2 | 3 | 4 | null;
   minute?: number | null;
   acces?: 'sala' | 'acasa' | null;
+  /** Acasă: echipamentul pe care îl are (regula 49). Greutatea corpului și un scaun se presupun mereu. */
+  echipament?: HomeGear[] | null;
   miscare?: 'sedentara' | 'plimbari' | 'activa' | null;
   /** „alaptez” = alăptare (distinct de sarcină/postpartum, ch. 09 din specificația de nutriție): nu blochează programul, blochează deficitul. */
   sarcina?: 'nu' | 'da' | 'alaptez' | 'nu_spun' | null;
@@ -309,7 +313,23 @@ export function fitnessProfile(goal: string, f: FitnessIntake | undefined, ctx: 
     activity: f?.miscare ?? null,
     postpartum: f?.sarcina === 'da' || ctx.sarcina === 'da',
     place: f?.acces === 'acasa' ? 'acasa' : 'sala',
+    ...(f?.acces === 'acasa' && Array.isArray(f.echipament) ? { gear: cleanGear(f.echipament) } : {}),
   };
+}
+
+/** Doar valorile cunoscute, fără dubluri, în ordinea fixă. */
+export function cleanGear(g: readonly string[]): HomeGear[] {
+  return HOME_GEAR.filter((x) => g.includes(x));
+}
+
+/**
+ * Locul și echipamentul din chestionar, peste ședința din plan (regula 49): planurile vechi nu au „acasă” scris, iar
+ * echipamentul se poate schimba după generare — ecranul și agentul folosesc mereu ce e declarat acum.
+ */
+export function withHome<S extends StrengthSpec>(spec: S, f: { acces?: string | null; echipament?: readonly string[] | null } | null | undefined): S {
+  const home = spec.place === 'acasa' || (!spec.place && f?.acces === 'acasa');
+  if (!home) return spec;
+  return { ...spec, place: 'acasa', ...(f?.acces === 'acasa' && Array.isArray(f.echipament) ? { gear: cleanGear(f.echipament) } : {}) };
 }
 
 export const FITNESS_RULES: { t: string; d: string }[] = [
