@@ -17,6 +17,8 @@ export type AgentName = (typeof AGENTS)[number];
 export interface ModelRequest {
   model: string;
   system: string;
+  /** Prompt caching: lungimea părții stabile din `system` (identică între apeluri). Fără ea, tot system-ul e o singură zonă cache. */
+  systemStable?: number;
   user: string;
   schema: object;
   maxTokens?: number;
@@ -89,7 +91,8 @@ export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch,
           model: req.model,
           // Plafon larg: modelul poate gândi înainte de răspuns, iar gândirea consumă din max_tokens.
           max_tokens: Math.max(req.maxTokens ?? 0, 16000),
-          system: req.system,
+          // Prompt caching: system-ul e static (datele sportivului vin în mesaj), deci se citește din cache la ~10% din preț.
+          system: systemBlocks(req),
           messages: [{ role: 'user', content: req.user }],
           output_config: { format: { type: 'json_schema', schema: req.schema } },
         }),
@@ -106,6 +109,14 @@ export function anthropicClient(apiKey: string, fetchImpl: typeof fetch = fetch,
       }
     },
   };
+}
+
+/** Blocurile de system cu puncte de cache: partea stabilă (dacă e marcată) și system-ul întreg. */
+export function systemBlocks(req: Pick<ModelRequest, 'system' | 'systemStable'>): { type: 'text'; text: string; cache_control: { type: 'ephemeral' } }[] {
+  const cc = { type: 'ephemeral' as const };
+  const n = req.systemStable ?? 0;
+  const parts = n > 0 && n < req.system.length ? [req.system.slice(0, n), req.system.slice(n)] : [req.system];
+  return parts.filter((t) => t.length > 0).map((text) => ({ type: 'text' as const, text, cache_control: cc }));
 }
 
 // ---------- rutarea ----------
@@ -503,7 +514,9 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   // Auditul v93, A12: decizia aplicației, dar niciodată mai permisivă decât verdictul de siguranță din cod.
   let decision: HeadResponse['decizie'] = packet.decizia_aplicatiei && RANK[packet.decizia_aplicatiei.nivel as keyof typeof RANK] >= RANK[safe] ? packet.decizia_aplicatiei.nivel : safe;
   const p: Packet = { ...packet, verdict_fiziolog: decision };
-  const system = `${prompts.main_coach ?? prompts.head_coach}\n\n=== CUNOȘTINȚE (doar conținut; formatul lor nu se aplică) ===\n${prompts.ghid && p.meta.tip_obiectiv !== 'fitness' ? `--- MODUL: ghid ---\n${prompts.ghid.trim()}\n\n` : ''}${knowledgeText(mods, prompts, p)}`;
+  // Partea stabilă (rolul + ghidul) e aceeași pentru toți sportivii; modulele de cunoștințe variază, așa că au punctul lor de cache.
+  const stable = `${prompts.main_coach ?? prompts.head_coach}\n\n=== CUNOȘTINȚE (doar conținut; formatul lor nu se aplică) ===\n${prompts.ghid && p.meta.tip_obiectiv !== 'fitness' ? `--- MODUL: ghid ---\n${prompts.ghid.trim()}\n\n` : ''}`;
+  const system = `${stable}${knowledgeText(mods, prompts, p)}`;
   const fallback = (why: string): HeadResponse => ({
     propunere: null,
     decizie: decision,
@@ -524,12 +537,12 @@ export async function runMainCoach(input: RunInput, client: ModelClient): Promis
   let headWarnings: string[] = [];
   let fallbackUsed = false;
   try {
-    head = await client.json<HeadResponse>({ model: models.head, system, user: mainUser(p, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
+    head = await client.json<HeadResponse>({ model: models.head, system, systemStable: stable.length, user: mainUser(p, input.journal), schema: HEAD_SCHEMA, maxTokens: 2000 });
     headWarnings = check(head);
     if (headWarnings.length) {
       let retry: HeadResponse | null = null;
       try {
-        retry = await client.json<HeadResponse>({ model: models.head, system, user: `${mainUser(p, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect și fără prescripții care contrazic ședința din calendar (zona, intensitatea, sportul vin din plan; o schimbare se propune structurat, în câmpul propunere). Decizia nu poate fi mai permisivă decât ${decision}.`, schema: HEAD_SCHEMA, maxTokens: 2000 });
+        retry = await client.json<HeadResponse>({ model: models.head, system, systemStable: stable.length, user: `${mainUser(p, input.journal)}\n\n=== VERIFICAREA PRIMEI VARIANTE A RESPINS ===\n${headWarnings.join('\n')}\nRescrie fără aceste cifre sau cu câmpul lor corect și fără prescripții care contrazic ședința din calendar (zona, intensitatea, sportul vin din plan; o schimbare se propune structurat, în câmpul propunere). Decizia nu poate fi mai permisivă decât ${decision}.`, schema: HEAD_SCHEMA, maxTokens: 2000 });
       } catch (e) {
         failures.push(`main_coach (reîncercare): ${errText(e)}`);
       }

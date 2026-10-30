@@ -2,13 +2,8 @@
 import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err = [e], e;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all2) => {
   for (var name in all2)
@@ -215,7 +210,6 @@ var init_auth = __esm({
         super(message);
         this.status = status;
       }
-      status;
     };
     approvedCache = /* @__PURE__ */ new Map();
   }
@@ -11129,7 +11123,8 @@ function anthropicClient(apiKey, fetchImpl = fetch, onUsage) {
           model: req.model,
           // Plafon larg: modelul poate gândi înainte de răspuns, iar gândirea consumă din max_tokens.
           max_tokens: Math.max(req.maxTokens ?? 0, 16e3),
-          system: req.system,
+          // Prompt caching: system-ul e static (datele sportivului vin în mesaj), deci se citește din cache la ~10% din preț.
+          system: systemBlocks(req),
           messages: [{ role: "user", content: req.user }],
           output_config: { format: { type: "json_schema", schema: req.schema } }
         })
@@ -11146,6 +11141,12 @@ function anthropicClient(apiKey, fetchImpl = fetch, onUsage) {
       }
     }
   };
+}
+function systemBlocks(req) {
+  const cc = { type: "ephemeral" };
+  const n2 = req.systemStable ?? 0;
+  const parts2 = n2 > 0 && n2 < req.system.length ? [req.system.slice(0, n2), req.system.slice(n2)] : [req.system];
+  return parts2.filter((t) => t.length > 0).map((text) => ({ type: "text", text, cache_control: cc }));
 }
 function route(p) {
   const out = /* @__PURE__ */ new Set(["fiziolog"]);
@@ -11470,13 +11471,14 @@ async function runMainCoach(input, client) {
   const safe = safetyDecision(packet);
   let decision = packet.decizia_aplicatiei && RANK4[packet.decizia_aplicatiei.nivel] >= RANK4[safe] ? packet.decizia_aplicatiei.nivel : safe;
   const p = { ...packet, verdict_fiziolog: decision };
-  const system = `${prompts.main_coach ?? prompts.head_coach}
+  const stable = `${prompts.main_coach ?? prompts.head_coach}
 
 === CUNO\u0218TIN\u021AE (doar con\u021Binut; formatul lor nu se aplic\u0103) ===
 ${prompts.ghid && p.meta.tip_obiectiv !== "fitness" ? `--- MODUL: ghid ---
 ${prompts.ghid.trim()}
 
-` : ""}${knowledgeText(mods, prompts, p)}`;
+` : ""}`;
+  const system = `${stable}${knowledgeText(mods, prompts, p)}`;
   const fallback = (why) => ({
     propunere: null,
     decizie: decision,
@@ -11497,12 +11499,12 @@ ${h2.memento}`, p, decision)];
   let headWarnings = [];
   let fallbackUsed = false;
   try {
-    head = await client.json({ model: models.head, system, user: mainUser(p, input.journal), schema: HEAD_SCHEMA, maxTokens: 2e3 });
+    head = await client.json({ model: models.head, system, systemStable: stable.length, user: mainUser(p, input.journal), schema: HEAD_SCHEMA, maxTokens: 2e3 });
     headWarnings = check(head);
     if (headWarnings.length) {
       let retry = null;
       try {
-        retry = await client.json({ model: models.head, system, user: `${mainUser(p, input.journal)}
+        retry = await client.json({ model: models.head, system, systemStable: stable.length, user: `${mainUser(p, input.journal)}
 
 === VERIFICAREA PRIMEI VARIANTE A RESPINS ===
 ${headWarnings.join("\n")}
@@ -14015,7 +14017,7 @@ function webhookToken(req) {
 function afterResponse(p) {
   const safe = p.catch((e) => console.error("dup\u0103 r\u0103spuns", e instanceof Error ? e.message : String(e)));
   try {
-    const ctx = globalThis[/* @__PURE__ */ Symbol.for("@vercel/request-context")]?.get?.();
+    const ctx = globalThis[Symbol.for("@vercel/request-context")]?.get?.();
     ctx?.waitUntil?.(safe);
   } catch {
   }
